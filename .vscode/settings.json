@@ -70,5 +70,5 @@
         "*.sln": "*.csproj",
         "*.slnx": "*.csproj"
     },
-    "dotnet.defaultSolution": "basketball mini game.sln"
+    "dotnet.defaultSolution": "level5.slnx"
 }
