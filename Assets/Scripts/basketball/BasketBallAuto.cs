@@ -15,7 +15,7 @@ public class BasketBallAuto : MonoBehaviour
     public int bsid;
     SpriteRenderer spriteRenderer;
     [SerializeField]
-    new Rigidbody rigidbody;
+    Rigidbody rigidbody;
     AudioSource audioSource;
     [SerializeField]
     BasketBallState basketBallState;

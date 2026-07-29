@@ -24,14 +24,6 @@ namespace Assets.Scripts.Utility
             // get player prefab
             // get cpu prefab
             GameObject player;
-            GameObject cpuPlayer;
-            string playerPrefabPath1;
-            string cpuPrefabPath1;
-
-
-            playerPrefabPath1 = Constants.PREFAB_PATH_CHARACTER_human + GameOptions.characterObjectNames[0];
-            cpuPrefabPath1 = Constants.PREFAB_PATH_CHARACTER_cpu + "pony";
-
             GameObject go1 = GameObject.FindGameObjectWithTag("Player");
             //GameObject go2 = Resources.Load(cpuPrefabPath1) as GameObject;
 

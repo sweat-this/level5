@@ -384,7 +384,7 @@ public class Pause : MonoBehaviour
 
     void pauseAllAudio()
     {
-        allAudioSources = FindObjectsOfType<AudioSource>();
+        allAudioSources = FindObjectsByType<AudioSource>();
 
         foreach (AudioSource audioS in allAudioSources)
         {
@@ -395,7 +395,7 @@ public class Pause : MonoBehaviour
 
     void resumeAllAudio()
     {
-        allAudioSources = FindObjectsOfType<AudioSource>();
+        allAudioSources = FindObjectsByType<AudioSource>();
 
         foreach (AudioSource audioS in allAudioSources)
         {

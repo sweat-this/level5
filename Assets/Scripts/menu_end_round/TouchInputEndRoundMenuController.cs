@@ -43,22 +43,29 @@ public class TouchInputEndRoundMenuController : MonoBehaviour
         // set distance required for swipe up to be regeistered by device
         swipeUpTolerance = Screen.height / 7;
         swipeDownTolerance = Screen.height / 5;
-        prevSelectedGameObject = EventSystem.current.firstSelectedGameObject;
-        //Debug.Log("screen width : " + Screen.width);
-
         if (EventSystem.current == null)
         {
-            EventSystem.current.SetSelectedGameObject(EventSystem.current.firstSelectedGameObject); // + "_description";
+            enabled = false;
+            return;
         }
+
+        prevSelectedGameObject = EventSystem.current.firstSelectedGameObject;
+        //Debug.Log("screen width : " + Screen.width);
     }
 
     void Update()
     {
+        if (EventSystem.current == null)
+            return;
+
         //// if no button selected, return to previous
-        if (EventSystem.current.currentSelectedGameObject == null)
+        if (EventSystem.current.currentSelectedGameObject == null && prevSelectedGameObject != null)
         {
             EventSystem.current.SetSelectedGameObject(prevSelectedGameObject);
         }
+
+        if (EventSystem.current.currentSelectedGameObject == null)
+            return;
 
         currentHighlightedButton = EventSystem.current.currentSelectedGameObject.name;
 

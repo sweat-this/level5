@@ -76,7 +76,7 @@ public class ProgressionManager : MonoBehaviour
     private int playerSelectedIndex;
     [SerializeField] int experienceRequiredForNextLevel;
 
-    public PlayerControls controls;
+    private PlayerControls controls;
     public static ProgressionManager instance;
 
     ProgressionState progressionState;

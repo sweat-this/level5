@@ -17,7 +17,6 @@ public class TouchInputLinksScreenController : MonoBehaviour
 
     [SerializeField]
     GraphicRaycaster m_Raycaster;
-    [SerializeField]
     PointerEventData m_PointerEventData;
     [SerializeField]
     EventSystem m_EventSystem;
@@ -41,15 +40,28 @@ public class TouchInputLinksScreenController : MonoBehaviour
         // set distance required for swipe up to be regeistered by device
         swipeUpTolerance = Screen.height / 7;
         swipeDownTolerance = Screen.height / 5;
-        prevSelectedGameObject = EventSystem.current.firstSelectedGameObject;
         if (EventSystem.current == null)
         {
-            EventSystem.current.SetSelectedGameObject(EventSystem.current.firstSelectedGameObject); // + "_description";
+            enabled = false;
+            return;
         }
+
+        prevSelectedGameObject = EventSystem.current.firstSelectedGameObject;
     }
 
     void Update()
     {
+        if (EventSystem.current == null)
+            return;
+
+        if (EventSystem.current.currentSelectedGameObject == null && prevSelectedGameObject != null)
+        {
+            EventSystem.current.SetSelectedGameObject(prevSelectedGameObject);
+        }
+
+        if (EventSystem.current.currentSelectedGameObject == null)
+            return;
+
         // save previous button until a touch is made
         if (!buttonPressed && Input.touchCount == 0)
         {
@@ -86,13 +98,14 @@ public class TouchInputLinksScreenController : MonoBehaviour
         }
 
         //check if startmanager is empty and find correct GraphicRaycaster and EventSystem
-        if (GameObject.FindObjectOfType<CreditsManager>() != null)
+        CreditsManager creditsManager = UnityEngine.Object.FindAnyObjectByType<CreditsManager>();
+        if (creditsManager != null)
         {
-            CreditsManagerObject = FindObjectOfType<CreditsManager>().gameObject;
+            CreditsManagerObject = creditsManager.gameObject;
             //Fetch the Raycaster from the GameObject (the Canvas)
-            m_Raycaster = FindObjectOfType<CreditsManager>().gameObject.GetComponentInChildren<GraphicRaycaster>();
+            m_Raycaster = creditsManager.gameObject.GetComponentInChildren<GraphicRaycaster>();
             //Fetch the Event System from the Scene
-            m_EventSystem = FindObjectOfType<CreditsManager>().gameObject.GetComponentInChildren<EventSystem>();
+            m_EventSystem = creditsManager.gameObject.GetComponentInChildren<EventSystem>();
         }
         // else, this is not the startscreen and disable object
         else

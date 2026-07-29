@@ -6,7 +6,7 @@ public class EnemyProjectile : MonoBehaviour
     public float projectileForce;
     public Vector3 projectileForceThrown;
     public Vector3 projectileForceSniper;
-    new Rigidbody rigidbody;
+    Rigidbody rigidbody;
     public bool thrownProjectile;
     public bool impactProjectile;
     [SerializeField]

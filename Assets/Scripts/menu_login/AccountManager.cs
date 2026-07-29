@@ -93,7 +93,7 @@ public class AccountManager : MonoBehaviour
     {
         // mapped controls
         controls = new PlayerControls();
-        apiConnector = FindObjectOfType<APIConnector>();
+        apiConnector = UnityEngine.Object.FindAnyObjectByType<APIConnector>();
     }
 
     private void Start()

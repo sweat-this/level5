@@ -772,7 +772,7 @@ namespace Assets.Scripts.restapi
                     yield return new WaitUntil(() => !DBHelper.instance.DatabaseLocked);
 
                     // attempt to login newly created user
-                    AccountManager account = GameObject.FindObjectOfType<AccountManager>();
+                    AccountManager account = UnityEngine.Object.FindAnyObjectByType<AccountManager>();
                     account.LoginUser(user.UserName);
 
                     //SceneManager.LoadScene(Constants.SCENE_NAME_level_00_loading);

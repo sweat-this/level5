@@ -56,7 +56,6 @@ public class StatsManager : MonoBehaviour
     [SerializeField]
     List<GameObject> highScoreRowsObjectsList;
     // list of modes
-    [SerializeField]
     List<mode> modesList;
     //list of unsubmitted highscores
     [SerializeField]

@@ -193,8 +193,7 @@ namespace Assets.Scripts.menu_start
 
         //private int numOfPlayers; //testing with 1
 
-        [SerializeField]
-        public PlayerControls controls;
+        private PlayerControls controls;
 
         [SerializeField]
         public static StartManager_original instance;

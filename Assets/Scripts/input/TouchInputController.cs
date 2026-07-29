@@ -19,7 +19,6 @@ public class TouchInputController : MonoBehaviour
 
     [SerializeField]
     GraphicRaycaster m_Raycaster;
-    [SerializeField]
     PointerEventData m_PointerEventData;
     [SerializeField]
     EventSystem m_EventSystem;

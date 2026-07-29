@@ -114,7 +114,7 @@ public class TouchInputProgressionScreenController : MonoBehaviour
         }
 
         //check if startmanager is empty and find correct GraphicRaycaster and EventSystem
-        if (GameObject.FindObjectOfType<ProgressionManager>() != null)
+        if (UnityEngine.Object.FindAnyObjectByType<ProgressionManager>() != null)
         {
             //Fetch the Raycaster from the GameObject (the Canvas)
             //m_Raycaster = StartManager.instance.gameObject.GetComponentInChildren<GraphicRaycaster>();

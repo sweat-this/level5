@@ -8,7 +8,7 @@ using Random = System.Random;
 public class BasketBall : MonoBehaviour
 {
     SpriteRenderer spriteRenderer;
-    new Rigidbody rigidbody;
+    Rigidbody rigidbody;
     AudioSource audioSource;
     CharacterProfile characterProfile;
     BasketBallState basketBallState;

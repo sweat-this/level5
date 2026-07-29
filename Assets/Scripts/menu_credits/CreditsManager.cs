@@ -46,7 +46,7 @@ public class CreditsManager : MonoBehaviour
 
     bool buttonPressed = false;
 
-    public PlayerControls controls;
+    private PlayerControls controls;
 
     public static CreditsManager instance;
 

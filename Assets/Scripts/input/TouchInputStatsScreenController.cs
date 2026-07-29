@@ -38,23 +38,32 @@ public class TouchInputStatsScreenController : MonoBehaviour
         // set distance required for swipe up to be regeistered by device
         swipeUpTolerance = Screen.height / 7;
         swipeDownTolerance = Screen.height / 5;
-        prevSelectedGameObject = EventSystem.current.firstSelectedGameObject;
         if (EventSystem.current == null)
         {
-            EventSystem.current.SetSelectedGameObject(EventSystem.current.firstSelectedGameObject); // + "_description";
+            enabled = false;
+            return;
         }
+
+        prevSelectedGameObject = EventSystem.current.firstSelectedGameObject;
     }
 
     void Update()
     {
+        if (EventSystem.current == null)
+            return;
+
+        if (EventSystem.current.currentSelectedGameObject == null && prevSelectedGameObject != null)
+        {
+            EventSystem.current.SetSelectedGameObject(prevSelectedGameObject);
+        }
+
+        if (EventSystem.current.currentSelectedGameObject == null)
+            return;
+
         // save previous button until a touch is made
         if (!buttonPressed && Input.touchCount == 0)
         {
             prevSelectedGameObject = EventSystem.current.currentSelectedGameObject;
-        }
-        if (EventSystem.current == null)
-        {
-            EventSystem.current.SetSelectedGameObject(prevSelectedGameObject); // + "_description";
         }
 
         if (Input.touchCount > 0 && !buttonPressed)
@@ -114,7 +123,7 @@ public class TouchInputStatsScreenController : MonoBehaviour
         }
 
         //check if startmanager is empty and find correct GraphicRaycaster and EventSystem
-        if (GameObject.FindObjectOfType<StatsManager>() != null)
+        if (UnityEngine.Object.FindAnyObjectByType<StatsManager>() != null)
         {
             //Fetch the Raycaster from the GameObject (the Canvas)
             //m_Raycaster = StatsManager.instance.gameObject.GetComponentInChildren<GraphicRaycaster>();

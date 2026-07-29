@@ -50,7 +50,7 @@ public static class Constants
     public const string SCENE_NAME_level_21_shore = "level_21_shore";
     public const string SCENE_NAME_level_22_rumble_pit_shooting = "level_22_rumble_pit_shooting";
     public const string SCENE_NAME_level_23_dev = "level_23_dev";
-    public const string SCENE_NAME_level_24_aveb_cemetary = "level_23_aveb_cemetary";
+    public const string SCENE_NAME_level_24_aveb_cemetary = "level_24_aveb_cemetary";
     // dev server api address constants
     public const string API_ADDRESS_DEV_publicApi = "http://api.sweatthis/api/";
     public const string API_ADDRESS_DEV_publicApiUsers = "http://api.sweatthis.com/api/users";

@@ -59,7 +59,8 @@ public class OptionsManager : MonoBehaviour
     {
         if (EventSystem.current == null)
         {
-            EventSystem.current.SetSelectedGameObject(EventSystem.current.firstSelectedGameObject); // + "_description";
+            enabled = false;
+            return;
         }
         displayControls(keyboardOnlyMenuButtonName);
     }

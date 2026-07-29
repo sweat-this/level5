@@ -191,8 +191,7 @@ public class StartManager : MonoBehaviour
 
     //private int numOfPlayers; //testing with 1
 
-    [SerializeField]
-    public PlayerControls controls;
+    private PlayerControls controls;
 
     [SerializeField]
     public static StartManager instance;

@@ -17,7 +17,6 @@ public class TouchInputAccountScreenController : MonoBehaviour
 
     [SerializeField]
     GraphicRaycaster m_Raycaster;
-    [SerializeField]
     PointerEventData m_PointerEventData;
     [SerializeField]
     EventSystem m_EventSystem;
@@ -41,15 +40,28 @@ public class TouchInputAccountScreenController : MonoBehaviour
         // set distance required for swipe up to be regeistered by device
         swipeUpTolerance = Screen.height / 7;
         swipeDownTolerance = Screen.height / 5;
-        prevSelectedGameObject = EventSystem.current.firstSelectedGameObject;
         if (EventSystem.current == null)
         {
-            EventSystem.current.SetSelectedGameObject(EventSystem.current.firstSelectedGameObject); // + "_description";
+            enabled = false;
+            return;
         }
+
+        prevSelectedGameObject = EventSystem.current.firstSelectedGameObject;
     }
 
     void Update()
     {
+        if (EventSystem.current == null)
+            return;
+
+        if (EventSystem.current.currentSelectedGameObject == null && prevSelectedGameObject != null)
+        {
+            EventSystem.current.SetSelectedGameObject(prevSelectedGameObject);
+        }
+
+        if (EventSystem.current.currentSelectedGameObject == null)
+            return;
+
         // save previous button until a touch is made
         if (!buttonPressed && Input.touchCount == 0)
         {
@@ -86,13 +98,14 @@ public class TouchInputAccountScreenController : MonoBehaviour
         }
 
         //check if startmanager is empty and find correct GraphicRaycaster and EventSystem
-        if (GameObject.FindObjectOfType<AccountManager>() != null)
+        AccountManager accountManager = UnityEngine.Object.FindAnyObjectByType<AccountManager>();
+        if (accountManager != null)
         {
-            accountManagerObject = FindObjectOfType<AccountManager>().gameObject;
+            accountManagerObject = accountManager.gameObject;
             //Fetch the Raycaster from the GameObject (the Canvas)
-            m_Raycaster = FindObjectOfType<AccountManager>().gameObject.GetComponentInChildren<GraphicRaycaster>();
+            m_Raycaster = accountManager.gameObject.GetComponentInChildren<GraphicRaycaster>();
             //Fetch the Event System from the Scene
-            m_EventSystem = FindObjectOfType<AccountManager>().gameObject.GetComponentInChildren<EventSystem>();
+            m_EventSystem = accountManager.gameObject.GetComponentInChildren<EventSystem>();
         }
         // else, this is not the startscreen and disable object
         else

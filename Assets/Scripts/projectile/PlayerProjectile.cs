@@ -5,7 +5,7 @@ public class PlayerProjectile : MonoBehaviour
     public float lifetime;
     public float projectileForce;
     public Vector3 projectileForceThrown;
-    new Rigidbody rigidbody;
+    Rigidbody rigidbody;
     PlayerController playerController;
     public bool thrownProjectile;
     public bool impactProjectile;
@@ -28,7 +28,7 @@ public class PlayerProjectile : MonoBehaviour
         {
             applyForceToDirectionFacingProjectile(projectileForceThrown);
             impactExplosionPrefab = Resources.Load("Prefabs/projectile/projectile_impact_explosion") as GameObject;
-            //impactExplosionPrefab = Resources.Load("Prefabs/projectile/projectile_impact_rabbit") as GameObject;
+            impactRabbitPrefab = Resources.Load("Prefabs/projectile/projectile_impact_rabbit") as GameObject;
         }
         if (!thrownProjectile && impactProjectile)
         {

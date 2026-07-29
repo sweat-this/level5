@@ -118,7 +118,7 @@ public class UserAccountManager : MonoBehaviour
     public IEnumerator RemoveUserButton(string userName)
     {
         // set confirm button slected
-        Button selectedButton = GameObject.FindObjectOfType<ConfirmDialogue>().confirmButton;
+        Button selectedButton = UnityEngine.Object.FindAnyObjectByType<ConfirmDialogue>().confirmButton;
         EventSystem.current.SetSelectedGameObject(null);
         EventSystem.current.SetSelectedGameObject(selectedButton.gameObject);
 

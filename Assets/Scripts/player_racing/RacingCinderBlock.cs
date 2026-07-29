@@ -17,7 +17,7 @@ public class RacingCinderBlock : MonoBehaviour
     [SerializeField]
     float defaultMovementSpeed;
     [SerializeField]
-    private new Rigidbody rigidbody;
+    private Rigidbody rigidbody;
     [SerializeField]
     bool targetReached;
     [SerializeField]

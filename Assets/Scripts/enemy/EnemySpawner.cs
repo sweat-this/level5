@@ -262,7 +262,7 @@ public class EnemySpawner : MonoBehaviour
         //        value++;
         //    }
         //}
-        EnemyController[] enemyHealthList = GameObject.FindObjectsOfType<EnemyController>();
+        EnemyController[] enemyHealthList = UnityEngine.Object.FindObjectsByType<EnemyController>();
         foreach (EnemyController ec in enemyHealthList)
         {
             if (ec.IsBoss)
