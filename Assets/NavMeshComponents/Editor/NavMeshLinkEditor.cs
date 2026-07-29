@@ -36,12 +36,12 @@ namespace UnityEditor.AI
             s_SelectedID = EntityId.None;
             s_SelectedPoint = -1;
 
-            NavMeshVisualizationSettings.showNavigation++;
+            NavMeshEditorVisualization.ShowNavigation();
         }
 
         void OnDisable()
         {
-            NavMeshVisualizationSettings.showNavigation--;
+            NavMeshEditorVisualization.HideNavigation();
         }
 
         static Matrix4x4 UnscaledLocalToWorldMatrix(Transform t)
@@ -162,7 +162,7 @@ namespace UnityEditor.AI
         [DrawGizmo(GizmoType.NotInSelectionHierarchy | GizmoType.Pickable)]
         static void RenderBoxGizmoNotSelected(NavMeshLink navLink, GizmoType gizmoType)
         {
-            if (NavMeshVisualizationSettings.showNavigation > 0)
+            if (NavMeshEditorVisualization.IsNavigationVisible)
             {
                 var color = s_HandleColor;
                 if (!navLink.enabled)

@@ -78,12 +78,12 @@ namespace UnityEditor.AI
             m_UseGeometry = serializedObject.FindProperty("m_UseGeometry");
             m_VoxelSize = serializedObject.FindProperty("m_VoxelSize");
 
-            NavMeshVisualizationSettings.showNavigation++;
+            NavMeshEditorVisualization.ShowNavigation();
         }
 
         void OnDisable()
         {
-            NavMeshVisualizationSettings.showNavigation--;
+            NavMeshEditorVisualization.HideNavigation();
         }
 
         static string GetAndEnsureTargetPath(NavMeshSurface surface)
@@ -403,7 +403,7 @@ namespace UnityEditor.AI
         [DrawGizmo(GizmoType.NotInSelectionHierarchy | GizmoType.Pickable)]
         static void RenderBoxGizmoNotSelected(NavMeshSurface navSurface, GizmoType gizmoType)
         {
-            if (NavMeshVisualizationSettings.showNavigation > 0)
+            if (NavMeshEditorVisualization.IsNavigationVisible)
                 RenderBoxGizmo(navSurface, gizmoType, false);
             else
                 Gizmos.DrawIcon(navSurface.transform.position, "NavMeshSurface Icon", true);
