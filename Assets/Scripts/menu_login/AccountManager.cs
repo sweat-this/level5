@@ -76,23 +76,20 @@ public class AccountManager : MonoBehaviour
 
     private void OnEnable()
     {
-        controls.Player.Enable();
-        controls.UINavigation.Enable();
-        controls.Other.Enable();
+        controls = PlayerControlsProvider.Controls;
+        PlayerControlsProvider.EnableMenuMaps();
         //controls.PlayerTouch.Enable();
     }
     private void OnDisable()
     {
-        controls.Player.Disable();
-        controls.UINavigation.Disable();
-        controls.Other.Disable();
+        PlayerControlsProvider.DisableMenuMaps();
         //controls.PlayerTouch.Disable();
     }
 
     void Awake()
     {
         // mapped controls
-        controls = new PlayerControls();
+        controls = PlayerControlsProvider.Controls;
         apiConnector = UnityEngine.Object.FindAnyObjectByType<APIConnector>();
     }
 

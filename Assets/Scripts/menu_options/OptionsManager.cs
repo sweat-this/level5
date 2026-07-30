@@ -38,20 +38,17 @@ public class OptionsManager : MonoBehaviour
 
     private void OnEnable()
     {
-        controls.Player.Enable();
-        controls.UINavigation.Enable();
-        controls.Other.Enable();
+        controls = PlayerControlsProvider.Controls;
+        PlayerControlsProvider.EnableMenuMaps();
     }
     private void OnDisable()
     {
-        controls.Player.Disable();
-        controls.UINavigation.Disable();
-        controls.Other.Disable();
+        PlayerControlsProvider.DisableMenuMaps();
     }
 
     void Awake()
     {
-        controls = new PlayerControls();
+        controls = PlayerControlsProvider.Controls;
     }
 
     // Start is called before the first frame update

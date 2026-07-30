@@ -89,21 +89,20 @@ public class GameLevelManager : MonoBehaviour
 
     private void OnEnable()
     {
-        controls.Player.Enable();
-        controls.UINavigation.Enable();
-        controls.Other.Enable();
+        controls = PlayerControlsProvider.Controls;
+        PlayerControlsProvider.EnableGameplayMaps();
+        PlayerControlsProvider.EnableDebugMaps();
     }
     private void OnDisable()
     {
-        controls.Player.Disable();
-        controls.UINavigation.Disable();
-        controls.Other.Disable();
+        PlayerControlsProvider.DisableDebugMaps();
+        PlayerControlsProvider.DisableGameplayMaps();
     }
 
     private void Awake()
     {
         instance = this;
-        controls = new PlayerControls();
+        controls = PlayerControlsProvider.Controls;
 
         //test 
         //GameOptions.numPlayers = 4;

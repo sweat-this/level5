@@ -37,22 +37,19 @@ public class UserAccountManager : MonoBehaviour
 
     private void OnEnable()
     {
-        controls.Player.Enable();
-        controls.UINavigation.Enable();
-        controls.Other.Enable();
+        controls = PlayerControlsProvider.Controls;
+        PlayerControlsProvider.EnableMenuMaps();
     }
     private void OnDisable()
     {
-        controls.Player.Disable();
-        controls.UINavigation.Disable();
-        controls.Other.Disable();
+        PlayerControlsProvider.DisableMenuMaps();
     }
 
     // Start is called before the first frame update
     void Awake()
     {
         instance = this;
-        controls = new PlayerControls();
+        controls = PlayerControlsProvider.Controls;
         if (!SceneManager.GetActiveScene().name.Equals(Constants.SCENE_NAME_level_00_loading))
         {
             StartCoroutine(loadUserData());

@@ -124,15 +124,12 @@ public class StatsManager : MonoBehaviour
     // for input system
     private void OnEnable()
     {
-        controls.Player.Enable();
-        controls.UINavigation.Enable();
-        controls.Other.Enable();
+        controls = PlayerControlsProvider.Controls;
+        PlayerControlsProvider.EnableMenuMaps();
     }
     private void OnDisable()
     {
-        controls.Player.Disable();
-        controls.UINavigation.Disable();
-        controls.Other.Disable();
+        PlayerControlsProvider.DisableMenuMaps();
     }
 
     // store data for each row
@@ -155,7 +152,7 @@ public class StatsManager : MonoBehaviour
     {
 
         instance = this;
-        controls = new PlayerControls();
+        controls = PlayerControlsProvider.Controls;
 
         // table objects
         highScoreTableObject = GameObject.Find(highScoreTableName);

@@ -29,6 +29,7 @@ public class StartScreenTipDialogueManager : MonoBehaviour
     PlayerControls controls;
 
     bool buttonPressed = false;
+    bool menuMapsEnabled;
 
     public Button CancelButton { get => cancelButton; set => cancelButton = value; }
     public Button NextButton { get => nextButton; set => nextButton = value; }
@@ -37,18 +38,17 @@ public class StartScreenTipDialogueManager : MonoBehaviour
     {
         if (!GameOptions.tipDialogueLoadedOnStart)
         {
-            controls.Player.Enable();
-            controls.UINavigation.Enable();
-            controls.Other.Enable();
+            controls = PlayerControlsProvider.Controls;
+            PlayerControlsProvider.EnableMenuMaps();
+            menuMapsEnabled = true;
         }
     }
     private void OnDisable()
     {
-        if (!GameOptions.tipDialogueLoadedOnStart)
+        if (menuMapsEnabled)
         {
-            controls.Player.Disable();
-            controls.UINavigation.Disable();
-            controls.Other.Disable();
+            PlayerControlsProvider.DisableMenuMaps();
+            menuMapsEnabled = false;
         }
     }
 
@@ -58,7 +58,7 @@ public class StartScreenTipDialogueManager : MonoBehaviour
         if (!GameOptions.tipDialogueLoadedOnStart)
         {
             //instance = this;
-            controls = new PlayerControls();
+            controls = PlayerControlsProvider.Controls;
             if (GameObject.Find("cancel_button") != null)
             {
                 cancelButton = GameObject.Find("cancel_button").GetComponent<Button>();

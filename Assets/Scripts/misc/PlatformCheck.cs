@@ -8,51 +8,50 @@ public class PlatformCheck : MonoBehaviour
     [SerializeField] InputSystemUIInputModule inputSystemUIInputModule;
     [SerializeField] StandaloneInputModule standaloneInputModule;
 
-    // Start is called before the first frame update
     void Awake()
     {
-        if (EventSystem.current.gameObject.GetComponent<StandaloneInputModule>() != null)
+        EventSystem eventSystem = EventSystem.current;
+        if (eventSystem != null)
         {
-            standaloneInputModule = EventSystem.current.gameObject.GetComponent<StandaloneInputModule>();
-        }
+            standaloneInputModule = eventSystem.GetComponent<StandaloneInputModule>();
+            inputSystemUIInputModule = eventSystem.GetComponent<InputSystemUIInputModule>();
 
-        if (EventSystem.current.gameObject.GetComponent<InputSystemUIInputModule>() != null)
+            if (standaloneInputModule == null && inputSystemUIInputModule == null)
+            {
+                Debug.LogWarning("PlatformCheck found an EventSystem without a StandaloneInputModule or InputSystemUIInputModule.");
+            }
+        }
+        else
         {
-            inputSystemUIInputModule = EventSystem.current.gameObject.GetComponent<InputSystemUIInputModule>();
+            Debug.LogWarning("PlatformCheck could not find an EventSystem.");
         }
 
 #if UNITY_ANDROID || UNITY_IOS 
 
         QualitySettings.vSyncCount = 1;
         Application.targetFrameRate = 60;
-
-        ////inputSystemUIInputModule.DeactivateModule();
-        inputSystemUIInputModule.enabled = false;
-        standaloneInputModule.enabled = true;
-        //standaloneInputModule.ActivateModule(); 
+        SetUiModuleState(useStandaloneInputModule: true);
 #endif
 
 #if UNITY_STANDALONE || UNITY_EDITOR
         QualitySettings.vSyncCount = 0;
         Application.targetFrameRate = -1;
 
-        //standaloneInputModule.DeactivateModule();
-        // if win/osx but has touch support
-        if (SystemInfo.deviceType == DeviceType.Handheld)
-        {
-            inputSystemUIInputModule.enabled = false;
-            standaloneInputModule.enabled = true;
-        }
-        // no touch support
-        if (!Input.touchSupported || SystemInfo.deviceType != DeviceType.Handheld)
-        {
-            inputSystemUIInputModule.enabled = true;
-            standaloneInputModule.enabled = false;
-        }
-        inputSystemUIInputModule.enabled = true;
-        standaloneInputModule.enabled = false;
-        //inputSystemUIInputModule.ActivateModule();
-        //Debug.Log("standalone");
+        bool useTouchUi = Input.touchSupported && SystemInfo.deviceType == DeviceType.Handheld;
+        SetUiModuleState(useStandaloneInputModule: useTouchUi);
 #endif
+    }
+
+    private void SetUiModuleState(bool useStandaloneInputModule)
+    {
+        if (inputSystemUIInputModule != null)
+        {
+            inputSystemUIInputModule.enabled = !useStandaloneInputModule;
+        }
+
+        if (standaloneInputModule != null)
+        {
+            standaloneInputModule.enabled = useStandaloneInputModule;
+        }
     }
 }

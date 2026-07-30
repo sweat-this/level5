@@ -1264,6 +1264,17 @@
                 },
                 {
                     "name": "",
+                    "id": "1bd4ee7a-89db-4ffe-9963-08d5f4876d81",
+                    "path": "<Keyboard>/space",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "Submit",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
                     "id": "ec125c74-0ce0-482e-9097-8380cfe39ede",
                     "path": "<Gamepad>/start",
                     "interactions": "",

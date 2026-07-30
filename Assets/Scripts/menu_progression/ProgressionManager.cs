@@ -114,15 +114,12 @@ public class ProgressionManager : MonoBehaviour
 
     private void OnEnable()
     {
-        controls.Player.Enable();
-        controls.UINavigation.Enable();
-        controls.Other.Enable();
+        controls = PlayerControlsProvider.Controls;
+        PlayerControlsProvider.EnableMenuMaps();
     }
     private void OnDisable()
     {
-        controls.Player.Disable();
-        controls.UINavigation.Disable();
-        controls.Other.Disable();
+        PlayerControlsProvider.DisableMenuMaps();
     }
 
     //private Text gameModeSelectText;
@@ -138,7 +135,7 @@ public class ProgressionManager : MonoBehaviour
         //destroyInstanceIfAlreadyExists();
         StartCoroutine(getLoadedData());
 
-        controls = new PlayerControls();
+        controls = PlayerControlsProvider.Controls;
         // find all button / text / etc and assign to variables
         getUiObjectReferences();
 
@@ -168,24 +165,21 @@ public class ProgressionManager : MonoBehaviour
 
         // ================================== footer buttons =====================================================================
         // start button | start game
-        if ((controls.UINavigation.Submit.triggered
-             || controls.Player.shoot.triggered)
+        if (PlayerControlsProvider.MenuSubmitTriggered
             && currentHighlightedButton.Equals(startButtonName))
         {
             confirmChanges();
             loadScene(Constants.SCENE_NAME_level_00_start);
         }
         // quit button | quit game
-        if ((controls.UINavigation.Submit.triggered
-             || controls.Player.shoot.triggered)
+        if (PlayerControlsProvider.MenuSubmitTriggered
             && currentHighlightedButton.Equals(quitButtonName))
         {
             confirmChanges();
             Application.Quit();
         }
         // stats menu button | load stats menu
-        if ((controls.UINavigation.Submit.triggered
-             || controls.Player.shoot.triggered)
+        if (PlayerControlsProvider.MenuSubmitTriggered
             && currentHighlightedButton.Equals(statsMenuButtonName))
         {
             confirmChanges();

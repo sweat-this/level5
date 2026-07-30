@@ -201,15 +201,12 @@ public class StartManager : MonoBehaviour
 
     private void OnEnable()
     {
-        controls.Player.Enable();
-        controls.UINavigation.Enable();
-        controls.Other.Enable();
+        controls = PlayerControlsProvider.Controls;
+        PlayerControlsProvider.EnableMenuMaps();
     }
     private void OnDisable()
     {
-        controls.Player.Disable();
-        controls.UINavigation.Disable();
-        controls.Other.Disable();
+        PlayerControlsProvider.DisableMenuMaps();
     }
 
     //private Text gameModeSelectText;
@@ -218,7 +215,7 @@ public class StartManager : MonoBehaviour
         instance = this;
         GameOptions.gameModeHasBeenSelected = false;
         StartCoroutine(getLoadedData());
-        controls = new PlayerControls();
+        controls = PlayerControlsProvider.Controls;
         // find all button / text / etc and assign to variables
         StartCoroutine(GetUiObjectReferences());
 
@@ -309,53 +306,46 @@ public class StartManager : MonoBehaviour
         }
         // ================================== footer buttons =====================================================================
         // start button | start game
-        if ((controls.UINavigation.Submit.triggered
-             || controls.Player.shoot.triggered)
+        if (PlayerControlsProvider.MenuSubmitTriggered
             && currentHighlightedButton.Equals(startButtonName))
         {
             loadGame();
         }
         // quit button | quit game
-        if ((controls.UINavigation.Submit.triggered
-             || controls.Player.shoot.triggered)
+        if (PlayerControlsProvider.MenuSubmitTriggered
             && currentHighlightedButton.Equals(quitButtonName))
         {
             Application.Quit();
         }
         // stats menu button | load stats menu
-        if ((controls.UINavigation.Submit.triggered
-             || controls.Player.shoot.triggered)
+        if (PlayerControlsProvider.MenuSubmitTriggered
             && currentHighlightedButton.Equals(statsMenuButtonName))
         {
             loadMenu(Constants.SCENE_NAME_level_00_stats);
         }
 
         // update menu button | load update menu
-        if ((controls.UINavigation.Submit.triggered
-             || controls.Player.shoot.triggered)
+        if (PlayerControlsProvider.MenuSubmitTriggered
             && currentHighlightedButton.Equals(updateMenuButtonName))
         {
             GameOptions.playerSelectedIndex = playerSelectedIndex;
             loadMenu(Constants.SCENE_NAME_level_00_progression);
         }
         // options menu button | load options menu
-        if ((controls.UINavigation.Submit.triggered
-             || controls.Player.shoot.triggered)
+        if (PlayerControlsProvider.MenuSubmitTriggered
             && currentHighlightedButton.Equals(optionsMenuButtonName))
         {
             loadMenu(Constants.SCENE_NAME_level_00_options);
         }
         // credits menu button | load credits menu
-        if ((controls.UINavigation.Submit.triggered
-             || controls.Player.shoot.triggered)
+        if (PlayerControlsProvider.MenuSubmitTriggered
             && currentHighlightedButton.Equals(creditsMenuButtonName))
         {
             loadMenu(Constants.SCENE_NAME_level_00_credits);
         }
 
         // account menu button | load account menu
-        if ((controls.UINavigation.Submit.triggered
-             || controls.Player.shoot.triggered)
+        if (PlayerControlsProvider.MenuSubmitTriggered
             && currentHighlightedButton.Equals(accountMenuButtonName))
         {
             loadMenu(Constants.SCENE_NAME_level_00_account);

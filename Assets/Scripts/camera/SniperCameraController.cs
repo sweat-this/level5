@@ -18,22 +18,19 @@ public class SniperCameraController : MonoBehaviour
 
     private void OnEnable()
     {
-        controls.Player.Enable();
-        controls.UINavigation.Enable();
-        controls.Other.Enable();
+        controls = PlayerControlsProvider.Controls;
+        PlayerControlsProvider.EnableGameplayMaps();
         //controls.PlayerTouch.Enable();
     }
     private void OnDisable()
     {
-        controls.Player.Disable();
-        controls.UINavigation.Disable();
-        controls.Other.Disable();
+        PlayerControlsProvider.DisableGameplayMaps();
         //controls.PlayerTouch.Disable();
     }
 
     private void Awake()
     {
-        controls = new PlayerControls();
+        controls = PlayerControlsProvider.Controls;
     }
     // Start is called before the first frame update
     void Start()

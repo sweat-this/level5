@@ -78,6 +78,7 @@ public class TouchInputController : MonoBehaviour
             //Debug.Log("paused");
             // ====================== get touches =====================================
             // detect multi touches
+            bool hasSecondTouch = Input.touchCount > 1;
             if (Input.touchCount > 1)
             {
                 touch1 = Input.touches[0];
@@ -125,7 +126,8 @@ public class TouchInputController : MonoBehaviour
             }
 
             // ====================== touch 2 : tap  =====================================
-            if (touch2.tapCount == 1
+            if (hasSecondTouch
+                && touch2.tapCount == 1
                 && touch2.phase == TouchPhase.Began
                 && !buttonPressed)
             {
@@ -137,14 +139,15 @@ public class TouchInputController : MonoBehaviour
             {
                 tap2Detected = false;
             }
-            if (tap2Detected && !tap1Detected)
+            if (hasSecondTouch && tap2Detected && !tap1Detected)
             {
                playerController.TouchControlJumpOrShoot(touch2.position);
                 //tap2Detected = false;
             }
 
             //Touch 2 is tap + hold detected + bottom right screen
-            if (hold1Detected
+            if (hasSecondTouch
+                && hold1Detected
                 && !buttonPressed
                 && startTouchPosition2.x > (Screen.width / 2)
                 && GameOptions.enemiesEnabled)
@@ -222,7 +225,7 @@ public class TouchInputController : MonoBehaviour
                 }
                 else
                 {
-                    selectPressedButton();
+                    selectPressedButton(touch.position);
                 }
             }
             // on double tap, perform actions
@@ -235,8 +238,17 @@ public class TouchInputController : MonoBehaviour
 
     private void activateDoubleTappedButton()
     {
+        EventSystem eventSystem = EventSystem.current;
+        GameObject selectedGameObject = eventSystem != null ? eventSystem.currentSelectedGameObject : null;
+        if (selectedGameObject == null)
+        {
+            return;
+        }
+
+        string selectedButtonName = selectedGameObject.name;
+
         // reload
-        if (EventSystem.current.currentSelectedGameObject.name.Equals(Pause.instance.LoadSceneButton.name)
+        if (selectedButtonName.Equals(Pause.instance.LoadSceneButton.name)
             && !buttonPressed)
         {
             //Debug.Log("reload");
@@ -244,7 +256,7 @@ public class TouchInputController : MonoBehaviour
             buttonPressed = true;
         }
         // start screen
-        if (EventSystem.current.currentSelectedGameObject.name.Equals(Pause.instance.LoadStartScreenButton.name)
+        if (selectedButtonName.Equals(Pause.instance.LoadStartScreenButton.name)
             && !buttonPressed)
         {
             //Debug.Log("start screen");
@@ -252,7 +264,7 @@ public class TouchInputController : MonoBehaviour
             buttonPressed = true;
         }
         // cancel/unpause
-        if (EventSystem.current.currentSelectedGameObject.name.Equals(Pause.instance.CancelMenuButton.name)
+        if (selectedButtonName.Equals(Pause.instance.CancelMenuButton.name)
             && !buttonPressed)
         {
             //Debug.Log("cancel/un pause");
@@ -260,7 +272,7 @@ public class TouchInputController : MonoBehaviour
             buttonPressed = true;
         }
         //quit
-        if (EventSystem.current.currentSelectedGameObject.name.Equals(Pause.instance.QuitGameButton.name)
+        if (selectedButtonName.Equals(Pause.instance.QuitGameButton.name)
             && !buttonPressed)
         {
             //Debug.Log("quit");
@@ -276,7 +288,7 @@ public class TouchInputController : MonoBehaviour
         //    buttonPressed = true;
         //}
         // toggle fps
-        if (EventSystem.current.currentSelectedGameObject.name.Equals(Pause.ToggleFpsName)
+        if (selectedButtonName.Equals(Pause.ToggleFpsName)
             && !buttonPressed)
         {
             //Debug.Log("toggle fps");
@@ -292,7 +304,7 @@ public class TouchInputController : MonoBehaviour
         //    buttonPressed = true;
         //}
         // toggle ui stats
-        if (EventSystem.current.currentSelectedGameObject.name.Equals(Pause.ToggleUiStatsName)
+        if (selectedButtonName.Equals(Pause.ToggleUiStatsName)
             && !buttonPressed)
         {
             //Debug.Log("toggle stats");
@@ -309,13 +321,16 @@ public class TouchInputController : MonoBehaviour
         messageText.text = "";
     }
 
-    private void selectPressedButton()
+    private void selectPressedButton(Vector2 screenPosition)
     {
-        Debug.Log("selectPressedButton");
+        if (m_Raycaster == null || m_EventSystem == null)
+        {
+            return;
+        }
+
         //Set up the new Pointer Event
         m_PointerEventData = new PointerEventData(m_EventSystem);
-        //Set the Pointer Event Position to that of the mouse position
-        m_PointerEventData.position = Input.mousePosition;
+        m_PointerEventData.position = screenPosition;
 
         //Create a list of Raycast Results
         List<RaycastResult> results = new List<RaycastResult>();
@@ -323,11 +338,15 @@ public class TouchInputController : MonoBehaviour
         //Raycast using the Graphics Raycaster and mouse click position
         m_Raycaster.Raycast(m_PointerEventData, results);
 
-        //For every result returned, output the name of the GameObject on the Canvas hit by the Ray
-        //foreach (RaycastResult result in results)
-        //{
-        //    Debug.Log("Hit " + result.gameObject.name);
-        //}
+        foreach (RaycastResult result in results)
+        {
+            Selectable selectable = result.gameObject.GetComponentInParent<Selectable>();
+            if (selectable != null && selectable.interactable)
+            {
+                m_EventSystem.SetSelectedGameObject(selectable.gameObject);
+                return;
+            }
+        }
     }
 
     private void initializeTouchInputController()

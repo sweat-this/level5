@@ -42,16 +42,15 @@ public class RacingGameManager : MonoBehaviour
 
     private void OnEnable()
     {
-        controls.Player.Enable();
-        controls.UINavigation.Enable();
-        controls.Other.Enable();
+        controls = PlayerControlsProvider.Controls;
+        PlayerControlsProvider.EnableGameplayMaps();
+        PlayerControlsProvider.EnableDebugMaps();
         //controls.PlayerTouch.Enable();
     }
     private void OnDisable()
     {
-        controls.Player.Disable();
-        controls.UINavigation.Disable();
-        controls.Other.Disable();
+        PlayerControlsProvider.DisableDebugMaps();
+        PlayerControlsProvider.DisableGameplayMaps();
         //controls.PlayerTouch.Disable();
     }
 
@@ -59,7 +58,7 @@ public class RacingGameManager : MonoBehaviour
     {
         instance = this;
         // mapped controls
-        controls = new PlayerControls();
+        controls = PlayerControlsProvider.Controls;
 
         //ui touch controls
         if (GameObject.FindGameObjectWithTag("joystick") != null)
