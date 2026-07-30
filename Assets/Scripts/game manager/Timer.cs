@@ -42,7 +42,7 @@ public class Timer : MonoBehaviour
         }
         else
         {
-            Destroy(this);
+            Destroy(gameObject);
         }
     }
 
@@ -92,6 +92,11 @@ public class Timer : MonoBehaviour
 
     void Update()
     {
+        if (GameRules.instance == null)
+        {
+            return;
+        }
+
         // countdown timer
         currentTime += Time.deltaTime;
 
@@ -112,8 +117,14 @@ public class Timer : MonoBehaviour
         if (GameRules.instance.GameOver || timeRemaining < 0)
         {
             displayTimer = false;
-            timerText.text = "";
-            shotClockText.text = "";
+            if (timerText != null)
+            {
+                timerText.text = "";
+            }
+            if (shotClockText != null)
+            {
+                shotClockText.text = "";
+            }
         }
         // time's up, pause and reset timer text
         if (timeRemaining <= 0
@@ -124,7 +135,10 @@ public class Timer : MonoBehaviour
             // ball is in the air, let the shot go before pausing 
             // or player in air and has basketball
             // not consecutive game mode
-            if (!GameLevelManager.instance.players[0].basketBallState.Thrown
+            if (GameLevelManager.instance != null
+                && GameLevelManager.instance.players != null
+                && GameLevelManager.instance.players.Count > 0
+                && !GameLevelManager.instance.players[0].basketBallState.Thrown
                 // player in air, has ball
                 //&& !(GameLevelManager.instance.players[0].playerController.hasBasketball && GameLevelManager.instance.players[0].playerController.InAir)
                 && GameLevelManager.instance.players[0].playerController.Grounded
@@ -136,7 +150,10 @@ public class Timer : MonoBehaviour
                 GameRules.instance.GameOver = true;
             }
             // if consecutive shots mode and streak is less than 2
-            if ((GameRules.instance.GameModeRequiresConsecutiveShots
+            if (GameLevelManager.instance != null
+                && GameLevelManager.instance.players != null
+                && GameLevelManager.instance.players.Count > 0
+                && (GameRules.instance.GameModeRequiresConsecutiveShots
                 && GameLevelManager.instance.players[0].gameStats.ConsecutiveShotsMade < 3))
             {
                 //Debug.Log("game over");
@@ -206,8 +223,14 @@ public class Timer : MonoBehaviour
 
     void setCustomTimerText(string text)
     {
-        timerText.text = text;
-        shotClockText.text = text;
+        if (timerText != null)
+        {
+            timerText.text = text;
+        }
+        if (shotClockText != null)
+        {
+            shotClockText.text = text;
+        }
     }
 
     public float TimeStart

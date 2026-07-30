@@ -1,4 +1,5 @@
 ﻿using System;
+using Assets.Scripts.Utility;
 using System.Collections;
 using Unity.Mathematics;
 using UnityEngine;
@@ -95,6 +96,8 @@ public class BodyGuardController : MonoBehaviour
         anim = GetComponentInChildren<Animator>();
         spriteRenderer = GetComponentInChildren<SpriteRenderer>();
         bodyGuardDetection = gameObject.GetComponent<BodyGuardDetection>();
+        Transform dropShadowTransform = transform.FindDeepChild("drop_shadow");
+        dropShadow = dropShadowTransform != null ? dropShadowTransform.gameObject : null;
         originalPosition = transform.position;
         canAttack = true;
 
@@ -130,7 +133,7 @@ public class BodyGuardController : MonoBehaviour
         {
             returnToPatrol();
         }
-        if (enemyUsesPhysics)
+        if (enemyUsesPhysics && dropShadow != null)
         {
             dropShadow.transform.position = new Vector3(dropShadow.transform.position.x, 0.01f, dropShadow.transform.position.z);
         }

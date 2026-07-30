@@ -17,14 +17,12 @@ public class CameraManager : MonoBehaviour
 
     //bool locked;
     private int cameraOnGoalIndex;
-    private int cameraFollowBallIndex;
 
     bool cameraOnGoalAllowed;
 
     public static CameraManager instance;
 
     public int CameraOnGoalIndex { get => cameraOnGoalIndex; }
-    public int CameraFollowBallIndex { get => cameraFollowBallIndex; }
     public GameObject[] Cameras { get => cameras; set => cameras = value; }
     public bool CameraOnGoalAllowed { get => cameraOnGoalAllowed; set => cameraOnGoalAllowed = value; }
 

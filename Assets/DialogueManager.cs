@@ -23,7 +23,7 @@ public class DialogueManager : MonoBehaviour
     {
         instance = this;
         Coroutine = null;
-        canvas = GameObject.FindObjectOfType<Canvas>();
+        canvas = GameObject.FindAnyObjectByType<Canvas>();
         if(GameObject.Find("confirm_tip") != null)
         {
             dialogueType = TipDialogue;

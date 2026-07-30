@@ -767,8 +767,9 @@ public class StartManager : MonoBehaviour
 
         //buttons to disable for touch input
 
-       levelSelectButton = StartMenuUiObjects.instance.column1_subgroup_column2_level_selected_name_button;
-       hardcoreSelectButton = StartMenuUiObjects.instance.column2_options_tab_traffic_select_button;
+        levelSelectButton = StartMenuUiObjects.instance.column1_subgroup_column2_level_selected_name_button;
+        trafficSelectButton = StartMenuUiObjects.instance.column2_options_tab_traffic_select_button;
+        hardcoreSelectButton = StartMenuUiObjects.instance.column2_options_tab_hardcore_select_button;
         enemySelectButton = StartMenuUiObjects.instance.column2_options_tab_enemy_select_button;
         sniperSelectButton = StartMenuUiObjects.instance.column2_options_tab_sniper_select_button;
         difficultySelectButton = StartMenuUiObjects.instance.column2_options_tab_difficulty_select_button;

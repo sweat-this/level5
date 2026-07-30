@@ -4,7 +4,7 @@ using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
-public class StartScreenCpuSelecteManager : MonoBehaviour
+public class StartScreenCpuSelectManager : MonoBehaviour
 {
     [HideInInspector]
     public int NONE = 0, YES = 1, CANCEL = 2, NEXT = 3;
@@ -25,10 +25,8 @@ public class StartScreenCpuSelecteManager : MonoBehaviour
     [SerializeField]
     List<PlayerTips> tipsList;
 
-    int randomTipIndex = 0;
     PlayerControls controls;
 
-    bool buttonPressed = false;
     bool menuMapsEnabled;
 
     public Button CancelButton { get => cancelButton; set => cancelButton = value; }

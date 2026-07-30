@@ -51,12 +51,9 @@ public class AutoPlayerController : MonoBehaviour
     private bool _knockedDown;
     private bool _takeDamage;
     private bool _avoidedKnockDown;
-    private bool canAttack;
-    private bool canBlock;
 
     // player state bools
     //private bool running = false;
-    private bool runningToggle;
     public bool hasBasketball;
 
     // trigger player jump. bool used because activated in fixed update
@@ -158,7 +155,6 @@ public class AutoPlayerController : MonoBehaviour
         FacingRight = true;
 
         movementSpeed = characterProfile.Speed;
-        runningToggle = true;
 
         if (_knockDownTime == 0) { _knockDownTime = 1.5f; }
         if (_takeDamageTime == 0) { _takeDamageTime = 0.5f; }
@@ -362,23 +358,6 @@ public class AutoPlayerController : MonoBehaviour
             stateWalk = true;
             stateIdle = false;
         }
-        //------------------- attack conditions----------------------
-        // can attack conditions
-        if (Grounded
-            && !KnockedDown
-            && !hasBasketball
-            && !InAir
-            && currentState != inAirDunkState)
-        {
-            canAttack = true;
-            canBlock = true;
-        }
-        else
-        {
-            canBlock = false;
-            canAttack = false;
-        }
-
         //------------------ jump -----------------------------------
         if (hasBasketball
             //&& stateIdle

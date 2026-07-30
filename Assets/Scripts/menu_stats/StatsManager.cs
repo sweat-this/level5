@@ -34,6 +34,7 @@ public class StatsManager : MonoBehaviour
 
     // tag find high score rows that are instantiated
     const string highScoreRowTag = "high_score_row";
+    const int ResultsPerPage = 10;
     //const string mainMenuSceneName = "level_00_start";
 
     GameObject allTimeTableObject;
@@ -206,14 +207,17 @@ public class StatsManager : MonoBehaviour
         AnaylticsManager.MenuStatsLoaded();
 
         // create rows dor data display
-        for (int i = 0; i < highScoreRowsDataList.Count; i++)
+        if (highScoreRowsDataList == null)
         {
-            // set data for prefabs from list retrieved from database
-            highScoreRowPrefab.GetComponent<StatsTableHighScoreRow>().Score = highScoreRowsDataList[i].Score;
-            highScoreRowPrefab.GetComponent<StatsTableHighScoreRow>().Character = highScoreRowsDataList[i].Character;
-            highScoreRowPrefab.GetComponent<StatsTableHighScoreRow>().Level = highScoreRowsDataList[i].Level;
-            highScoreRowPrefab.GetComponent<StatsTableHighScoreRow>().Date = highScoreRowsDataList[i].Date;
-            highScoreRowPrefab.GetComponent<StatsTableHighScoreRow>().HardcoreEnabled = highScoreRowsDataList[i].HardcoreEnabled;
+            highScoreRowsDataList = new List<StatsTableHighScoreRow>();
+        }
+
+        int initialRowCount = Mathf.Max(ResultsPerPage, highScoreRowsDataList.Count);
+        for (int i = 0; i < initialRowCount; i++)
+        {
+            StatsTableHighScoreRow row = highScoreRowPrefab.GetComponent<StatsTableHighScoreRow>();
+            StatsTableHighScoreRow source = i < highScoreRowsDataList.Count ? highScoreRowsDataList[i] : null;
+            CopyHighScoreRow(row, source);
             // instantiate row on necessary table object
             Instantiate(highScoreRowPrefab, highScoresRowsObject.transform.position, Quaternion.identity, highScoresRowsObject.transform);
         }
@@ -533,7 +537,57 @@ public class StatsManager : MonoBehaviour
 
     static int sortByModeId(mode m1, mode m2)
     {
-        return m2.modeSelectedId.CompareTo(m2.modeSelectedId);
+        return m1.modeSelectedId.CompareTo(m2.modeSelectedId);
+    }
+
+    private void SetHighScoreRow(int index, StatsTableHighScoreRow source)
+    {
+        if (highScoreRowsObjectsList == null || index < 0 || index >= highScoreRowsObjectsList.Count)
+        {
+            return;
+        }
+
+        StatsTableHighScoreRow row = highScoreRowsObjectsList[index].GetComponent<StatsTableHighScoreRow>();
+        CopyHighScoreRow(row, source);
+    }
+
+    private void ClearHighScoreRows(int startIndex)
+    {
+        if (highScoreRowsObjectsList == null)
+        {
+            return;
+        }
+
+        for (int i = Mathf.Max(0, startIndex); i < highScoreRowsObjectsList.Count; i++)
+        {
+            SetHighScoreRow(i, null);
+        }
+    }
+
+    private static void CopyHighScoreRow(StatsTableHighScoreRow row, StatsTableHighScoreRow source)
+    {
+        if (row == null)
+        {
+            return;
+        }
+
+        if (source == null)
+        {
+            row.UserName = "";
+            row.Score = "";
+            row.Character = "";
+            row.Level = "";
+            row.Date = "";
+            row.HardcoreEnabled = "";
+            return;
+        }
+
+        row.UserName = source.UserName;
+        row.Score = source.Score;
+        row.Character = source.Character;
+        row.Level = source.Level;
+        row.Date = source.Date;
+        row.HardcoreEnabled = source.HardcoreEnabled;
     }
 
     public void changeSelectedMode(string direction)
@@ -662,29 +716,21 @@ public class StatsManager : MonoBehaviour
                 // get # of results for pageination display
                 numLocalResults = DBHelper.instance.getNumberOfResults(field, modesList[currentModeSelectedIndex].modeSelectedId, hardcoreEnabled, localResultsPageNumber);
 
-                // updates row with new data
-                for (int i = 0; i < highScoreRowsDataList.Count; i++)
+                if (highScoreRowsDataList == null)
                 {
-                    // set data for prefabs from list retrieved from database
-                    highScoreRowsObjectsList[i].GetComponent<StatsTableHighScoreRow>().UserName = highScoreRowsDataList[i].UserName;
-                    highScoreRowsObjectsList[i].GetComponent<StatsTableHighScoreRow>().Score = highScoreRowsDataList[i].Score;
-                    highScoreRowsObjectsList[i].GetComponent<StatsTableHighScoreRow>().Character = highScoreRowsDataList[i].Character;
-                    highScoreRowsObjectsList[i].GetComponent<StatsTableHighScoreRow>().Level = highScoreRowsDataList[i].Level;
-                    highScoreRowsObjectsList[i].GetComponent<StatsTableHighScoreRow>().Date = highScoreRowsDataList[i].Date;
-                    //highScoreRowsObjectsList[i].GetComponent<StatsTableHighScoreRow>().HardcoreEnabled = highScoreRowsDataList[i].HardcoreEnabled;
+                    highScoreRowsDataList = new List<StatsTableHighScoreRow>();
+                }
+
+                int rowCount = Math.Min(highScoreRowsDataList.Count, highScoreRowsObjectsList.Count);
+
+                // updates row with new data
+                for (int i = 0; i < rowCount; i++)
+                {
+                    SetHighScoreRow(i, highScoreRowsDataList[i]);
                     index++;
                 }
                 // empty out rows if scores do not exist or there isnt at least 10
-                for (int i = index; i < highScoreRowsDataList.Count; i++)
-                {
-                    // set data for prefabs from list retrieved from database
-                    highScoreRowsObjectsList[i].GetComponent<StatsTableHighScoreRow>().UserName = "";
-                    highScoreRowsObjectsList[i].GetComponent<StatsTableHighScoreRow>().Score = "";
-                    highScoreRowsObjectsList[i].GetComponent<StatsTableHighScoreRow>().Character = "";
-                    highScoreRowsObjectsList[i].GetComponent<StatsTableHighScoreRow>().Level = "";
-                    highScoreRowsObjectsList[i].GetComponent<StatsTableHighScoreRow>().Date = "";
-                    //highScoreRowsObjectsList[i].GetComponent<StatsTableHighScoreRow>().HardcoreEnabled = "";
-                }
+                ClearHighScoreRows(index);
                 initializeLocalPageNumberDisplay();
                 DBHelper.instance.DatabaseLocked = false;
             }
@@ -732,57 +778,27 @@ public class StatsManager : MonoBehaviour
                     Convert.ToInt32(enemiesEnabled),
                     Convert.ToInt32(sniperEnabled),
                     onlineResultsPageNumber,
-                    10);
+                    ResultsPerPage) ?? new List<StatsTableHighScoreRow>();
 
                 //Debug.Log("numOnlineResults : " + numOnlineResults);
 
-                int rowCount;
-                // if list  < 10 AND not empty
-                if (highScoreRowList.Count < 10 && highScoreRowList != null)
-                {
-                    rowCount = highScoreRowList.Count;
-                    index = highScoreRowList.Count;
-                }
-                else
-                {
-                    rowCount = 10;
-                    index = 0;
-                }
+                int rowCount = Math.Min(highScoreRowList.Count, highScoreRowsObjectsList.Count);
                 //if modeid = free play, zero it out
                 if (modeid != 99)
                 {
                     // updates row with new data
                     for (int i = 0; i < rowCount; i++)
                     {
-
-                        // set data for prefabs from list retrieved from database
-                        highScoreRowsObjectsList[i].GetComponent<StatsTableHighScoreRow>().UserName = highScoreRowList[i].UserName;
-                        highScoreRowsObjectsList[i].GetComponent<StatsTableHighScoreRow>().Score = highScoreRowList[i].Score;
-                        highScoreRowsObjectsList[i].GetComponent<StatsTableHighScoreRow>().Character = highScoreRowList[i].Character;
-                        highScoreRowsObjectsList[i].GetComponent<StatsTableHighScoreRow>().Level = highScoreRowList[i].Level;
-                        highScoreRowsObjectsList[i].GetComponent<StatsTableHighScoreRow>().Date = highScoreRowList[i].Date;
+                        SetHighScoreRow(i, highScoreRowList[i]);
                         index++;
                     }
-                    index = highScoreRowList.Count;
                 }
                 else
                 {
                     index = 0;
                 }
                 // empty out rows if scores do not exist or there isnt at least 10
-                //for (int i = index; i < highScoreRowList.Count; i++)
-                if (index < 10)
-                {
-                    for (int i = index; i < 10; i++)
-                    {
-                        // set data for prefabs from list retrieved from database
-                        highScoreRowsObjectsList[i].GetComponent<StatsTableHighScoreRow>().UserName = "";
-                        highScoreRowsObjectsList[i].GetComponent<StatsTableHighScoreRow>().Score = "";
-                        highScoreRowsObjectsList[i].GetComponent<StatsTableHighScoreRow>().Character = "";
-                        highScoreRowsObjectsList[i].GetComponent<StatsTableHighScoreRow>().Level = "";
-                        highScoreRowsObjectsList[i].GetComponent<StatsTableHighScoreRow>().Date = "";
-                    }
-                }
+                ClearHighScoreRows(index);
                 initializeOnlinePageNumberDisplay();
             }
             catch (Exception e)

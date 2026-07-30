@@ -21,6 +21,32 @@ namespace Assets.Scripts.restapi
         static int timeout = 1500;
         //private static string username;
 
+        private static bool TryGetStatusCode(HttpWebResponse httpResponse, out HttpStatusCode statusCode)
+        {
+            if (httpResponse == null)
+            {
+                statusCode = default(HttpStatusCode);
+                return false;
+            }
+
+            statusCode = httpResponse.StatusCode;
+            return true;
+        }
+
+        private static void UnlockApi()
+        {
+            apiLocked = false;
+        }
+
+        private static void UnlockApiAndDatabase()
+        {
+            apiLocked = false;
+            if (DBHelper.instance != null)
+            {
+                DBHelper.instance.DatabaseLocked = false;
+            }
+        }
+
         // -------------------------------------- HTTTP POST Highscore -------------------------------------------
 
         // POST highscore by scoreid by hitting api at
@@ -83,7 +109,13 @@ namespace Assets.Scripts.restapi
                 apiLocked = false;
                 DBHelper.instance.DatabaseLocked = false;
             }
-            statusCode = httpResponse.StatusCode;
+            if (!TryGetStatusCode(httpResponse, out statusCode))
+            {
+                Debug.Log("HTTP POST failed: no response from server.");
+                DBHelper.instance.setGameScoreSubmitted(score.Scoreid, false);
+                UnlockApiAndDatabase();
+                yield break;
+            }
 
             // if successful
             if (httpResponse.StatusCode == HttpStatusCode.Created)
@@ -377,7 +409,12 @@ namespace Assets.Scripts.restapi
                 apiLocked = false;
                 DBHelper.instance.DatabaseLocked = false;
             }
-            statusCode = httpResponse.StatusCode;
+            if (!TryGetStatusCode(httpResponse, out statusCode))
+            {
+                Debug.Log("HTTP POST failed: no response from server.");
+                UnlockApiAndDatabase();
+                return;
+            }
             // if successful
             if (httpResponse.StatusCode == HttpStatusCode.Created)
             {
@@ -466,7 +503,12 @@ namespace Assets.Scripts.restapi
                 DBHelper.instance.DatabaseLocked = false;
             }
 
-            statusCode = httpResponse.StatusCode;
+            if (!TryGetStatusCode(httpResponse, out statusCode))
+            {
+                Debug.Log("HTTP PUT failed: no response from server.");
+                UnlockApiAndDatabase();
+                yield break;
+            }
 
             // if successful
             if (httpResponse.StatusCode == HttpStatusCode.Created)
@@ -522,7 +564,12 @@ namespace Assets.Scripts.restapi
                 apiLocked = false;
             }
 
-            statusCode = httpResponse.StatusCode;
+            if (!TryGetStatusCode(httpResponse, out statusCode))
+            {
+                Debug.Log("GetHighscoreByScoreid failed: no response from server.");
+                UnlockApi();
+                return dBHighScoreModels;
+            }
 
             // if successful
             if (httpResponse.StatusCode == HttpStatusCode.OK)
@@ -601,7 +648,11 @@ namespace Assets.Scripts.restapi
                 apiLocked = false;
             }
 
-            statusCode = httpResponse.StatusCode;
+            if (!TryGetStatusCode(httpResponse, out statusCode))
+            {
+                UnlockApi();
+                return highScoresList;
+            }
 
             // if successful
             if (httpResponse.StatusCode == HttpStatusCode.OK)
@@ -673,7 +724,12 @@ namespace Assets.Scripts.restapi
                 apiLocked = false;
             }
 
-            statusCode = httpResponse.StatusCode;
+            if (!TryGetStatusCode(httpResponse, out statusCode))
+            {
+                Debug.Log("GetHighscoreCountByModeid failed: no response from server.");
+                UnlockApi();
+                return numResults;
+            }
 
             // if successful
             if (httpResponse.StatusCode == HttpStatusCode.OK)
@@ -760,7 +816,12 @@ namespace Assets.Scripts.restapi
 
                 }
 
-                statusCode = httpResponse.StatusCode;
+                if (!TryGetStatusCode(httpResponse, out statusCode))
+                {
+                    Debug.Log("HTTP POST failed: no response from server.");
+                    UnlockApiAndDatabase();
+                    yield break;
+                }
 
                 // if successful
                 if (httpResponse.StatusCode == HttpStatusCode.Created)
@@ -825,7 +886,11 @@ namespace Assets.Scripts.restapi
                 apiLocked = false;
             }
 
-            statusCode = httpResponse.StatusCode;
+            if (!TryGetStatusCode(httpResponse, out statusCode))
+            {
+                UnlockApi();
+                return false;
+            }
 
             // if successful
             if (httpResponse.StatusCode == HttpStatusCode.OK)
@@ -905,7 +970,10 @@ namespace Assets.Scripts.restapi
                 //Debug.Log("----------------- ERROR : " + e);
             }
 
-            statusCode = httpResponse.StatusCode;
+            if (!TryGetStatusCode(httpResponse, out statusCode))
+            {
+                return false;
+            }
 
             // if successful
             if (httpResponse.StatusCode == HttpStatusCode.OK)
@@ -955,6 +1023,11 @@ namespace Assets.Scripts.restapi
             //statusCode = httpResponse.StatusCode;
 
             // if successful
+            if (httpResponse == null)
+            {
+                return false;
+            }
+
             if (httpResponse.StatusCode == HttpStatusCode.OK)
             {
                 //Debug.Log("----------------- username found : " + (int)statusCode + " " + statusCode);
@@ -995,7 +1068,10 @@ namespace Assets.Scripts.restapi
                 Debug.Log("----------------- ERROR : " + e);
             }
 
-            statusCode = httpResponse.StatusCode;
+            if (!TryGetStatusCode(httpResponse, out statusCode))
+            {
+                return false;
+            }
 
             // if successful
             if (httpResponse.StatusCode == HttpStatusCode.OK)
@@ -1050,7 +1126,11 @@ namespace Assets.Scripts.restapi
                 apiLocked = false;
             }
 
-            statusCode = httpResponse.StatusCode;
+            if (!TryGetStatusCode(httpResponse, out statusCode))
+            {
+                UnlockApi();
+                return user;
+            }
 
             // if successful
             if (httpResponse.StatusCode == HttpStatusCode.OK)
@@ -1135,7 +1215,12 @@ namespace Assets.Scripts.restapi
                 apiLocked = false;
             }
 
-            statusCode = httpResponse.StatusCode;
+            if (!TryGetStatusCode(httpResponse, out statusCode))
+            {
+                inputField.text = "HTTP POST failed: no response from server.";
+                UnlockApi();
+                yield break;
+            }
 
             // if successful
             if (httpResponse.StatusCode == HttpStatusCode.Created)
@@ -1200,46 +1285,38 @@ namespace Assets.Scripts.restapi
             {
                 httpResponse = (HttpWebResponse)e.Response;
                 Debug.Log("----------------- ERROR : " + e);
-                //unlock api + database
-                apiLocked = false;
-                DBHelper.instance.DatabaseLocked = false;
+                UnlockApiAndDatabase();
             }
-            if (httpResponse != null)
+
+            if (!TryGetStatusCode(httpResponse, out statusCode))
             {
-                statusCode = httpResponse.StatusCode;
-
-                // if successful
-                if (httpResponse.StatusCode == HttpStatusCode.OK)
-                {
-                    //Debug.Log("----------------- HTTP POST successful : " + (int)statusCode + " " + statusCode);
-                    GameOptions.userName = user.UserName;
-                    GameOptions.userid = user.Userid;
-                    GameOptions.bearerToken = APIHelper.BearerToken;
-
-                    apiLocked = false;
-                    DBHelper.instance.DatabaseLocked = false;
-                }
-                // failed
-                else
-                {
-                    //Debug.Log("----------------- HTTP POST failed : " + (int)statusCode + " " + statusCode);
-                    //unlock api + database
-                    GameOptions.userName = user.UserName;
-                    GameOptions.userid = user.Userid;
-
-                    apiLocked = false;
-                    DBHelper.instance.DatabaseLocked = false;
-                }
-
-
-                yield return new WaitUntil(() => !apiLocked);
-                yield return new WaitUntil(() => !DBHelper.instance.DatabaseLocked);
+                UnlockApiAndDatabase();
+                SceneManager.LoadScene(Constants.SCENE_NAME_level_00_loading);
+                yield break;
             }
+
+            // if successful
+            if (statusCode == HttpStatusCode.OK)
+            {
+                //Debug.Log("----------------- HTTP POST successful : " + (int)statusCode + " " + statusCode);
+                GameOptions.userName = user.UserName;
+                GameOptions.userid = user.Userid;
+                GameOptions.bearerToken = APIHelper.BearerToken;
+
+                UnlockApiAndDatabase();
+            }
+            // failed
             else
             {
-                apiLocked = false;
-                DBHelper.instance.DatabaseLocked = false;
+                //Debug.Log("----------------- HTTP POST failed : " + (int)statusCode + " " + statusCode);
+                GameOptions.userName = user.UserName;
+                GameOptions.userid = user.Userid;
+
+                UnlockApiAndDatabase();
             }
+
+            yield return new WaitUntil(() => !apiLocked);
+            yield return new WaitUntil(() => DBHelper.instance == null || !DBHelper.instance.DatabaseLocked);
             //Debug.Log(APIHelper.bearerToken);
             //if (httpResponse.StatusCode == HttpStatusCode.OK)
             //{
@@ -1290,7 +1367,11 @@ namespace Assets.Scripts.restapi
                 return "server down";
             }
 
-            statusCode = httpResponse.StatusCode;
+            if (!TryGetStatusCode(httpResponse, out statusCode))
+            {
+                UnlockApi();
+                return currentVersion;
+            }
 
             // if successful
             if (httpResponse.StatusCode == HttpStatusCode.OK)
@@ -1346,7 +1427,11 @@ namespace Assets.Scripts.restapi
                 apiLocked = false;
             }
             //Debug.Log(httpResponse.StatusCode);
-            statusCode = httpResponse.StatusCode;
+            if (!TryGetStatusCode(httpResponse, out statusCode))
+            {
+                UnlockApi();
+                return messages;
+            }
 
             // if successful
             if (httpResponse.StatusCode == HttpStatusCode.OK)

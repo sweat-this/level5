@@ -113,7 +113,6 @@ public class StartMenuUiObjects : MonoBehaviour
     public const string updatePointsAvailable = "update_points_available";
 
     public static StartMenuUiObjects instance;
-    internal object column2_level_selected_description_text;
 
     private void Awake()
     {

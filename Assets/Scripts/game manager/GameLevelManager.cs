@@ -101,12 +101,28 @@ public class GameLevelManager : MonoBehaviour
 
     private void Awake()
     {
+        if (instance != null && instance != this)
+        {
+            Destroy(gameObject);
+            return;
+        }
+
         instance = this;
         controls = PlayerControlsProvider.Controls;
 
         //test 
         //GameOptions.numPlayers = 4;
-        numPlayers = GameOptions.numPlayers;
+        numPlayers = Mathf.Max(1, GameOptions.numPlayers);
+        GameOptions.numPlayers = numPlayers;
+        EnsureCharacterObjectNames();
+        if (players == null)
+        {
+            players = new List<PlayerIdentifier>();
+        }
+        else
+        {
+            players.Clear();
+        }
         //Debug.Log("numPlayers : " + numPlayers);
         GameOptions.player2IsCpu = true;
         GameOptions.player3IsCpu = true;
@@ -119,6 +135,11 @@ public class GameLevelManager : MonoBehaviour
         _playerSpawnLocation4 = GameObject.Find("player_spawn_location4");
         _basketballSpawnLocation = GameObject.Find("ball_spawn_location");
         _cheerleaderSpawnLocation = GameObject.Find("cheerleader_spawn_location");
+        if (!HasRequiredSpawnLocations())
+        {
+            enabled = false;
+            return;
+        }
         //set terrain height
         terrainHeight = setTerrainHeight();
 
@@ -151,6 +172,38 @@ public class GameLevelManager : MonoBehaviour
             default:
                 return terrainHeight = 0;
         }
+    }
+
+    private void EnsureCharacterObjectNames()
+    {
+        if (GameOptions.characterObjectNames == null)
+        {
+            GameOptions.characterObjectNames = new List<string>();
+        }
+
+        while (GameOptions.characterObjectNames.Count < numPlayers)
+        {
+            GameOptions.characterObjectNames.Add("drblood");
+        }
+
+        for (int i = 0; i < GameOptions.characterObjectNames.Count; i++)
+        {
+            if (string.IsNullOrEmpty(GameOptions.characterObjectNames[i]))
+            {
+                GameOptions.characterObjectNames[i] = "drblood";
+            }
+        }
+    }
+
+    private bool HasRequiredSpawnLocations()
+    {
+        if (_playerSpawnLocation1 == null || _basketballSpawnLocation == null)
+        {
+            Debug.LogError("GameLevelManager missing required player or basketball spawn locations.");
+            return false;
+        }
+
+        return true;
     }
 
     private void Start()
@@ -215,9 +268,17 @@ public class GameLevelManager : MonoBehaviour
         if (!GameOptions.gameModeHasBeenSelected && GameOptions.battleRoyalEnabled)
         {
             GameOptions.enemiesEnabled = true;
-            GameObject.Find("basketball_goal").SetActive(false);
+            GameObject basketballGoal = GameObject.Find("basketball_goal");
+            if (basketballGoal != null)
+            {
+                basketballGoal.SetActive(false);
+            }
         }
-        _basketball1 = GameObject.FindGameObjectWithTag("basketball").GetComponent<PlayerIdentifier>();
+        GameObject basketball = GameObject.FindGameObjectWithTag("basketball");
+        if (basketball != null)
+        {
+            _basketball1 = basketball.GetComponent<PlayerIdentifier>();
+        }
         if (GameObject.Find("rim") != null)
         {
             Vector3 rim = GameObject.Find("rim").transform.position;
@@ -228,6 +289,11 @@ public class GameLevelManager : MonoBehaviour
 
     private void Update()
     {
+        if (controls == null || Pause.instance == null)
+        {
+            return;
+        }
+
         //turn on : toggle run
         if (Controls.Other.change.enabled
             && Controls.Other.toggle_run_keyboard.triggered
@@ -235,7 +301,10 @@ public class GameLevelManager : MonoBehaviour
             && !Pause.instance.Paused)
         {
             _locked = true;
-            PlayerController1.ToggleRun();
+            if (PlayerController1 != null)
+            {
+                PlayerController1.ToggleRun();
+            }
             _locked = false;
         }
 
@@ -246,17 +315,23 @@ public class GameLevelManager : MonoBehaviour
             && !Pause.instance.Paused)
         {
             _locked = true;
-            BasketBall.instance.toggleUiStats();
+            if (BasketBall.instance != null)
+            {
+                BasketBall.instance.toggleUiStats();
+            }
             _locked = false;
         }
     }
 
     public List<PlayerIdentifier> getSortedGameStatsList()
     {
-        List<PlayerIdentifier> sorted = players.OrderByDescending(x => x.gameStats.TotalPoints).ToList();
+        List<PlayerIdentifier> sorted = players
+            .Where(x => x != null && x.gameStats != null)
+            .OrderByDescending(x => x.gameStats.TotalPoints)
+            .ToList();
         if (isMultiplePlayersTotalPoints)
         {
-            currentHighScoreTotalPoints = sorted[0].gameStats.TotalPoints;
+            currentHighScoreTotalPoints = sorted.Count > 0 ? sorted[0].gameStats.TotalPoints : 0;
         }
         return sorted;
     }
@@ -303,7 +378,8 @@ public class GameLevelManager : MonoBehaviour
     private void checkCheerleaderPrefabExists()
     {
         if (GameObject.FindWithTag("cheerleader") == null
-            && GameOptions.cheerleaderObjectName != null)
+            && GameOptions.cheerleaderObjectName != null
+            && _cheerleaderSpawnLocation != null)
         {
             string cheerleaderPrefabPath = "Prefabs/characters/cheerleaders/cheerleader_" + GameOptions.cheerleaderObjectName;
             _cheerleaderClone = Resources.Load(cheerleaderPrefabPath) as GameObject;
@@ -318,6 +394,12 @@ public class GameLevelManager : MonoBehaviour
 
     private void checkBasketballPrefabExists()
     {
+        if (players.Count == 0 || _basketballSpawnLocation == null)
+        {
+            Debug.LogError("Cannot spawn basketballs before players and basketball spawn location are initialized.");
+            return;
+        }
+
         numBasketballs = GameOptions.numPlayers;
         // get number of players. cpu and human
         // list of players and auto playera
@@ -340,7 +422,7 @@ public class GameLevelManager : MonoBehaviour
         }
         // player needs basketball reference
         // cpu player needs auto bball ref.
-        if (numBasketballs > 1 && GameOptions.gameModeAllowsCpuShooters)
+        if (numBasketballs > 1 && players.Count > 1 && GameOptions.gameModeAllowsCpuShooters)
         {
             if (GameOptions.player2IsCpu)
             {
@@ -362,7 +444,7 @@ public class GameLevelManager : MonoBehaviour
                 _basketball2.setPlayer(players[1].player);
             }
         }
-        if (numBasketballs > 2 && GameOptions.gameModeAllowsCpuShooters)
+        if (numBasketballs > 2 && players.Count > 2 && GameOptions.gameModeAllowsCpuShooters)
         {
             if (GameOptions.player3IsCpu)
             {
@@ -383,7 +465,7 @@ public class GameLevelManager : MonoBehaviour
                 _basketball3.setPlayer(players[2].player);
             }
         }
-        if (numPlayers > 3 && GameOptions.gameModeAllowsCpuShooters)
+        if (numPlayers > 3 && players.Count > 3 && GameOptions.gameModeAllowsCpuShooters)
         {
             if (GameOptions.player4IsCpu)
             {

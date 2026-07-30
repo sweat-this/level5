@@ -52,23 +52,23 @@ public static class Constants
     public const string SCENE_NAME_level_23_dev = "level_23_dev";
     public const string SCENE_NAME_level_24_aveb_cemetary = "level_24_aveb_cemetary";
     // dev server api address constants
-    public const string API_ADDRESS_DEV_publicApi = "http://api.sweatthis/api/";
-    public const string API_ADDRESS_DEV_publicApiUsers = "http://api.sweatthis.com/api/users";
-    public const string API_ADDRESS_DEV_publicApiUsersByUserid = "http://api.sweatthis.com/api/users/userid";
-    public const string API_ADDRESS_DEV_publicApiUsersByUserName = "http://api.sweatthis.com/api/users/username/";
-    public const string API_ADDRESS_DEV_publicApiUsersByEmail = "http://api.sweatthis.com/api/users/email/";
-    public const string API_ADDRESS_DEV_publicApiHighScores = "http://api.sweatthis.com/api/highscores/";
-    public const string API_ADDRESS_DEV_publicApiHighScoresUnsubmitted = "http://api.sweatthis.com/api/highscores/unsubmitted/";
-    public const string API_ADDRESS_DEV_publicApiHighScoresByScoreid = "http://api.sweatthis.com/api/highscores/scoreid/";
-    public const string API_ADDRESS_DEV_publicApiHighScoresByModeid = "http://api.sweatthis.com/api/highscores/modeid/";
-    public const string API_ADDRESS_DEV_publicApiHighScoresCountByModeid = "http://api.sweatthis.com/api/highscores/modeid/count/";
-    public const string API_ADDRESS_DEV_publicApiHighScoresByModeidInGameDisplayAll = "http://api.sweatthis.com/api/highscores/modeid/all/";
-    public const string API_ADDRESS_DEV_publicApiHighScoresByModeidInGameDisplayFiltered = "http://api.sweatthis.com/api/highscores/modeid/filter/";
-    public const string API_ADDRESS_DEV_publicApiHighScoresByPlatform = "http://api.sweatthis.com/api/highscores/platform/";
-    public const string API_ADDRESS_DEV_publicApiToken = "http://api.sweatthis.com/api/token/";
-    public const string API_ADDRESS_DEV_publicApplicationVersionCurrent = "http://api.sweatthis.com/api/application/version/current";
-    public const string API_ADDRESS_DEV_publicUserReport = "http://api.sweatthis.com/api/userreport";
-    public const string API_ADDRESS_DEV_publicServerMessages = "http://api.sweatthis.com/api/servermessages";
+    public const string API_ADDRESS_DEV_publicApi = "https://api.sweatthis.com/api/";
+    public const string API_ADDRESS_DEV_publicApiUsers = "https://api.sweatthis.com/api/users";
+    public const string API_ADDRESS_DEV_publicApiUsersByUserid = "https://api.sweatthis.com/api/users/userid";
+    public const string API_ADDRESS_DEV_publicApiUsersByUserName = "https://api.sweatthis.com/api/users/username/";
+    public const string API_ADDRESS_DEV_publicApiUsersByEmail = "https://api.sweatthis.com/api/users/email/";
+    public const string API_ADDRESS_DEV_publicApiHighScores = "https://api.sweatthis.com/api/highscores/";
+    public const string API_ADDRESS_DEV_publicApiHighScoresUnsubmitted = "https://api.sweatthis.com/api/highscores/unsubmitted/";
+    public const string API_ADDRESS_DEV_publicApiHighScoresByScoreid = "https://api.sweatthis.com/api/highscores/scoreid/";
+    public const string API_ADDRESS_DEV_publicApiHighScoresByModeid = "https://api.sweatthis.com/api/highscores/modeid/";
+    public const string API_ADDRESS_DEV_publicApiHighScoresCountByModeid = "https://api.sweatthis.com/api/highscores/modeid/count/";
+    public const string API_ADDRESS_DEV_publicApiHighScoresByModeidInGameDisplayAll = "https://api.sweatthis.com/api/highscores/modeid/all/";
+    public const string API_ADDRESS_DEV_publicApiHighScoresByModeidInGameDisplayFiltered = "https://api.sweatthis.com/api/highscores/modeid/filter/";
+    public const string API_ADDRESS_DEV_publicApiHighScoresByPlatform = "https://api.sweatthis.com/api/highscores/platform/";
+    public const string API_ADDRESS_DEV_publicApiToken = "https://api.sweatthis.com/api/token/";
+    public const string API_ADDRESS_DEV_publicApplicationVersionCurrent = "https://api.sweatthis.com/api/application/version/current";
+    public const string API_ADDRESS_DEV_publicUserReport = "https://api.sweatthis.com/api/userreport";
+    public const string API_ADDRESS_DEV_publicServerMessages = "https://api.sweatthis.com/api/servermessages";
 
     // localhost testing
     public const string API_ADDRESS_LOCALHOST_HighScoresByModeidInGameDisplay = "https://localhost:44362/api/highscores/game/modeid/";

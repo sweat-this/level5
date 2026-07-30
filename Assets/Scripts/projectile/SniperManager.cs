@@ -92,18 +92,11 @@ public class SniperManager : MonoBehaviour
 
         // get player position to attack
         PlayerPosAtShoot = playerHitbox.transform.position;
-        // edit prefab
-        EnemyProjectile enemyProjectile = projectileBulletPrefab.GetComponentInChildren<EnemyProjectile>();
-        enemyProjectile.sniperProjectile = true;
-        enemyProjectile.impactProjectile = true;
-
         // get vector to player
         Vector3 direction = PlayerPosAtShoot - (gameObject.transform.position);
-        // set vector bullet direction
-        enemyProjectile.projectileForceSniper = direction;
         //play sound
         audioSource.PlayOneShot(SFXBB.instance.shootGun);
-        InstantiateInstantBullet();
+        InstantiateInstantBullet(direction);
     }
 
     public IEnumerator StartSniperBulletAuto(float shootdelay)
@@ -116,18 +109,11 @@ public class SniperManager : MonoBehaviour
         // get player position to attack
         PlayerPosAtShoot = playerHitbox.transform.position;
         //PlayerPosAtShoot = GameLevelManager.instance.Player.transform.Find("hitbox").gameObject.transform.position;
-        // edit prefab
-        EnemyProjectile enemyProjectile = projectileAutomaticBulletPrefab.GetComponentInChildren<EnemyProjectile>();
-        enemyProjectile.sniperProjectile = true;
-        enemyProjectile.impactProjectile = true;
-
         // get vector to player
         Vector3 direction = PlayerPosAtShoot - (gameObject.transform.position);
-        // set vector bullet direction
-        enemyProjectile.projectileForceSniper = direction;
         //play sound
         audioSource.PlayOneShot(SFXBB.instance.shootAutomaticAK47);
-        StartCoroutine(InstantiateProjectileAutomaticBullet(enemyProjectile, 10));
+        StartCoroutine(InstantiateProjectileAutomaticBullet(direction, 10));
     }
     IEnumerator StartSniperLaser(float shootdelay)
     {
@@ -137,18 +123,11 @@ public class SniperManager : MonoBehaviour
 
         // get player position to attack
         PlayerPosAtShoot = playerHitbox.transform.position;
-        // edit prefab
-        EnemyProjectile enemyProjectile = projectileLaserPrefab.GetComponentInChildren<EnemyProjectile>();
-        enemyProjectile.sniperProjectile = true;
-        enemyProjectile.impactProjectile = true;
-
         // get vector to player
         Vector3 direction = PlayerPosAtShoot - (gameObject.transform.position);
-        // set vector bullet direction
-        enemyProjectile.projectileForceSniper = direction;
         //play sound
         audioSource.PlayOneShot(SFXBB.instance.deathRay);
-        StartCoroutine(InstantiateLaser());
+        StartCoroutine(InstantiateLaser(direction));
     }
     public IEnumerator StartSniperBulletInstantKill(float shootdelay)
     {
@@ -158,69 +137,75 @@ public class SniperManager : MonoBehaviour
 
         // get player position to attack
         PlayerPosAtShoot = playerHitbox.transform.position;
-        // edit prefab
-        EnemyProjectile enemyProjectile = projectileBulletInstantKillPrefab.GetComponentInChildren<EnemyProjectile>();
-        enemyProjectile.sniperProjectile = true;
-        enemyProjectile.impactProjectile = true;
-
         // get vector to player
         Vector3 direction = PlayerPosAtShoot - (gameObject.transform.position);
-        // set vector bullet direction
-        enemyProjectile.projectileForceSniper = direction;
         //play sound
         audioSource.PlayOneShot(SFXBB.instance.shootGun);
-        StartCoroutine(InstantiateBulletInstantKill());
+        StartCoroutine(InstantiateBulletInstantKill(direction));
     }
-    void InstantiateInstantBullet()
+    void InstantiateInstantBullet(Vector3 projectileForceSniper)
     {
         //yield return new WaitForSeconds(bulletDelay);
         // instantiate bullet
-        Instantiate(projectileBulletPrefab, gameObject.transform.position, Quaternion.identity);
+        InstantiateConfiguredProjectile(projectileBulletPrefab, projectileForceSniper);
         locked = false;
     }
 
-    IEnumerator InstantiateBullet()
+    IEnumerator InstantiateBullet(Vector3 projectileForceSniper)
     {
         yield return new WaitForSeconds(bulletDelay);
         // instantiate bullet
-        Instantiate(projectileBulletPrefab, gameObject.transform.position, Quaternion.identity);
+        InstantiateConfiguredProjectile(projectileBulletPrefab, projectileForceSniper);
         locked = false;
     }
-    IEnumerator InstantiateProjectileAutomaticBullet(EnemyProjectile enemyProjectile,int numBullets)
+    IEnumerator InstantiateProjectileAutomaticBullet(Vector3 projectileForceSniper, int numBullets)
     {
 
         yield return new WaitForSeconds(bulletDelay);
         for (int i = 0; i < numBullets; i++)
         {
-            instantiateProjectileBulletAuto(enemyProjectile);
+            instantiateProjectileBulletAuto(projectileForceSniper);
             yield return new WaitForSeconds(0.2f);
         }
         locked = false;
     }
 
-    public void instantiateProjectileBulletAuto(EnemyProjectile enemyProjectile)
+    public void instantiateProjectileBulletAuto(Vector3 projectileForceSniper)
     {
         float random = UtilityFunctions.GetRandomFloat(-0.35f, 0.35f);
-        Vector3 target = new Vector3(enemyProjectile.projectileForceSniper.x + random, enemyProjectile.projectileForceSniper.y, enemyProjectile.projectileForceSniper.z);
-        enemyProjectile.projectileForceSniper = target;
-        Instantiate(projectileAutomaticBulletPrefab, gameObject.transform.position, Quaternion.identity);
+        Vector3 target = new Vector3(projectileForceSniper.x + random, projectileForceSniper.y, projectileForceSniper.z);
+        InstantiateConfiguredProjectile(projectileAutomaticBulletPrefab, target);
         // update stats
         GameLevelManager.instance.players[0].gameStats.SniperShots++;
     }
 
-    IEnumerator InstantiateLaser()
+    IEnumerator InstantiateLaser(Vector3 projectileForceSniper)
     {
         yield return new WaitForSeconds(bulletDelay);
         // instantiate laser
-        Instantiate(projectileLaserPrefab, gameObject.transform.position, Quaternion.identity);
+        InstantiateConfiguredProjectile(projectileLaserPrefab, projectileForceSniper);
         locked = false;
     }
-    IEnumerator InstantiateBulletInstantKill()
+    IEnumerator InstantiateBulletInstantKill(Vector3 projectileForceSniper)
     {
         yield return new WaitForSeconds(bulletDelay);
         // instantiate laser
-        Instantiate(projectileBulletInstantKillPrefab, gameObject.transform.position, Quaternion.identity);
+        InstantiateConfiguredProjectile(projectileBulletInstantKillPrefab, projectileForceSniper);
         locked = false;
+    }
+
+    private void InstantiateConfiguredProjectile(GameObject projectilePrefab, Vector3 projectileForceSniper)
+    {
+        GameObject projectile = Instantiate(projectilePrefab, gameObject.transform.position, Quaternion.identity);
+        EnemyProjectile enemyProjectile = projectile.GetComponentInChildren<EnemyProjectile>();
+        if (enemyProjectile == null)
+        {
+            return;
+        }
+
+        enemyProjectile.sniperProjectile = true;
+        enemyProjectile.impactProjectile = true;
+        enemyProjectile.projectileForceSniper = projectileForceSniper;
     }
     public Vector3 PlayerPosAtShoot { get => playerPosAtShoot; set => playerPosAtShoot = value; }
 }

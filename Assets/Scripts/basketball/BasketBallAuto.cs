@@ -103,26 +103,25 @@ public class BasketBallAuto : MonoBehaviour
 
         // cap ball speed
         maxBasketballSpeed = 25f;
-        // check for ui stats ON/OFF. i know this is sloppy. its just a quick test
-        //if (GameObject.Find("ui_stats") != null)
-        //{
-        //    shootProfileText = GameObject.Find("shooterProfileTextObject").GetComponent<Text>();
-        //    scoreText = GameObject.Find("shootStatsTextObject").GetComponent<Text>();
-        //    uiStatsBackground = GameObject.Find("textBackground");
+        if (GameObject.Find("ui_stats") != null)
+        {
+            shootProfileText = GameObject.Find("shooterProfileTextObject").GetComponent<Text>();
+            scoreText = GameObject.Find("shootStatsTextObject").GetComponent<Text>();
+            uiStatsBackground = GameObject.Find("textBackground");
 
-        //    if (UiStatsEnabled)
-        //    {
-        //        updateScoreText();
-        //        updateShooterProfileText();
-        //        uiStatsBackground.SetActive(true);
-        //    }
-        //    else
-        //    {
-        //        scoreText.text = "";
-        //        shootProfileText.text = "";
-        //        uiStatsBackground.SetActive(false);
-        //    }
-        //}
+            if (UiStatsEnabled)
+            {
+                updateScoreText();
+                updateShooterProfileText();
+                uiStatsBackground.SetActive(true);
+            }
+            else
+            {
+                scoreText.text = "";
+                shootProfileText.text = "";
+                uiStatsBackground.SetActive(false);
+            }
+        }
         //InvokeRepeating("CheckIsBallFacingGoalAuto", 0, 0.5f);
         //InvokeRepeating("displayUiStats", 0, 0.5f);
 
@@ -710,6 +709,11 @@ public class BasketBallAuto : MonoBehaviour
     public bool displayUiStats()
     {
         //Debug.Log("displayUiStats() -- UiStatsEnabled : "+ UiStatsEnabled);
+        if (scoreText == null || shootProfileText == null || uiStatsBackground == null)
+        {
+            return false;
+        }
+
         if (UiStatsEnabled)
         {
             updateScoreText();

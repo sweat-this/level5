@@ -83,18 +83,22 @@ public class EnemyAnimationEvents : MonoBehaviour
     public void instantiateProjectileLazer(int damage)
     {
 
-        projectileLaserPrefab.GetComponentInChildren<EnemyAttackBox>().attackDamage = damage;
-        //projectileLaserPrefab.GetComponentInChildren<EnemyAttackBox>().knockDownAttack = false;
-        projectileLaserPrefab.GetComponentInChildren<EnemyProjectile>().facingRight = enemyController.facingRight;
-
-        Instantiate(projectileLaserPrefab, projectileSpawn.transform.position, Quaternion.identity);
+        GameObject projectile = Instantiate(projectileLaserPrefab, projectileSpawn.transform.position, Quaternion.identity);
+        EnemyAttackBox enemyAttackBox = projectile.GetComponentInChildren<EnemyAttackBox>();
+        if (enemyAttackBox != null)
+        {
+            enemyAttackBox.attackDamage = damage;
+        }
+        EnemyProjectile enemyProjectile = projectile.GetComponentInChildren<EnemyProjectile>();
+        if (enemyProjectile != null)
+        {
+            enemyProjectile.facingRight = enemyController.facingRight;
+        }
     }
     public void instantiateProjectileFlameThrower()
     {
         Vector3 temp = transform.root.localScale;
         temp.x = transform.root.localScale.x;
-
-        projectileFlameThrower.transform.localScale = temp;
 
         ////player localscale will be -1
         //if (!enemyController.facingRight)
@@ -116,19 +120,28 @@ public class EnemyAnimationEvents : MonoBehaviour
         //    Debug.Log("transform.localScale : " + transform.localScale);
         //}
         //projectileFlameThrower.GetComponentInChildren<EnemyProjectile>().facingRight = enemyController.facingRight;
-        Instantiate(projectileFlameThrower, projectileSpawn.transform.position, Quaternion.identity);
+        GameObject projectile = Instantiate(projectileFlameThrower, projectileSpawn.transform.position, Quaternion.identity);
+        projectile.transform.localScale = temp;
 
     }
     public void instantiateProjectileBullet()
     {
-        projectileBulletPrefab.GetComponentInChildren<EnemyProjectile>().facingRight = enemyController.facingRight;
-        Instantiate(projectileBulletPrefab, projectileSpawn.transform.position, Quaternion.identity);
+        GameObject projectile = Instantiate(projectileBulletPrefab, projectileSpawn.transform.position, Quaternion.identity);
+        EnemyProjectile enemyProjectile = projectile.GetComponentInChildren<EnemyProjectile>();
+        if (enemyProjectile != null)
+        {
+            enemyProjectile.facingRight = enemyController.facingRight;
+        }
     }
 
     public void instantiateProjectileDart()
     {
-        projectileDartPrefab.GetComponentInChildren<EnemyProjectile>().facingRight = enemyController.facingRight;
-        Instantiate(projectileDartPrefab, projectileSpawn.transform.position, Quaternion.identity);
+        GameObject projectile = Instantiate(projectileDartPrefab, projectileSpawn.transform.position, Quaternion.identity);
+        EnemyProjectile enemyProjectile = projectile.GetComponentInChildren<EnemyProjectile>();
+        if (enemyProjectile != null)
+        {
+            enemyProjectile.facingRight = enemyController.facingRight;
+        }
     }
 
     public void playSfxBasketballDribbling()

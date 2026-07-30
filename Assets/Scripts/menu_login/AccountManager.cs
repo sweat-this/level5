@@ -402,7 +402,6 @@ public class AccountManager : MonoBehaviour
     public void readEmailAddressInput(string s)
     {
         emailInput = emailInputField.text;
-        Debug.Log(emailInput);
     }
 
     public void readUsernameInput(string s)
