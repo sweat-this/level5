@@ -1,5 +1,6 @@
 ﻿using UnityEngine;
 
+#if UNITY_EDITOR
 public class BasketballTestStats : MonoBehaviour
 {
     public bool two, three, four;
@@ -77,3 +78,4 @@ public class BasketballTestStats : MonoBehaviour
         set => accuracy = value;
     }
 }
+#endif

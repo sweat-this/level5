@@ -10,6 +10,7 @@ using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 using Random = System.Random;
 
+#if UNITY_EDITOR
 namespace Assets.Scripts.menu_start
 {
     public class StartManager_original : MonoBehaviour
@@ -1685,3 +1686,4 @@ namespace Assets.Scripts.menu_start
         public static string ObstacleSelectOptionName => obstacleSelectOptionName;
     }
 }
+#endif

@@ -1,6 +1,7 @@
 ﻿using System.Collections.Generic;
 using UnityEngine;
 
+#if UNITY_EDITOR
 public class BasketBallTestStatsConclusions : MonoBehaviour
 {
     public List<BasketballTestStats> shotStats;
@@ -129,3 +130,4 @@ public class BasketBallTestStatsConclusions : MonoBehaviour
         Debug.Log("========================================================================================");
     }
 }
+#endif

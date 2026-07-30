@@ -25,8 +25,13 @@ public class PlayerSwapAttack : MonoBehaviour
 
     public void setCloseAttack()
     {
+        if (animatorOverrideController == null || anim == null)
+        {
+            return;
+        }
+
         // if enemy has more than one close attack, chose random one
-        if (closeAttacks.Length > 1 && closeAttacks != null)
+        if (closeAttacks != null && closeAttacks.Length > 1)
         {
             Random random = new Random();
             int randomIndex = random.Next(0, closeAttacks.Length);
@@ -34,7 +39,7 @@ public class PlayerSwapAttack : MonoBehaviour
             anim.runtimeAnimatorController = animatorOverrideController;
         }
         // else use default
-        else if (closeAttacks.Length == 1 && closeAttacks != null)
+        else if (closeAttacks != null && closeAttacks.Length == 1)
         {
             animatorOverrideController["attack"] = closeAttacks[0];
             anim.runtimeAnimatorController = animatorOverrideController;
@@ -50,6 +55,11 @@ public class PlayerSwapAttack : MonoBehaviour
 
     public void setLongRangeAttack()
     {
+        if (animatorOverrideController == null || longRangeAttack == null)
+        {
+            return;
+        }
+
         animatorOverrideController["attack"] = longRangeAttack;
         anim.runtimeAnimatorController = animatorOverrideController;
     }

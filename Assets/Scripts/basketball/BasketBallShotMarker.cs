@@ -103,15 +103,14 @@ public class BasketBallShotMarker : MonoBehaviour
                 setDisplayText();
             }
         }
+        bool isPointContestMode = IsPointContestMode();
+
         // if game mode is 3/4/all point contest
-        if (GameRules.instance.GameModeThreePointContest
-            || GameRules.instance.GameModeFourPointContest
-            || GameRules.instance.GameModeSevenPointContest
-            || GameRules.instance.GameModeAllPointContest)
+        if (isPointContestMode)
         {
             // max shot attempts reached
             // player NOT in air, player does NOT have ball, ball ! in air
-            if (ShotAttempt >= maxShotAttempt & markerEnabled
+            if (ShotAttempt >= maxShotAttempt && markerEnabled
                 && !GameLevelManager.instance.players[0].playerController.hasBasketball
                 && !GameLevelManager.instance.players[0].playerController.InAir
                 && !basketBallState.InAir)
@@ -131,10 +130,7 @@ public class BasketBallShotMarker : MonoBehaviour
             }
         }
         // game mode is NOT 3/4/All point contest
-        if (!GameRules.instance.GameModeThreePointContest
-            || !GameRules.instance.GameModeFourPointContest
-            || !GameRules.instance.GameModeSevenPointContest
-            || !GameRules.instance.GameModeAllPointContest)
+        if (!isPointContestMode)
         {
             // if made # of shots required at shot marker
             if (ShotMade >= MaxShotMade && markerEnabled)
@@ -195,12 +191,11 @@ public class BasketBallShotMarker : MonoBehaviour
 
     private void setDisplayText()
     {
+        bool isPointContestMode = IsPointContestMode();
+
         // if player on marker and markers necessary for game mode and IS 3,4,All point contest
         if ((PlayerOnMarker || _autoPlayerOnMarker) && markerEnabled
-            && (GameRules.instance.GameModeThreePointContest
-            || GameRules.instance.GameModeFourPointContest
-            || GameRules.instance.GameModeSevenPointContest
-            || GameRules.instance.GameModeAllPointContest))
+            && isPointContestMode)
         {
             displayCurrentMarkerStats.text = "total points : " + BasketBall.instance.GameStats.TotalPoints + "\n"
                                              // + "current marker : " + positionMarkerId + "\n"
@@ -209,10 +204,7 @@ public class BasketBallShotMarker : MonoBehaviour
         }
         // if player on marker and markers necessary for game mode and NOT 3,4,All point contest
         if ((PlayerOnMarker || _autoPlayerOnMarker) && markerEnabled
-            && !(GameRules.instance.GameModeThreePointContest
-            || GameRules.instance.GameModeFourPointContest
-            || GameRules.instance.GameModeSevenPointContest
-            || GameRules.instance.GameModeAllPointContest))
+            && !isPointContestMode)
         {
             displayCurrentMarkerStats.text = "markers remaining : " + GameRules.instance.MarkersRemaining + "\n"
                                              // + "current marker : " + positionMarkerId + "\n"
@@ -227,6 +219,14 @@ public class BasketBallShotMarker : MonoBehaviour
                                              + "made : \n"
                                              + "remaining : ";
         }
+    }
+
+    private static bool IsPointContestMode()
+    {
+        return GameRules.instance.GameModeThreePointContest
+            || GameRules.instance.GameModeFourPointContest
+            || GameRules.instance.GameModeSevenPointContest
+            || GameRules.instance.GameModeAllPointContest;
     }
 
     // the shot type is set manually but this is a failsafe check that sets it automatically based 

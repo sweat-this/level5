@@ -332,9 +332,9 @@ public class AccountManager : MonoBehaviour
     {
         StartCoroutine(LoginUserCoroutine());
     }
-    public void LoginUser(string username)
+    public void LoginUser(string username, string password)
     {
-        StartCoroutine(LoginUserCoroutine(username));
+        StartCoroutine(LoginUserCoroutine(username, password));
     }
 
     private IEnumerator LoginUserCoroutine()
@@ -353,6 +353,10 @@ public class AccountManager : MonoBehaviour
         yield return new WaitUntil(() => !DBHelper.instance.DatabaseLocked);
         yield return new WaitUntil(() => !APIHelper.ApiLocked);
 
+        // the server never returns the real password (see UsersApiController.HideUserDetails) -
+        // authentication is done with what the player actually typed, not whatever GetUserByUserName
+        // handed back.
+        user.Password = passwordInput;
         StartCoroutine(APIHelper.PostToken(user));
         startTime = Time.time;
 
@@ -368,7 +372,7 @@ public class AccountManager : MonoBehaviour
         }
     }
 
-    private IEnumerator LoginUserCoroutine(string username)
+    private IEnumerator LoginUserCoroutine(string username, string password)
     {
         float startTime;
         float timeout = 10.0f;
@@ -384,6 +388,10 @@ public class AccountManager : MonoBehaviour
         yield return new WaitUntil(() => !DBHelper.instance.DatabaseLocked);
         yield return new WaitUntil(() => !APIHelper.ApiLocked);
 
+        // the server never returns the real password (see UsersApiController.HideUserDetails) -
+        // this overload is used for auto-login right after registration, so the caller passes
+        // along the password that was just typed on the sign-up form.
+        user.Password = password;
         StartCoroutine(APIHelper.PostToken(user));
         startTime = Time.time;
 

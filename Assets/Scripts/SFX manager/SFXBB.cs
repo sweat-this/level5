@@ -50,6 +50,12 @@ public class SFXBB : MonoBehaviour
 
     private void Awake()
     {
+        if (instance != null && instance != this)
+        {
+            Destroy(gameObject);
+            return;
+        }
+
         instance = this;
     }
 
@@ -61,12 +67,26 @@ public class SFXBB : MonoBehaviour
 
     public void playSFX(AudioClip audioClip)
     {
+        if (audioSource == null || audioClip == null)
+        {
+            return;
+        }
+
         audioSource.PlayOneShot(audioClip);
     }
 
     private void Update()
     {
-        if (!audioSource.isPlaying & musicEnabled || (Input.GetKey(KeyCode.LeftShift) && Input.GetKeyDown(KeyCode.Alpha0)))
+        if (audioSource == null)
+        {
+            return;
+        }
+
+        bool shouldPlayNextSong = musicEnabled && !audioSource.isPlaying;
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        shouldPlayNextSong = shouldPlayNextSong || (Input.GetKey(KeyCode.LeftShift) && Input.GetKeyDown(KeyCode.Alpha0));
+#endif
+        if (shouldPlayNextSong)
         {
             playNextSong();
         }
@@ -74,7 +94,7 @@ public class SFXBB : MonoBehaviour
 
     void playRandomSong()
     {
-        if (musicEnabled)
+        if (musicEnabled && musicList != null && musicList.Length > 0)
         {
             Random random = new Random();
             int randNum = random.Next(0, musicList.Length);
@@ -86,6 +106,11 @@ public class SFXBB : MonoBehaviour
 
     void playNextSong()
     {
+        if (musicList == null || musicList.Length == 0)
+        {
+            return;
+        }
+
         //int newIndex=0;
         if (currentSongIndex == (musicList.Length - 1))
         {

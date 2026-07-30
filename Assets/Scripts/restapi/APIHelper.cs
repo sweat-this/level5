@@ -834,7 +834,7 @@ namespace Assets.Scripts.restapi
 
                     // attempt to login newly created user
                     AccountManager account = UnityEngine.Object.FindAnyObjectByType<AccountManager>();
-                    account.LoginUser(user.UserName);
+                    account.LoginUser(user.UserName, user.Password);
 
                     //SceneManager.LoadScene(Constants.SCENE_NAME_level_00_loading);
                 }

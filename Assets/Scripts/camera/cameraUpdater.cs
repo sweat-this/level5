@@ -94,17 +94,22 @@ public class cameraUpdater : MonoBehaviour
             }
         }
 
-        if (GameLevelManager.instance != null && basketBallRim!= null)
+        if (GameLevelManager.instance != null)
         {
             basketBallRim = GameLevelManager.instance.BasketballRimVector;
-            player = GameLevelManager.instance.players != null
-                ? GameLevelManager.instance.players.Find((x) => x.pid == 0).player
-                : GameLevelManager.instance.players.Find((x) => x.pid == 0).autoPlayer;
-            smoothCameraMotion = true;
+            PlayerIdentifier playerIdentifier = GameLevelManager.instance.players != null
+                ? GameLevelManager.instance.players.Find((x) => x != null && x.pid == 0)
+                : null;
+            player = playerIdentifier != null
+                ? playerIdentifier.player ?? playerIdentifier.autoPlayer
+                : null;
+            smoothCameraMotion = player != null;
         }
-        else
+
+        if (player == null)
         {
-            player = GameObject.FindGameObjectWithTag("Player") != null ? GameObject.FindGameObjectWithTag("Player") : GameObject.FindGameObjectWithTag("autoPlayer");
+            GameObject humanPlayer = GameObject.FindGameObjectWithTag("Player");
+            player = humanPlayer != null ? humanPlayer : GameObject.FindGameObjectWithTag("autoPlayer");
             smoothCameraMotion = false;
         }
 
@@ -128,6 +133,11 @@ public class cameraUpdater : MonoBehaviour
 
     void Update()
     {
+        if (player == null)
+        {
+            return;
+        }
+
         if (GameLevelManager.instance != null) 
         {
             playerDistanceFromRimX = basketBallRim.x - player.transform.position.x;

@@ -278,7 +278,7 @@ public class PlayerController : MonoBehaviour
                 PlayerJump();
             }
             if (dunkTrigger
-                && (currentState != inAirDunkState || currentState != inAirDunkState)
+                && currentState != inAirDunkState
                 && !InAir
                 && Grounded
                 && !Locked)
@@ -619,7 +619,7 @@ public class PlayerController : MonoBehaviour
         if (PlayerDunk != null
             && PlayerDunk.PlayerCanDunk
             && playerDistanceFromRimFeet < PlayerDunk.DunkRangeFeet
-            && (currentState != inAirDunkState || currentState != inAirDunkState)
+            && currentState != inAirDunkState
             && !InAir
             && Grounded
             && hasBasketball
@@ -633,7 +633,7 @@ public class PlayerController : MonoBehaviour
         if (InAir
             && hasBasketball
             && touchPosition.x > (Screen.width / 2)
-            && (currentState != inAirDunkState || currentState != inAirDunkState))
+            && currentState != inAirDunkState)
         {
             callBallToPlayer.Locked = true;
             basketball.BasketBallState.Locked = true;

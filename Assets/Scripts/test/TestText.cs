@@ -1,6 +1,7 @@
 ﻿using UnityEngine;
 using UnityEngine.UI;
 
+#if UNITY_EDITOR
 public class TestText : MonoBehaviour
 {
     [SerializeField]
@@ -20,3 +21,4 @@ public class TestText : MonoBehaviour
         testText.text = text;
     }
 }
+#endif
