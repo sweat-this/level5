@@ -67,7 +67,11 @@ public class CreditsManager : MonoBehaviour
         controls = PlayerControlsProvider.Controls;
         // find all button / text / etc and assign to variables
         //getUiObjectReferences();
-        reportInputField = GameObject.Find(inputFieldButtonName).GetComponent<InputField>();
+        GameObject reportInputObject = GameObject.Find(inputFieldButtonName);
+        if (reportInputObject != null)
+        {
+            reportInputField = reportInputObject.GetComponent<InputField>();
+        }
     }
 
     // Update is called once per frame
@@ -80,7 +84,17 @@ public class CreditsManager : MonoBehaviour
             {
                 EventSystem.current.SetSelectedGameObject(EventSystem.current.firstSelectedGameObject); // + "_description";
             }
-            currentHighlightedButton = EventSystem.current.currentSelectedGameObject.name; // + "_description";
+
+            if (EventSystem.current.currentSelectedGameObject != null)
+            {
+                currentHighlightedButton = EventSystem.current.currentSelectedGameObject.name; // + "_description";
+            }
+        }
+
+        GameObject selectedObject = EventSystem.current == null ? null : EventSystem.current.currentSelectedGameObject;
+        if (selectedObject == null)
+        {
+            return;
         }
 
         // ================================== footer buttons =========================
@@ -93,7 +107,7 @@ public class CreditsManager : MonoBehaviour
 
         // ================================== submit report ====================
         // on submit/enter if (input field) highlight submit button
-        if (EventSystem.current.currentSelectedGameObject.name.Equals(inputFieldButtonName)
+        if (selectedObject.name.Equals(inputFieldButtonName)
             && controls.UINavigation.Submit.triggered)
         {
             EventSystem.current.SetSelectedGameObject(submitReportButtonObject);
@@ -123,13 +137,17 @@ public class CreditsManager : MonoBehaviour
     public IEnumerator turnOffMessageLogDisplayAfterSeconds(float seconds)
     {
         yield return new WaitForSecondsRealtime(seconds);
-        Text messageText = GameObject.Find("messageDisplay").GetComponent<Text>();
-        messageText.text = "";
+        GameObject messageObject = GameObject.Find("messageDisplay");
+        Text messageText = messageObject == null ? null : messageObject.GetComponent<Text>();
+        if (messageText != null)
+        {
+            messageText.text = "";
+        }
     }
 
     public void readReportInput(string s)
     {
-        reportInput = reportInputField.text;
+        reportInput = reportInputField == null ? s : reportInputField.text;
     }
 
     public void OpenMusicSite()
@@ -168,6 +186,12 @@ public class CreditsManager : MonoBehaviour
     {
         UserReportModel userReportModel = new UserReportModel();
         userReportModel.Report = reportInput;
+        if (reportInputField == null)
+        {
+            buttonPressed = false;
+            yield break;
+        }
+
         StartCoroutine(APIHelper.PostReport(userReportModel, reportInputField));
 
         yield return new WaitUntil(() => !APIHelper.ApiLocked);

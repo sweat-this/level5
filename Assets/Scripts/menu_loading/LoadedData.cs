@@ -30,15 +30,14 @@ public class LoadedData : MonoBehaviour
 
     void Awake()
     {
-        DontDestroyOnLoad(gameObject);
-        if (instance == null)
-        {
-            instance = this;
-        }
-        else
+        if (instance != null && instance != this)
         {
             Destroy(gameObject);
+            return;
         }
+
+        instance = this;
+        DontDestroyOnLoad(gameObject);
     }
     private void Start()
     {
@@ -61,19 +60,19 @@ public class LoadedData : MonoBehaviour
         timeoutStart = Time.time;
         timeoutEnd = Time.time + timeoutMax;
 
-        yield return new WaitUntil(() => LoadManager.instance.playerDataLoaded);
+        yield return new WaitUntil(() => LoadManager.instance != null && LoadManager.instance.playerDataLoaded);
         playerSelectedData = LoadManager.instance.PlayerSelectedData;
 
-        yield return new WaitUntil(() => LoadManager.instance.cpuPlayerDataLoaded);
+        yield return new WaitUntil(() => LoadManager.instance != null && LoadManager.instance.cpuPlayerDataLoaded);
         cpuPlayerSelectedData = LoadManager.instance.CpuPlayerSelectedData;
 
-        yield return new WaitUntil(() => LoadManager.instance.cheerleaderDataLoaded);
+        yield return new WaitUntil(() => LoadManager.instance != null && LoadManager.instance.cheerleaderDataLoaded);
         cheerleaderSelectedData = LoadManager.instance.CheerleaderSelectedData;
 
-        yield return new WaitUntil(() => LoadManager.instance.levelDataLoaded);
+        yield return new WaitUntil(() => LoadManager.instance != null && LoadManager.instance.levelDataLoaded);
         levelSelectedData = LoadManager.instance.LevelSelectedData;
 
-        yield return new WaitUntil(() => LoadManager.instance.modeDataLoaded);
+        yield return new WaitUntil(() => LoadManager.instance != null && LoadManager.instance.modeDataLoaded);
         modeSelectedData = LoadManager.instance.ModeSelectedData;
 
 

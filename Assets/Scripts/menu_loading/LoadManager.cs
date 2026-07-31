@@ -42,6 +42,7 @@ public class LoadManager : MonoBehaviour
     [SerializeField] internal bool cheerleaderDataLoaded = false;
     [SerializeField] internal bool levelDataLoaded = false;
     [SerializeField] internal bool modeDataLoaded = false;
+    private bool sceneLoadRequested;
 
     private bool CheerleaderProfileTableExists;
     private bool CheerleaderProfileTableCreated;
@@ -58,8 +59,9 @@ public class LoadManager : MonoBehaviour
     private void Update()
     {
         // load start screen
-        if (LoadedData.instance.DataLoaded)
+        if (!sceneLoadRequested && LoadedData.instance != null && LoadedData.instance.DataLoaded)
         {
+            sceneLoadRequested = true;
             // this is all confusing
             if (String.IsNullOrEmpty(GameOptions.previousSceneName))
             {
@@ -84,7 +86,7 @@ public class LoadManager : MonoBehaviour
 
     IEnumerator verifyCharacterProfileTable()
     {
-        yield return new WaitUntil(() => DBConnector.instance.DatabaseCreated == true);
+        yield return new WaitUntil(IsDatabaseReady);
 
         // if CharacterProfile table does exist
         if (DBConnector.instance.tableExists("CharacterProfile")
@@ -105,7 +107,7 @@ public class LoadManager : MonoBehaviour
 
     IEnumerator verifyCheerleaderProfileTable()
     {
-        yield return new WaitUntil(() => DBConnector.instance.DatabaseCreated == true);
+        yield return new WaitUntil(IsDatabaseReady);
 
         if (DBConnector.instance.tableExists("CheerleaderProfile")
             && !DBHelper.instance.isTableEmpty("CheerleaderProfile"))
@@ -127,7 +129,7 @@ public class LoadManager : MonoBehaviour
 
     IEnumerator LoadGameData()
     {
-        yield return new WaitUntil(() => DBConnector.instance.DatabaseCreated == true);
+        yield return new WaitUntil(IsDatabaseReady);
 
         // insert default player profiles + table did not already exits
         if (CharacterProfileTableCreated && !CharacterProfileTableExists)
@@ -163,16 +165,28 @@ public class LoadManager : MonoBehaviour
 
     IEnumerator InsertNewCharacterToDB(CharacterProfile character)
     {
-        yield return new WaitUntil(() => DBHelper.instance.DatabaseLocked == false);
+        yield return new WaitUntil(IsDatabaseUnlocked);
         DBHelper.instance.InsertCharacterProfile(character);
     }
 
     IEnumerator InsertNewCheerleaderToDB(CheerleaderProfile cheerleader)
     {
-        yield return new WaitUntil(() => DBHelper.instance.DatabaseLocked == false);
+        yield return new WaitUntil(IsDatabaseUnlocked);
         DBHelper.instance.InsertCheerleaderProfile(cheerleader);
 
         Debug.Log("cheerleader record inserted");
+    }
+
+    private static bool IsDatabaseReady()
+    {
+        return DBConnector.instance != null
+            && DBHelper.instance != null
+            && DBConnector.instance.DatabaseCreated;
+    }
+
+    private static bool IsDatabaseUnlocked()
+    {
+        return DBHelper.instance != null && !DBHelper.instance.DatabaseLocked;
     }
 
     private List<CharacterProfile> loadPlayerSelectDataList()
