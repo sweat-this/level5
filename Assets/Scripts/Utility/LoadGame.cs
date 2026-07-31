@@ -13,6 +13,24 @@ namespace Assets.Scripts.Utility
 {
 	public static class LoadGame
 	{
+        private static bool sceneLoadPending;
+
+        static LoadGame()
+        {
+            SceneManager.sceneLoaded += OnSceneLoaded;
+        }
+
+        private static void OnSceneLoaded(Scene scene, LoadSceneMode mode)
+        {
+            sceneLoadPending = false;
+        }
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetSceneLoadState()
+        {
+            sceneLoadPending = false;
+        }
+
 		public static void LoadGameMode(StartScreenModeSelected mode, LevelSelected level, PlayerIdentifier player)
 		{
 
@@ -30,7 +48,16 @@ namespace Assets.Scripts.Utility
             player = go1;
             //cpuPlayer = go2;
 
+            if (player == null)
+            {
+                yield break;
+            }
+
             PlayerIdentifier pi = player.GetComponent<PlayerIdentifier>();
+            if (pi == null || pi.characterProfile == null)
+            {
+                yield break;
+            }
             //PlayerIdentifier cpuipi = cpuPlayer.GetComponent<PlayerIdentifier>();
 
             //mode
@@ -54,7 +81,14 @@ namespace Assets.Scripts.Utility
             GameOptions.numPlayers = GameOptions.characterObjectNames.Count;
             GameOptions.levelsList = PlayerData.instance.LevelsList;
 
-            yield return new WaitForSeconds(seconds);
+            yield return new WaitForSecondsRealtime(seconds);
+
+            if (sceneLoadPending)
+            {
+                yield break;
+            }
+
+            sceneLoadPending = true;
 
             string sceneName;
             sceneName = Constants.SCENE_NAME_level_23_dev;

@@ -158,8 +158,7 @@ public class LoadManager : MonoBehaviour
         //cheerleaderSelectedData = loadDefaultCheerleaderProfiles();
         cpuPlayerSelectedData = loadCpuSelectDataList();
         levelSelectedData = loadLevelSelectDataList();
-        modeDataLoaded = true;
-        //modeSelectedData = loadModeSelectDataList();
+        modeSelectedData = loadModeSelectDataList();
     }
 
     IEnumerator InsertNewCharacterToDB(CharacterProfile character)
@@ -178,7 +177,7 @@ public class LoadManager : MonoBehaviour
 
     private List<CharacterProfile> loadPlayerSelectDataList()
     {
-        List<CharacterProfile> dbShootStatsList = DBHelper.instance.getCharacterProfileStats(GameOptions.userid);
+        List<CharacterProfileRecord> dbShootStatsList = DBHelper.instance.getCharacterProfileStats(GameOptions.userid);
         List<CharacterProfile> shooterList = new List<CharacterProfile>();
 
         string path = "Prefabs/menu_start/player_selected_objects";
@@ -202,25 +201,27 @@ public class LoadManager : MonoBehaviour
                 // insert to DB
                 StartCoroutine(InsertNewCharacterToDB(defaultTemp));
                 // add to current list to be loaded
-                dbShootStatsList.Add(temp);
+                dbShootStatsList.Add(CharacterProfileRecord.FromProfile(temp));
             }
 
+            CharacterProfileRecord dbStats = dbShootStatsList.Find(x => x.PlayerId == temp.PlayerId);
+
             // load stats from DB, but load portrait from prefab
-            temp.Accuracy2Pt = dbShootStatsList.Find(x => x.PlayerId == temp.PlayerId).Accuracy2Pt;
-            temp.Accuracy3Pt = dbShootStatsList.Find(x => x.PlayerId == temp.PlayerId).Accuracy3Pt;
-            temp.Accuracy4Pt = dbShootStatsList.Find(x => x.PlayerId == temp.PlayerId).Accuracy4Pt;
-            temp.Accuracy7Pt = dbShootStatsList.Find(x => x.PlayerId == temp.PlayerId).Accuracy7Pt;
-            temp.Speed = dbShootStatsList.Find(x => x.PlayerId == temp.PlayerId).Speed;
-            temp.RunSpeed = dbShootStatsList.Find(x => x.PlayerId == temp.PlayerId).RunSpeed;
-            temp.RunSpeedHasBall = dbShootStatsList.Find(x => x.PlayerId == temp.PlayerId).RunSpeedHasBall;
-            temp.Luck = dbShootStatsList.Find(x => x.PlayerId == temp.PlayerId).Luck;
-            temp.ShootAngle = dbShootStatsList.Find(x => x.PlayerId == temp.PlayerId).ShootAngle;
-            temp.Experience = dbShootStatsList.Find(x => x.PlayerId == temp.PlayerId).Experience;
+            temp.Accuracy2Pt = dbStats.Accuracy2Pt;
+            temp.Accuracy3Pt = dbStats.Accuracy3Pt;
+            temp.Accuracy4Pt = dbStats.Accuracy4Pt;
+            temp.Accuracy7Pt = dbStats.Accuracy7Pt;
+            temp.Speed = dbStats.Speed;
+            temp.RunSpeed = dbStats.RunSpeed;
+            temp.RunSpeedHasBall = dbStats.RunSpeedHasBall;
+            temp.Luck = dbStats.Luck;
+            temp.ShootAngle = dbStats.ShootAngle;
+            temp.Experience = dbStats.Experience;
             temp.Level = temp.Experience / 3000;
             //temp.PointsUsed = (int)(temp.Accuracy3Pt - 70) + (int)(temp.Accuracy4Pt - 70) + (int)(temp.Accuracy7Pt - 70);
-            temp.Range = dbShootStatsList.Find(x => x.PlayerId == temp.PlayerId).Range;
-            temp.Release = dbShootStatsList.Find(x => x.PlayerId == temp.PlayerId).Release;
-            temp.IsLocked = dbShootStatsList.Find(x => x.PlayerId == temp.PlayerId).IsLocked;
+            temp.Range = dbStats.Range;
+            temp.Release = dbStats.Release;
+            temp.IsLocked = dbStats.IsLocked;
 
             temp.PointsUsed = getPointsUsed(temp);
             temp.PointsAvailable = getPointsAvailable(temp);
@@ -336,7 +337,7 @@ public class LoadManager : MonoBehaviour
 
     private List<CheerleaderProfile> loadCheerleaderSelectDataList()
     {
-        List<CheerleaderProfile> dbCheerList = DBHelper.instance.getCheerleaderProfileStats();
+        List<CheerleaderProfileRecord> dbCheerList = DBHelper.instance.getCheerleaderProfileStats();
         List<CheerleaderProfile> cheerList = new List<CheerleaderProfile>();
 
         string path = "Prefabs/menu_start/cheerleader_selected_object";

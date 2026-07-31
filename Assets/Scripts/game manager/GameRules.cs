@@ -98,24 +98,24 @@ public class GameRules : MonoBehaviour
     private GameObject _rakesClone;
 
     public bool killedOnIdle;
+    private bool killedOnIdleTransitionStarted;
 
     private void Awake()
     {
-        if (instance == null)
-        {
-            instance = this;
-        }
-        else
+        if (instance != null && instance != this)
         {
             Destroy(gameObject);
+            return;
         }
+
+        instance = this;
         timePlayedStart = Time.time;
         inThePocketActivateValue = 0;
     }
 
     private void Start()
     {
-        gameOver = false;
+        GameOver = false;
         gameModeId = GameOptions.gameModeSelectedId;
 
         // components
@@ -210,10 +210,11 @@ public class GameRules : MonoBehaviour
             displayOtherMessageText.text = "";
         }
 
-        if (killedOnIdle)
+        if (killedOnIdle && !killedOnIdleTransitionStarted)
         {
+            killedOnIdleTransitionStarted = true;
             //Load dev after 5 seconds
-            StartCoroutine( LoadGame.LoadDevLevelVersus(5));
+            StartCoroutine(LoadGame.LoadDevLevelVersus(5));
         }
 
         // game over. pause / display end game / save
@@ -279,7 +280,7 @@ public class GameRules : MonoBehaviour
                 // post to API
             }
             // alert game manager. trigger
-            GameLevelManager.instance.GameOver = true;
+            GameOver = true;
             if (gameModeId == Modes.BeatThaComputahs && !killedOnIdle)
             {
                 GameObject.Find("footer").SetActive(false);
@@ -1012,7 +1013,14 @@ public class GameRules : MonoBehaviour
     public bool GameOver
     {
         get => gameOver;
-        set => gameOver = value;
+        set
+        {
+            gameOver = value;
+            if (GameLevelManager.instance != null)
+            {
+                GameLevelManager.instance.GameOver = value;
+            }
+        }
     }
 
     public List<BasketBallShotMarker> BasketBallShotMarkersList

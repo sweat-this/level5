@@ -24,6 +24,7 @@ public class LoadedData : MonoBehaviour
     float timeoutStart;
     float timeoutEnd;
     float timeoutMax = 10;
+    private bool loadTimeoutLogged;
 
     public static LoadedData instance;
 
@@ -50,7 +51,7 @@ public class LoadedData : MonoBehaviour
         {
             if (Time.time > timeoutEnd)
             {
-                dataLoaded = true;
+                LogLoadTimeout();
             }
         }
     }
@@ -76,14 +77,45 @@ public class LoadedData : MonoBehaviour
         modeSelectedData = LoadManager.instance.ModeSelectedData;
 
 
-        if (playerSelectedData != null
-            && cpuPlayerSelectedData != null
-            && cheerleaderSelectedData != null
-            && levelSelectedData != null
-            && modeSelectedData != null)
+        if (HasAllRequiredData())
         {
             dataLoaded = true;
         }
+    }
+
+    private bool HasAllRequiredData()
+    {
+        return playerSelectedData != null
+            && playerSelectedData.Count > 0
+            && cpuPlayerSelectedData != null
+            && cpuPlayerSelectedData.Count > 0
+            && cheerleaderSelectedData != null
+            && cheerleaderSelectedData.Count > 0
+            && levelSelectedData != null
+            && levelSelectedData.Count > 0
+            && modeSelectedData != null
+            && modeSelectedData.Count > 0;
+    }
+
+    private void LogLoadTimeout()
+    {
+        if (loadTimeoutLogged)
+        {
+            return;
+        }
+
+        loadTimeoutLogged = true;
+        Debug.LogError("Loading timed out before required start-screen data was ready. "
+            + "player=" + GetCount(playerSelectedData)
+            + ", cpu=" + GetCount(cpuPlayerSelectedData)
+            + ", cheerleader=" + GetCount(cheerleaderSelectedData)
+            + ", level=" + GetCount(levelSelectedData)
+            + ", mode=" + GetCount(modeSelectedData));
+    }
+
+    private static int GetCount<T>(List<T> values)
+    {
+        return values == null ? -1 : values.Count;
     }
 
     public CharacterProfile getSelectedCharacterProfile(int charid)

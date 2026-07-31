@@ -30,15 +30,14 @@ public class DBConnector : MonoBehaviour
     void Awake()
     {
         // keep Database object persistent
-        DontDestroyOnLoad(gameObject);
-        if (instance == null)
-        {
-            instance = this;
-        }
-        else
+        if (instance != null && instance != this)
         {
             Destroy(gameObject);
+            return;
         }
+
+        instance = this;
+        DontDestroyOnLoad(gameObject);
 
         filepath = Application.persistentDataPath + databaseNamePath;
         connection = "URI=file:" + Application.persistentDataPath + databaseNamePath; //Path to database
@@ -615,13 +614,11 @@ public class DBConnector : MonoBehaviour
                 }
             }
 
-            dbHelper.DatabaseLocked = false;
             // if correct table name is returned and at least 1 table names exists
             return count > 0 && value.Equals(tableName);
         }
         catch (Exception e)
         {
-            dbHelper.DatabaseLocked = false;
             Debug.Log("ERROR : " + e);
             return false;
         }

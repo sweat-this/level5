@@ -69,14 +69,13 @@ public class DBHelper : MonoBehaviour
 
     void Awake()
     {
-        if (instance == null)
-        {
-            instance = this;
-        }
-        else
+        if (instance != null && instance != this)
         {
             Destroy(gameObject);
+            return;
         }
+
+        instance = this;
 
         filepath = Application.persistentDataPath + databaseNamePath;
         connection = "Data source=" + filepath; //Path to database
@@ -114,13 +113,10 @@ public class DBHelper : MonoBehaviour
                 }
             }
 
-            //if table contains records
-            DatabaseLocked = false;
             return count == 0;
         }
         catch (Exception e)
         {
-            DatabaseLocked = false;
             Debug.Log("ERROR : " + e);
             return false;
         }
@@ -627,9 +623,9 @@ public class DBHelper : MonoBehaviour
 
 
     // get Character Data from Database
-    public List<CharacterProfile> getCharacterProfileStats(int userid)
+    public List<CharacterProfileRecord> getCharacterProfileStats(int userid)
     {
-        List<CharacterProfile> characterStats = new List<CharacterProfile>();
+        List<CharacterProfileRecord> characterStats = new List<CharacterProfileRecord>();
         try
         {
             DatabaseLocked = true;
@@ -651,31 +647,30 @@ public class DBHelper : MonoBehaviour
                         {
                             while (reader.Read())
                             {
-                                CharacterProfile temp = gameObject.AddComponent<CharacterProfile>();
-
-                                temp.PlayerId = reader.GetInt32(0);
-                                temp.PlayerDisplayName = reader.GetString(1);
-                                temp.PlayerObjectName = reader.GetString(2);
-                                temp.Accuracy2Pt = reader.GetInt32(3);
-                                temp.Accuracy3Pt = reader.GetInt32(4);
-                                temp.Accuracy4Pt = reader.GetInt32(5);
-                                temp.Accuracy7Pt = reader.GetInt32(6);
-                                temp.JumpForce = reader.GetFloat(7);
-                                temp.Speed = reader.GetFloat(8);
-                                temp.RunSpeed = reader.GetFloat(9);
-                                temp.RunSpeedHasBall = reader.GetFloat(10);
-                                temp.Luck = reader.GetInt32(11);
-                                temp.ShootAngle = reader.GetInt32(12);
-                                temp.Experience = reader.GetInt32(13);
-                                temp.Level = reader.GetInt32(14);
-                                temp.PointsAvailable = reader.GetInt32(15);
-                                temp.PointsUsed = reader.GetInt32(16);
-                                temp.Range = reader.GetInt32(17);
-                                temp.Release = reader.GetInt32(18);
-                                temp.IsLocked = Convert.ToBoolean(reader.GetValue(19));
+                                CharacterProfileRecord temp = new CharacterProfileRecord
+                                {
+                                    PlayerId = reader.GetInt32(0),
+                                    PlayerDisplayName = reader.GetString(1),
+                                    PlayerObjectName = reader.GetString(2),
+                                    Accuracy2Pt = reader.GetInt32(3),
+                                    Accuracy3Pt = reader.GetInt32(4),
+                                    Accuracy4Pt = reader.GetInt32(5),
+                                    Accuracy7Pt = reader.GetInt32(6),
+                                    JumpForce = reader.GetFloat(7),
+                                    Speed = reader.GetFloat(8),
+                                    RunSpeed = reader.GetFloat(9),
+                                    RunSpeedHasBall = reader.GetFloat(10),
+                                    Luck = reader.GetInt32(11),
+                                    ShootAngle = reader.GetInt32(12),
+                                    Experience = reader.GetInt32(13),
+                                    Level = reader.GetInt32(14),
+                                    PointsAvailable = reader.GetInt32(15),
+                                    PointsUsed = reader.GetInt32(16),
+                                    Range = reader.GetInt32(17),
+                                    Release = reader.GetInt32(18),
+                                    IsLocked = Convert.ToBoolean(reader.GetValue(19))
+                                };
                                 characterStats.Add(temp);
-
-                                Destroy(temp);
                             }
                         }
                     }
@@ -689,17 +684,17 @@ public class DBHelper : MonoBehaviour
         {
             databaseLocked = false;
             Debug.Log("ERROR : " + e);
-            return new List<CharacterProfile>();
+            return new List<CharacterProfileRecord>();
         }
     }
 
     // get cheerleader data from Database
-    public List<CheerleaderProfile> getCheerleaderProfileStats()
+    public List<CheerleaderProfileRecord> getCheerleaderProfileStats()
     {
         try
         {
             DatabaseLocked = true;
-            List<CheerleaderProfile> cheerleaderStats = new List<CheerleaderProfile>();
+            List<CheerleaderProfileRecord> cheerleaderStats = new List<CheerleaderProfileRecord>();
 
             using (IDbConnection dbconn = new SqliteConnection(connection))
             {
@@ -716,17 +711,16 @@ public class DBHelper : MonoBehaviour
                         {
                             while (reader.Read())
                             {
-                                CheerleaderProfile temp = gameObject.AddComponent<CheerleaderProfile>();
-
-                                temp.CheerleaderId = reader.GetInt32(0);
-                                temp.CheerleaderDisplayName = reader.GetString(1);
-                                temp.CheerleaderObjectName = reader.GetString(2);
-                                temp.UnlockCharacterText = reader.GetString(3);
-                                temp.IsLocked = Convert.ToBoolean(reader.GetInt32(4));
+                                CheerleaderProfileRecord temp = new CheerleaderProfileRecord
+                                {
+                                    CheerleaderId = reader.GetInt32(0),
+                                    CheerleaderDisplayName = reader.GetString(1),
+                                    CheerleaderObjectName = reader.GetString(2),
+                                    UnlockCharacterText = reader.GetString(3),
+                                    IsLocked = Convert.ToBoolean(reader.GetInt32(4))
+                                };
 
                                 cheerleaderStats.Add(temp);
-
-                                Destroy(temp);
                             }
                         }
                     }
@@ -740,7 +734,7 @@ public class DBHelper : MonoBehaviour
         {
             DatabaseLocked = false;
             Debug.Log("ERROR : " + e);
-            return null;
+            return new List<CheerleaderProfileRecord>();
         }
     }
 
@@ -1820,4 +1814,76 @@ public class DBHelper : MonoBehaviour
     }
 
     public bool DatabaseLocked { get => databaseLocked; set => databaseLocked = value; }
+}
+
+public class CharacterProfileRecord
+{
+    public int PlayerId { get; set; }
+    public string PlayerDisplayName { get; set; }
+    public string PlayerObjectName { get; set; }
+    public float Accuracy2Pt { get; set; }
+    public float Accuracy3Pt { get; set; }
+    public float Accuracy4Pt { get; set; }
+    public float Accuracy7Pt { get; set; }
+    public float JumpForce { get; set; }
+    public float Speed { get; set; }
+    public float RunSpeed { get; set; }
+    public float RunSpeedHasBall { get; set; }
+    public int Luck { get; set; }
+    public int ShootAngle { get; set; }
+    public int Experience { get; set; }
+    public int Level { get; set; }
+    public int PointsAvailable { get; set; }
+    public int PointsUsed { get; set; }
+    public int Range { get; set; }
+    public int Release { get; set; }
+    public bool IsLocked { get; set; }
+
+    public static CharacterProfileRecord FromProfile(CharacterProfile profile)
+    {
+        return new CharacterProfileRecord
+        {
+            PlayerId = profile.PlayerId,
+            PlayerDisplayName = profile.PlayerDisplayName,
+            PlayerObjectName = profile.PlayerObjectName,
+            Accuracy2Pt = profile.Accuracy2Pt,
+            Accuracy3Pt = profile.Accuracy3Pt,
+            Accuracy4Pt = profile.Accuracy4Pt,
+            Accuracy7Pt = profile.Accuracy7Pt,
+            JumpForce = profile.JumpForce,
+            Speed = profile.Speed,
+            RunSpeed = profile.RunSpeed,
+            RunSpeedHasBall = profile.RunSpeedHasBall,
+            Luck = profile.Luck,
+            ShootAngle = profile.ShootAngle,
+            Experience = profile.Experience,
+            Level = profile.Level,
+            PointsAvailable = profile.PointsAvailable,
+            PointsUsed = profile.PointsUsed,
+            Range = profile.Range,
+            Release = profile.Release,
+            IsLocked = profile.IsLocked
+        };
+    }
+}
+
+public class CheerleaderProfileRecord
+{
+    public int CheerleaderId { get; set; }
+    public string CheerleaderDisplayName { get; set; }
+    public string CheerleaderObjectName { get; set; }
+    public string UnlockCharacterText { get; set; }
+    public bool IsLocked { get; set; }
+
+    public static CheerleaderProfileRecord FromProfile(CheerleaderProfile profile)
+    {
+        return new CheerleaderProfileRecord
+        {
+            CheerleaderId = profile.CheerleaderId,
+            CheerleaderDisplayName = profile.CheerleaderDisplayName,
+            CheerleaderObjectName = profile.CheerleaderObjectName,
+            UnlockCharacterText = profile.UnlockCharacterText,
+            IsLocked = profile.IsLocked
+        };
+    }
 }
