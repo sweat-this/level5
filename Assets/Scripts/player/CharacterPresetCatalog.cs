@@ -8,6 +8,40 @@ public class CharacterPresetCatalog : ScriptableObject
 
     public IReadOnlyList<CharacterPreset> Presets => presets;
 
+    public bool Validate(List<string> issues)
+    {
+        bool valid = true;
+        HashSet<string> characterIds = new HashSet<string>();
+        HashSet<int> legacyIds = new HashSet<int>();
+
+        for (int i = 0; i < presets.Count; i++)
+        {
+            CharacterPreset preset = presets[i];
+            if (preset == null)
+            {
+                issues?.Add(name + " has an empty preset slot at index " + i + ".");
+                valid = false;
+                continue;
+            }
+
+            valid &= preset.Validate(issues);
+
+            if (!string.IsNullOrEmpty(preset.CharacterId) && !characterIds.Add(preset.CharacterId))
+            {
+                issues?.Add(name + " has duplicate characterId " + preset.CharacterId + ".");
+                valid = false;
+            }
+
+            if (preset.LegacyPlayerId > 0 && !legacyIds.Add(preset.LegacyPlayerId))
+            {
+                issues?.Add(name + " has duplicate legacyPlayerId " + preset.LegacyPlayerId + ".");
+                valid = false;
+            }
+        }
+
+        return valid;
+    }
+
     public CharacterPreset FindByCharacterId(string characterId)
     {
         if (string.IsNullOrEmpty(characterId))

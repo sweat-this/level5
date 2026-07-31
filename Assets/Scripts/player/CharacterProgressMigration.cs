@@ -43,9 +43,13 @@ public static class CharacterProgressMigration
             progress.level = legacyRecord.Level > 0 ? legacyRecord.Level : legacyRecord.Experience / 3000;
             progress.lastModifiedUtc = DateTime.UtcNow.ToString("o");
 
-            if (preset != null)
+            if (preset != null && preset.UpgradesEnabled)
             {
                 progress.upgrades = EstimateUpgradeLevels(preset, legacyRecord);
+            }
+            else
+            {
+                progress.upgrades = new CharacterUpgradeLevels();
             }
         }
 

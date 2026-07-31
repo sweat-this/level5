@@ -9,7 +9,9 @@ public static class CharacterProgressResolver
             throw new ArgumentNullException(nameof(preset));
         }
 
-        CharacterUpgradeLevels upgrades = progress?.upgrades ?? new CharacterUpgradeLevels();
+        CharacterUpgradeLevels upgrades = preset.UpgradesEnabled
+            ? CharacterUpgradeLevels.Sanitize(progress?.upgrades)
+            : new CharacterUpgradeLevels();
         CharacterStats bonusStats = upgrades.ToBonusStats(preset.UpgradeStep);
         CharacterStats combinedStats = CharacterStats.Add(preset.BaseStats, bonusStats);
         CharacterStats clampedStats = CharacterStats.Clamp(combinedStats, preset.MinStats, preset.MaxStats);

@@ -8,19 +8,46 @@ public static class CharacterProgressStore
 
     public static CharacterProgressSave Load(string userId, CharacterPresetCatalog catalog)
     {
+        if (TryLoadExisting(userId, out CharacterProgressSave save))
+        {
+            return save;
+        }
+
+        string normalizedUserId = NormalizeUserId(userId);
+        return catalog != null ? catalog.CreateDefaultProgress(normalizedUserId) : CreateEmptySave(normalizedUserId);
+    }
+
+    public static bool TryLoadExisting(string userId, out CharacterProgressSave save)
+    {
+        save = null;
         string path = GetAccountProgressPath(userId);
         if (!File.Exists(path))
         {
-            return catalog != null ? catalog.CreateDefaultProgress(userId) : CreateEmptySave(userId);
+            return false;
         }
 
-        string json = File.ReadAllText(path);
-        CharacterProgressSave save = JsonUtility.FromJson<CharacterProgressSave>(json);
-        if (save == null)
+        try
         {
-            return catalog != null ? catalog.CreateDefaultProgress(userId) : CreateEmptySave(userId);
-        }
+            string json = File.ReadAllText(path);
+            save = JsonUtility.FromJson<CharacterProgressSave>(json);
+            if (save == null)
+            {
+                return false;
+            }
 
+            Normalize(NormalizeUserId(userId), save);
+            return true;
+        }
+        catch (Exception e)
+        {
+            Debug.LogError("Failed to load character progress from " + path + ": " + e);
+            save = null;
+            return false;
+        }
+    }
+
+    private static void Normalize(string userId, CharacterProgressSave save)
+    {
         if (string.IsNullOrEmpty(save.userId))
         {
             save.userId = userId;
@@ -30,8 +57,6 @@ public static class CharacterProgressStore
         {
             save.characters = new System.Collections.Generic.List<PlayerCharacterProgress>();
         }
-
-        return save;
     }
 
     public static void Save(CharacterProgressSave save)
@@ -41,6 +66,7 @@ public static class CharacterProgressStore
             throw new ArgumentNullException(nameof(save));
         }
 
+        Normalize(NormalizeUserId(save.userId), save);
         string path = GetAccountProgressPath(save.userId);
         string directory = Path.GetDirectoryName(path);
         if (!Directory.Exists(directory))
@@ -54,7 +80,7 @@ public static class CharacterProgressStore
 
     public static string GetAccountProgressPath(string userId)
     {
-        string safeUserId = string.IsNullOrWhiteSpace(userId) ? "guest" : SanitizeFileName(userId);
+        string safeUserId = SanitizeFileName(NormalizeUserId(userId));
         return Path.Combine(Application.persistentDataPath, AccountsFolderName, safeUserId + "-characters.json");
     }
 
@@ -64,6 +90,11 @@ public static class CharacterProgressStore
         {
             userId = userId
         };
+    }
+
+    private static string NormalizeUserId(string userId)
+    {
+        return string.IsNullOrWhiteSpace(userId) ? "guest" : userId;
     }
 
     private static string SanitizeFileName(string value)

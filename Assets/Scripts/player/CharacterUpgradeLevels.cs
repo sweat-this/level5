@@ -30,6 +30,30 @@ public class CharacterUpgradeLevels
         + luck
         + shootAngle;
 
+    public static CharacterUpgradeLevels Sanitize(CharacterUpgradeLevels value)
+    {
+        if (value == null)
+        {
+            return new CharacterUpgradeLevels();
+        }
+
+        return new CharacterUpgradeLevels
+        {
+            accuracy2Pt = Math.Max(0, value.accuracy2Pt),
+            accuracy3Pt = Math.Max(0, value.accuracy3Pt),
+            accuracy4Pt = Math.Max(0, value.accuracy4Pt),
+            accuracy7Pt = Math.Max(0, value.accuracy7Pt),
+            jumpForce = Math.Max(0, value.jumpForce),
+            speed = Math.Max(0, value.speed),
+            runSpeed = Math.Max(0, value.runSpeed),
+            runSpeedHasBall = Math.Max(0, value.runSpeedHasBall),
+            range = Math.Max(0, value.range),
+            release = Math.Max(0, value.release),
+            luck = Math.Max(0, value.luck),
+            shootAngle = Math.Max(0, value.shootAngle)
+        };
+    }
+
     public CharacterStats ToBonusStats(CharacterStats upgradeStep)
     {
         if (upgradeStep == null)
