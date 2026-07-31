@@ -563,11 +563,11 @@ public class ProgressionManager : MonoBehaviour
     {
         if (LoadedData.instance != null)
         {
-            yield return new WaitUntil(() => LoadedData.instance.PlayerSelectedData != null);
+            yield return new WaitUntil(() => LoadedData.instance != null && LoadedData.instance.PlayerSelectedData != null);
 
             playerSelectedData = LoadedData.instance.PlayerSelectedData;
 
-            yield return new WaitUntil(() => LoadedData.instance.CheerleaderSelectedData != null);
+            yield return new WaitUntil(() => LoadedData.instance != null && LoadedData.instance.CheerleaderSelectedData != null);
             cheerleaderSelectedData = LoadedData.instance.CheerleaderSelectedData;
 
             if (playerSelectedData != null

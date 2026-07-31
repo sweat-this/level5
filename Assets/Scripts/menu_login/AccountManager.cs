@@ -357,7 +357,12 @@ public class AccountManager : MonoBehaviour
         startTime = Time.time;
 
         yield return new WaitUntil(() => user != null || (Time.time > startTime + timeout));
-        yield return new WaitUntil(() => !DBHelper.instance.DatabaseLocked);
+        if (user == null)
+        {
+            yield break;
+        }
+
+        yield return new WaitUntil(IsDatabaseUnlocked);
         yield return new WaitUntil(() => !APIHelper.ApiLocked);
 
         // the server never returns the real password (see UsersApiController.HideUserDetails) -
@@ -371,12 +376,7 @@ public class AccountManager : MonoBehaviour
         yield return new WaitUntil(() => APIHelper.BearerToken != null || (Time.time > startTime + timeout));
 
         // if local user doesnt exists, insert locally
-        if (!DBHelper.instance.localUserExists(user))
-        {
-            DBHelper.instance.DatabaseLocked = false;
-            // created on api, insert to local db
-            DBHelper.instance.InsertUser(user);
-        }
+        InsertLocalUserIfMissing(user);
     }
 
     private IEnumerator LoginUserCoroutine(string username, string password)
@@ -392,7 +392,12 @@ public class AccountManager : MonoBehaviour
         startTime = Time.time;
 
         yield return new WaitUntil(() => user != null || (Time.time > startTime + timeout));
-        yield return new WaitUntil(() => !DBHelper.instance.DatabaseLocked);
+        if (user == null)
+        {
+            yield break;
+        }
+
+        yield return new WaitUntil(IsDatabaseUnlocked);
         yield return new WaitUntil(() => !APIHelper.ApiLocked);
 
         // the server never returns the real password (see UsersApiController.HideUserDetails) -
@@ -406,12 +411,24 @@ public class AccountManager : MonoBehaviour
         yield return new WaitUntil(() => APIHelper.BearerToken != null || (Time.time > startTime + timeout));
 
         // if local user doesnt exists, insert locally
-        if (!DBHelper.instance.localUserExists(user))
+        InsertLocalUserIfMissing(user);
+    }
+
+    private static bool IsDatabaseUnlocked()
+    {
+        return DBHelper.instance != null && !DBHelper.instance.DatabaseLocked;
+    }
+
+    private static void InsertLocalUserIfMissing(UserModel user)
+    {
+        if (DBHelper.instance == null || user == null || DBHelper.instance.localUserExists(user))
         {
-            DBHelper.instance.DatabaseLocked = false;
-            // created on api, insert to local db
-            DBHelper.instance.InsertUser(user);
+            return;
         }
+
+        DBHelper.instance.DatabaseLocked = false;
+        // created on api, insert to local db
+        DBHelper.instance.InsertUser(user);
     }
 
     public void readEmailAddressInput(string s)

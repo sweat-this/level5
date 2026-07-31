@@ -167,7 +167,7 @@ public class UserAccountManager : MonoBehaviour
             DBHelper.instance.DatabaseLocked = true;
             DBHelper.instance.deleteLocalUser(userName);
 
-            yield return new WaitUntil(() => !DBHelper.instance.DatabaseLocked);
+            yield return new WaitUntil(IsDatabaseUnlocked);
 
             SceneManager.LoadScene(Constants.SCENE_NAME_level_00_account_loginLocal);
         }
@@ -183,8 +183,7 @@ public class UserAccountManager : MonoBehaviour
 
     IEnumerator loadUserData()
     {
-        yield return new WaitUntil(() => DBHelper.instance != null);
-        yield return new WaitUntil(() => !DBHelper.instance.DatabaseLocked);
+        yield return new WaitUntil(IsDatabaseUnlocked);
 
         try
         {
@@ -232,8 +231,7 @@ public class UserAccountManager : MonoBehaviour
     }
     IEnumerator CreateUserButtons()
     {
-        yield return new WaitUntil(() => DBHelper.instance != null);
-        yield return new WaitUntil(() => !DBHelper.instance.DatabaseLocked);
+        yield return new WaitUntil(IsDatabaseUnlocked);
 
         int index = 0;
         if (usersLoaded)
@@ -270,6 +268,11 @@ public class UserAccountManager : MonoBehaviour
             //set text
             localAccounsList[index].GetComponentInChildren<Text>().text = u.UserName;
         }
+    }
+
+    private static bool IsDatabaseUnlocked()
+    {
+        return DBHelper.instance != null && !DBHelper.instance.DatabaseLocked;
     }
 
     public List<UserModel> UserAccountData { get => userAccountData; }

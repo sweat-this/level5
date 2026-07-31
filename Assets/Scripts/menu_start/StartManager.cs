@@ -676,19 +676,19 @@ public class StartManager : MonoBehaviour
     {
         if (LoadedData.instance != null)
         {
-            yield return new WaitUntil(() => LoadedData.instance.PlayerSelectedData != null);
+            yield return new WaitUntil(() => LoadedData.instance != null && LoadedData.instance.PlayerSelectedData != null);
             playerSelectedData = LoadedData.instance.PlayerSelectedData;
 
-            yield return new WaitUntil(() => LoadedData.instance.CpuPlayerSelectedData != null);
+            yield return new WaitUntil(() => LoadedData.instance != null && LoadedData.instance.CpuPlayerSelectedData != null);
             cpuPlayerSelectedData = LoadedData.instance.CpuPlayerSelectedData;
 
-            yield return new WaitUntil(() => LoadedData.instance.CheerleaderSelectedData != null);
+            yield return new WaitUntil(() => LoadedData.instance != null && LoadedData.instance.CheerleaderSelectedData != null);
             friendSelectedData = LoadedData.instance.CheerleaderSelectedData;
 
-            yield return new WaitUntil(() => LoadedData.instance.LevelSelectedData != null);
+            yield return new WaitUntil(() => LoadedData.instance != null && LoadedData.instance.LevelSelectedData != null);
             levelSelectedData = LoadedData.instance.LevelSelectedData;
 
-            yield return new WaitUntil(() => LoadedData.instance.ModeSelectedData != null);
+            yield return new WaitUntil(() => LoadedData.instance != null && LoadedData.instance.ModeSelectedData != null);
             modeSelectedData = LoadedData.instance.ModeSelectedData;
 
             if (playerSelectedData != null
