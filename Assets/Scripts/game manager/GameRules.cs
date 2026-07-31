@@ -312,18 +312,50 @@ public class GameRules : MonoBehaviour
     {
         yield return new WaitForSecondsRealtime(seconds);
         List<PlayerIdentifier> players = GameLevelManager.instance.getSortedGameStatsList();
-        // campaign is over
-        if (GameOptions.levelSelectedIndex < GameOptions.levelsList.Count - 1)
+        if (players == null || players.Count < 2)
         {
-            GameOptions.levelHasSevenPointers = GameOptions.levelsList[GameOptions.levelSelectedIndex + 1].LevelHasSevenPointers;
-            GameOptions.levelId = GameOptions.levelsList[GameOptions.levelSelectedIndex].LevelId;
-
-            EndRoundData.currentLevelIndex = GameOptions.levelSelectedIndex;
-            EndRoundData.nextLevelIndex = GameOptions.levelSelectedIndex++;
+            Debug.LogError("GameRules cannot advance campaign because fewer than two players were found.");
+            SceneManager.LoadScene(Constants.SCENE_NAME_level_00_start);
+            yield break;
         }
 
-        EndRoundData.currentRoundCpuWinnerImage = GameOptions.levelsList[GameOptions.levelSelectedIndex].CpuPlayer.GetComponent<CharacterProfile>().winPortrait;
-        EndRoundData.currentRoundCpuLoserImage = GameOptions.levelsList[GameOptions.levelSelectedIndex].CpuPlayer.GetComponent<CharacterProfile>().losePortrait;
+        if (GameOptions.levelsList == null || GameOptions.levelsList.Count == 0)
+        {
+            Debug.LogError("GameRules cannot advance campaign because no campaign levels are loaded.");
+            SceneManager.LoadScene(Constants.SCENE_NAME_level_00_start);
+            yield break;
+        }
+
+        int completedLevelIndex = Mathf.Clamp(GameOptions.levelSelectedIndex, 0, GameOptions.levelsList.Count - 1);
+        EndRoundData.currentLevelIndex = completedLevelIndex;
+        EndRoundData.nextLevelIndex = completedLevelIndex;
+
+        // campaign is over
+        if (completedLevelIndex < GameOptions.levelsList.Count - 1)
+        {
+            int nextLevelIndex = completedLevelIndex + 1;
+            LevelSelected nextLevel = GameOptions.levelsList[nextLevelIndex];
+
+            GameOptions.levelHasSevenPointers = nextLevel.LevelHasSevenPointers;
+            GameOptions.levelId = nextLevel.LevelId;
+            GameOptions.levelSelected = nextLevel.LevelObjectName;
+            GameOptions.levelDisplayName = nextLevel.LevelDisplayName;
+            GameOptions.levelSelectedIndex = nextLevelIndex;
+
+            EndRoundData.nextLevelIndex = nextLevelIndex;
+        }
+
+        LevelSelected completedLevel = GameOptions.levelsList[completedLevelIndex];
+        EndRoundData.currentRoundCpuWinnerImage = null;
+        EndRoundData.currentRoundCpuLoserImage = null;
+        CharacterProfile completedCpuProfile = completedLevel.CpuPlayer == null
+            ? null
+            : completedLevel.CpuPlayer.GetComponent<CharacterProfile>();
+        if (completedCpuProfile != null)
+        {
+            EndRoundData.currentRoundCpuWinnerImage = completedCpuProfile.winPortrait;
+            EndRoundData.currentRoundCpuLoserImage = completedCpuProfile.losePortrait;
+        }
 
         EndRoundData.currentRoundWinnerScore = players[0].gameStats.TotalPoints;
         EndRoundData.currentRoundLoserScore = players[1].gameStats.TotalPoints;

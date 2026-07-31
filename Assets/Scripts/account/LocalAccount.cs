@@ -12,46 +12,95 @@ public class LocalAccount : MonoBehaviour
 
     private void Update()
     {
-        if (EventSystem.current.currentSelectedGameObject != null)
+        if (TryGetSelectedUserName(out string selectedName))
         {
-            userNameSelected = EventSystem.current.currentSelectedGameObject.transform.parent.GetChild(0).GetComponent<Text>().text;
+            userNameSelected = selectedName;
         }
     }
+
+    private bool TryGetSelectedUserName(out string selectedName)
+    {
+        selectedName = null;
+
+        if (EventSystem.current == null || EventSystem.current.currentSelectedGameObject == null)
+        {
+            return false;
+        }
+
+        Transform selectedTransform = EventSystem.current.currentSelectedGameObject.transform;
+        Transform userRow = selectedTransform.parent;
+        if (userRow == null || userRow.childCount == 0)
+        {
+            return false;
+        }
+
+        Text userNameText = userRow.GetChild(0).GetComponent<Text>();
+        if (userNameText == null || string.IsNullOrWhiteSpace(userNameText.text))
+        {
+            return false;
+        }
+
+        selectedName = userNameText.text;
+        return true;
+    }
+
     // OnClick UI
     public void LoginButton()
     {
-        if (UserAccountManager.instance.UsersLoaded)
+        if (UserAccountManager.instance == null)
         {
-            GameOptions.userName = userNameSelected;
-            UserModel user = UserAccountManager.instance.UserAccountData.Where(x => x.UserName == userNameSelected).Single();
+            LoginAsGuest();
+            return;
+        }
+
+        if (UserAccountManager.instance.UsersLoaded && !string.IsNullOrWhiteSpace(userNameSelected))
+        {
+            UserModel user = UserAccountManager.instance.UserAccountData
+                .SingleOrDefault(x => x.UserName == userNameSelected);
+            if (user == null)
+            {
+                LoginAsGuest();
+                return;
+            }
+
+            GameOptions.userName = user.UserName;
             GameOptions.userid = user.Userid;
             StartCoroutine(APIHelper.PostToken(user));
         }
         else
         {
-            UserModel user = new UserModel();
-            GameOptions.userName = "Guest";
-
-            user.Userid = UserAccountManager.GuestUserid;
-            user.UserName = UserAccountManager.GuestPassword;
-            user.Password = "guest";
-
-            StartCoroutine(APIHelper.PostToken(user));
-
-            //// if connected to internet
-            //if (UtilityFunctions.IsConnectedToInternet())
-            //{
-            //    StartCoroutine(APIHelper.PostToken(user));
-            //}
-            //else
-            //{
-            //    SceneManager.LoadScene(Constants.SCENE_NAME_level_00_loading);
-            //}
+            LoginAsGuest();
         }
     }
+
+    private void LoginAsGuest()
+    {
+        UserModel user = new UserModel
+        {
+            Userid = UserAccountManager.GuestUserid,
+            UserName = UserAccountManager.GuestUsername,
+            Password = UserAccountManager.GuestPassword
+        };
+
+        GameOptions.userName = user.UserName;
+        GameOptions.userid = user.Userid;
+
+        StartCoroutine(APIHelper.PostToken(user));
+    }
+
     // OnClick UI
     public void RemoveUserButton()
     {
+        if (string.IsNullOrWhiteSpace(userNameSelected) || UserAccountManager.instance == null)
+        {
+            return;
+        }
+
+        if (DialogueManager.instance == null || DialogueManager.instance.Coroutine != null)
+        {
+            return;
+        }
+
         // bring up dialogue
         if (DialogueManager.instance.Coroutine == null)
         {

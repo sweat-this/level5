@@ -114,18 +114,45 @@ public class UserAccountManager : MonoBehaviour
 
     public IEnumerator RemoveUserButton(string userName)
     {
+        if (DialogueManager.instance == null)
+        {
+            yield break;
+        }
+
         // set confirm button slected
-        Button selectedButton = UnityEngine.Object.FindAnyObjectByType<ConfirmDialogue>().confirmButton;
-        EventSystem.current.SetSelectedGameObject(null);
-        EventSystem.current.SetSelectedGameObject(selectedButton.gameObject);
+        ConfirmDialogue confirmDialogue = UnityEngine.Object.FindAnyObjectByType<ConfirmDialogue>();
+        if (confirmDialogue == null || confirmDialogue.confirmButton == null)
+        {
+            yield break;
+        }
+
+        Button selectedButton = confirmDialogue.confirmButton;
+        if (EventSystem.current != null)
+        {
+            EventSystem.current.SetSelectedGameObject(null);
+            EventSystem.current.SetSelectedGameObject(selectedButton.gameObject);
+        }
 
         // wait for button press
-        yield return new WaitUntil(() => DialogueManager.instance.ButtonPressed);
+        yield return new WaitUntil(() => DialogueManager.instance != null && DialogueManager.instance.ButtonPressed);
         // wait for confirm/cancel
-        yield return new WaitUntil(() => DialogueManager.instance.PreviousDialog.result != DialogueManager.instance.PreviousDialog.NONE);
-        // remove local user / reload scene
-        if (DialogueManager.instance.PreviousDialog.result == DialogueManager.instance.PreviousDialog.YES)
+        yield return new WaitUntil(() => DialogueManager.instance != null
+            && DialogueManager.instance.LastDialogResult != DialogueManager.DialogNone);
+
+        if (DialogueManager.instance == null)
         {
+            yield break;
+        }
+
+        int dialogResult = DialogueManager.instance.LastDialogResult;
+        // remove local user / reload scene
+        if (dialogResult == DialogueManager.DialogYes)
+        {
+            if (DBHelper.instance == null)
+            {
+                yield break;
+            }
+
             DBHelper.instance.DatabaseLocked = true;
             DBHelper.instance.deleteLocalUser(userName);
 
@@ -134,9 +161,12 @@ public class UserAccountManager : MonoBehaviour
             SceneManager.LoadScene(Constants.SCENE_NAME_level_00_account_loginLocal);
         }
         // do nothing
-        if (DialogueManager.instance.PreviousDialog.result == DialogueManager.instance.PreviousDialog.CANCEL)
+        if (dialogResult == DialogueManager.DialogCancel)
         {
-            EventSystem.current.SetSelectedGameObject(EventSystem.current.firstSelectedGameObject);
+            if (EventSystem.current != null)
+            {
+                EventSystem.current.SetSelectedGameObject(EventSystem.current.firstSelectedGameObject);
+            }
         }
     }
 
@@ -180,7 +210,11 @@ public class UserAccountManager : MonoBehaviour
             Debug.Log("ERROR : " + e);
             usersLoaded = false;
             DBHelper.instance.DatabaseLocked = false;
-            messageText.text = e.ToString();
+            if (messageText != null)
+            {
+                messageText.text = e.ToString();
+            }
+
             StartCoroutine(CreateUserButtons());
         }
         DBHelper.instance.DatabaseLocked = false;
@@ -231,4 +265,5 @@ public class UserAccountManager : MonoBehaviour
     public bool UsersLoaded { get => usersLoaded; set => usersLoaded = value; }
     public static int GuestUserid => guestUserid;
     public static string GuestPassword => guestPassword;
+    public static string GuestUsername => guestUsername;
 }

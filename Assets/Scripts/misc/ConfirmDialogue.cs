@@ -19,12 +19,26 @@ public class ConfirmDialogue : MonoBehaviour
 
     private void Awake()
     {
-        confirmButton = GameObject.Find("confirm_button").GetComponent<Button>();
+        if (confirmButton == null)
+        {
+            confirmButton = FindButton("confirm_button");
+        }
+
+        if (confirmButton == null)
+        {
+            Debug.LogError("ConfirmDialogue is missing a confirm button.");
+            return;
+        }
+
         confirmButton.onClick.AddListener(ConfirmButtonOnClick);
 
-        if (GameObject.Find("cancel_button") != null)
+        if (cancelButton == null)
         {
-            cancelButton = GameObject.Find("cancel_button").GetComponent<Button>();
+            cancelButton = FindButton("cancel_button");
+        }
+
+        if (cancelButton != null)
+        {
             cancelButton.onClick.AddListener(CancelButtonOnClick);
         }
         //if (GameObject.Find("next_button") != null)
@@ -32,8 +46,24 @@ public class ConfirmDialogue : MonoBehaviour
         //    cancelButton = GameObject.Find("next_button").GetComponent<Button>();
         //    cancelButton.onClick.AddListener(NextButtonOnClick);
         //}
+        if (EventSystem.current != null)
+        {
+            EventSystem.current.SetSelectedGameObject(confirmButton.gameObject);
+        }
+    }
 
-        EventSystem.current.SetSelectedGameObject(confirmButton.gameObject);
+    private Button FindButton(string buttonName)
+    {
+        foreach (Button button in GetComponentsInChildren<Button>(true))
+        {
+            if (button.name == buttonName)
+            {
+                return button;
+            }
+        }
+
+        GameObject buttonObject = GameObject.Find(buttonName);
+        return buttonObject == null ? null : buttonObject.GetComponent<Button>();
     }
 
     public void ConfirmButtonOnClick()

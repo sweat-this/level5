@@ -24,6 +24,11 @@ public class TheyLiveManager : MonoBehaviour
         //currentSprite = spriteRenderer.sprite;
         instance = this;
 
+        if (theyLiveSpriteList == null)
+        {
+            theyLiveSpriteList = new List<Sprite>();
+        }
+
         billboardList = GameObject.FindGameObjectsWithTag("billboard");
 
         Sprite[] temp = Resources.LoadAll<Sprite>(path) as Sprite[];
@@ -51,17 +56,31 @@ public class TheyLiveManager : MonoBehaviour
 
     public void LoadBillboards()
     {
+        if (billboardList == null || theyLiveSpriteList == null || theyLiveSpriteList.Count == 0)
+        {
+            return;
+        }
 
+        Sprite watchTvSprite = theyLiveSpriteList.FirstOrDefault(x => x.name.ToLower().Contains("watchtv"));
         foreach (GameObject billboard in billboardList)
         {
-            int randomIndex = Random.Range(0, (theyLiveSpriteList.Count - 1));
+            if (billboard == null)
+            {
+                continue;
+            }
 
             SpriteRenderer spriteRenderer = billboard.GetComponentInChildren<SpriteRenderer>();
+            if (spriteRenderer == null)
+            {
+                continue;
+            }
+
+            int randomIndex = Random.Range(0, theyLiveSpriteList.Count);
             Sprite currentSprite = spriteRenderer.sprite;
 
-            if (currentSprite.name.ToLower().Contains("fbipi"))
+            if (currentSprite != null && currentSprite.name.ToLower().Contains("fbipi") && watchTvSprite != null)
             {
-                spriteRenderer.sprite = theyLiveSpriteList.Where(x => x.name.ToLower().Contains("watchtv") == true).Single();
+                spriteRenderer.sprite = watchTvSprite;
             }
             else
             {
