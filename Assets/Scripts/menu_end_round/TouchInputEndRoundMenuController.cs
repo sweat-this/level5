@@ -122,6 +122,15 @@ public class TouchInputEndRoundMenuController : MonoBehaviour
     private void activateDoubleTappedButton()
     {
         buttonPressed = true;
+        if (EventSystem.current == null
+            || prevSelectedGameObject == null
+            || EndRoundMenuManager.instance == null
+            || string.IsNullOrEmpty(currentHighlightedButton))
+        {
+            buttonPressed = false;
+            return;
+        }
+
         EventSystem.current.SetSelectedGameObject(prevSelectedGameObject);
 
         if (currentHighlightedButton.Equals(nextButton))

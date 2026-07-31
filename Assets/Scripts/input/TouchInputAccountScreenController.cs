@@ -117,6 +117,12 @@ public class TouchInputAccountScreenController : MonoBehaviour
     private void activateDoubleTappedButton()
     {
         //buttonPressed = true;
+        GameObject selectedObject = EventSystem.current == null ? null : EventSystem.current.currentSelectedGameObject;
+        if (selectedObject == null)
+        {
+            buttonPressed = false;
+            return;
+        }
 
         //if (EventSystem.current.currentSelectedGameObject.name.Equals(StatsManager.ModeSelectButtonName))
         //{
@@ -127,42 +133,42 @@ public class TouchInputAccountScreenController : MonoBehaviour
 
         // footer
         // main menu
-        if (EventSystem.current.currentSelectedGameObject.name.Equals(AccountManager.MainMenuButtonName))
+        if (selectedObject.name.Equals(AccountManager.MainMenuButtonName))
         {
             SceneManager.LoadSceneAsync(Constants.SCENE_NAME_level_00_start);
         }
         //stats
-        if (EventSystem.current.currentSelectedGameObject.name.Equals(AccountManager.StatsMenuButtonName))
+        if (selectedObject.name.Equals(AccountManager.StatsMenuButtonName))
         {
             SceneManager.LoadSceneAsync(Constants.SCENE_NAME_level_00_stats);
         }
         //progression
-        if (EventSystem.current.currentSelectedGameObject.name.Equals(AccountManager.ProgressionMenuButtonName))
+        if (selectedObject.name.Equals(AccountManager.ProgressionMenuButtonName))
         {
             SceneManager.LoadSceneAsync(Constants.SCENE_NAME_level_00_progression);
         }
         //credits
-        if (EventSystem.current.currentSelectedGameObject.name.Equals(AccountManager.CreditsMenuButtonName))
+        if (selectedObject.name.Equals(AccountManager.CreditsMenuButtonName))
         {
             SceneManager.LoadSceneAsync(Constants.SCENE_NAME_level_00_credits);
         }
         // create new
-        if (EventSystem.current.currentSelectedGameObject.name.Equals(AccountManager.CreateNewButtonName))
+        if (selectedObject.name.Equals(AccountManager.CreateNewButtonName))
         {
             SceneManager.LoadSceneAsync(Constants.SCENE_NAME_level_00_account_createNew);
         }
         // login existing
-        if (EventSystem.current.currentSelectedGameObject.name.Equals(AccountManager.LoginExistingButtonName))
+        if (selectedObject.name.Equals(AccountManager.LoginExistingButtonName))
         {
             SceneManager.LoadSceneAsync(Constants.SCENE_NAME_level_00_account_loginExisting);
         }
         // login local
-        if (EventSystem.current.currentSelectedGameObject.name.Equals(AccountManager.LoginLocalButtonName))
+        if (selectedObject.name.Equals(AccountManager.LoginLocalButtonName))
         {
             SceneManager.LoadSceneAsync(Constants.SCENE_NAME_level_00_account_loginLocal);
         }
         // account
-        if (EventSystem.current.currentSelectedGameObject.name.Equals(AccountManager.AccountMenuButtonName))
+        if (selectedObject.name.Equals(AccountManager.AccountMenuButtonName))
         {
             SceneManager.LoadSceneAsync(Constants.SCENE_NAME_level_00_account);
         }

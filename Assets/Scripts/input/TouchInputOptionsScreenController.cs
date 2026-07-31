@@ -117,6 +117,12 @@ public class TouchInputOptionsScreenController : MonoBehaviour
     private void activateDoubleTappedButton()
     {
         //buttonPressed = true;
+        GameObject selectedObject = EventSystem.current == null ? null : EventSystem.current.currentSelectedGameObject;
+        if (selectedObject == null)
+        {
+            buttonPressed = false;
+            return;
+        }
 
         //if (EventSystem.current.currentSelectedGameObject.name.Equals(StatsManager.ModeSelectButtonName))
         //{
@@ -127,27 +133,27 @@ public class TouchInputOptionsScreenController : MonoBehaviour
 
         // footer
         // main menu
-        if (EventSystem.current.currentSelectedGameObject.name.Equals(OptionsManager.MainMenuButtonName))
+        if (selectedObject.name.Equals(OptionsManager.MainMenuButtonName))
         {
             SceneManager.LoadSceneAsync(Constants.SCENE_NAME_level_00_start);
         }
         //stats
-        if (EventSystem.current.currentSelectedGameObject.name.Equals(OptionsManager.StatsMenuButtonName))
+        if (selectedObject.name.Equals(OptionsManager.StatsMenuButtonName))
         {
             SceneManager.LoadSceneAsync(Constants.SCENE_NAME_level_00_stats);
         }
         //progression
-        if (EventSystem.current.currentSelectedGameObject.name.Equals(OptionsManager.ProgressionMenuButtonName))
+        if (selectedObject.name.Equals(OptionsManager.ProgressionMenuButtonName))
         {
             SceneManager.LoadSceneAsync(Constants.SCENE_NAME_level_00_progression);
         }
         // account
-        if (EventSystem.current.currentSelectedGameObject.name.Equals(OptionsManager.AccountMenuButtonName))
+        if (selectedObject.name.Equals(OptionsManager.AccountMenuButtonName))
         {
             SceneManager.LoadSceneAsync(Constants.SCENE_NAME_level_00_account);
         }
         //credits
-        if (EventSystem.current.currentSelectedGameObject.name.Equals(OptionsManager.CreditsMenuButtonName))
+        if (selectedObject.name.Equals(OptionsManager.CreditsMenuButtonName))
         {
             SceneManager.LoadSceneAsync(Constants.SCENE_NAME_level_00_credits);
         }

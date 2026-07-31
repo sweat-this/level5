@@ -39,6 +39,12 @@ public class TouchInputProgressionScreenController : MonoBehaviour
         // set distance required for swipe up to be regeistered by device
         swipeUpTolerance = Screen.height / 7;
         swipeDownTolerance = Screen.height / 5;
+        if (EventSystem.current == null)
+        {
+            enabled = false;
+            return;
+        }
+
         prevSelectedGameObject = EventSystem.current.firstSelectedGameObject;
         //Debug.Log("Start : " + prevSelectedGameObject);
 
@@ -51,6 +57,20 @@ public class TouchInputProgressionScreenController : MonoBehaviour
 
     void Update()
     {
+        if (EventSystem.current == null)
+        {
+            return;
+        }
+
+        if (EventSystem.current.currentSelectedGameObject == null && prevSelectedGameObject != null)
+        {
+            EventSystem.current.SetSelectedGameObject(prevSelectedGameObject);
+        }
+
+        if (EventSystem.current.currentSelectedGameObject == null)
+        {
+            return;
+        }
 
         // save previous button until a touch is made
         if (!buttonPressed && Input.touchCount == 0)
@@ -131,16 +151,21 @@ public class TouchInputProgressionScreenController : MonoBehaviour
 
     private void activateDoubleTappedButton()
     {
-        EventSystem.current.SetSelectedGameObject(prevSelectedGameObject);
+        if (!TryRestoreSelectedObject(out GameObject selectedObject))
+        {
+            buttonPressed = false;
+            return;
+        }
+
         //player select
-        if (EventSystem.current.currentSelectedGameObject.name.Equals(ProgressionManager.PlayerSelectOptionButtonName)
+        if (selectedObject.name.Equals(ProgressionManager.PlayerSelectOptionButtonName)
              && !buttonPressed)
         {
             ProgressionManager.instance.changePlayerUp();
             buttonPressed = true;
         }
         // reset points
-        if (EventSystem.current.currentSelectedGameObject.name.Equals(ProgressionManager.ResetButtonName)
+        if (selectedObject.name.Equals(ProgressionManager.ResetButtonName)
              && !buttonPressed)
         {
             Debug.Log("reset changes");
@@ -149,7 +174,7 @@ public class TouchInputProgressionScreenController : MonoBehaviour
             buttonPressed = true;
         }
         // save changes
-        if (EventSystem.current.currentSelectedGameObject.name.Equals(ProgressionManager.SaveButtonName)
+        if (selectedObject.name.Equals(ProgressionManager.SaveButtonName)
              && !buttonPressed)
         {
             Debug.Log("save changes");
@@ -157,7 +182,7 @@ public class TouchInputProgressionScreenController : MonoBehaviour
             buttonPressed = true;
         }
         // add 3 accuracy point
-        if (EventSystem.current.currentSelectedGameObject.name.Equals(ProgressionManager.Progression3AccuracyName)
+        if (selectedObject.name.Equals(ProgressionManager.Progression3AccuracyName)
             && ProgressionManager.instance.ProgressionState.PointsAvailable > 0
             && ProgressionManager.instance.DataLoaded
             && !buttonPressed)
@@ -167,7 +192,7 @@ public class TouchInputProgressionScreenController : MonoBehaviour
             buttonPressed = true;
         }
         // add 4 accuracy point
-        if (EventSystem.current.currentSelectedGameObject.name.Equals(ProgressionManager.Progression4AccuracyName)
+        if (selectedObject.name.Equals(ProgressionManager.Progression4AccuracyName)
             && ProgressionManager.instance.ProgressionState.PointsAvailable > 0
             && ProgressionManager.instance.DataLoaded
             && !buttonPressed)
@@ -178,7 +203,7 @@ public class TouchInputProgressionScreenController : MonoBehaviour
             buttonPressed = true;
         }
         // add 7 accuracy point
-        if (EventSystem.current.currentSelectedGameObject.name.Equals(ProgressionManager.Progression7AccuracyName)
+        if (selectedObject.name.Equals(ProgressionManager.Progression7AccuracyName)
             && ProgressionManager.instance.ProgressionState.PointsAvailable > 0
             && ProgressionManager.instance.DataLoaded
             && !buttonPressed)
@@ -188,7 +213,7 @@ public class TouchInputProgressionScreenController : MonoBehaviour
             buttonPressed = true;
         }
         // confirm changes
-        if (EventSystem.current.currentSelectedGameObject.name.Equals(ProgressionManager.ConfirmButtonName)
+        if (selectedObject.name.Equals(ProgressionManager.ConfirmButtonName)
             && !buttonPressed)
         {
             Debug.Log("confirm changes");
@@ -196,7 +221,7 @@ public class TouchInputProgressionScreenController : MonoBehaviour
             buttonPressed = true;
         }
         // cancel changes
-        if (EventSystem.current.currentSelectedGameObject.name.Equals(ProgressionManager.CancelButtonName)
+        if (selectedObject.name.Equals(ProgressionManager.CancelButtonName)
              && !buttonPressed)
         {
             Debug.Log("cancel changes");
@@ -204,21 +229,21 @@ public class TouchInputProgressionScreenController : MonoBehaviour
             buttonPressed = true;
         }
         // footer
-        if (EventSystem.current.currentSelectedGameObject.name.Equals(ProgressionManager.StartButtonName)
+        if (selectedObject.name.Equals(ProgressionManager.StartButtonName)
             && !buttonPressed)
         {
             Debug.Log("load start");
             ProgressionManager.instance.loadScene(Constants.SCENE_NAME_level_00_start);
             buttonPressed = true;
         }
-        if (EventSystem.current.currentSelectedGameObject.name.Equals(ProgressionManager.StatsMenuButtonName)
+        if (selectedObject.name.Equals(ProgressionManager.StatsMenuButtonName)
             && !buttonPressed)
         {
             Debug.Log("load stats");
             ProgressionManager.instance.loadScene(Constants.SCENE_NAME_level_00_stats);
             buttonPressed = true;
         }
-        if (EventSystem.current.currentSelectedGameObject.name.Equals(ProgressionManager.QuitButtonName)
+        if (selectedObject.name.Equals(ProgressionManager.QuitButtonName)
                 && !buttonPressed)
         {
             Debug.Log("quit");
@@ -245,8 +270,13 @@ public class TouchInputProgressionScreenController : MonoBehaviour
     private void swipeUpOnOption()
     {
         //Debug.Log("swipe up");
-        EventSystem.current.SetSelectedGameObject(prevSelectedGameObject);
-        if (EventSystem.current.currentSelectedGameObject.name.Equals(ProgressionManager.PlayerSelectOptionButtonName))
+        if (!TryRestoreSelectedObject(out GameObject selectedObject))
+        {
+            buttonPressed = false;
+            return;
+        }
+
+        if (selectedObject.name.Equals(ProgressionManager.PlayerSelectOptionButtonName))
         {
             ProgressionManager.instance.changePlayerUp();
             buttonPressed = true;
@@ -256,18 +286,18 @@ public class TouchInputProgressionScreenController : MonoBehaviour
             && ProgressionManager.instance.DataLoaded
             && !buttonPressed)
         {
-            if (EventSystem.current.currentSelectedGameObject.name.Equals(ProgressionManager.Progression3AccuracyName))
+            if (selectedObject.name.Equals(ProgressionManager.Progression3AccuracyName))
             {
                 ProgressionManager.instance.updateThreeAccuracy(ProgressionManager.UpdateType.Add);
                 buttonPressed = true;
             }
             // mode select
-            if (EventSystem.current.currentSelectedGameObject.name.Equals(ProgressionManager.Progression4AccuracyName))
+            if (selectedObject.name.Equals(ProgressionManager.Progression4AccuracyName))
             {
                 ProgressionManager.instance.updateFourAccuracy(ProgressionManager.UpdateType.Add);
                 buttonPressed = true;
             }
-            if (EventSystem.current.currentSelectedGameObject.name.Equals(ProgressionManager.Progression7AccuracyName))
+            if (selectedObject.name.Equals(ProgressionManager.Progression7AccuracyName))
             {
                 ProgressionManager.instance.updateSevenAccuracy(ProgressionManager.UpdateType.Add);
                 buttonPressed = true;
@@ -277,29 +307,34 @@ public class TouchInputProgressionScreenController : MonoBehaviour
     }
     private void swipeDownOnOption()
     {
-        EventSystem.current.SetSelectedGameObject(prevSelectedGameObject);
+        if (!TryRestoreSelectedObject(out GameObject selectedObject))
+        {
+            buttonPressed = false;
+            return;
+        }
+
         //Debug.Log("swipe down");
-        if (EventSystem.current.currentSelectedGameObject.name.Equals(ProgressionManager.PlayerSelectOptionButtonName)
+        if (selectedObject.name.Equals(ProgressionManager.PlayerSelectOptionButtonName)
             && !buttonPressed)
         {
             ProgressionManager.instance.changePlayerDown();
             buttonPressed = true;
         }
-        if (EventSystem.current.currentSelectedGameObject.name.Equals(ProgressionManager.Progression3AccuracyName)
+        if (selectedObject.name.Equals(ProgressionManager.Progression3AccuracyName)
             && ProgressionManager.instance.ProgressionState.AddTo3 > 0
             && !buttonPressed)
         {
             ProgressionManager.instance.updateThreeAccuracy(ProgressionManager.UpdateType.Subtract);
             buttonPressed = true;
         }
-        if (EventSystem.current.currentSelectedGameObject.name.Equals(ProgressionManager.Progression4AccuracyName)
+        if (selectedObject.name.Equals(ProgressionManager.Progression4AccuracyName)
             && ProgressionManager.instance.ProgressionState.AddTo4 > 0
             && !buttonPressed)
         {
             ProgressionManager.instance.updateFourAccuracy(ProgressionManager.UpdateType.Subtract);
             buttonPressed = true;
         }
-        if (EventSystem.current.currentSelectedGameObject.name.Equals(ProgressionManager.Progression7AccuracyName)
+        if (selectedObject.name.Equals(ProgressionManager.Progression7AccuracyName)
             && ProgressionManager.instance.ProgressionState.AddTo7 > 0
             && !buttonPressed)
         {
@@ -307,5 +342,18 @@ public class TouchInputProgressionScreenController : MonoBehaviour
             buttonPressed = true;
         }
         buttonPressed = false;
+    }
+
+    private bool TryRestoreSelectedObject(out GameObject selectedObject)
+    {
+        selectedObject = null;
+        if (EventSystem.current == null || ProgressionManager.instance == null || prevSelectedGameObject == null)
+        {
+            return false;
+        }
+
+        EventSystem.current.SetSelectedGameObject(prevSelectedGameObject);
+        selectedObject = EventSystem.current.currentSelectedGameObject;
+        return selectedObject != null;
     }
 }

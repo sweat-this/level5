@@ -207,9 +207,14 @@ public class TouchInputStatsScreenController : MonoBehaviour
         //StatsManager.instance.changeHighScoreDataDisplay();
         buttonPressed = true;
         //high score, mode change
-        EventSystem.current.SetSelectedGameObject(prevSelectedGameObject);
+        if (!TryRestoreSelectedObject(out GameObject selectedObject))
+        {
+            buttonPressed = false;
+            return;
+        }
+
         // local mode select
-        if (EventSystem.current.currentSelectedGameObject.name.Equals(StatsManager.ModeSelectButtonName))
+        if (selectedObject.name.Equals(StatsManager.ModeSelectButtonName))
         {
             //save previous button
             StatsManager.instance.PreviousHighlightedButton = StatsManager.instance.CurrentHighlightedButton;
@@ -221,7 +226,7 @@ public class TouchInputStatsScreenController : MonoBehaviour
             buttonPressed = true;
         }
         // online mode select
-        if (EventSystem.current.currentSelectedGameObject.name.Equals(StatsManager.ModeSelectButtonOnlineName))
+        if (selectedObject.name.Equals(StatsManager.ModeSelectButtonOnlineName))
         {
             //save previous button
             StatsManager.instance.PreviousHighlightedButton = StatsManager.instance.CurrentHighlightedButton;
@@ -232,21 +237,21 @@ public class TouchInputStatsScreenController : MonoBehaviour
             buttonPressed = true;
         }
         // local page number
-        if (EventSystem.current.currentSelectedGameObject.name.Equals(StatsManager.PageNumberLocalButtonName))
+        if (selectedObject.name.Equals(StatsManager.PageNumberLocalButtonName))
         {
             //StatsManager.instance.changeSelectedMode("right");
             StatsManager.instance.increaseLocalResultsPageNumber();
             buttonPressed = true;
         }
         // online page number
-        if (EventSystem.current.currentSelectedGameObject.name.Equals(StatsManager.PageNumberOnlineButtonName))
+        if (selectedObject.name.Equals(StatsManager.PageNumberOnlineButtonName))
         {
             //StatsManager.instance.changeSelectedMode("right");
             StatsManager.instance.increaseOnlineResultsPageNumber();
             buttonPressed = true;
         }
         // hardcore option search filter
-        if (EventSystem.current.currentSelectedGameObject.name.Equals(StatsManager.HardcoreOptionButtonName))
+        if (selectedObject.name.Equals(StatsManager.HardcoreOptionButtonName))
         {
             //Debug.Log("hardcore option");
             //StatsManager.instance.changeSelectedMode("right");
@@ -256,7 +261,7 @@ public class TouchInputStatsScreenController : MonoBehaviour
             buttonPressed = true;
         }
         // traffic option search filter
-        if (EventSystem.current.currentSelectedGameObject.name.Equals(StatsManager.TrafficOptionButtonName))
+        if (selectedObject.name.Equals(StatsManager.TrafficOptionButtonName))
         {
             //Debug.Log("traffic option");
             //StatsManager.instance.changeSelectedMode("right");
@@ -266,7 +271,7 @@ public class TouchInputStatsScreenController : MonoBehaviour
             buttonPressed = true;
         }
         // enemies option search filter
-        if (EventSystem.current.currentSelectedGameObject.name.Equals(StatsManager.EnemiesOptionButtonName))
+        if (selectedObject.name.Equals(StatsManager.EnemiesOptionButtonName))
         {
             //Debug.Log("enemies option");
             //StatsManager.instance.changeSelectedMode("right");
@@ -276,7 +281,7 @@ public class TouchInputStatsScreenController : MonoBehaviour
             buttonPressed = true;
         }
         // sniper option search filter
-        if (EventSystem.current.currentSelectedGameObject.name.Equals(StatsManager.SniperOptionButtonName))
+        if (selectedObject.name.Equals(StatsManager.SniperOptionButtonName))
         {
             //Debug.Log("sniper option");
             //StatsManager.instance.changeSelectedMode("right");
@@ -287,13 +292,13 @@ public class TouchInputStatsScreenController : MonoBehaviour
         }
         
         // player select
-        if (EventSystem.current.currentSelectedGameObject.name.Equals(StatsManager.MainMenuButtonName))
+        if (selectedObject.name.Equals(StatsManager.MainMenuButtonName))
         {
             StatsManager.instance.loadMainMenu(Constants.SCENE_NAME_level_00_start);
             buttonPressed = true;
         }
         // reset previous button to active button
-        if (EventSystem.current.currentSelectedGameObject != prevSelectedGameObject)
+        if (selectedObject != prevSelectedGameObject)
         {
             EventSystem.current.SetSelectedGameObject(prevSelectedGameObject);
             buttonPressed = true;
@@ -305,9 +310,14 @@ public class TouchInputStatsScreenController : MonoBehaviour
         //StatsManager.instance.changeHighScoreDataDisplay();
         buttonPressed = true;
         //high score, mode change
-        EventSystem.current.SetSelectedGameObject(prevSelectedGameObject);
+        if (!TryRestoreSelectedObject(out GameObject selectedObject))
+        {
+            buttonPressed = false;
+            return;
+        }
+
         // local mode select
-        if (EventSystem.current.currentSelectedGameObject.name.Equals(StatsManager.ModeSelectButtonName))
+        if (selectedObject.name.Equals(StatsManager.ModeSelectButtonName))
         {
             //save previous button
             StatsManager.instance.PreviousHighlightedButton = StatsManager.instance.CurrentHighlightedButton;
@@ -319,7 +329,7 @@ public class TouchInputStatsScreenController : MonoBehaviour
             buttonPressed = true;
         }
         // online mode select
-        if (EventSystem.current.currentSelectedGameObject.name.Equals(StatsManager.ModeSelectButtonOnlineName))
+        if (selectedObject.name.Equals(StatsManager.ModeSelectButtonOnlineName))
         {
             //save previous button
             StatsManager.instance.PreviousHighlightedButton = StatsManager.instance.CurrentHighlightedButton;
@@ -330,19 +340,19 @@ public class TouchInputStatsScreenController : MonoBehaviour
             buttonPressed = true;
         }
         // local page number
-        if (EventSystem.current.currentSelectedGameObject.name.Equals(StatsManager.PageNumberLocalButtonName))
+        if (selectedObject.name.Equals(StatsManager.PageNumberLocalButtonName))
         {
             StatsManager.instance.increaseLocalResultsPageNumber();
             buttonPressed = true;
         }
         // online page number
-        if (EventSystem.current.currentSelectedGameObject.name.Equals(StatsManager.PageNumberOnlineButtonName))
+        if (selectedObject.name.Equals(StatsManager.PageNumberOnlineButtonName))
         {
             StatsManager.instance.increaseOnlineResultsPageNumber();
             buttonPressed = true;
         }
         // hardcore option search filter
-        if (EventSystem.current.currentSelectedGameObject.name.Equals(StatsManager.HardcoreOptionButtonName))
+        if (selectedObject.name.Equals(StatsManager.HardcoreOptionButtonName))
         {
             StatsManager.instance.changeSelectedHardcoreOption();
             StatsManager.instance.initializeHardcoreOptionDisplay();
@@ -350,7 +360,7 @@ public class TouchInputStatsScreenController : MonoBehaviour
             buttonPressed = true;
         }
         // traffic option search filter
-        if (EventSystem.current.currentSelectedGameObject.name.Equals(StatsManager.TrafficOptionButtonName))
+        if (selectedObject.name.Equals(StatsManager.TrafficOptionButtonName))
         {
             StatsManager.instance.changeSelectedTrafficOption();
             StatsManager.instance.initializeTrafficOptionDisplay();
@@ -358,7 +368,7 @@ public class TouchInputStatsScreenController : MonoBehaviour
             buttonPressed = true;
         }
         // enemies option search filter
-        if (EventSystem.current.currentSelectedGameObject.name.Equals(StatsManager.EnemiesOptionButtonName))
+        if (selectedObject.name.Equals(StatsManager.EnemiesOptionButtonName))
         {
             StatsManager.instance.changeSelectedEnemiesOption();
             StatsManager.instance.initializeEnemyOptionDisplay();
@@ -366,7 +376,7 @@ public class TouchInputStatsScreenController : MonoBehaviour
             buttonPressed = true;
         }
         // sniper option search filter
-        if (EventSystem.current.currentSelectedGameObject.name.Equals(StatsManager.SniperOptionButtonName))
+        if (selectedObject.name.Equals(StatsManager.SniperOptionButtonName))
         {
             //Debug.Log("sniper option");
             //StatsManager.instance.changeSelectedMode("right");
@@ -377,10 +387,23 @@ public class TouchInputStatsScreenController : MonoBehaviour
         }
 
         // reset previous button to active button
-        if (EventSystem.current.currentSelectedGameObject != prevSelectedGameObject)
+        if (selectedObject != prevSelectedGameObject)
         {
             EventSystem.current.SetSelectedGameObject(prevSelectedGameObject);
         }
         buttonPressed = false;
+    }
+
+    private bool TryRestoreSelectedObject(out GameObject selectedObject)
+    {
+        selectedObject = null;
+        if (EventSystem.current == null || StatsManager.instance == null || prevSelectedGameObject == null)
+        {
+            return false;
+        }
+
+        EventSystem.current.SetSelectedGameObject(prevSelectedGameObject);
+        selectedObject = EventSystem.current.currentSelectedGameObject;
+        return selectedObject != null;
     }
 }

@@ -58,21 +58,22 @@ public class UserAccountManager : MonoBehaviour
 
     public void LoginButton()
     {
-        UserModel user = new UserModel();
-        GameOptions.userName = userNameSelected;
+        UserModel user = null;
 
-        if (usersLoaded)
+        if (usersLoaded && !string.IsNullOrWhiteSpace(userNameSelected))
         {
             user = userAccountData.Where(x => x.UserName == userNameSelected).SingleOrDefault();
+        }
+
+        if (user != null)
+        {
+            GameOptions.userName = user.UserName;
             GameOptions.userid = user.Userid;
         }
         else
         {
-            GameOptions.userid = guestUserid;
-            GameOptions.userName = guestUsername;
-            user.Userid = guestUserid;
-            user.UserName = guestPassword;
-            user.Password = guestPassword;
+            user = CreateGuestUser();
+            ApplyGameOptions(user);
         }
 
         // if connected to internet
@@ -91,14 +92,8 @@ public class UserAccountManager : MonoBehaviour
         //GameOptions.userName = "";
         //GameOptions.userid = 0;
         //SceneManager.LoadScene(Constants.SCENE_NAME_level_00_loading);
-        UserModel user = new UserModel();
-        GameOptions.userName = userNameSelected;
-
-        GameOptions.userid = guestUserid;
-        GameOptions.userName = guestUsername;
-        user.Userid = guestUserid;
-        user.UserName = guestPassword;
-        user.Password = guestPassword;
+        UserModel user = CreateGuestUser();
+        ApplyGameOptions(user);
 
         SceneManager.LoadScene(Constants.SCENE_NAME_level_00_loading);
         // if connected to internet
@@ -110,6 +105,22 @@ public class UserAccountManager : MonoBehaviour
         //{
         //    SceneManager.LoadScene(Constants.SCENE_NAME_level_00_loading);
         //}
+    }
+
+    private static UserModel CreateGuestUser()
+    {
+        return new UserModel
+        {
+            Userid = guestUserid,
+            UserName = guestUsername,
+            Password = guestPassword
+        };
+    }
+
+    private static void ApplyGameOptions(UserModel user)
+    {
+        GameOptions.userid = user.Userid;
+        GameOptions.userName = user.UserName;
     }
 
     public IEnumerator RemoveUserButton(string userName)

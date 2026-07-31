@@ -123,83 +123,90 @@ public class AccountManager : MonoBehaviour
             }
         }
 
+        GameObject selectedObject = EventSystem.current == null ? null : EventSystem.current.currentSelectedGameObject;
+        if (selectedObject == null)
+        {
+            buttonPressed = false;
+            return;
+        }
+
         if (controls.UINavigation.Submit.triggered && !buttonPressed)
         {
             buttonPressed = true;
 
             //check email
-            if (EventSystem.current.currentSelectedGameObject.name.Equals(checkEmailButtonName))
+            if (selectedObject.name.Equals(checkEmailButtonName))
             {
                 EventSystem.current.SetSelectedGameObject(emailAddressTextButtonObject);
             }
             // check user name
-            if (EventSystem.current.currentSelectedGameObject.name.Equals(checkUserNameButtonName))
+            if (selectedObject.name.Equals(checkUserNameButtonName))
             {
                 EventSystem.current.SetSelectedGameObject(userNameTextButtonObject);
             }
             // enter email field
-            if (EventSystem.current.currentSelectedGameObject.name.Equals(emailAddressInputFieldName))
+            if (selectedObject.name.Equals(emailAddressInputFieldName))
             {
                 EventSystem.current.SetSelectedGameObject(checkEmailButtonObject);
             }
             // enter username field
-            if (EventSystem.current.currentSelectedGameObject.name.Equals(userNameInputFieldName))
+            if (selectedObject.name.Equals(userNameInputFieldName))
             {
                 EventSystem.current.SetSelectedGameObject(checkUserNameButtonObject);
             }
             // enter password field
-            if (EventSystem.current.currentSelectedGameObject.name.Equals(passwordInputFieldName))
+            if (selectedObject.name.Equals(passwordInputFieldName))
             {
                 EventSystem.current.SetSelectedGameObject(passwordTextButtonObject);
             }
             // enter first name field
-            if (EventSystem.current.currentSelectedGameObject.name.Equals(firstNameInputFieldName))
+            if (selectedObject.name.Equals(firstNameInputFieldName))
             {
                 EventSystem.current.SetSelectedGameObject(firstNameTextButtonObject);
             }
             // enter last name field
-            if (EventSystem.current.currentSelectedGameObject.name.Equals(lastNameInputFieldName))
+            if (selectedObject.name.Equals(lastNameInputFieldName))
             {
                 EventSystem.current.SetSelectedGameObject(lastNameTextButtonObject);
             }
             // footer
             // main menu
-            if (EventSystem.current.currentSelectedGameObject.name.Equals(mainMenuButtonName))
+            if (selectedObject.name.Equals(mainMenuButtonName))
             {
                 SceneManager.LoadSceneAsync(Constants.SCENE_NAME_level_00_start);
             }
             //stats
-            if (EventSystem.current.currentSelectedGameObject.name.Equals(statsMenuButtonName))
+            if (selectedObject.name.Equals(statsMenuButtonName))
             {
                 SceneManager.LoadSceneAsync(Constants.SCENE_NAME_level_00_stats);
             }
             //progression
-            if (EventSystem.current.currentSelectedGameObject.name.Equals(progressionMenuButtonName))
+            if (selectedObject.name.Equals(progressionMenuButtonName))
             {
                 SceneManager.LoadSceneAsync(Constants.SCENE_NAME_level_00_progression);
             }
             //credits
-            if (EventSystem.current.currentSelectedGameObject.name.Equals(creditsMenuButtonName))
+            if (selectedObject.name.Equals(creditsMenuButtonName))
             {
                 SceneManager.LoadSceneAsync(Constants.SCENE_NAME_level_00_credits);
             }
             // create new
-            if (EventSystem.current.currentSelectedGameObject.name.Equals(createNewButtonName))
+            if (selectedObject.name.Equals(createNewButtonName))
             {
                 SceneManager.LoadSceneAsync(Constants.SCENE_NAME_level_00_account_createNew);
             }
             // login existing
-            if (EventSystem.current.currentSelectedGameObject.name.Equals(loginExistingButtonName))
+            if (selectedObject.name.Equals(loginExistingButtonName))
             {
                 SceneManager.LoadSceneAsync(Constants.SCENE_NAME_level_00_account_loginExisting);
             }
             // login local
-            if (EventSystem.current.currentSelectedGameObject.name.Equals(loginLocalButtonName))
+            if (selectedObject.name.Equals(loginLocalButtonName))
             {
                 SceneManager.LoadSceneAsync(Constants.SCENE_NAME_level_00_account_loginLocal);
             }
             // account
-            if (EventSystem.current.currentSelectedGameObject.name.Equals(accountMenuButtonName))
+            if (selectedObject.name.Equals(accountMenuButtonName))
             {
                 SceneManager.LoadSceneAsync(Constants.SCENE_NAME_level_00_account);
             }

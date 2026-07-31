@@ -147,6 +147,15 @@ public class TouchInputStartScreenController : MonoBehaviour
     private void activateDoubleTappedButton()
     {
         buttonPressed = true;
+        if (EventSystem.current == null
+            || prevSelectedGameObject == null
+            || StartManager.instance == null
+            || string.IsNullOrEmpty(currentHighlightedButton))
+        {
+            buttonPressed = false;
+            return;
+        }
+
         EventSystem.current.SetSelectedGameObject(prevSelectedGameObject);
 
         //level select
@@ -317,6 +326,12 @@ public class TouchInputStartScreenController : MonoBehaviour
 
     private void swipeUpOnOption()
     {
+        if (EventSystem.current == null || prevSelectedGameObject == null || StartManager.instance == null)
+        {
+            buttonPressed = false;
+            return;
+        }
+
         EventSystem.current.SetSelectedGameObject(prevSelectedGameObject);
         //level select
         if (prevSelectedGameObject.name.Equals(StartManager.levelSelectOptionButtonName))
@@ -391,6 +406,12 @@ public class TouchInputStartScreenController : MonoBehaviour
     }
     private void swipeDownOnOption()
     {
+        if (EventSystem.current == null || prevSelectedGameObject == null || StartManager.instance == null)
+        {
+            buttonPressed = false;
+            return;
+        }
+
         EventSystem.current.SetSelectedGameObject(prevSelectedGameObject);
         //level select
         if (prevSelectedGameObject.name.Equals(StartManager.levelSelectOptionButtonName))

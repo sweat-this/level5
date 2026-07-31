@@ -117,6 +117,12 @@ public class TouchInputLinksScreenController : MonoBehaviour
     private void activateDoubleTappedButton()
     {
         //buttonPressed = true;
+        GameObject selectedObject = EventSystem.current == null ? null : EventSystem.current.currentSelectedGameObject;
+        if (selectedObject == null)
+        {
+            buttonPressed = false;
+            return;
+        }
 
         //if (EventSystem.current.currentSelectedGameObject.name.Equals(StatsManager.ModeSelectButtonName))
         //{
@@ -127,31 +133,27 @@ public class TouchInputLinksScreenController : MonoBehaviour
 
         // footer
         // main menu
-        if (EventSystem.current.currentSelectedGameObject.name.Equals(CreditsManager.MainMenuButtonName))
+        if (selectedObject.name.Equals(CreditsManager.MainMenuButtonName))
         {
             SceneManager.LoadSceneAsync(Constants.SCENE_NAME_level_00_start);
         }
         //stats
-        if (EventSystem.current.currentSelectedGameObject.name.Equals(CreditsManager.StatsMenuButtonName))
+        if (selectedObject.name.Equals(CreditsManager.StatsMenuButtonName))
         {
             SceneManager.LoadSceneAsync(Constants.SCENE_NAME_level_00_stats);
         }
         //progression
-        if (EventSystem.current.currentSelectedGameObject.name.Equals(CreditsManager.ProgressionMenuButtonName))
+        if (selectedObject.name.Equals(CreditsManager.ProgressionMenuButtonName))
         {
             SceneManager.LoadSceneAsync(Constants.SCENE_NAME_level_00_progression);
         }
         // account
-        if (EventSystem.current.currentSelectedGameObject.name.Equals(CreditsManager.AccountMenuButtonName))
+        if (selectedObject.name.Equals(CreditsManager.AccountMenuButtonName))
         {
             SceneManager.LoadSceneAsync(Constants.SCENE_NAME_level_00_account);
         }
         //credits
-        if (EventSystem.current.currentSelectedGameObject.name.Equals(CreditsManager.CreditsMenuButtonName))
-        {
-            SceneManager.LoadSceneAsync(Constants.SCENE_NAME_level_00_credits);
-        }
-        if (EventSystem.current.currentSelectedGameObject.name.Equals(CreditsManager.CreditsMenuButtonName))
+        if (selectedObject.name.Equals(CreditsManager.CreditsMenuButtonName))
         {
             SceneManager.LoadSceneAsync(Constants.SCENE_NAME_level_00_credits);
         }
