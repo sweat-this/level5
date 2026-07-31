@@ -73,7 +73,6 @@ namespace Assets.Scripts.restapi
             //{
             //serialize highscore to json for HTTP POST
             string toJson = JsonUtility.ToJson(score);
-            Debug.Log(toJson);
             HttpWebResponse httpResponse = null;
             HttpStatusCode statusCode;
             try
@@ -88,7 +87,6 @@ namespace Assets.Scripts.restapi
                 using (var streamWriter = new StreamWriter(httpWebRequest.GetRequestStream()))
                 {
                     string json = toJson;
-                    Debug.Log("json : " + json);
                     streamWriter.Write(json);
                     streamWriter.Flush();
                 }
@@ -96,7 +94,7 @@ namespace Assets.Scripts.restapi
                 httpResponse = (HttpWebResponse)httpWebRequest.GetResponse();
                 using (var streamReader = new StreamReader(httpResponse.GetResponseStream()))
                 {
-                    var result = streamReader.ReadToEnd();
+                    streamReader.ReadToEnd();
                     //Debug.Log("result : " + result);
                 }
             }
@@ -120,7 +118,7 @@ namespace Assets.Scripts.restapi
             // if successful
             if (httpResponse.StatusCode == HttpStatusCode.Created)
             {
-                Debug.Log("----------------- HTTP POST successful : " + (int)statusCode + " " + statusCode + "  scoreid : " + score.Scoreid);
+                Debug.Log("----------------- HTTP POST successful : " + (int)statusCode + " " + statusCode);
                 DBHelper.instance.setGameScoreSubmitted(score.Scoreid, true);
                 apiLocked = false;
                 DBHelper.instance.DatabaseLocked = false;
@@ -128,7 +126,7 @@ namespace Assets.Scripts.restapi
             // failed
             else
             {
-                Debug.Log("----------------- HTTP POST failed : " + (int)statusCode + " " + statusCode + "  scoreid : " + score.Scoreid);
+                Debug.Log("----------------- HTTP POST failed : " + (int)statusCode + " " + statusCode);
                 //unlock api + database
                 DBHelper.instance.setGameScoreSubmitted(score.Scoreid, false);
                 apiLocked = false;
@@ -331,16 +329,12 @@ namespace Assets.Scripts.restapi
             //}
 
 
-            Debug.Log("PostUnsubmittedHighscores");
-            Debug.Log(DBHelper.instance.DatabaseLocked);
-            Debug.Log(apiLocked);
             // wait for database operations
             //yield return new WaitUntil(() => !DBHelper.instance.DatabaseLocked);
             DBHelper.instance.DatabaseLocked = true;
 
             // wait for api operations
             //yield return new WaitUntil(() => !apiLocked);
-            Debug.Log("PostUnsubmittedHighscores" + highscores.ToArray());
             //foreach (HighScoreModel score in highscores)
             //{
             //    Debug.Log("highscores : "+ score);
@@ -348,7 +342,6 @@ namespace Assets.Scripts.restapi
             //bool locked = false;
             foreach (HighScoreModel score in highscores)
             {
-                Debug.Log(score.Scoreid);
                 score.Userid = GameOptions.userid;
                 score.UserName = GameOptions.userName;
             }
@@ -361,7 +354,6 @@ namespace Assets.Scripts.restapi
 
             HttpWebResponse httpResponse = null;
             HttpStatusCode statusCode;
-            Debug.Log("highscores : " + toJson);
 
 
             try
@@ -370,7 +362,6 @@ namespace Assets.Scripts.restapi
                 //client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
                 //client.DefaultRequestHeaders.Authorization =
                 //new AuthenticationHeaderValue("Bearer", bearerToken);
-                Debug.Log("highscores : " + toJson);
                 var httpWebRequest = (HttpWebRequest)WebRequest.Create(Constants.API_ADDRESS_DEV_publicApiHighScoresUnsubmitted) as HttpWebRequest;
                 httpWebRequest.Timeout = timeout;
                 httpWebRequest.ContentType = "application/json; charset=utf-8";
@@ -382,13 +373,8 @@ namespace Assets.Scripts.restapi
                 {
 
                     streamWriter.Write(toJson);
-                    Debug.Log("streamWriter.Write(toJson);");
                     streamWriter.Flush();
-                    Debug.Log("streamWriter.Flush();");
                 }
-                Debug.Log("post");
-                string json = toJson;
-                Debug.Log("json : " + toJson);
                 //var content = new StringContent(toJson, Encoding.UTF8, "application/json");
                 //var result = client.PostAsync(Constants.API_ADDRESS_DEV_publicApiHighScoresUnsubmitted, content).Result;
                 // response
@@ -396,8 +382,7 @@ namespace Assets.Scripts.restapi
                 //Debug.Log("result : " + result);
                 using (var streamReader = new StreamReader(httpResponse.GetResponseStream()))
                 {
-                    var result = streamReader.ReadToEnd();
-                    Debug.Log(result);
+                    streamReader.ReadToEnd();
                 }
             }
             // on web exception
@@ -490,8 +475,7 @@ namespace Assets.Scripts.restapi
                 httpResponse = (HttpWebResponse)httpWebRequest.GetResponse();
                 using (var streamReader = new StreamReader(httpResponse.GetResponseStream()))
                 {
-                    var result = streamReader.ReadToEnd();
-                    Debug.Log(result);
+                    streamReader.ReadToEnd();
                 }
             }
             // on web exception
@@ -550,7 +534,6 @@ namespace Assets.Scripts.restapi
                 using (var streamReader = new StreamReader(httpResponse.GetResponseStream()))
                 {
                     var result = streamReader.ReadToEnd();
-                    Debug.Log(result);
                     dBHighScoreModels = (List<HighScoreModel>)JsonConvert.DeserializeObject<List<HighScoreModel>>(result);
                 }
 
@@ -800,9 +783,6 @@ namespace Assets.Scripts.restapi
                         userid = model.Userid;
                         user.Userid = userid;
 
-                        Debug.Log("userid from api : " + userid);
-                        Debug.Log("userid going to db : " + user.Userid);
-
                     }
                 }
                 // on web exception
@@ -849,7 +829,7 @@ namespace Assets.Scripts.restapi
             }
             else
             {
-                Debug.Log(" scoreid already exists : " + user.UserName);
+                Debug.Log("User already exists.");
                 apiLocked = false;
             }
         }
@@ -919,9 +899,7 @@ namespace Assets.Scripts.restapi
             using (var streamReader = new StreamReader(httpWebResponse.GetResponseStream()))
             {
                 var result = streamReader.ReadToEnd();
-                Debug.Log("results 1 : \n" + result);
                 dBHighScoreModels = (List<HighScoreModel>)JsonConvert.DeserializeObject<List<HighScoreModel>>(result);
-                Debug.Log("results 2 : \n" + result);
             }
 
             return dBHighScoreModels;
@@ -1114,7 +1092,6 @@ namespace Assets.Scripts.restapi
                 using (var streamReader = new StreamReader(httpResponse.GetResponseStream()))
                 {
                     var result = streamReader.ReadToEnd();
-                    Debug.Log(result);
                     user = (UserModel)JsonConvert.DeserializeObject<UserModel>(result);
                 }
             }

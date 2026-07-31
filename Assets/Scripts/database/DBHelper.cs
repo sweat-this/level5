@@ -23,6 +23,50 @@ public class DBHelper : MonoBehaviour
 
     public static DBHelper instance;
 
+    private static string RequireSqlIdentifier(string value, string parameterName)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            throw new ArgumentException("SQL identifier cannot be empty.", parameterName);
+        }
+
+        if (!IsSqlIdentifierStart(value[0]))
+        {
+            throw new ArgumentException("SQL identifier must start with a letter or underscore.", parameterName);
+        }
+
+        for (int i = 1; i < value.Length; i++)
+        {
+            if (!IsSqlIdentifierPart(value[i]))
+            {
+                throw new ArgumentException("SQL identifier contains invalid characters.", parameterName);
+            }
+        }
+
+        return value;
+    }
+
+    private static bool IsSqlIdentifierStart(char value)
+    {
+        return value == '_' || (value >= 'A' && value <= 'Z') || (value >= 'a' && value <= 'z');
+    }
+
+    private static bool IsSqlIdentifierPart(char value)
+    {
+        return IsSqlIdentifierStart(value) || (value >= '0' && value <= '9');
+    }
+
+    private static string RequireSqlSortOrder(string value)
+    {
+        string normalized = value == null ? string.Empty : value.Trim().ToUpperInvariant();
+        if (normalized == "ASC" || normalized == "DESC")
+        {
+            return normalized;
+        }
+
+        throw new ArgumentException("SQL sort order must be ASC or DESC.", nameof(value));
+    }
+
     void Awake()
     {
         if (instance == null)
@@ -51,6 +95,7 @@ public class DBHelper : MonoBehaviour
     {
         try
         {
+            tableName = RequireSqlIdentifier(tableName, nameof(tableName));
             int count = 0;
 
             using (IDbConnection dbconn = new SqliteConnection(connection))
@@ -58,7 +103,7 @@ public class DBHelper : MonoBehaviour
                 dbconn.Open();
                 using (IDbCommand dbcmd = dbconn.CreateCommand())
                 {
-                    dbcmd.CommandText = "SELECT count(*) FROM '" + tableName + "'";
+                    dbcmd.CommandText = "SELECT count(*) FROM " + tableName;
                     using (IDataReader reader = dbcmd.ExecuteReader())
                     {
                         while (reader.Read())
@@ -959,6 +1004,8 @@ public class DBHelper : MonoBehaviour
         int value = 0;
         try
         {
+            tableName = RequireSqlIdentifier(tableName, nameof(tableName));
+            field = RequireSqlIdentifier(field, nameof(field));
             databaseLocked = true;
 
             using (IDbConnection dbconn = new SqliteConnection(connection))
@@ -998,6 +1045,9 @@ public class DBHelper : MonoBehaviour
 
         try
         {
+            tableName = RequireSqlIdentifier(tableName, nameof(tableName));
+            field = RequireSqlIdentifier(field, nameof(field));
+            order = RequireSqlSortOrder(order);
             databaseLocked = true;
 
             using (IDbConnection dbconn = new SqliteConnection(connection))
@@ -1183,6 +1233,7 @@ public class DBHelper : MonoBehaviour
 
     private static string BuildSqlQueryForGetHighScoreRows(string field, int modeid, bool hardcoreValue, bool trafficValue, bool enemiesValue, bool sniperValue)
     {
+        field = RequireSqlIdentifier(field, nameof(field));
         string sqlQuery;
         // if no filter selected, return all
         if (!hardcoreValue && !trafficValue && !enemiesValue && !sniperValue)
@@ -1238,6 +1289,7 @@ public class DBHelper : MonoBehaviour
 
         try
         {
+            field = RequireSqlIdentifier(field, nameof(field));
             databaseLocked = true;
 
             using (IDbConnection dbconn = new SqliteConnection(connection))
@@ -1289,6 +1341,8 @@ public class DBHelper : MonoBehaviour
 
         try
         {
+            tableName = RequireSqlIdentifier(tableName, nameof(tableName));
+            field = RequireSqlIdentifier(field, nameof(field));
             databaseLocked = true;
 
             using (IDbConnection dbconn = new SqliteConnection(connection))
@@ -1324,6 +1378,8 @@ public class DBHelper : MonoBehaviour
 
         try
         {
+            tableName = RequireSqlIdentifier(tableName, nameof(tableName));
+            field = RequireSqlIdentifier(field, nameof(field));
             databaseLocked = true;
 
             using (IDbConnection dbconn = new SqliteConnection(connection))
@@ -1362,6 +1418,9 @@ public class DBHelper : MonoBehaviour
 
         try
         {
+            tableName = RequireSqlIdentifier(tableName, nameof(tableName));
+            field = RequireSqlIdentifier(field, nameof(field));
+            order = RequireSqlSortOrder(order);
             databaseLocked = true;
 
             using (IDbConnection dbconn = new SqliteConnection(connection))
@@ -1478,6 +1537,8 @@ public class DBHelper : MonoBehaviour
     {
         try
         {
+            tableName = RequireSqlIdentifier(tableName, nameof(tableName));
+            field = RequireSqlIdentifier(field, nameof(field));
             databaseLocked = true;
 
             using (IDbConnection dbconn = new SqliteConnection(connection))

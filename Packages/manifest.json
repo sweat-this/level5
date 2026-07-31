@@ -1,13 +1,4 @@
 {
-  "scopedRegistries": [
-    {
-      "name": "Packages from jillejr",
-      "url": "https://npm.cloudsmith.io/jillejr/newtonsoft-json-for-unity/",
-      "scopes": [
-        "jillejr"
-      ]
-    }
-  ],
   "dependencies": {
     "com.unity.2d.sprite": "1.0.0",
     "com.unity.analytics": "3.8.2",

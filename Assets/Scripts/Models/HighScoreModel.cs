@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Net;
-using System.Net.NetworkInformation;
 using System.Text.RegularExpressions;
 using UnityEngine;
 using Random = System.Random;
@@ -391,30 +390,7 @@ namespace Assets.Scripts.database
 
         string generateUniqueScoreID()
         {
-            string macAddress = "";
-            string uniqueScoreId = "";
-            string uniqueModeDateIdentifier = "";
-            //TimeZone localZone = TimeZone.CurrentTimeZone;
-
-            uniqueModeDateIdentifier =
-                  DateTime.Now.Day.ToString()
-                + DateTime.Now.Month.ToString()
-                + DateTime.Now.Year.ToString()
-                + DateTime.Now.Minute.ToString()
-                + Utility.UtilityFunctions.RandomString(8);
-
-            foreach (NetworkInterface ninf in NetworkInterface.GetAllNetworkInterfaces())
-            {
-                if (ninf.NetworkInterfaceType != NetworkInterfaceType.Ethernet) continue;
-                if (ninf.OperationalStatus == OperationalStatus.Up)
-                {
-                    macAddress += ninf.GetPhysicalAddress().ToString();
-                    break;
-                }
-            }
-            uniqueScoreId = macAddress + uniqueModeDateIdentifier + SystemInfo.deviceUniqueIdentifier;
-
-            return uniqueScoreId;
+            return Guid.NewGuid().ToString("N");
         }
     }
 
