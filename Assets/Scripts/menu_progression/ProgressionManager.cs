@@ -80,6 +80,8 @@ public class ProgressionManager : MonoBehaviour
     public static ProgressionManager instance;
 
     ProgressionState progressionState;
+    CharacterProgressionService progressionService;
+    CharacterProgressDraft progressionDraft;
     // flags
     bool buttonPressed = false;
     bool dataLoaded = false;
@@ -131,6 +133,7 @@ public class ProgressionManager : MonoBehaviour
         confirmationDialogueBox.SetActive(confirmationDialogueBoxEnabled);
 
         progressionState = GetComponent<ProgressionState>();
+        progressionService = new CharacterProgressionService();
         // dont destroy on load / check for duplicate instance
         //destroyInstanceIfAlreadyExists();
         StartCoroutine(getLoadedData());
@@ -330,12 +333,12 @@ public class ProgressionManager : MonoBehaviour
             updateThreeAccuracy(UpdateType.Subtract);
         }
         if (currentHighlightedButton.Equals(progression4AccuracyName)
-            && (progressionState.AddTo3 > 0 || progressionState.AddToRange > 0))
+            && (progressionState.AddTo4 > 0 || progressionState.AddToRange > 0))
         {
             updateFourAccuracy(UpdateType.Subtract);
         }
         if (currentHighlightedButton.Equals(progression7AccuracyName)
-            && (progressionState.AddTo3 > 0 || progressionState.AddToRange > 0))
+            && (progressionState.AddTo7 > 0 || progressionState.AddToRange > 0))
         {
             updateSevenAccuracy(UpdateType.Subtract);
         }
@@ -362,10 +365,7 @@ public class ProgressionManager : MonoBehaviour
     public void resetChanges()
     {
         buttonPressed = true;
-        resetUpdatePoints();
-        // reset player state
-        progressionState.initializeState(playerSelectedData[playerSelectedIndex]);
-        // display
+        ResetSelectedCharacterDraft();
         initializePlayerDisplay();
 
         EventSystem.current.SetSelectedGameObject(GameObject.Find(progression3AccuracyName).gameObject);
@@ -374,37 +374,16 @@ public class ProgressionManager : MonoBehaviour
 
     public void confirmChanges()
     {
-        playerSelectedData[playerSelectedIndex].Accuracy3Pt = progressionState.Accuracy3;
-        playerSelectedData[playerSelectedIndex].Accuracy4Pt = progressionState.Accuracy4;
-        playerSelectedData[playerSelectedIndex].Accuracy7Pt = progressionState.Accuracy7;
-        playerSelectedData[playerSelectedIndex].Range = progressionState.Range;
-        playerSelectedData[playerSelectedIndex].Release = progressionState.Release;
-        playerSelectedData[playerSelectedIndex].Luck = progressionState.Luck;
-        playerSelectedData[playerSelectedIndex].PointsAvailable = progressionState.PointsAvailable;
-
-        //***********************************************************
-        // stats not saved correctly after max levels for 3/4/7
-        progressionState.PointsUsedThisSession =
-            progressionState.AddTo3
-            + progressionState.AddTo4
-            + progressionState.AddTo7;
-
-        if(progressionState.PointsUsedThisSession == 0 && progressionState.AddToRange > 0)
+        if (progressionDraft == null)
         {
-            progressionState.PointsUsedThisSession = progressionState.AddToRange/5;
+            ResetSelectedCharacterDraft();
         }
-        //***********************************************************
 
-        playerSelectedData[playerSelectedIndex].PointsUsed += progressionState.PointsUsedThisSession;
-
-        // save to DB
-        DBHelper.instance.UpdateCharacterProfile(playerSelectedData[playerSelectedIndex]);
+        progressionService.CommitDraft(progressionDraft, playerSelectedData[playerSelectedIndex]);
         // disable pop up
         confirmationDialogueBox.SetActive(false);
         // reset points
-        resetUpdatePoints();
-        // reset player state
-        progressionState.initializeState(playerSelectedData[playerSelectedIndex]);
+        ResetSelectedCharacterDraft();
         // display
         initializePlayerDisplay();
         // reset stats
@@ -413,132 +392,31 @@ public class ProgressionManager : MonoBehaviour
 
     public void resetUpdatePoints()
     {
-        //int originalPointsAvailable = progressionState.AddTo3 + progressionState.AddTo4 + progressionState.AddTo7;
-        progressionState.AddTo3 = 0;
-        progressionState.AddTo4 = 0;
-        progressionState.AddTo7 = 0;
-
-        progressionState.Accuracy3 = 0;
-        progressionState.Accuracy4 = 0;
-        progressionState.Accuracy7 = 0;
-
-        progressionState.Luck = 0;
-        progressionState.Range = 0;
-        progressionState.Release = 0;
-
-        addTo3Text.text = "--";
-        addTo4Text.text = "--";
-        addTo7Text.text = "--";
-
-        progressionState.PointsAvailable = 0;
-        progressionState.PointsUsedThisSession = 0;
+        ResetSelectedCharacterDraft();
     }
 
     public void updateThreeAccuracy(UpdateType updateType)
     {
-        if (progressionState.Accuracy3 < progressionState.MaxThreeAccuraccy)
-        {
-            switch (updateType)
-            {
-                case UpdateType.Add:
-                    {
-                        progressionState.AddTo3++;
-                        addTo3Text.text = (progressionState.AddTo3) > 0 ? ("+" + progressionState.AddTo3.ToString()) : ("--");
-                        progressionState.PointsAvailable--;
-                        progressionState.PointsUsedThisSession++;
-                        break;
-                    }
-                case UpdateType.Subtract:
-                    {
-                        progressionState.AddTo3--;
-                        addTo3Text.text = (progressionState.AddTo3) > 0 ? ("+" + progressionState.AddTo3.ToString()) : ("--");
-                        progressionState.PointsAvailable++;
-                        progressionState.PointsUsedThisSession--;
-                        break;
-                    }
-                default: break;
-            }
-            updateStaticCharacterStatistics(playerSelectedData[playerSelectedIndex]);
-            initializePlayerDisplay();
-        }
-        // if maxed out, update range
-        else
-        {
-            updateBonusRangeDistance(updateType);
-            updateStaticCharacterStatistics(playerSelectedData[playerSelectedIndex]);
-            initializePlayerDisplay();
-        }
+        EnsureSelectedCharacterDraft();
+        progressionService.TryUpdateAccuracy3(progressionDraft, updateType, progressionState);
+        SyncDraftToStateAndLabels();
+        initializePlayerDisplay();
         buttonPressed = false;
     }
     public void updateFourAccuracy(UpdateType updateType)
     {
-        if (progressionState.Accuracy4 < progressionState.MaxFourAccuraccy)
-        {
-            switch (updateType)
-            {
-                case UpdateType.Add:
-                    {
-                        progressionState.AddTo4++;
-                        addTo4Text.text = (progressionState.AddTo4) > 0 ? ("+" + progressionState.AddTo4.ToString()) : ("--");
-                        progressionState.PointsAvailable--;
-                        progressionState.PointsUsedThisSession++;
-                        break;
-                    }
-                case UpdateType.Subtract:
-                    {
-                        progressionState.AddTo4--;
-                        addTo4Text.text = (progressionState.AddTo4) > 0 ? ("+" + progressionState.AddTo4.ToString()) : ("--");
-                        progressionState.PointsAvailable++;
-                        progressionState.PointsUsedThisSession--;
-                        break;
-                    }
-                default: break;
-            }
-            updateStaticCharacterStatistics(playerSelectedData[playerSelectedIndex]);
-            initializePlayerDisplay();
-        }
-        else
-        {
-            updateBonusRangeDistance(updateType);
-            updateStaticCharacterStatistics(playerSelectedData[playerSelectedIndex]);
-            initializePlayerDisplay();
-        }
+        EnsureSelectedCharacterDraft();
+        progressionService.TryUpdateAccuracy4(progressionDraft, updateType, progressionState);
+        SyncDraftToStateAndLabels();
+        initializePlayerDisplay();
         buttonPressed = false;
     }
     public void updateSevenAccuracy(UpdateType updateType)
     {
-        if (progressionState.Accuracy7 < progressionState.MaxSevenAccuraccy)
-        {
-            switch (updateType)
-            {
-                case UpdateType.Add:
-                    {
-                        progressionState.AddTo7++;
-                        addTo7Text.text = (progressionState.AddTo7) > 0 ? ("+" + progressionState.AddTo7.ToString()) : ("--");
-                        progressionState.PointsAvailable--;
-                        progressionState.PointsUsedThisSession++;
-
-                        break;
-                    }
-                case UpdateType.Subtract:
-                    {
-                        progressionState.AddTo7--;
-                        addTo7Text.text = (progressionState.AddTo7) > 0 ? ("+" + progressionState.AddTo7.ToString()) : ("--");
-                        progressionState.PointsAvailable++;
-                        progressionState.PointsUsedThisSession--;
-                        break;
-                    }
-                default: break;
-            }
-            updateStaticCharacterStatistics(playerSelectedData[playerSelectedIndex]);
-            initializePlayerDisplay();
-        }
-        else
-        {
-            updateBonusRangeDistance(updateType);
-            updateStaticCharacterStatistics(playerSelectedData[playerSelectedIndex]);
-            initializePlayerDisplay();
-        }
+        EnsureSelectedCharacterDraft();
+        progressionService.TryUpdateAccuracy7(progressionDraft, updateType, progressionState);
+        SyncDraftToStateAndLabels();
+        initializePlayerDisplay();
         buttonPressed = false;
     }
 
@@ -598,10 +476,7 @@ public class ProgressionManager : MonoBehaviour
 
         // display default data
         progressionState.clearState();
-        // get default character loaded to progression state
-        progressionState.initializeState(playerSelectedData[playerSelectedIndex]);
-        // load static upgrade statistics
-        updateStaticCharacterStatistics(playerSelectedData[playerSelectedIndex]);
+        InitializeSelectedCharacterDraft();
         // init display
         initializePlayerDisplay();
 
@@ -764,111 +639,6 @@ public class ProgressionManager : MonoBehaviour
         }
     }
 
-    void updateBonusRangeDistance(UpdateType updateType)
-    {
-        //progressionState.AddToRange = progressionState.PointsUsedThisSession * 5;
-        //bonusRangeText.text = "+" + progressionState.AddToRange;
-        switch (updateType)
-        {
-            case UpdateType.Add:
-                {
-                    progressionState.AddToRange = progressionState.PointsUsedThisSession * 5;
-                    bonusRangeText.text = "+" + progressionState.AddToRange;
-                    progressionState.PointsAvailable--;
-                    progressionState.PointsUsedThisSession++;
-
-                    break;
-                }
-            case UpdateType.Subtract:
-                {
-                    progressionState.AddToRange -= 5;
-                    //progressionState.AddToRange = progressionState.PointsUsedThisSession * 5;
-                    bonusRangeText.text = "+" + progressionState.AddToRange;
-                    progressionState.PointsAvailable++;
-                    progressionState.PointsUsedThisSession--;
-                    break;
-                }
-            default: break;
-        }
-
-        //progressionState.AddToRange = progressionState.PointsUsedThisSession * 5;
-        //bonusRangeText.text = "+" + progressionState.AddToRange;
-        //Debug.Log("progressionState.AddToRange : " + progressionState.AddToRange);
-        //progressionState.PointsAvailable--;
-        //progressionState.PointsUsedThisSession++;
-        //progressionState.Range = (int)(playerSelectedData[playerSelectedIndex].Range + progressionState.AddToRange);
-    }
-
-    // ============================  footer options activate - load scene/stats/quit/etc ==============================
-
-    private void updateStaticCharacterStatistics(CharacterProfile originalCharState)
-    {
-        //Debug.Log("updateStaticCharacterStatistics");
-
-        int lastUpdate = originalCharState.Level - originalCharState.PointsAvailable;
-        int luckPointsAvailable = (originalCharState.Level / 3) - (lastUpdate / 3);
-
-        // auto add to luck if available
-        if (progressionState.PointsUsedThisSession <= luckPointsAvailable
-            && progressionState.Luck < progressionState.MaxLuck)
-        {
-            progressionState.AddToLuck = progressionState.PointsUsedThisSession;
-        }
-        else
-        {
-            progressionState.AddToLuck = 0;
-        }
-        // if luck less than max luck, can add. else. luck is max
-        if (progressionState.Luck < progressionState.MaxLuck)
-        {
-            progressionState.Luck = originalCharState.Luck + progressionState.AddToLuck;
-        }
-        else
-        {
-            progressionState.Luck = progressionState.MaxLuck;
-        }
-        // if release > max
-        if (progressionState.Release < progressionState.MaxReleaseAccuraccy)
-        {
-            progressionState.AddToRelease = progressionState.PointsUsedThisSession;
-            progressionState.Release = (int)(originalCharState.Release + progressionState.AddToRelease);
-        }
-        else
-        {
-            progressionState.Release = progressionState.MaxReleaseAccuraccy;
-        }
-        // if 3 acc > max
-        if (progressionState.Accuracy3 < progressionState.MaxThreeAccuraccy)
-        {
-            progressionState.Accuracy3 = (int)(originalCharState.Accuracy3Pt + progressionState.AddTo3);
-        }
-        else
-        {
-            progressionState.Accuracy3 = progressionState.MaxThreeAccuraccy;
-        }
-        // if 4 acc > max
-        if (progressionState.Accuracy4 < progressionState.MaxFourAccuraccy)
-        {
-            progressionState.Accuracy4 = (int)(originalCharState.Accuracy4Pt + progressionState.AddTo4);
-        }
-        else
-        {
-            progressionState.Accuracy4 = progressionState.MaxFourAccuraccy;
-        }
-        // if 7 acc > max
-        if (progressionState.Accuracy7 < progressionState.MaxSevenAccuraccy)
-        {
-            progressionState.Accuracy7 = (int)(originalCharState.Accuracy7Pt + progressionState.AddTo7);
-        }
-        else
-        {
-            progressionState.Accuracy7 = progressionState.MaxSevenAccuraccy;
-        }
-
-        progressionState.AddToRange = progressionState.PointsUsedThisSession * 5;
-        progressionState.Range = (int)(originalCharState.Range + progressionState.AddToRange);
-    }
-
     public void loadScene(string sceneName)
     {
         SceneManager.LoadScene(sceneName);
@@ -888,36 +658,53 @@ public class ProgressionManager : MonoBehaviour
     private void changeSelectedPlayerUp()
     {
         //progressionState.clearState();
-        resetUpdatePoints();
 
         playerSelectedIndex =
             (playerSelectedIndex == 0
             ? playerSelectedData.Count - 1
             : playerSelectedIndex -= 1);
 
-        // init update state
-        progressionState.initializeState(playerSelectedData[playerSelectedIndex]);
-        // update static statistsics
-        updateStaticCharacterStatistics(playerSelectedData[playerSelectedIndex]);
+        InitializeSelectedCharacterDraft();
     }
     private void changeSelectedPlayerDown()
     {
         //progressionState.clearState();
-        resetUpdatePoints();
-
-        addTo3Text.text = "--";
-        addTo4Text.text = "--";
-        addTo7Text.text = "--";
 
         playerSelectedIndex =
             ((playerSelectedIndex == playerSelectedData.Count - 1)
             ? playerSelectedIndex = 0
             : playerSelectedIndex += 1);
 
-        // init update state
-        progressionState.initializeState(playerSelectedData[playerSelectedIndex]);
-        //update static statistsics
-        updateStaticCharacterStatistics(playerSelectedData[playerSelectedIndex]);
+        InitializeSelectedCharacterDraft();
 
+    }
+
+    private void EnsureSelectedCharacterDraft()
+    {
+        if (progressionDraft == null || progressionDraft.PlayerId != playerSelectedData[playerSelectedIndex].PlayerId)
+        {
+            InitializeSelectedCharacterDraft();
+        }
+    }
+
+    private void InitializeSelectedCharacterDraft()
+    {
+        progressionDraft = progressionService.CreateDraft(playerSelectedData[playerSelectedIndex]);
+        SyncDraftToStateAndLabels();
+    }
+
+    private void ResetSelectedCharacterDraft()
+    {
+        EnsureSelectedCharacterDraft();
+        progressionService.ResetDraft(progressionDraft, playerSelectedData[playerSelectedIndex], progressionState);
+        SyncDraftToStateAndLabels();
+    }
+
+    private void SyncDraftToStateAndLabels()
+    {
+        progressionService.ApplyDraftToState(progressionDraft, progressionState);
+        addTo3Text.text = progressionState.AddTo3 > 0 ? "+" + progressionState.AddTo3 : "--";
+        addTo4Text.text = progressionState.AddTo4 > 0 ? "+" + progressionState.AddTo4 : "--";
+        addTo7Text.text = progressionState.AddTo7 > 0 ? "+" + progressionState.AddTo7 : "--";
     }
 }

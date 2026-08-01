@@ -321,21 +321,24 @@ public class TouchInputProgressionScreenController : MonoBehaviour
             buttonPressed = true;
         }
         if (selectedObject.name.Equals(ProgressionManager.Progression3AccuracyName)
-            && ProgressionManager.instance.ProgressionState.AddTo3 > 0
+            && (ProgressionManager.instance.ProgressionState.AddTo3 > 0
+                || ProgressionManager.instance.ProgressionState.AddToRange > 0)
             && !buttonPressed)
         {
             ProgressionManager.instance.updateThreeAccuracy(ProgressionManager.UpdateType.Subtract);
             buttonPressed = true;
         }
         if (selectedObject.name.Equals(ProgressionManager.Progression4AccuracyName)
-            && ProgressionManager.instance.ProgressionState.AddTo4 > 0
+            && (ProgressionManager.instance.ProgressionState.AddTo4 > 0
+                || ProgressionManager.instance.ProgressionState.AddToRange > 0)
             && !buttonPressed)
         {
             ProgressionManager.instance.updateFourAccuracy(ProgressionManager.UpdateType.Subtract);
             buttonPressed = true;
         }
         if (selectedObject.name.Equals(ProgressionManager.Progression7AccuracyName)
-            && ProgressionManager.instance.ProgressionState.AddTo7 > 0
+            && (ProgressionManager.instance.ProgressionState.AddTo7 > 0
+                || ProgressionManager.instance.ProgressionState.AddToRange > 0)
             && !buttonPressed)
         {
             ProgressionManager.instance.updateSevenAccuracy(ProgressionManager.UpdateType.Subtract);
