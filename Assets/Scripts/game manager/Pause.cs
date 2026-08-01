@@ -51,12 +51,16 @@ public class Pause : MonoBehaviour
     private GameObject toggleUiStatsObject;
     private GameObject footer;
     private bool pauseMenuNavigationEnabled;
+    private ProgressionService progressionService;
+    private string freePlayProgressionResultId;
 
     public static Pause instance;
 
     void Awake()
     {
         instance = this;
+        progressionService = new ProgressionService();
+        freePlayProgressionResultId = ProgressionService.CreateResultId("freeplay");
 #if !UNITY_ANDROID
         if (!GameOptions.battleRoyalEnabled && !GameOptions.cageMatchEnabled)
         {
@@ -278,7 +282,7 @@ public class Pause : MonoBehaviour
         SceneManager.LoadScene(SceneManager.GetActiveScene().name);
     }
 
-    private static void updateFreePlayStats()
+    private void updateFreePlayStats()
     {
         //set time played to stopped
         GameRules.instance.setTimePlayed();
@@ -291,7 +295,16 @@ public class Pause : MonoBehaviour
         DBConnector.instance.savePlayerGameStats(dBHighScoreModelTemp);
         // update all time stats
         DBConnector.instance.savePlayerAllTimeStats(BasketBall.instance.GameStats);
-        DBConnector.instance.savePlayerProfileProgression(BasketBall.instance.GameStats.ExperienceGained);
+        if (progressionService == null)
+        {
+            progressionService = new ProgressionService();
+        }
+
+        MatchProgressionResult result = new MatchProgressionResult(
+            freePlayProgressionResultId,
+            GameOptions.characterId,
+            BasketBall.instance.GameStats.ExperienceGained);
+        progressionService.ApplyMatchResult(result);
     }
 
     private void setPauseScreen(bool value)

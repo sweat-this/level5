@@ -269,7 +269,12 @@ public class DBHelper : MonoBehaviour
     }
 
     // add experience gained to database
-    internal void UpdatePlayerProfileProgression(float expGained)
+    internal bool UpdatePlayerProfileProgression(float expGained)
+    {
+        return UpdatePlayerProfileProgression(expGained, GameOptions.characterId);
+    }
+
+    internal bool UpdatePlayerProfileProgression(float expGained, int characterId)
     {
         try
         {
@@ -285,7 +290,7 @@ public class DBHelper : MonoBehaviour
             {
                 for (int i = 0; i < counter; i++)
                 {
-                    PlayerData.instance.UpdatePointsAvailable++;
+                    updatePointsAvailable++;
                 }
             }
 
@@ -319,17 +324,24 @@ public class DBHelper : MonoBehaviour
                     dbcmd.Parameters.Add(new SqliteParameter("@level", currentLevel));
                     dbcmd.Parameters.Add(new SqliteParameter("@pointsAvailable", updatePointsAvailable));
                     dbcmd.Parameters.Add(new SqliteParameter("@pointsUsed", updatePointsUsed));
-                    dbcmd.Parameters.Add(new SqliteParameter("@charid", GameOptions.characterId));
+                    dbcmd.Parameters.Add(new SqliteParameter("@charid", characterId));
 
-                    dbcmd.ExecuteNonQuery();
+                    int rowsUpdated = dbcmd.ExecuteNonQuery();
+                    if (rowsUpdated == 0)
+                    {
+                        Debug.LogWarning("No character progression row updated for charid " + characterId + ".");
+                        return false;
+                    }
                 }
             }
+
+            return true;
         }
         catch (Exception e)
         {
             DatabaseLocked = false;
             Debug.Log("ERROR : " + e);
-            return;
+            return false;
         }
     }
 

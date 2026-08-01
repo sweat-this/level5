@@ -12,6 +12,9 @@ public class LoadManager : MonoBehaviour
     [SerializeField]
     public string currentHighlightedButton;
 
+    [SerializeField]
+    private CharacterPresetCatalog characterPresetCatalog;
+
     //list of all shooter profiles with player data
     [SerializeField]
     private List<CharacterProfile> playerSelectedData;
@@ -27,6 +30,8 @@ public class LoadManager : MonoBehaviour
     [SerializeField]
     private List<LevelSelected> levelSelectedData;
     public List<LevelSelected> LevelSelectedData { get => levelSelectedData; }
+    private LevelCatalog levelCatalog;
+    public LevelCatalog LevelCatalog { get => levelCatalog; }
 
     //mode selected objects
     [SerializeField]
@@ -160,6 +165,7 @@ public class LoadManager : MonoBehaviour
         //cheerleaderSelectedData = loadDefaultCheerleaderProfiles();
         cpuPlayerSelectedData = loadCpuSelectDataList();
         levelSelectedData = loadLevelSelectDataList();
+        levelCatalog = LevelCatalog.FromLevelSelected(levelSelectedData);
         modeSelectedData = loadModeSelectDataList();
     }
 
@@ -192,6 +198,7 @@ public class LoadManager : MonoBehaviour
     private List<CharacterProfile> loadPlayerSelectDataList()
     {
         List<CharacterProfileRecord> dbShootStatsList = DBHelper.instance.getCharacterProfileStats(GameOptions.userid);
+        CharacterProgressParityLogger.LogMismatchWarnings(characterPresetCatalog, dbShootStatsList);
         List<CharacterProfile> shooterList = new List<CharacterProfile>();
 
         string path = "Prefabs/menu_start/player_selected_objects";

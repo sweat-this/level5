@@ -86,6 +86,8 @@ public class GameRules : MonoBehaviour
     private float counterTime; // this is set when shot is made that ends game : class BasketBallShotMade (attached to rim)
 
     public static GameRules instance;
+    private ProgressionService progressionService;
+    private string matchProgressionResultId;
 
     [SerializeField]
     float timePlayedStart;
@@ -109,6 +111,8 @@ public class GameRules : MonoBehaviour
         }
 
         instance = this;
+        progressionService = new ProgressionService();
+        matchProgressionResultId = ProgressionService.CreateResultId("match");
         timePlayedStart = Time.time;
         inThePocketActivateValue = 0;
     }
@@ -275,7 +279,7 @@ public class GameRules : MonoBehaviour
                 }
 
                 DBConnector.instance.savePlayerAllTimeStats(GameLevelManager.instance.Player1.gameStats);
-                DBConnector.instance.savePlayerProfileProgression(GameLevelManager.instance.Player1.gameStats.getExperienceGainedFromSession());
+                ApplyMatchProgressionResult();
 
                 // post to API
             }
@@ -285,7 +289,7 @@ public class GameRules : MonoBehaviour
             {
                 GameObject.Find("footer").SetActive(false);
                 DBConnector.instance.savePlayerAllTimeStats(GameLevelManager.instance.Player1.gameStats);
-                DBConnector.instance.savePlayerProfileProgression(GameLevelManager.instance.Player1.gameStats.getExperienceGainedFromSession());
+                ApplyMatchProgressionResult();
                 StartCoroutine(LoadNextCampaignLevel(5));
             }
         }
@@ -306,6 +310,21 @@ public class GameRules : MonoBehaviour
         {
             displayMoneyBallText.text = "";
         }
+    }
+
+    private void ApplyMatchProgressionResult()
+    {
+        if (progressionService == null)
+        {
+            progressionService = new ProgressionService();
+        }
+
+        MatchProgressionResult result = new MatchProgressionResult(
+            matchProgressionResultId,
+            GameOptions.characterId,
+            GameLevelManager.instance.Player1.gameStats.getExperienceGainedFromSession());
+
+        progressionService.ApplyMatchResult(result);
     }
 
     private IEnumerator LoadNextCampaignLevel(int seconds)

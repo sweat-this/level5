@@ -1,13 +1,7 @@
-using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Net;
-using System.Net.NetworkInformation;
 using UnityEngine;
-using UnityEngine.Analytics;
 using UnityEngine.SceneManagement;
-using Ping = System.Net.NetworkInformation.Ping;
-using Random = UnityEngine.Random;
 
 namespace Assets.Scripts.Utility
 {
@@ -58,7 +52,6 @@ namespace Assets.Scripts.Utility
             {
                 yield break;
             }
-            //PlayerIdentifier cpuipi = cpuPlayer.GetComponent<PlayerIdentifier>();
 
             //mode
             GameOptions.gameModeSelectedId = Modes.VersusCpu;
@@ -74,9 +67,11 @@ namespace Assets.Scripts.Utility
             GameOptions.gameModeHasBeenSelected = true;
             GameOptions.customTimer = 0;
             //character
-            GameOptions.characterObjectNames = new List<string>();
-            GameOptions.characterObjectNames.Add(pi.characterProfile.PlayerObjectName);
-            GameOptions.characterObjectNames.Add("pony");
+            GameOptions.characterObjectNames = new List<string>
+            {
+                pi.characterProfile.PlayerObjectName,
+                "pony"
+            };
 
             GameOptions.numPlayers = GameOptions.characterObjectNames.Count;
             GameOptions.levelsList = PlayerData.instance.LevelsList;

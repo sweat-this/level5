@@ -15,6 +15,7 @@ public class LoadedData : MonoBehaviour
     // list off level  data
     [SerializeField]
     private List<LevelSelected> levelSelectedData;
+    private LevelCatalog levelCatalog;
     //mode selected objects
     [SerializeField]
     private List<StartScreenModeSelected> modeSelectedData;
@@ -71,6 +72,7 @@ public class LoadedData : MonoBehaviour
 
         yield return new WaitUntil(() => LoadManager.instance != null && LoadManager.instance.levelDataLoaded);
         levelSelectedData = LoadManager.instance.LevelSelectedData;
+        levelCatalog = LoadManager.instance.LevelCatalog;
 
         yield return new WaitUntil(() => LoadManager.instance != null && LoadManager.instance.modeDataLoaded);
         modeSelectedData = LoadManager.instance.ModeSelectedData;
@@ -130,6 +132,7 @@ public class LoadedData : MonoBehaviour
     public List<CharacterProfile> PlayerSelectedData { get => playerSelectedData; }
     public List<CheerleaderProfile> CheerleaderSelectedData { get => cheerleaderSelectedData; }
     public List<LevelSelected> LevelSelectedData { get => levelSelectedData; }
+    public LevelCatalog LevelCatalog { get => levelCatalog; }
     public List<StartScreenModeSelected> ModeSelectedData { get => modeSelectedData; }
     public bool DataLoaded { get => dataLoaded; }
     public List<CharacterProfile> CpuPlayerSelectedData { get => cpuPlayerSelectedData; set => cpuPlayerSelectedData = value; }

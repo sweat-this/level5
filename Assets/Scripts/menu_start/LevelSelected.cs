@@ -60,4 +60,5 @@ public class LevelSelected : MonoBehaviour
     public Sprite CpuPlayerWinImage { get => cpuPlayer.GetComponent<CharacterProfile>().winPortrait; set => cpuPlayerWinImage = value; }
     public Sprite CpuPlayerLoseImage { get => cpuPlayer.GetComponent<CharacterProfile>().losePortrait; set => cpuPlayerLoseImage = value; }
     public bool IsSelectable { get => isSelectable; }
+    public bool IsLocked { get => isLocked; }
 }

@@ -347,9 +347,14 @@ public class DBConnector : MonoBehaviour
         dbHelper.InsertGameScore(dbHighScoreModel);
     }
 
-    public void savePlayerProfileProgression(float expGained)
+    public bool savePlayerProfileProgression(float expGained)
     {
-        dbHelper.UpdatePlayerProfileProgression(expGained);
+        return savePlayerProfileProgression(expGained, GameOptions.characterId);
+    }
+
+    public bool savePlayerProfileProgression(float expGained, int characterId)
+    {
+        return dbHelper.UpdatePlayerProfileProgression(expGained, characterId);
     }
 
     public void savePlayerAllTimeStats(GameStats stats)
