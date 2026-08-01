@@ -50,6 +50,7 @@ public class Pause : MonoBehaviour
     private GameObject toggleFpsObject;
     private GameObject toggleUiStatsObject;
     private GameObject footer;
+    private bool pauseMenuNavigationEnabled;
 
     public static Pause instance;
 
@@ -120,6 +121,11 @@ public class Pause : MonoBehaviour
         }
     }
 
+    private void OnDisable()
+    {
+        DisablePauseMenuNavigation();
+    }
+
     // Update is called once per frame
     void Update()
     {
@@ -162,26 +168,26 @@ public class Pause : MonoBehaviour
             // ================== pause menu options ==============================================================
             // reload scene
             if (currentHighlightedButton.name.Equals(loadSceneButton.name)
-                && GameLevelManager.instance.Controls.UINavigation.Submit.triggered
+                && PlayerControlsProvider.MenuSubmitTriggered
                 && ( GameOptions.gameModeSelectedId != 26 ))
             {
                 reloadScene();
             }
             //load start screen
             if (currentHighlightedButton.name.Equals(loadStartScreenButton.name)
-                && GameLevelManager.instance.Controls.UINavigation.Submit.triggered)
+                && PlayerControlsProvider.MenuSubmitTriggered)
             {
                 StartCoroutine(loadstartScreen());
             }
             // cancel
             if (currentHighlightedButton.name.Equals(cancelMenuButton.name)
-                && GameLevelManager.instance.Controls.UINavigation.Submit.triggered)
+                && PlayerControlsProvider.MenuSubmitTriggered)
             {
                 TogglePause();
             }
             // quit
             if (currentHighlightedButton.name.Equals(quitGameButton.name)
-                && GameLevelManager.instance.Controls.UINavigation.Submit.triggered)
+                && PlayerControlsProvider.MenuSubmitTriggered)
             {
                 StartCoroutine(Quit());
             }
@@ -323,6 +329,7 @@ public class Pause : MonoBehaviour
             Time.timeScale = 1f;
             setBackgroundFade(false);
             setPauseScreen(false);
+            DisablePauseMenuNavigation();
             resumeAllAudio();
 
             if (GameLevelManager.instance.Joystick != null)
@@ -339,6 +346,7 @@ public class Pause : MonoBehaviour
             pauseAllAudio();
             setBackgroundFade(true);
             setPauseScreen(true);
+            EnablePauseMenuNavigation();
 
             if (GameLevelManager.instance.Joystick != null)
             {
@@ -407,6 +415,28 @@ public class Pause : MonoBehaviour
     private void QuitApplication()
     {
         Application.Quit();
+    }
+
+    private void EnablePauseMenuNavigation()
+    {
+        if (pauseMenuNavigationEnabled)
+        {
+            return;
+        }
+
+        PlayerControlsProvider.EnableMenuMaps();
+        pauseMenuNavigationEnabled = true;
+    }
+
+    private void DisablePauseMenuNavigation()
+    {
+        if (!pauseMenuNavigationEnabled)
+        {
+            return;
+        }
+
+        PlayerControlsProvider.DisableMenuMaps();
+        pauseMenuNavigationEnabled = false;
     }
 
 }
