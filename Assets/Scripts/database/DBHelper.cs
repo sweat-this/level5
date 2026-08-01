@@ -459,7 +459,7 @@ public class DBHelper : MonoBehaviour
 
     // update a character profile.
     // used in Progression scene on Save progress
-    public void UpdateCharacterProfile(CharacterProfile character)
+    public bool UpdateCharacterProfile(CharacterProfile character)
     {
         try
         {
@@ -507,12 +507,13 @@ public class DBHelper : MonoBehaviour
                 dbconn.Close();
             }
             databaseLocked = false;
+            return true;
         }
         catch (Exception e)
         {
             DatabaseLocked = false;
             Debug.Log("ERROR : " + e);
-            return;
+            return false;
         }
     }
     // insert a specific cheerleader to database. Example, new cheerleader added to game,

@@ -379,7 +379,12 @@ public class ProgressionManager : MonoBehaviour
             ResetSelectedCharacterDraft();
         }
 
-        progressionService.CommitDraft(progressionDraft, playerSelectedData[playerSelectedIndex]);
+        if (!progressionService.CommitDraft(progressionDraft, playerSelectedData[playerSelectedIndex]))
+        {
+            EventSystem.current.SetSelectedGameObject(GameObject.Find(confirmButtonName).gameObject);
+            return;
+        }
+
         // disable pop up
         confirmationDialogueBox.SetActive(false);
         // reset points
@@ -398,7 +403,15 @@ public class ProgressionManager : MonoBehaviour
     public void updateThreeAccuracy(UpdateType updateType)
     {
         EnsureSelectedCharacterDraft();
-        progressionService.TryUpdateAccuracy3(progressionDraft, updateType, progressionState);
+        if (updateType == UpdateType.Add)
+        {
+            progressionService.TryAddAccuracy3(progressionDraft, progressionState);
+        }
+        else if (updateType == UpdateType.Subtract)
+        {
+            progressionService.TrySubtractAccuracy3(progressionDraft, progressionState);
+        }
+
         SyncDraftToStateAndLabels();
         initializePlayerDisplay();
         buttonPressed = false;
@@ -406,7 +419,15 @@ public class ProgressionManager : MonoBehaviour
     public void updateFourAccuracy(UpdateType updateType)
     {
         EnsureSelectedCharacterDraft();
-        progressionService.TryUpdateAccuracy4(progressionDraft, updateType, progressionState);
+        if (updateType == UpdateType.Add)
+        {
+            progressionService.TryAddAccuracy4(progressionDraft, progressionState);
+        }
+        else if (updateType == UpdateType.Subtract)
+        {
+            progressionService.TrySubtractAccuracy4(progressionDraft, progressionState);
+        }
+
         SyncDraftToStateAndLabels();
         initializePlayerDisplay();
         buttonPressed = false;
@@ -414,7 +435,15 @@ public class ProgressionManager : MonoBehaviour
     public void updateSevenAccuracy(UpdateType updateType)
     {
         EnsureSelectedCharacterDraft();
-        progressionService.TryUpdateAccuracy7(progressionDraft, updateType, progressionState);
+        if (updateType == UpdateType.Add)
+        {
+            progressionService.TryAddAccuracy7(progressionDraft, progressionState);
+        }
+        else if (updateType == UpdateType.Subtract)
+        {
+            progressionService.TrySubtractAccuracy7(progressionDraft, progressionState);
+        }
+
         SyncDraftToStateAndLabels();
         initializePlayerDisplay();
         buttonPressed = false;

@@ -13,27 +13,58 @@ public class CharacterProgressionService
         RecalculateDraft(draft, progressionState);
     }
 
-    public bool TryUpdateAccuracy3(CharacterProgressDraft draft, ProgressionManager.UpdateType updateType, ProgressionState progressionState)
+    public bool TryAddAccuracy3(CharacterProgressDraft draft, ProgressionState progressionState)
     {
-        return TryUpdateAccuracy(draft, updateType, progressionState, AccuracySlot.Three);
+        return TryAddAccuracy(draft, progressionState, AccuracySlot.Three);
     }
 
-    public bool TryUpdateAccuracy4(CharacterProgressDraft draft, ProgressionManager.UpdateType updateType, ProgressionState progressionState)
+    public bool TryAddAccuracy4(CharacterProgressDraft draft, ProgressionState progressionState)
     {
-        return TryUpdateAccuracy(draft, updateType, progressionState, AccuracySlot.Four);
+        return TryAddAccuracy(draft, progressionState, AccuracySlot.Four);
     }
 
-    public bool TryUpdateAccuracy7(CharacterProgressDraft draft, ProgressionManager.UpdateType updateType, ProgressionState progressionState)
+    public bool TryAddAccuracy7(CharacterProgressDraft draft, ProgressionState progressionState)
     {
-        return TryUpdateAccuracy(draft, updateType, progressionState, AccuracySlot.Seven);
+        return TryAddAccuracy(draft, progressionState, AccuracySlot.Seven);
     }
 
-    public void CommitDraft(CharacterProgressDraft draft, CharacterProfile characterProfile)
+    public bool TrySubtractAccuracy3(CharacterProgressDraft draft, ProgressionState progressionState)
+    {
+        return TrySubtractAccuracy(draft, progressionState, AccuracySlot.Three);
+    }
+
+    public bool TrySubtractAccuracy4(CharacterProgressDraft draft, ProgressionState progressionState)
+    {
+        return TrySubtractAccuracy(draft, progressionState, AccuracySlot.Four);
+    }
+
+    public bool TrySubtractAccuracy7(CharacterProgressDraft draft, ProgressionState progressionState)
+    {
+        return TrySubtractAccuracy(draft, progressionState, AccuracySlot.Seven);
+    }
+
+    public bool CommitDraft(CharacterProgressDraft draft, CharacterProfile characterProfile)
     {
         if (draft == null || characterProfile == null)
         {
-            return;
+            Debug.LogError("Character progression could not be saved because the draft or character profile is missing.");
+            return false;
         }
+
+        if (DBHelper.instance == null)
+        {
+            Debug.LogError("Character progression could not be saved because DBHelper is unavailable.");
+            return false;
+        }
+
+        float originalAccuracy3 = characterProfile.Accuracy3Pt;
+        float originalAccuracy4 = characterProfile.Accuracy4Pt;
+        float originalAccuracy7 = characterProfile.Accuracy7Pt;
+        int originalRange = characterProfile.Range;
+        int originalRelease = characterProfile.Release;
+        int originalLuck = characterProfile.Luck;
+        int originalPointsAvailable = characterProfile.PointsAvailable;
+        int originalPointsUsed = characterProfile.PointsUsed;
 
         characterProfile.Accuracy3Pt = draft.Accuracy3;
         characterProfile.Accuracy4Pt = draft.Accuracy4;
@@ -44,10 +75,20 @@ public class CharacterProgressionService
         characterProfile.PointsAvailable = draft.PointsAvailable;
         characterProfile.PointsUsed = draft.OriginalPointsUsed + draft.PointsUsedThisSession;
 
-        if (DBHelper.instance != null)
+        if (DBHelper.instance.UpdateCharacterProfile(characterProfile))
         {
-            DBHelper.instance.UpdateCharacterProfile(characterProfile);
+            return true;
         }
+
+        characterProfile.Accuracy3Pt = originalAccuracy3;
+        characterProfile.Accuracy4Pt = originalAccuracy4;
+        characterProfile.Accuracy7Pt = originalAccuracy7;
+        characterProfile.Range = originalRange;
+        characterProfile.Release = originalRelease;
+        characterProfile.Luck = originalLuck;
+        characterProfile.PointsAvailable = originalPointsAvailable;
+        characterProfile.PointsUsed = originalPointsUsed;
+        return false;
     }
 
     public void ApplyDraftToState(CharacterProgressDraft draft, ProgressionState progressionState)
@@ -75,9 +116,8 @@ public class CharacterProgressionService
         progressionState.Experience = draft.Experience;
     }
 
-    private bool TryUpdateAccuracy(
+    private bool TryAddAccuracy(
         CharacterProgressDraft draft,
-        ProgressionManager.UpdateType updateType,
         ProgressionState progressionState,
         AccuracySlot slot)
     {
@@ -86,41 +126,50 @@ public class CharacterProgressionService
             return false;
         }
 
-        if (updateType == ProgressionManager.UpdateType.Add)
+        if (draft.PointsAvailable <= 0)
         {
-            if (draft.PointsAvailable <= 0)
-            {
-                return false;
-            }
-
-            if (GetAccuracy(draft, slot) < GetMaxAccuracy(progressionState, slot))
-            {
-                SetPendingAccuracy(draft, slot, GetPendingAccuracy(draft, slot) + 1);
-            }
-            else
-            {
-                draft.ExtraRangePoints++;
-            }
+            return false;
         }
-        else if (updateType == ProgressionManager.UpdateType.Subtract)
+
+        if (GetAccuracy(draft, slot) < GetMaxAccuracy(progressionState, slot))
         {
-            int pendingAccuracy = GetPendingAccuracy(draft, slot);
-            if (GetAccuracy(draft, slot) >= GetMaxAccuracy(progressionState, slot) && draft.ExtraRangePoints > 0)
-            {
-                draft.ExtraRangePoints--;
-            }
-            else if (pendingAccuracy > 0)
-            {
-                SetPendingAccuracy(draft, slot, pendingAccuracy - 1);
-            }
-            else if (draft.ExtraRangePoints > 0)
-            {
-                draft.ExtraRangePoints--;
-            }
-            else
-            {
-                return false;
-            }
+            SetPendingAccuracy(draft, slot, GetPendingAccuracy(draft, slot) + 1);
+        }
+        else
+        {
+            draft.ExtraRangePoints++;
+        }
+
+        RecalculateDraft(draft, progressionState);
+        return true;
+    }
+
+    private bool TrySubtractAccuracy(
+        CharacterProgressDraft draft,
+        ProgressionState progressionState,
+        AccuracySlot slot)
+    {
+        if (draft == null || progressionState == null)
+        {
+            return false;
+        }
+
+        int pendingAccuracy = GetPendingAccuracy(draft, slot);
+        if (GetAccuracy(draft, slot) >= GetMaxAccuracy(progressionState, slot) && draft.ExtraRangePoints > 0)
+        {
+            draft.ExtraRangePoints--;
+        }
+        else if (pendingAccuracy > 0)
+        {
+            SetPendingAccuracy(draft, slot, pendingAccuracy - 1);
+        }
+        else if (draft.ExtraRangePoints > 0)
+        {
+            draft.ExtraRangePoints--;
+        }
+        else
+        {
+            return false;
         }
 
         RecalculateDraft(draft, progressionState);
