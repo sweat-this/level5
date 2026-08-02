@@ -156,6 +156,7 @@ These issues were reduced by the recent player interaction work, but they should
 - Player, enemy, and bodyguard health now expose a common damageable contract.
 - Enemy and bodyguard health now clamp health, guard duplicate death transitions, and publish health/death events.
 - Enemy and bodyguard health bars now subscribe to health change events instead of relying only on manual refresh calls.
+- Enemy/bodyguard collision damage and enemy lightning damage now route through `ApplyDamage(DamageInfo)` and use the returned death result for cleanup.
 - Player health and death were hardened so dead players ignore additional damage and publish clearer state.
 - Player attack queue release paths were improved to reduce stuck attacker reservations.
 - Projectile pooling and reset behavior were improved.

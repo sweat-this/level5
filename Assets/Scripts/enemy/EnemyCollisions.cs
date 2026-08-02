@@ -49,6 +49,7 @@ public class EnemyCollisions : MonoBehaviour
             }
             if (!enemyDodge)
             {
+                bool enemyKilledByHit = false;
                 if (other.CompareTag("playerAttackBox"))
                 {
                     playerAttackBox = other.GetComponent<PlayerAttackBox>();
@@ -75,7 +76,7 @@ public class EnemyCollisions : MonoBehaviour
                     //{
                     //    enemyHealth.Health -= playerAttackBox.attackDamage;
                     //}
-                    enemyHealth.Health -= playerAttackBox.attackDamage;
+                    enemyKilledByHit = ApplyDamage(playerAttackBox.attackDamage, other, "playerAttack");
                     StartCoroutine(enemyHealthBar.DisplayCustomMessageOnDamageDisplay(damageDisplayMessage));
                 }
                 // ------------------ enemy attacks enemy -----------------------
@@ -89,21 +90,19 @@ public class EnemyCollisions : MonoBehaviour
                     if (isRake)
                     {
                         damageDisplayMessage = "-" + enemyAttackBox.attackDamage;
-                        enemyHealth.Health -= enemyAttackBox.attackDamage;
+                        enemyKilledByHit = ApplyDamage(enemyAttackBox.attackDamage, other, "obstacleAttack");
                     }
                     // if enemy 50% damage
                     else
                     {
                         damageDisplayMessage = "-" + enemyAttackBox.attackDamage * 0.5f;
-                        enemyHealth.Health -= enemyAttackBox.attackDamage / 2;
+                        enemyKilledByHit = ApplyDamage(enemyAttackBox.attackDamage / 2, other, "enemyAttack");
                     }
                     StartCoroutine(enemyHealthBar.DisplayCustomMessageOnDamageDisplay(damageDisplayMessage));
                 }
-                //update health slider
-                enemyHealthBar.setHealthSliderValue();
 
                 // check if enemy dead + enemy fails to roll critical to dodge
-                if (enemyHealth.Health > 0)
+                if (!enemyKilledByHit && enemyHealth.Health > 0)
                 {
                     // player knock down attack
                     if (playerAttackBox != null
@@ -147,12 +146,19 @@ public class EnemyCollisions : MonoBehaviour
                 }
 
                 // else enemy is dead
-                if (enemyHealth.Health <= 0 && !enemyHealth.IsDead)
+                if (enemyKilledByHit)
                 {
                     enemyIsDead(playerAttackBox);
                 }
             }
         }
+    }
+
+    private bool ApplyDamage(float amount, Collider source, string damageType)
+    {
+        bool wasAlive = !enemyHealth.IsDead;
+        return wasAlive && enemyHealth.ApplyDamage(
+            new DamageInfo(amount, source.transform.root.gameObject, source.transform.position, Vector3.zero, damageType));
     }
 
     private void enemyIsDead(PlayerAttackBox playerAttackBox)

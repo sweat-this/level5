@@ -34,6 +34,7 @@ public class BodyGuardCollisions : MonoBehaviour
         {
             //PlayerAttackBox playerAttackBox = null;
             EnemyAttackBox enemyAttackBox = null;
+            bool bodyGuardKilledByHit = false;
 
             //if (other.GetComponent<PlayerAttackBox>() != null)
             //{
@@ -44,12 +45,16 @@ public class BodyGuardCollisions : MonoBehaviour
                 && bodyGuardHealth != null)
             {
                 enemyAttackBox = other.GetComponent<EnemyAttackBox>();
-                bodyGuardHealth.Health -= (enemyAttackBox.attackDamage / 2);
+                bodyGuardKilledByHit = ApplyDamage(enemyAttackBox.attackDamage / 2, other);
             }
-            //update health slider
-            bodyGuardHealthBar.setHealthSliderValue();
+
+            if (enemyAttackBox == null)
+            {
+                return;
+            }
+
             // check if enemy dead
-            if (bodyGuardHealth.Health >= 0)
+            if (!bodyGuardKilledByHit && bodyGuardHealth.Health > 0)
             {
                 // player knock down attack
                 //if (playerAttackBox != null
@@ -92,7 +97,7 @@ public class BodyGuardCollisions : MonoBehaviour
                 }
             }
             // else enemy is dead
-            if (bodyGuardHealth.Health <= 0 && !bodyGuardHealth.IsDead)
+            if (bodyGuardKilledByHit)
             {
                 bodyGuardHealth.IsDead = true;
                 // killed by player attack box and NOT enemy friendly fire
@@ -115,6 +120,13 @@ public class BodyGuardCollisions : MonoBehaviour
                 StartCoroutine(bodyGuardController.killEnemy());
             }
         }
+    }
+
+    private bool ApplyDamage(float amount, Collider source)
+    {
+        bool wasAlive = !bodyGuardHealth.IsDead;
+        return wasAlive && bodyGuardHealth.ApplyDamage(
+            new DamageInfo(amount, source.transform.root.gameObject, source.transform.position, Vector3.zero, "enemyAttack"));
     }
 
     private void enemyDisintegrated()

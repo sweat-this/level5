@@ -36,6 +36,7 @@ public class BodyGuardHealthBar : MonoBehaviour
     // Update is called once per frame
     public void setHealthSliderValue()
     {
+        healthSlider.maxValue = bodyGuardHealth.MaxEnemyHealth;
         healthSlider.value = bodyGuardHealth.Health;
         //healthSliderValueText.text = healthSlider.value.ToString("0") + "%";
         //Debug.Log("slider.value : " + slider.value.ToString());

@@ -78,7 +78,7 @@ Work:
 - Finish converging health behavior around `IDamageable` and `DamageInfo`.
 - Add an `AttackDefinition` ScriptableObject for authored attack tuning.
 - Add a small `IAttackSource` or equivalent if repeated attack code needs a source contract.
-- Route enemy/bodyguard collision damage through `ApplyDamage(DamageInfo)` instead of direct `Health -=`.
+- Route enemy/bodyguard collision damage through `ApplyDamage(DamageInfo)` instead of direct `Health -=`. Done for enemy/bodyguard collision damage and enemy lightning damage.
 - Make health bars and damage displays event-driven.
 
 Unity practices:
@@ -368,7 +368,7 @@ Acceptance criteria:
 ## Immediate Implementation Backlog
 
 1. Add edit-mode tests for `PlayerHealth`, `EnemyHealth`, and `BodyGuardHealth`.
-2. Replace direct enemy/bodyguard `Health -=` collision calls with `ApplyDamage(new DamageInfo(...))`.
+2. Replace direct enemy/bodyguard `Health -=` collision calls with `ApplyDamage(new DamageInfo(...))`. Done for collision damage and enemy lightning damage.
 3. Add `AttackDefinition` as a ScriptableObject for authored attack tuning.
 4. Add reservation-oriented methods to `PlayerAttackQueue`.
 5. Add `ICombatAgent` adapters to enemy/bodyguard controllers.

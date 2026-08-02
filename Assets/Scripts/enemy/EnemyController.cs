@@ -364,8 +364,7 @@ public class EnemyController : MonoBehaviour
 
     public IEnumerator struckByLighning(int damage)
     {
-        enemyHealth.Health -= damage;
-        enemyHealthBar.setHealthSliderValue();
+        bool enemyKilledByHit = !enemyHealth.IsDead && enemyHealth.ApplyDamage(new DamageInfo(damage));
 
         StartCoroutine(enemyHealthBar.DisplayCustomMessageOnDamageDisplay("-"+damage.ToString()));
 
@@ -375,7 +374,7 @@ public class EnemyController : MonoBehaviour
         anim.Play("lightning");
         yield return new WaitUntil(() => currentState == AnimatorState_Lightning);
 
-        if (enemyHealth.Health <= 0 && !enemyHealth.IsDead)
+        if (enemyKilledByHit)
         {
             enemyIsDead();
         }
