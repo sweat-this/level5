@@ -6,6 +6,7 @@ This folder is the baseline documentation home for the Level5 Unity project. It 
 
 - [Systems and Architecture Baseline](systems-architecture-baseline.md) - current system inventory, runtime flows, architectural gaps, and recommended target direction.
 - [Architecture Audit](architecture-audit.md) - running audit register for main problems, risks, recommended solutions, and remediation status.
+- [Architecture Remediation Plan](architecture-remediation-plan.md) - staged implementation plan for clean architecture, Unity best practices, performance, and risk control.
 
 ## Documentation Backlog
 
