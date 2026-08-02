@@ -30,6 +30,124 @@ Use this document for problems and decisions. Use [Systems and Architecture Base
 | AUD-011 | Persistence boundaries | Medium | Open | Account, local save, server messages, database/API calls, progression, and migration systems need clearer source-of-truth documentation. | Offline behavior, retry handling, migration safety, and conflict resolution can become unclear. | Document local-vs-remote ownership, failure handling, retry behavior, migration rules, and user/account identity flow. |
 | AUD-012 | Legacy/dev/test separation | Low | Open | Production scripts, test scripts, diagnostics, original managers, and utility helpers are mixed in the runtime tree. | Old or diagnostic code may be accidentally referenced by production systems. | Tag or move code into clear `Runtime`, `Editor`, `Dev`, `Legacy`, and `Tests` ownership areas over time. |
 
+## Finding Details
+
+### AUD-001: Combat State Ownership Is Split
+
+Evidence:
+
+- `PlayerCollisions` applies damage, toggles player controller damage state, displays health UI messages, and triggers audio.
+- `PlayerHealth` owns health values and death events.
+- `PlayerController` watches `TakeDamage` in `Update` and starts `PlayerTakeDamage`.
+- `PlayerAnimationEvents`, `EnemyAnimationEvents`, and `BodyGuardAnimationEvents` enable/disable attack boxes from animation callbacks.
+- `PlayerAttackQueue` coordinates enemy/bodyguard reservations and also writes back into detection components.
+
+Why it matters: there is no single combat transaction. A hit can touch collision logic, health, animation, UI, audio, queue state, stats, and AI behavior. That makes it hard to guarantee idempotent death, clean attack interruption, or reliable UI updates.
+
+Recommended next move: introduce a small combat contract layer before further behavior changes: `DamageInfo`, `IDamageable`, `ICombatAgent`, `HealthChanged`, `Died`, and `AttackDefinition`.
+
+### AUD-002: PlayerController Is Over-Scoped
+
+Evidence:
+
+- `PlayerController` resolves UI with `GameObject.Find` at `Assets/Scripts/player/PlayerController.cs:171`.
+- It pulls health and rim state from `GameLevelManager.instance` at `Assets/Scripts/player/PlayerController.cs:178`.
+- It reads mobile joystick input from `GameLevelManager.instance` in movement at `Assets/Scripts/player/PlayerController.cs:243`.
+- It owns attack entry with `PlayerAttack` at `Assets/Scripts/player/PlayerController.cs:658`.
+- It owns damage reaction coroutine state with `PlayerTakeDamage` at `Assets/Scripts/player/PlayerController.cs:779`.
+- It triggers sniper behavior through `SniperManager.instance` around `Assets/Scripts/player/PlayerController.cs:573`.
+- It mutates camera FOV through `CameraManager.instance` around `Assets/Scripts/player/PlayerController.cs:881`.
+
+Why it matters: this class is acting as movement controller, input adapter, combat state machine, basketball action owner, animation bridge, UI message writer, sniper trigger, and camera modifier. Any refactor risks side effects across unrelated gameplay features.
+
+Recommended next move: do not split it all at once. Start by extracting the lowest-risk seam first: input intent collection or damage reaction state. Keep a facade on `PlayerController` while callers migrate.
+
+### AUD-003: Actor Health Is Inconsistent
+
+Evidence:
+
+- `PlayerHealth` clamps values, exposes `OnHealthChanged`, `OnBlockChanged`, `OnSpecialChanged`, and `OnDied`, and rejects damage after death.
+- `EnemyHealth` and `BodyGuardHealth` expose settable `Health`/`IsDead` properties without the same event or clamping model.
+- Enemy/bodyguard damage and death cleanup are driven from collision/controller scripts instead of a reusable health lifecycle.
+
+Why it matters: every actor type can drift in how death is detected, whether repeat damage is ignored, how UI updates, and who performs cleanup.
+
+Recommended next move: create a reusable `HealthComponent` behavior or base service with optional actor adapters. Migrate enemy or bodyguard first because player health has the most existing UI dependencies.
+
+### AUD-004: Attack Queue Is Still Actor-Specific
+
+Evidence:
+
+- `PlayerAttackQueue` stores attackers and bodyguards as `GameObject` lists.
+- It discovers slots and bodyguards through tags at `Assets/Scripts/player/PlayerAttackQueue.cs:81` and `Assets/Scripts/player/PlayerAttackQueue.cs:97`.
+- It writes directly into `EnemyDetection` and `BodyGuardDetection` state when assigning or clearing reservations.
+- `EnemyDetection` gets the queue through `GameLevelManager.instance.PlayerController1.PlayerAttackQueue`.
+- `EnemyController` and `BodyGuardController` read queue internals like `BodyGuards`, `EnemiesQueued`, and attack positions directly.
+
+Why it matters: the reservation concept is good, but the queue currently knows too much about the actor implementations. New melee actors will require queue changes, and queue invariants can be bypassed through public lists.
+
+Recommended next move: introduce `CombatReservation` and `ICombatAgent`. The queue should return a reservation object and expose read-only slot state. Detection/controller scripts should not mutate queue internals directly.
+
+### AUD-005: Global Managers and Scene Searches Are Load-Bearing Dependencies
+
+Evidence:
+
+- Common runtime scripts use `GameLevelManager.instance`, `BasketBall.instance`, `GameRules.instance`, `Pause.instance`, `SFXBB.instance`, and other singletons.
+- Scene object lookup appears in gameplay paths such as `PlayerController`, `EnemySpawner`, `TrafficManager`, `Timer`, `BasketBall`, `DBHelper`, and `DevFunctions`.
+- Some systems search by object name or tag for required objects like `messageDisplay`, `shot_clock`, `steelCageRootObject`, spawn markers, and queue positions.
+
+Why it matters: scene setup becomes an implicit API. Renames, prefab reuse, additive scenes, tests, and mode-specific scenes are fragile because required references are not visible at compile time or in prefab contracts.
+
+Recommended next move: document a scene contract for each game mode, then introduce a `LevelRuntimeContext` that exposes typed references. Keep old globals as compatibility accessors during migration.
+
+### AUD-006: Spawn Lifecycle Does Not Have a Shared Pooling Contract
+
+Evidence:
+
+- `EnemySpawner` directly instantiates minions, bosses, and battle royal contestants.
+- `TrafficManager` directly instantiates vehicles and mutates prefab/controller state before spawn.
+- Enemy/bodyguard controllers destroy themselves on death/knockdown paths.
+- Projectiles already have `ProjectilePool` and `PooledProjectile`, so a local pooling pattern exists.
+
+Why it matters: mixed instantiate/destroy behavior can cause allocation spikes, stale references, and inconsistent reset behavior. Mutating prefab/component state before instantiate is especially risky because authored prefab defaults can accidentally become runtime state.
+
+Recommended next move: document reset requirements for projectiles first, then create a generic pooled actor contract for enemies or vehicles as the first non-projectile pool.
+
+### AUD-007: Animation Events Still Own Gameplay Timing
+
+Evidence:
+
+- `PlayerAnimationEvents` enables/disables hitboxes and attack boxes, spawns projectiles, applies force, changes Rigidbody kinematic state, and plays audio.
+- `EnemyAnimationEvents` and `BodyGuardAnimationEvents` duplicate many of the attack box, projectile, force, and audio responsibilities.
+
+Why it matters: animation clips become hidden gameplay scripts. Missing events, renamed methods, or animation timing edits can break attacks, projectile firing, or cleanup.
+
+Recommended next move: define animation event methods as presentation/timing adapters only. Combat drivers should own attack windows, validate that an attack is still legal, and forcibly close windows on disable, death, interruption, and state exit.
+
+### AUD-008: Basketball Flow Mixes Gameplay, UI, Stats, and Analytics
+
+Evidence:
+
+- `BasketBall` holds `GameStats`, `PlayerController`, UI `Text`, shot distance, shot state, collision handling, score text formatting, shot math, and analytics calls.
+- `GameRules` also formats basketball score output and calls `BasketBall.instance` for percentages.
+- Shot attempts update state, stats, marker rules, player animation, shot meter messaging, and analytics in one flow.
+
+Why it matters: shot behavior is a core game loop, but it is hard to test because one shot can affect physics, UI, scoring, progression stats, analytics, and mode rules directly.
+
+Recommended next move: document the shot lifecycle and introduce a `ShotResult` event. UI, stats, analytics, progression, and rules should consume the result instead of being embedded in the shot execution path.
+
+### AUD-009: Persistence and Progression Boundaries Need Ownership Rules
+
+Evidence:
+
+- `Pause` handles game pausing, high score persistence, all-time stat persistence, and match progression application.
+- `DBConnector`, `DBHelper`, `PlayerData`, local account scripts, server messages, and progression services all participate in durable state.
+- Progression has a stronger service shape than older persistence paths, but the source-of-truth rules are not documented yet.
+
+Why it matters: save timing, offline behavior, retries, migration, and duplicate result prevention are product-critical. They should not depend on UI/pause flow details.
+
+Recommended next move: document the persistence lifecycle from match result to local save/server sync. Promote progression result application behind a single service boundary and make pause/end-round UI call that boundary.
+
 ## Recent Mitigations
 
 These issues were reduced by the recent player interaction work, but they should remain visible until durable architecture follow-up is complete.
