@@ -24,7 +24,18 @@ public class EnemyHealthBar : MonoBehaviour
         enemyHealth = transform.parent.GetComponentInChildren<EnemyHealth>();
         healthSlider = GetComponentInChildren<Slider>();
         healthSlider.maxValue = enemyHealth.MaxEnemyHealth;
+        enemyHealth.OnHealthChanged += setHealthSliderValue;
         setHealthSliderValue();
+    }
+
+    private void OnDestroy()
+    {
+        if (enemyHealth == null)
+        {
+            return;
+        }
+
+        enemyHealth.OnHealthChanged -= setHealthSliderValue;
     }
 
     // Update is called once per frame

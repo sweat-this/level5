@@ -18,7 +18,19 @@ public class BodyGuardHealthBar : MonoBehaviour
 
         bodyGuardHealth = transform.parent.GetComponentInChildren<BodyGuardHealth>();
         healthSlider = GetComponentInChildren<Slider>();
+        healthSlider.maxValue = bodyGuardHealth.MaxEnemyHealth;
+        bodyGuardHealth.OnHealthChanged += setHealthSliderValue;
         setHealthSliderValue();
+    }
+
+    private void OnDestroy()
+    {
+        if (bodyGuardHealth == null)
+        {
+            return;
+        }
+
+        bodyGuardHealth.OnHealthChanged -= setHealthSliderValue;
     }
 
     // Update is called once per frame

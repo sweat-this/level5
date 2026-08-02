@@ -2,7 +2,7 @@ using System;
 using System.Collections;
 using UnityEngine;
 
-public class PlayerHealth : MonoBehaviour
+public class PlayerHealth : MonoBehaviour, IDamageable
 {
     [SerializeField]
     float health = 0;
@@ -115,12 +115,17 @@ public class PlayerHealth : MonoBehaviour
 
     public bool TakeDamage(float damage)
     {
-        if (damage <= 0 || IsDead)
+        return ApplyDamage(new DamageInfo(damage));
+    }
+
+    public bool ApplyDamage(DamageInfo damageInfo)
+    {
+        if (damageInfo.Amount <= 0 || IsDead)
         {
             return IsDead;
         }
 
-        Health -= damage;
+        Health -= damageInfo.Amount;
         return IsDead;
     }
 
@@ -235,4 +240,6 @@ public class PlayerHealth : MonoBehaviour
     }
 
     public int MaxSpecial { get => maxSpecial; set => maxSpecial = value; }
+    public float CurrentHealth => Health;
+    public float CurrentMaxHealth => MaxHealth;
 }
