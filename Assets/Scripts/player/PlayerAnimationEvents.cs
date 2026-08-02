@@ -44,54 +44,56 @@ public class PlayerAnimationEvents : MonoBehaviour
 
     private void Start()
     {
-        if (transform.Find("projectileSpawn") != null)
+        Transform projectileSpawnTransform = transform.Find("projectileSpawn");
+        if (projectileSpawnTransform != null)
         {
-            projectileLaserPrefab = Resources.Load("Prefabs/projectile/projectile_laser_player") as GameObject;
-            projectileBulletPrefab = Resources.Load("Prefabs/projectile/projectile_bullet_player") as GameObject;
-            projectileAutomaticBulletPrefab = Resources.Load("Prefabs/projectile/projectile_automatic_bullet") as GameObject;
-            projectileMolotovPrefab = Resources.Load("Prefabs/projectile/projectile_molotov") as GameObject;
-            projectileRocketPrefab = Resources.Load("Prefabs/projectile/projectile_rocket") as GameObject;
-            projectileRabbitPrefab = Resources.Load("Prefabs/projectile/projectile_rabbit") as GameObject;
-            projectileCigarettePrefab = Resources.Load("Prefabs/projectile/projectile_cigarette") as GameObject;
-            projectileSpawn = transform.Find("projectileSpawn").gameObject;
+            projectileLaserPrefab = LoadProjectilePrefab(projectileLaserPrefab, "Prefabs/projectile/projectile_laser_player");
+            projectileBulletPrefab = LoadProjectilePrefab(projectileBulletPrefab, "Prefabs/projectile/projectile_bullet_player");
+            projectileAutomaticBulletPrefab = LoadProjectilePrefab(projectileAutomaticBulletPrefab, "Prefabs/projectile/projectile_automatic_bullet");
+            projectileMolotovPrefab = LoadProjectilePrefab(projectileMolotovPrefab, "Prefabs/projectile/projectile_molotov");
+            projectileRocketPrefab = LoadProjectilePrefab(projectileRocketPrefab, "Prefabs/projectile/projectile_rocket");
+            projectileRabbitPrefab = LoadProjectilePrefab(projectileRabbitPrefab, "Prefabs/projectile/projectile_rabbit");
+            projectileCigarettePrefab = LoadProjectilePrefab(projectileCigarettePrefab, "Prefabs/projectile/projectile_cigarette");
+            projectileSpawn = projectileSpawnTransform.gameObject;
         }
-        if (transform.root.GetComponent<CapsuleCollider>() != null)
-        {
-            capsuleCollider = transform.root.GetComponent<CapsuleCollider>();
-        }
+        capsuleCollider = transform.root.GetComponent<CapsuleCollider>();
 
         playerController = GameLevelManager.instance.players[0].playerController;
         audioSource = GetComponent<AudioSource>();
 
-        if (transform.Find(attackBoxText) != null)
+        Transform attackBoxTransform = transform.Find(attackBoxText);
+        if (attackBoxTransform != null)
         {
-            attackBox = transform.Find(attackBoxText).gameObject;
+            attackBox = attackBoxTransform.gameObject;
             disableAttackBox();
         }
         else
         {
             attackBox = null;
         }
-        if (transform.Find(attackBoxSpecialText) != null)
+        Transform attackBoxSpecialTransform = transform.Find(attackBoxSpecialText);
+        if (attackBoxSpecialTransform != null)
         {
-            attackBoxSpecial = transform.Find(attackBoxSpecialText).gameObject;
+            attackBoxSpecial = attackBoxSpecialTransform.gameObject;
             disableAttackBoxSpecial();
         }
         else
         {
             attackBoxSpecial = null;
         }
-        if (gameObject.transform.parent.Find(hitboxBoxText) != null)
+        Transform hitBoxTransform = gameObject.transform.parent.Find(hitboxBoxText);
+        if (hitBoxTransform != null)
         {
-            hitBox = gameObject.transform.parent.Find(hitboxBoxText).gameObject;
+            hitBox = hitBoxTransform.gameObject;
         }
         else
         {
             hitBox = null;
         }
-        if (GameObject.Find("camera_flash").GetComponent<Animator>() != null)
+        GameObject cameraFlash = GameObject.Find("camera_flash");
+        if (cameraFlash != null && cameraFlash.TryGetComponent(out Animator cameraFlashAnimator))
         {
-            animOnCamera = GameObject.Find("camera_flash").GetComponent<Animator>();
+            animOnCamera = cameraFlashAnimator;
         }
         else
         {
@@ -107,6 +109,11 @@ public class PlayerAnimationEvents : MonoBehaviour
     // function - Invoke Repeating
     private void checkCollidersDisabledProperly()
     {
+        if (playerController == null)
+        {
+            return;
+        }
+
         if (playerController.CurrentState != playerController.AttackState
             && playerController.CurrentState != playerController.SpecialState
             && playerController.CurrentState != playerController.dunkState
@@ -126,17 +133,32 @@ public class PlayerAnimationEvents : MonoBehaviour
         }
     }
 
+    private GameObject LoadProjectilePrefab(GameObject currentPrefab, string resourcePath)
+    {
+        return currentPrefab != null ? currentPrefab : Resources.Load(resourcePath) as GameObject;
+    }
+
+    private void SpawnProjectile(GameObject projectilePrefab)
+    {
+        if (projectilePrefab == null || projectileSpawn == null)
+        {
+            return;
+        }
+
+        ProjectilePool.Spawn(projectilePrefab, projectileSpawn.transform.position, Quaternion.identity);
+    }
+
     public void instantiateProjectileLazer()
     {
-        Instantiate(projectileLaserPrefab, projectileSpawn.transform.position, Quaternion.identity);
+        SpawnProjectile(projectileLaserPrefab);
     }
     public void instantiateProjectileBullet()
     {
-        Instantiate(projectileBulletPrefab, projectileSpawn.transform.position, Quaternion.identity);
+        SpawnProjectile(projectileBulletPrefab);
     }
     public void instantiateProjectileBulletAuto()
     {
-        Instantiate(projectileAutomaticBulletPrefab, projectileSpawn.transform.position, Quaternion.identity);
+        SpawnProjectile(projectileAutomaticBulletPrefab);
     }
 
     public void instantiateProjectileAutomaticBullet(int numOfBullets)
@@ -156,19 +178,19 @@ public class PlayerAnimationEvents : MonoBehaviour
 
     public void instantiateProjectileMolotov()
     {
-        Instantiate(projectileMolotovPrefab, projectileSpawn.transform.position, Quaternion.identity);
+        SpawnProjectile(projectileMolotovPrefab);
     }
     public void instantiateProjectileRabbit()
     {
-        Instantiate(projectileRabbitPrefab, projectileSpawn.transform.position, Quaternion.identity);
+        SpawnProjectile(projectileRabbitPrefab);
     }
     public void instantiateProjectileCigarette()
     {
-        Instantiate(projectileCigarettePrefab, projectileSpawn.transform.position, Quaternion.identity);
+        SpawnProjectile(projectileCigarettePrefab);
     }
     public void instantiateProjectileRocket()
     {
-        Instantiate(projectileRocketPrefab, projectileSpawn.transform.position, Quaternion.identity);
+        SpawnProjectile(projectileRocketPrefab);
     }
 
 
@@ -246,35 +268,68 @@ public class PlayerAnimationEvents : MonoBehaviour
 
     public void enableAttackBox()
     {
+        if (attackBox == null)
+        {
+            return;
+        }
+
         attackBox.SetActive(true);
         attackBoxEnabled = true;
     }
 
     public void disableAttackBox()
     {
+        if (attackBox == null)
+        {
+            attackBoxEnabled = false;
+            return;
+        }
+
         attackBox.SetActive(false);
         attackBoxEnabled = false;
     }
     public void enableAttackBoxSpecial()
     {
+        if (attackBoxSpecial == null)
+        {
+            return;
+        }
+
         attackBoxSpecial.SetActive(true);
         attackBoxSpecialEnabled = true;
     }
 
     public void disableAttackBoxSpecial()
     {
+        if (attackBoxSpecial == null)
+        {
+            attackBoxSpecialEnabled = false;
+            return;
+        }
+
         attackBoxSpecial.SetActive(false);
         attackBoxSpecialEnabled = false;
     }
 
     public void enableHitBox()
     {
+        if (hitBox == null)
+        {
+            return;
+        }
+
         hitBox.SetActive(true);
         hitBoxEnabled = true;
     }
 
     public void disableHitBox()
     {
+        if (hitBox == null)
+        {
+            hitBoxEnabled = false;
+            return;
+        }
+
         hitBox.SetActive(false);
         hitBoxEnabled = false;
     }
@@ -437,20 +492,25 @@ public class PlayerAnimationEvents : MonoBehaviour
     {
         if (gameObject.CompareTag("hanger") && other.gameObject.CompareTag("basketball"))
         {
-            //Debug.Log(" game obejct : " + gameObject.tag + "  other : " + other.tag);
-            gameObject.GetComponent<Animator>().SetTrigger("hit");
+            if (TryGetComponent(out Animator hangerAnimator))
+            {
+                hangerAnimator.SetTrigger("hit");
+            }
         }
 
-        if (gameObject.transform.parent.name.Contains("mega_robot") && other.gameObject.CompareTag("playerHitbox"))
+        if (gameObject.transform.parent != null
+            && gameObject.transform.parent.name.Contains("mega_robot")
+            && other.gameObject.CompareTag("playerHitbox")
+            && TryGetComponent(out Animator robotAnimator))
         {
-            //Debug.Log(" game obejct : " + gameObject.name + "  other : " + other.tag);
-            gameObject.GetComponent<Animator>().SetTrigger("attack");
+            robotAnimator.SetTrigger("attack");
         }
     }
 
     void CheckAttackBoxActiveStatus()
     {
-        if (!GameLevelManager.instance.PlayerController1.IsSpecialState()
+        if (attackBox != null
+            && !GameLevelManager.instance.PlayerController1.IsSpecialState()
             && attackBox.activeSelf)
         {
             attackBox.SetActive(false);

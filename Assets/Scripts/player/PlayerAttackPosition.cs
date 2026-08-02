@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 
 public class PlayerAttackPosition : MonoBehaviour
 {
@@ -6,37 +6,61 @@ public class PlayerAttackPosition : MonoBehaviour
     public GameObject enemyEngaged;
     public int attackPositionId;
     public Vector3 position;
-    PlayerIdentifier playerIdentifier;
 
-    private void Start()
+    public void Initialize(PlayerAttackQueue owner, int slotId)
     {
-        playerIdentifier = GetComponentInParent<PlayerIdentifier>();
-        InvokeRepeating("updateAttackPositionTransform", 0, 1);
+        attackPositionId = slotId;
     }
 
-    void updateAttackPositionTransform()
+    public void UpdatePosition(Vector3 playerPosition)
     {
-        if (enemyEngaged == null)
-        {
-            engaged = false;
-        }
-        Vector3 playerTransform = playerIdentifier.isCpu ? playerIdentifier.autoPlayer.transform.position : playerIdentifier.player.transform.position;
-        if (attackPositionId == 0)
-        {
-            transform.position = new Vector3(playerTransform.x - 0.6f, playerTransform.y, playerTransform.z - 0.25f);
-        }
-        if (attackPositionId == 1)
-        {
-            transform.position = new Vector3(playerTransform.x - 0.6f, playerTransform.y, playerTransform.z + 0.25f);
-        }
-        if (attackPositionId == 2)
-        {
-            transform.position = new Vector3(playerTransform.x + 0.6f, playerTransform.y, playerTransform.z - 0.25f);
-        }
-        if (attackPositionId == 3)
-        {
-            transform.position = new Vector3(playerTransform.x + 0.6f, playerTransform.y, playerTransform.z + 0.25f);
-        }
+        Vector3 offset = GetOffsetForSlot(attackPositionId);
+        transform.position = new Vector3(playerPosition.x + offset.x, playerPosition.y + offset.y, playerPosition.z + offset.z);
         position = transform.position;
+    }
+
+    public void SetOccupant(GameObject enemy)
+    {
+        if (engaged)
+        {
+            return;
+        }
+
+        engaged = enemy != null;
+        enemyEngaged = enemy;
+    }
+
+    public void ClearOccupant(GameObject enemy = null)
+    {
+        if (enemy != null && enemyEngaged != enemy)
+        {
+            return;
+        }
+
+        engaged = false;
+        enemyEngaged = null;
+    }
+
+    private Vector3 GetOffsetForSlot(int slotId)
+    {
+        switch (slotId)
+        {
+            case 0:
+                return new Vector3(-0.6f, 0, -0.25f);
+            case 1:
+                return new Vector3(-0.6f, 0, 0.25f);
+            case 2:
+                return new Vector3(0.6f, 0, -0.25f);
+            case 3:
+                return new Vector3(0.6f, 0, 0.25f);
+            default:
+                return GetSharedSlotOffset(slotId);
+        }
+    }
+
+    private Vector3 GetSharedSlotOffset(int slotId)
+    {
+        float angle = slotId * 137.5f * Mathf.Deg2Rad;
+        return new Vector3(Mathf.Cos(angle) * 0.8f, 0, Mathf.Sin(angle) * 0.35f);
     }
 }

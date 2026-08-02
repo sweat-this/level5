@@ -1,9 +1,7 @@
-﻿using UnityEngine;
-using Random = System.Random;
+using UnityEngine;
 
 public class PlayerSwapAttack : MonoBehaviour
 {
-
     public AnimationClip[] closeAttacks;
     [SerializeField]
     protected Animator anim;
@@ -17,7 +15,6 @@ public class PlayerSwapAttack : MonoBehaviour
 
     public void Start()
     {
-        //anim = GameLevelManager.instance.Anim;
         anim = GetComponentInChildren<Animator>();
         animatorOverrideController = anim.runtimeAnimatorController as AnimatorOverrideController;
         index = 0;
@@ -30,15 +27,12 @@ public class PlayerSwapAttack : MonoBehaviour
             return;
         }
 
-        // if enemy has more than one close attack, chose random one
         if (closeAttacks != null && closeAttacks.Length > 1)
         {
-            Random random = new Random();
-            int randomIndex = random.Next(0, closeAttacks.Length);
+            int randomIndex = Random.Range(0, closeAttacks.Length);
             animatorOverrideController["attack"] = closeAttacks[randomIndex];
             anim.runtimeAnimatorController = animatorOverrideController;
         }
-        // else use default
         else if (closeAttacks != null && closeAttacks.Length == 1)
         {
             animatorOverrideController["attack"] = closeAttacks[0];
@@ -46,10 +40,7 @@ public class PlayerSwapAttack : MonoBehaviour
         }
         else
         {
-            if (animatorOverrideController != null)
-            {
-                anim.runtimeAnimatorController = animatorOverrideController;
-            }
+            anim.runtimeAnimatorController = animatorOverrideController;
         }
     }
 

@@ -290,7 +290,7 @@ public class PlayerController : MonoBehaviour
             if (currentState != specialState)
             {
                 //rigidBody.MovePosition(transform.position + movement);
-                transform.Translate(movement);
+                rigidBody.MovePosition(rigidBody.position + movement);
                 //isWalking(movement);
                 IsWalking(movementHorizontal, movementVertical);
             }
@@ -683,8 +683,7 @@ public class PlayerController : MonoBehaviour
 
     public void PlayerSpecial()
     {
-        playerHealth.Special = 0;
-        PlayerHealthBar.instance.setSpecialSliderValue();
+        playerHealth.SpendSpecial(playerHealth.Special);
         PlayAnim("special");
     }
     public void CheckIsPlayerFacingGoal()

@@ -165,19 +165,14 @@ public class EnemyCollisions : MonoBehaviour
             {
                 if (enemyController.IsBoss)
                 {
-                    GameLevelManager.instance.PlayerHealth.Health += 5;
+                    GameLevelManager.instance.PlayerHealth.Heal(5);
                 }
                 if (enemyController.IsMinion)
                 {
-                    GameLevelManager.instance.PlayerHealth.Health += 2;
+                    GameLevelManager.instance.PlayerHealth.Heal(2);
                     //Debug.Log("ADD HEALTH : 2");
                 }
-                if (GameLevelManager.instance.PlayerHealth.Health > GameLevelManager.instance.PlayerHealth.MaxHealth)
-                {
-                    GameLevelManager.instance.PlayerHealth.Health = GameLevelManager.instance.PlayerHealth.MaxHealth;
-                }
             }
-            PlayerHealthBar.instance.setHealthSliderValue();
             BasketBall.instance.GameStats.EnemiesKilled++;
             if (enemyController.IsBoss)
             {

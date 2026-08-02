@@ -27,20 +27,22 @@ public class EnemyAnimationEvents : MonoBehaviour
     {
 
         audioSource = gameObject.GetComponent<AudioSource>();
-        if (transform.Find("projectileSpawn") != null)
+        Transform projectileSpawnTransform = transform.Find("projectileSpawn");
+        if (projectileSpawnTransform != null)
         {
-            projectileLaserPrefab = Resources.Load("Prefabs/projectile/projectile_laser_enemy") as GameObject;
-            projectileBulletPrefab = Resources.Load("Prefabs/projectile/projectile_bullet_enemy") as GameObject;
-            projectileDartPrefab = Resources.Load("Prefabs/projectile/projectile_dart_enemy") as GameObject;
-            projectileFlameThrower = Resources.Load("Prefabs/projectile/projectile_flamethrower") as GameObject;
-            projectileSpawn = transform.Find("projectileSpawn").gameObject;
+            projectileLaserPrefab = LoadProjectilePrefab(projectileLaserPrefab, "Prefabs/projectile/projectile_laser_enemy");
+            projectileBulletPrefab = LoadProjectilePrefab(projectileBulletPrefab, "Prefabs/projectile/projectile_bullet_enemy");
+            projectileDartPrefab = LoadProjectilePrefab(projectileDartPrefab, "Prefabs/projectile/projectile_dart_enemy");
+            projectileFlameThrower = LoadProjectilePrefab(projectileFlameThrower, "Prefabs/projectile/projectile_flamethrower");
+            projectileSpawn = projectileSpawnTransform.gameObject;
         }
         if (transform.parent.GetComponent<EnemyController>() != null)
         {
             enemyController = transform.parent.GetComponent<EnemyController>();
         }
 
-        attackBox = transform.Find("attackBox").gameObject;
+        Transform attackBoxTransform = transform.Find("attackBox");
+        attackBox = attackBoxTransform != null ? attackBoxTransform.gameObject : null;
         if (!attackBoxAlwaysOn)
         {
             disableAttackBox();
@@ -82,18 +84,16 @@ public class EnemyAnimationEvents : MonoBehaviour
     // need to add paramters for knockdown + damage
     public void instantiateProjectileLazer(int damage)
     {
+        SpawnProjectile(projectileLaserPrefab, projectile =>
+        {
+            EnemyAttackBox enemyAttackBox = projectile.GetComponentInChildren<EnemyAttackBox>();
+            if (enemyAttackBox != null)
+            {
+                enemyAttackBox.attackDamage = damage;
+            }
 
-        GameObject projectile = Instantiate(projectileLaserPrefab, projectileSpawn.transform.position, Quaternion.identity);
-        EnemyAttackBox enemyAttackBox = projectile.GetComponentInChildren<EnemyAttackBox>();
-        if (enemyAttackBox != null)
-        {
-            enemyAttackBox.attackDamage = damage;
-        }
-        EnemyProjectile enemyProjectile = projectile.GetComponentInChildren<EnemyProjectile>();
-        if (enemyProjectile != null)
-        {
-            enemyProjectile.facingRight = enemyController.facingRight;
-        }
+            SetProjectileFacing(projectile);
+        });
     }
     public void instantiateProjectileFlameThrower()
     {
@@ -120,27 +120,44 @@ public class EnemyAnimationEvents : MonoBehaviour
         //    Debug.Log("transform.localScale : " + transform.localScale);
         //}
         //projectileFlameThrower.GetComponentInChildren<EnemyProjectile>().facingRight = enemyController.facingRight;
-        GameObject projectile = Instantiate(projectileFlameThrower, projectileSpawn.transform.position, Quaternion.identity);
-        projectile.transform.localScale = temp;
+        GameObject projectile = SpawnProjectile(projectileFlameThrower);
+        if (projectile != null)
+        {
+            projectile.transform.localScale = temp;
+        }
 
     }
     public void instantiateProjectileBullet()
     {
-        GameObject projectile = Instantiate(projectileBulletPrefab, projectileSpawn.transform.position, Quaternion.identity);
-        EnemyProjectile enemyProjectile = projectile.GetComponentInChildren<EnemyProjectile>();
-        if (enemyProjectile != null)
-        {
-            enemyProjectile.facingRight = enemyController.facingRight;
-        }
+        SpawnProjectile(projectileBulletPrefab, SetProjectileFacing);
     }
 
     public void instantiateProjectileDart()
     {
-        GameObject projectile = Instantiate(projectileDartPrefab, projectileSpawn.transform.position, Quaternion.identity);
+        SpawnProjectile(projectileDartPrefab, SetProjectileFacing);
+    }
+
+    private GameObject LoadProjectilePrefab(GameObject currentPrefab, string resourcePath)
+    {
+        return currentPrefab != null ? currentPrefab : Resources.Load(resourcePath) as GameObject;
+    }
+
+    private GameObject SpawnProjectile(GameObject projectilePrefab, Action<GameObject> configure = null)
+    {
+        if (projectilePrefab == null || projectileSpawn == null)
+        {
+            return null;
+        }
+
+        return ProjectilePool.Spawn(projectilePrefab, projectileSpawn.transform.position, Quaternion.identity, configure);
+    }
+
+    private void SetProjectileFacing(GameObject projectile)
+    {
         EnemyProjectile enemyProjectile = projectile.GetComponentInChildren<EnemyProjectile>();
         if (enemyProjectile != null)
         {
-            enemyProjectile.facingRight = enemyController.facingRight;
+            enemyProjectile.facingRight = enemyController != null && enemyController.facingRight;
         }
     }
 

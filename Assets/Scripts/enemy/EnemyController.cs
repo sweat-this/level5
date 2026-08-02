@@ -544,18 +544,13 @@ public class EnemyController : MonoBehaviour
         {
             if (IsBoss)
             {
-                GameLevelManager.instance.PlayerHealth.Health += 7;
+                GameLevelManager.instance.PlayerHealth.Heal(7);
             }
             if (IsMinion)
             {
-                GameLevelManager.instance.PlayerHealth.Health += 3;
-            }
-            if (GameLevelManager.instance.PlayerHealth.Health > GameLevelManager.instance.PlayerHealth.MaxHealth)
-            {
-                GameLevelManager.instance.PlayerHealth.Health = GameLevelManager.instance.PlayerHealth.MaxHealth;
+                GameLevelManager.instance.PlayerHealth.Heal(3);
             }
         }
-        PlayerHealthBar.instance.setHealthSliderValue();
         BasketBall.instance.GameStats.EnemiesKilled++;
         if (IsBoss)
         {

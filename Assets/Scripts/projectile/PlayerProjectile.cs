@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 
 public class PlayerProjectile : MonoBehaviour
 {
@@ -15,101 +15,164 @@ public class PlayerProjectile : MonoBehaviour
 
     public bool facingRight;
 
+    private bool spawnedFromPool;
+    private bool launched;
+    private bool defaultThrownProjectile;
+    private bool defaultImpactProjectile;
+    private bool defaultFacingRight;
+
+    private void Awake()
+    {
+        defaultThrownProjectile = thrownProjectile;
+        defaultImpactProjectile = impactProjectile;
+        defaultFacingRight = facingRight;
+        CacheReferences();
+    }
+
     void Start()
     {
-        rigidbody = transform.root.GetComponent<Rigidbody>();
-        playerController = GameLevelManager.instance.PlayerController1;
+        if (!spawnedFromPool)
+        {
+            Launch();
+        }
+    }
+
+    public void PrepareForPooledSpawn()
+    {
+        spawnedFromPool = true;
+        launched = false;
+        thrownProjectile = defaultThrownProjectile;
+        impactProjectile = defaultImpactProjectile;
+        facingRight = defaultFacingRight;
+        CacheReferences();
+
+        if (rigidbody != null)
+        {
+            rigidbody.linearVelocity = Vector3.zero;
+            rigidbody.angularVelocity = Vector3.zero;
+        }
+
+        if (transform.parent != null && transform.parent.TryGetComponent(out SpriteRenderer spriteRenderer))
+        {
+            spriteRenderer.flipX = false;
+        }
+    }
+
+    public void Launch()
+    {
+        if (launched)
+        {
+            return;
+        }
+
+        launched = true;
+        CacheReferences();
+
         if (!thrownProjectile)
         {
             applyForceToDirectionFacingProjectile(projectileForce);
-            Destroy(transform.root.gameObject, lifetime);
+            ProjectilePool.ReleaseAfter(transform.root.gameObject, lifetime);
         }
+
         if (thrownProjectile && !impactProjectile)
         {
             applyForceToDirectionFacingProjectile(projectileForceThrown);
-            impactExplosionPrefab = Resources.Load("Prefabs/projectile/projectile_impact_explosion") as GameObject;
-            impactRabbitPrefab = Resources.Load("Prefabs/projectile/projectile_impact_rabbit") as GameObject;
+            impactExplosionPrefab = LoadProjectilePrefab(impactExplosionPrefab, "Prefabs/projectile/projectile_impact_explosion");
+            impactRabbitPrefab = LoadProjectilePrefab(impactRabbitPrefab, "Prefabs/projectile/projectile_impact_rabbit");
         }
+
         if (!thrownProjectile && impactProjectile)
         {
-            Destroy(transform.root.gameObject, lifetime);
+            ProjectilePool.ReleaseAfter(transform.root.gameObject, lifetime);
         }
     }
+
+    private void CacheReferences()
+    {
+        if (rigidbody == null)
+        {
+            rigidbody = transform.root.GetComponent<Rigidbody>();
+        }
+
+        if (playerController == null && GameLevelManager.instance != null)
+        {
+            playerController = GameLevelManager.instance.PlayerController1;
+        }
+    }
+
+    private GameObject LoadProjectilePrefab(GameObject currentPrefab, string resourcePath)
+    {
+        return currentPrefab != null ? currentPrefab : Resources.Load(resourcePath) as GameObject;
+    }
+
     public void applyForceToDirectionFacingProjectile(float force)
     {
-        // get direction facing
+        if (playerController == null || rigidbody == null)
+        {
+            return;
+        }
+
         if (playerController.FacingRight)
         {
-            //Debug.Log(" shoot right");
             rigidbody.AddForce(force, 0, 0, ForceMode.VelocityChange);
         }
-        if (!playerController.FacingRight)
+        else
         {
             Flip();
-            //Debug.Log(" shoot left");
             rigidbody.AddForce(-force, 0, 0, ForceMode.VelocityChange);
         }
     }
+
     public void applyForceToDirectionFacingProjectile(Vector3 force)
     {
-        // get direction facing
+        if (playerController == null || rigidbody == null)
+        {
+            return;
+        }
+
         if (playerController.FacingRight)
         {
             rigidbody.AddForce(force.x, force.y, force.z, ForceMode.VelocityChange);
         }
-        if (!playerController.FacingRight)
+        else
         {
             Flip();
             rigidbody.AddForce(-force.x, force.y, force.z, ForceMode.VelocityChange);
         }
     }
+
     void DestroyProjectile()
     {
-        Destroy(transform.root.gameObject);
+        ProjectilePool.Release(transform.root.gameObject);
     }
 
     private void OnTriggerEnter(Collider other)
     {
-        // destroy thrown projectile on impact
         if (thrownProjectile
             && !impactProjectile
             && (other.CompareTag("ground") || other.CompareTag("enemyHitbox")))
         {
             Vector3 transformAtImpact = gameObject.transform.position;
-            //Vector3 transformAtImpact = other.transform.position;
-            Vector3 spawnPoint;
+            Vector3 spawnPoint = new Vector3(transformAtImpact.x, other.transform.position.y, transformAtImpact.z);
 
-            // if rabbit
             if (other.name.Contains("rabbit"))
             {
-                spawnPoint = new Vector3(transformAtImpact.x, other.transform.position.y, transformAtImpact.z);
                 Instantiate(impactRabbitPrefab, spawnPoint, Quaternion.identity);
             }
-            //else
             else
             {
-                //spawnPoint = new Vector3(transformAtImpact.x, 0, transformAtImpact.z);
-                spawnPoint = new Vector3(transformAtImpact.x, other.transform.position.y, transformAtImpact.z);
-                // explode object
                 Instantiate(impactExplosionPrefab, spawnPoint, Quaternion.identity);
             }
-            //Vector3 spawnPoint = new Vector3(transformAtImpact.x, other.transform.position.y, transformAtImpact.z);
-            // explode object
-            //Instantiate(impactExplosionPrefab, spawnPoint, Quaternion.identity);
+
             DestroyProjectile();
         }
     }
+
     void Flip()
     {
-        //Debug.Log("flip : " + transform.parent.gameObject.name);
-        //Vector3 thisScale = transform.root.localScale;
-        //Debug.Log("thisScale : " + thisScale);
-        //thisScale.x *= -1;
-        //Debug.Log("thisScale.x : " + thisScale.x);
-        //transform.root.localScale = thisScale;
-        //Debug.Log("transform.parent.gameObject.GetComponent<SpriteRenderer>() == null : " 
-            //+ (transform.parent.gameObject.GetComponent<SpriteRenderer>() == null));
-
-        transform.parent.gameObject.GetComponent<SpriteRenderer>().flipX = true; 
+        if (transform.parent != null && transform.parent.TryGetComponent(out SpriteRenderer spriteRenderer))
+        {
+            spriteRenderer.flipX = true;
+        }
     }
 }

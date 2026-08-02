@@ -196,16 +196,18 @@ public class SniperManager : MonoBehaviour
 
     private void InstantiateConfiguredProjectile(GameObject projectilePrefab, Vector3 projectileForceSniper)
     {
-        GameObject projectile = Instantiate(projectilePrefab, gameObject.transform.position, Quaternion.identity);
-        EnemyProjectile enemyProjectile = projectile.GetComponentInChildren<EnemyProjectile>();
-        if (enemyProjectile == null)
+        ProjectilePool.Spawn(projectilePrefab, gameObject.transform.position, Quaternion.identity, projectile =>
         {
-            return;
-        }
+            EnemyProjectile enemyProjectile = projectile.GetComponentInChildren<EnemyProjectile>();
+            if (enemyProjectile == null)
+            {
+                return;
+            }
 
-        enemyProjectile.sniperProjectile = true;
-        enemyProjectile.impactProjectile = true;
-        enemyProjectile.projectileForceSniper = projectileForceSniper;
+            enemyProjectile.sniperProjectile = true;
+            enemyProjectile.impactProjectile = true;
+            enemyProjectile.projectileForceSniper = projectileForceSniper;
+        });
     }
     public Vector3 PlayerPosAtShoot { get => playerPosAtShoot; set => playerPosAtShoot = value; }
 }

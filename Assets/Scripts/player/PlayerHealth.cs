@@ -1,4 +1,5 @@
-﻿using System.Collections;
+using System;
+using System.Collections;
 using UnityEngine;
 
 public class PlayerHealth : MonoBehaviour
@@ -25,27 +26,29 @@ public class PlayerHealth : MonoBehaviour
     float regenerateTimeDelay;
     [SerializeField]
     bool isDead = false;
+
     bool regenerateBlock = false;
     bool regenerateSpecial = false;
+    bool regenerateHealth = false;
 
-    PlayerController playerController;
-    private bool regenerateHealth;
+    public event Action OnHealthChanged;
+    public event Action OnBlockChanged;
+    public event Action OnSpecialChanged;
+    public event Action OnDied;
 
     private void Awake()
     {
-        // default
-        health = maxHealth;
-        block = maxBlock;
-        special = maxSpecial;
+        Health = maxHealth;
+        Block = maxBlock;
+        Special = maxSpecial;
     }
 
     private void Start()
     {
-        playerController = GameLevelManager.instance.PlayerController1;
         // regenerate rate is +1 per interval
         // rate of 0.4f is equal to +1 every 0.5 second or +25 in 10 secs
         // rate of 1f is equal to +1 every 1 second or +100 in 100 seconds (1 min 40 secs)
-        // rate of 0.04f is equal to +1 every 0.04 second or +100 in 4 seconds 
+        // rate of 0.04f is equal to +1 every 0.04 second or +100 in 4 seconds
         regenerateBlockRate = 0.5f;
         regenerateHealthRate = 2f;
         regenerateSpecialRate = 0.04f;
@@ -53,33 +56,33 @@ public class PlayerHealth : MonoBehaviour
 
     private void Update()
     {
-        if (GameOptions.enemiesEnabled 
-            || GameOptions.sniperEnabled 
-            || GameOptions.sniperEnabledBullet 
+        if (health <= 0 && !IsDead)
+        {
+            IsDead = true;
+        }
+
+        if (health > maxHealth)
+        {
+            Health = maxHealth;
+        }
+
+        if (GameOptions.enemiesEnabled
+            || GameOptions.sniperEnabled
+            || GameOptions.sniperEnabledBullet
             || GameOptions.sniperEnabledLaser
             || GameOptions.obstaclesEnabled)
         {
-            if (health <= 0 && !IsDead)
-            {
-                IsDead = true;
-            }
-            if (health > maxHealth)
-            {
-                health = maxHealth;
-            }
-            // regenerate
-            if (block < MaxBlock
-                && !regenerateBlock)
+            if (block < MaxBlock && !regenerateBlock)
             {
                 StartCoroutine(RegenerateBlock());
             }
-            if (health < maxHealth
-                && !regenerateHealth)
+
+            if (health < maxHealth && !IsDead && !regenerateHealth)
             {
                 StartCoroutine(RegenerateHealth());
             }
-            if (special < maxSpecial
-                && !regenerateSpecial)
+
+            if (special < maxSpecial && !regenerateSpecial)
             {
                 StartCoroutine(RegenerateSpecial());
             }
@@ -88,14 +91,9 @@ public class PlayerHealth : MonoBehaviour
 
     IEnumerator RegenerateSpecial()
     {
-        //Debug.Log("RegenerateSpecial : " + special + "  time : " + Time.time);
         regenerateSpecial = true;
         yield return new WaitForSeconds(regenerateSpecialRate);
-        special += 1f;
-        if (PlayerHealthBar.instance != null)
-        {
-            PlayerHealthBar.instance.setSpecialSliderValue();
-        }
+        Special += 1f;
         regenerateSpecial = false;
     }
 
@@ -103,11 +101,7 @@ public class PlayerHealth : MonoBehaviour
     {
         regenerateBlock = true;
         yield return new WaitForSeconds(regenerateBlockRate);
-        block += 1f;
-        if (PlayerHealthBar.instance != null)
-        {
-            PlayerHealthBar.instance.setBlockSliderValue();
-        }
+        Block += 1f;
         regenerateBlock = false;
     }
 
@@ -115,18 +109,130 @@ public class PlayerHealth : MonoBehaviour
     {
         regenerateHealth = true;
         yield return new WaitForSeconds(regenerateHealthRate);
-        health += 1f;
-        if (PlayerHealthBar.instance != null)
-        {
-            PlayerHealthBar.instance.setHealthSliderValue();
-        }
+        Health += 1f;
         regenerateHealth = false;
     }
-    public float Health { get => health; set => health = value; }
-    public float Block { get => block; set => block = value; }
-    public bool IsDead { get => isDead; set => isDead = value; }
+
+    public bool TakeDamage(float damage)
+    {
+        if (damage <= 0 || IsDead)
+        {
+            return IsDead;
+        }
+
+        Health -= damage;
+        return IsDead;
+    }
+
+    public void Heal(float amount)
+    {
+        if (amount <= 0 || IsDead)
+        {
+            return;
+        }
+
+        Health += amount;
+    }
+
+    public void SpendBlock(float amount)
+    {
+        if (amount <= 0)
+        {
+            return;
+        }
+
+        Block -= amount;
+    }
+
+    public void SpendSpecial(float amount)
+    {
+        if (amount <= 0)
+        {
+            return;
+        }
+
+        Special -= amount;
+    }
+
+    public float Health
+    {
+        get => health;
+        set
+        {
+            float clampedHealth = Mathf.Clamp(value, 0, maxHealth);
+            if (Mathf.Approximately(health, clampedHealth))
+            {
+                return;
+            }
+
+            health = clampedHealth;
+            OnHealthChanged?.Invoke();
+
+            if (health <= 0 && !IsDead)
+            {
+                IsDead = true;
+            }
+        }
+    }
+
+    public float Block
+    {
+        get => block;
+        set
+        {
+            float clampedBlock = Mathf.Clamp(value, 0, maxBlock);
+            if (Mathf.Approximately(block, clampedBlock))
+            {
+                return;
+            }
+
+            block = clampedBlock;
+            OnBlockChanged?.Invoke();
+        }
+    }
+
+    public bool IsDead
+    {
+        get => isDead;
+        set
+        {
+            if (isDead == value)
+            {
+                return;
+            }
+
+            isDead = value;
+            if (isDead && health > 0)
+            {
+                health = 0;
+                OnHealthChanged?.Invoke();
+            }
+
+            if (isDead)
+            {
+                OnDied?.Invoke();
+            }
+        }
+    }
+
     public int MaxHealth { get => maxHealth; set => maxHealth = value; }
     public int MaxBlock { get => maxBlock; set => maxBlock = value; }
-    public float Special { get => special; set => special = value; }
+
+    public float Special
+    {
+        get => special;
+        set
+        {
+            float clampedSpecial = Mathf.Clamp(value, 0, maxSpecial);
+            if (Mathf.Approximately(special, clampedSpecial))
+            {
+                return;
+            }
+
+            special = clampedSpecial;
+            OnSpecialChanged?.Invoke();
+        }
+    }
+
     public int MaxSpecial { get => maxSpecial; set => maxSpecial = value; }
 }

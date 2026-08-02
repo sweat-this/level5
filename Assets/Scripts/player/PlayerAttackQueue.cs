@@ -1,4 +1,4 @@
-﻿using System.Collections;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
@@ -16,248 +16,358 @@ public class PlayerAttackQueue : MonoBehaviour
     [SerializeField]
     GameObject[] attackPositions;
     [SerializeField]
-    List<GameObject> bodyGuards;
+    List<GameObject> bodyGuards = new List<GameObject>();
     [SerializeField]
-    List<GameObject> enemiesQueued;
+    List<GameObject> enemiesQueued = new List<GameObject>();
     [SerializeField]
     bool bodyGuardEngaged;
 
-    //public static PlayerAttackQueue instance;
+    readonly Dictionary<GameObject, QueueEntry> entriesByAttacker = new Dictionary<GameObject, QueueEntry>();
+    readonly List<QueueEntry> entries = new List<QueueEntry>();
+    PlayerIdentifier playerIdentifier;
 
-    // Start is called before the first frame update
-    void Awake()
+    class QueueEntry
     {
-        //if (instance == null)
-        //{
-        //    instance = this;
-        //}
-        //else
-        //{
-        //    Destroy(gameObject);
-        //}
+        public GameObject attacker;
+        public PlayerAttackPosition slot;
+    }
+
+    private void Awake()
+    {
+        playerIdentifier = GetComponent<PlayerIdentifier>();
     }
 
     private void Start()
     {
-        // if fighting only game mode/ hardcore OFF
-        if (GameOptions.EnemiesOnlyEnabled && !GameOptions.hardcoreModeEnabled)
-        {
-            maxEnemiesQueued = 4;
-        }
-        // if fighting only game mode/ hardcore ON
-        if (GameOptions.EnemiesOnlyEnabled && GameOptions.hardcoreModeEnabled)
-        {
-            maxEnemiesQueued = 8;
-        }
-        // if only hardcore ON
-        if (!GameOptions.EnemiesOnlyEnabled && GameOptions.hardcoreModeEnabled)
-        {
-            maxEnemiesQueued = 6;
-        }
-        // if only hardcore ON
+        maxEnemiesQueued = GetMaxEnemiesQueued();
+        CacheAttackPositions();
+        RefreshBodyGuards();
+        UpdateQueueState();
+    }
+
+    private void LateUpdate()
+    {
+        CleanupStaleEntries();
+        UpdateAttackPositionTransforms();
+        UpdateSlotEngagements();
+        UpdateQueueState();
+    }
+
+    private int GetMaxEnemiesQueued()
+    {
         if (GameOptions.battleRoyalEnabled)
         {
-            maxEnemiesQueued = 20;
-        }
-        //default
-        else
-        {
-            maxEnemiesQueued = 4;
+            return 20;
         }
 
-        //        //#if UNITY_ANDROID && !UNITY_EDITOR
-        //#if UNITY_ANDROID && !UNITY_EDITOR
-        //            maxNumberOfEnemies = maxNumberOfEnemies/2;
-        //#endif
-
-        // check if attack slot open
-        if (currentEnemiesQueued < maxEnemiesQueued)
+        if (GameOptions.EnemiesOnlyEnabled && GameOptions.hardcoreModeEnabled)
         {
-            attackSlotOpen = true;
-        }
-        // if queue is full
-        if (currentEnemiesQueued == maxEnemiesQueued)
-        {
-            attackQueueLocked = true;
-        }
-        else
-        {
-            attackQueueLocked = false;
+            return 8;
         }
 
-        // check for and add bodyguards to list
-        bodyGuards = getBodyGuards();
-        getAttackPositions();
-        // check for update status every 2 seconds
-        // currently an issue with KillEnemy in enemy controller.
-        // on kill, sometimes the attackSlotOpen is not set to true
-        InvokeRepeating("updateAttackSlotStatus", 0, 2);
+        if (!GameOptions.EnemiesOnlyEnabled && GameOptions.hardcoreModeEnabled)
+        {
+            return 6;
+        }
+
+        return 4;
     }
 
-    private void getAttackPositions()
+    private void CacheAttackPositions()
     {
-        attackPositions = GameObject.FindGameObjectsWithTag("playerAttackQueuePosition");
-        int attackPosId = 0;
-        foreach (GameObject go in attackPositions)
+        PlayerAttackPosition[] childSlots = GetComponentsInChildren<PlayerAttackPosition>(true);
+        if (childSlots.Length == 0)
         {
-            go.GetComponent<PlayerAttackPosition>().attackPositionId = attackPosId;
-            attackPosId++;
+            childSlots = GameObject.FindGameObjectsWithTag("playerAttackQueuePosition")
+                .Select(go => go.GetComponent<PlayerAttackPosition>())
+                .Where(slot => slot != null)
+                .ToArray();
+        }
+
+        attackPositions = new GameObject[childSlots.Length];
+        for (int i = 0; i < childSlots.Length; i++)
+        {
+            childSlots[i].Initialize(this, i);
+            attackPositions[i] = childSlots[i].gameObject;
         }
     }
 
-    public IEnumerator removeEnemyFromAttackQueue(GameObject enemy, int attackPostionId)
+    private void RefreshBodyGuards()
     {
-        //yield return new WaitForSeconds( 0.1f);
-        yield return new WaitUntil(() => !LockAttackQueue);
-        LockAttackQueue = true;
-
-        PlayerAttackPosition playerAttackPosition = attackPositions[attackPostionId].GetComponent<PlayerAttackPosition>();
-
-        playerAttackPosition.engaged = false;
-        playerAttackPosition.enemyEngaged = null;
-
-        currentEnemiesQueued--;
-        attackSlotOpen = isAttackSlotOpen();
-
-        enemiesQueued.Remove(enemy);
-        LockAttackQueue = false;
-    }
-
-    public void removeEnemyFromQueue(GameObject enemy, int attackPostionId)
-    {
-        //yield return new WaitUntil( () => !LockAttackQueue);
-        //yield return new WaitForSeconds(0.1f);
-        LockAttackQueue = true;
-
-        PlayerAttackPosition playerAttackPosition = attackPositions[attackPostionId].GetComponent<PlayerAttackPosition>();
-
-        playerAttackPosition.engaged = false;
-        playerAttackPosition.enemyEngaged = null;
-
-        currentEnemiesQueued--;
-        attackSlotOpen = isAttackSlotOpen();
-
-        enemiesQueued.Remove(enemy);
-
-        LockAttackQueue = false;
+        bodyGuards = GameObject.FindGameObjectsWithTag("bodyGuard").ToList();
+        bodyGuards.RemoveAll(bodyGuard => bodyGuard == null);
     }
 
     public IEnumerator RequestAddToQueue(GameObject enemy)
     {
-        // wait for resource to unlock
-        yield return new WaitUntil(() => LockAttackQueue == false);
+        TryAddToQueue(enemy);
+        yield break;
+    }
 
-        LockAttackQueue = true;
+    public bool TryAddToQueue(GameObject enemy)
+    {
+        if (enemy == null)
+        {
+            return false;
+        }
 
-        // check attack slots again
-        attackSlotOpen = isAttackSlotOpen();
+        CleanupStaleEntries();
+        UpdateQueueState();
+
+        if (entriesByAttacker.TryGetValue(enemy, out QueueEntry existingEntry))
+        {
+            ApplyEnemyDetection(enemy, existingEntry.slot);
+            return true;
+        }
+
+        if (!attackSlotOpen)
+        {
+            return false;
+        }
 
         EnemyDetection enemyDetection = enemy.GetComponent<EnemyDetection>();
-
-        if (attackSlotOpen && !enemyDetection.Attacking)
+        if (enemyDetection == null || enemyDetection.Attacking)
         {
-            foreach (GameObject go in attackPositions)
+            return false;
+        }
+
+        PlayerAttackPosition slot = SelectAttackSlot(enemy);
+        if (slot == null)
+        {
+            return false;
+        }
+
+        QueueEntry entry = new QueueEntry
+        {
+            attacker = enemy,
+            slot = slot
+        };
+
+        entries.Add(entry);
+        entriesByAttacker[enemy] = entry;
+        if (!enemiesQueued.Contains(enemy))
+        {
+            enemiesQueued.Add(enemy);
+        }
+
+        ApplyEnemyDetection(enemy, slot);
+        UpdateSlotEngagements();
+        UpdateQueueState();
+        return true;
+    }
+
+    public IEnumerator removeEnemyFromAttackQueue(GameObject enemy, int attackPostionId)
+    {
+        RemoveFromQueue(enemy, attackPostionId);
+        yield break;
+    }
+
+    public void removeEnemyFromQueue(GameObject enemy, int attackPostionId)
+    {
+        RemoveFromQueue(enemy, attackPostionId);
+    }
+
+    public bool RemoveFromQueue(GameObject attacker, int attackPositionId)
+    {
+        if (attacker == null)
+        {
+            CleanupStaleEntries();
+            UpdateQueueState();
+            return false;
+        }
+
+        bool removed = RemoveEntry(attacker);
+        if (!removed)
+        {
+            ClearLegacySlot(attacker, attackPositionId);
+        }
+
+        enemiesQueued.Remove(attacker);
+        ClearAttackerDetection(attacker);
+        UpdateSlotEngagements();
+        UpdateQueueState();
+        return removed;
+    }
+
+    private PlayerAttackPosition SelectAttackSlot(GameObject attacker)
+    {
+        PlayerAttackPosition bestSlot = null;
+        int bestOccupancy = int.MaxValue;
+        float bestDistance = float.MaxValue;
+        bool allowSharedSlots = maxEnemiesQueued > attackPositions.Length || GameOptions.battleRoyalEnabled;
+
+        foreach (GameObject attackPositionObject in attackPositions)
+        {
+            if (attackPositionObject == null || !attackPositionObject.TryGetComponent(out PlayerAttackPosition slot))
             {
-                PlayerAttackPosition attackPosition = go.GetComponent<PlayerAttackPosition>();
-                //EnemyDetection enemyDetection = enemy.GetComponent<EnemyDetection>();
+                continue;
+            }
 
-                // find open attack position
-                // attack pos not engaged + enemy is not currently attacking
-                if (!attackPosition.engaged
-                    && !enemyDetection.Attacking
-                    && currentEnemiesQueued < maxEnemiesQueued)
-                {
-                    attackPosition.engaged = true;
-                    attackPosition.enemyEngaged = enemy;
+            int occupancy = GetSlotOccupancy(slot);
+            if (!allowSharedSlots && occupancy > 0)
+            {
+                continue;
+            }
 
-                    enemyDetection.Attacking = true;
-                    if (!bodyGuardEngaged)
-                    {
-                        enemyDetection.AttackPositionId = attackPosition.attackPositionId;
-                        // this triggers 'pursue player' in enemy controller 
-                        enemyDetection.PlayerSighted = true;
-
-                        currentEnemiesQueued++;
-                        // add enemy to queue
-                        enemiesQueued.Add(enemy);
-                        AttackSlotOpen = false;
-                    }
-                    else
-                    {
-                        bodyGuardEngaged = true;
-                    }
-                }
-                if (GameOptions.battleRoyalEnabled
-                    && attackPosition.engaged
-                    && !enemyDetection.Attacking
-                    && currentEnemiesQueued < maxEnemiesQueued)
-                {
-                    //attackPosition.engaged = true;
-                    //attackPosition.enemyEngaged = enemy;
-
-                    enemyDetection.Attacking = true;
-                    if (!bodyGuardEngaged)
-                    {
-                        enemyDetection.AttackPositionId = attackPosition.attackPositionId;
-                        // this triggers 'pursue player' in enemy controller 
-                        enemyDetection.PlayerSighted = true;
-
-                        currentEnemiesQueued++;
-                        // add enemy to queue
-                        enemiesQueued.Add(enemy);
-                        AttackSlotOpen = false;
-                    }
-                    else
-                    {
-                        bodyGuardEngaged = true;
-                    }
-                }
+            float distance = (slot.transform.position - attacker.transform.position).sqrMagnitude;
+            if (occupancy < bestOccupancy || (occupancy == bestOccupancy && distance < bestDistance))
+            {
+                bestSlot = slot;
+                bestOccupancy = occupancy;
+                bestDistance = distance;
             }
         }
-        LockAttackQueue = false;
+
+        return bestSlot;
     }
 
-    bool isAttackSlotOpen()
+    private int GetSlotOccupancy(PlayerAttackPosition slot)
     {
-        if (currentEnemiesQueued < maxEnemiesQueued)
+        int occupancy = 0;
+        foreach (QueueEntry entry in entries)
         {
-            attackSlotOpen = true;
-        }
-        if (currentEnemiesQueued == maxEnemiesQueued)
-        {
-            attackSlotOpen = true;
-        }
-
-        return attackSlotOpen;
-    }
-
-    void updateAttackSlotStatus()
-    {
-        if (!attackQueueLocked)
-        {
-            if (currentEnemiesQueued < maxEnemiesQueued)
+            if (entry.slot == slot)
             {
-                attackSlotOpen = true;
-            }
-            if (currentEnemiesQueued == maxEnemiesQueued)
-            {
-                attackSlotOpen = true;
+                occupancy++;
             }
         }
+
+        return occupancy;
     }
 
-    List<GameObject> getBodyGuards()
+    private bool RemoveEntry(GameObject attacker)
     {
-        List<GameObject> tempList = null;
-        GameObject[] bodyGuardList;
-        bodyGuardList = GameObject.FindGameObjectsWithTag("bodyGuard");
+        if (!entriesByAttacker.TryGetValue(attacker, out QueueEntry entry))
+        {
+            return false;
+        }
 
-        tempList = bodyGuardList.ToList();
-
-        return tempList;
+        entriesByAttacker.Remove(attacker);
+        entries.Remove(entry);
+        return true;
     }
 
-    public int CurrentEnemiesQueued { get => currentEnemiesQueued; set => currentEnemiesQueued = value; }
+    private void ClearLegacySlot(GameObject attacker, int attackPositionId)
+    {
+        if (attackPositionId < 0 || attackPositionId >= attackPositions.Length)
+        {
+            return;
+        }
+
+        GameObject attackPositionObject = attackPositions[attackPositionId];
+        if (attackPositionObject != null && attackPositionObject.TryGetComponent(out PlayerAttackPosition slot))
+        {
+            slot.ClearOccupant(attacker);
+        }
+    }
+
+    private void ApplyEnemyDetection(GameObject enemy, PlayerAttackPosition slot)
+    {
+        EnemyDetection enemyDetection = enemy.GetComponent<EnemyDetection>();
+        if (enemyDetection == null || slot == null)
+        {
+            return;
+        }
+
+        enemyDetection.Attacking = true;
+        enemyDetection.AttackPositionId = slot.attackPositionId;
+        enemyDetection.PlayerSighted = true;
+    }
+
+    private void ClearAttackerDetection(GameObject attacker)
+    {
+        if (attacker.TryGetComponent(out EnemyDetection enemyDetection))
+        {
+            enemyDetection.Attacking = false;
+            enemyDetection.AttackPositionId = -1;
+            enemyDetection.PlayerSighted = false;
+        }
+
+        if (attacker.TryGetComponent(out BodyGuardDetection bodyGuardDetection))
+        {
+            bodyGuardDetection.Attacking = false;
+            bodyGuardDetection.AttackPositionId = -1;
+            bodyGuardDetection.EnemySighted = false;
+        }
+    }
+
+    private void CleanupStaleEntries()
+    {
+        for (int i = entries.Count - 1; i >= 0; i--)
+        {
+            if (entries[i].attacker == null)
+            {
+                entries.RemoveAt(i);
+            }
+        }
+
+        entriesByAttacker.Clear();
+        enemiesQueued.Clear();
+        foreach (QueueEntry entry in entries)
+        {
+            entriesByAttacker[entry.attacker] = entry;
+            enemiesQueued.Add(entry.attacker);
+        }
+
+        bodyGuards.RemoveAll(bodyGuard => bodyGuard == null);
+    }
+
+    private void UpdateAttackPositionTransforms()
+    {
+        Vector3 anchorPosition = GetQueueAnchorPosition();
+        foreach (GameObject attackPositionObject in attackPositions)
+        {
+            if (attackPositionObject != null && attackPositionObject.TryGetComponent(out PlayerAttackPosition slot))
+            {
+                slot.UpdatePosition(anchorPosition);
+            }
+        }
+    }
+
+    private Vector3 GetQueueAnchorPosition()
+    {
+        if (playerIdentifier != null)
+        {
+            if (playerIdentifier.isCpu && playerIdentifier.autoPlayer != null)
+            {
+                return playerIdentifier.autoPlayer.transform.position;
+            }
+
+            if (!playerIdentifier.isCpu && playerIdentifier.player != null)
+            {
+                return playerIdentifier.player.transform.position;
+            }
+        }
+
+        return transform.position;
+    }
+
+    private void UpdateSlotEngagements()
+    {
+        foreach (GameObject attackPositionObject in attackPositions)
+        {
+            if (attackPositionObject != null && attackPositionObject.TryGetComponent(out PlayerAttackPosition slot))
+            {
+                slot.ClearOccupant();
+            }
+        }
+
+        foreach (QueueEntry entry in entries)
+        {
+            if (entry.slot != null)
+            {
+                entry.slot.SetOccupant(entry.attacker);
+            }
+        }
+    }
+
+    private void UpdateQueueState()
+    {
+        currentEnemiesQueued = entries.Count;
+        attackSlotOpen = currentEnemiesQueued < maxEnemiesQueued && attackPositions.Length > 0;
+    }
+
+    public int CurrentEnemiesQueued { get => currentEnemiesQueued; set => currentEnemiesQueued = Mathf.Clamp(value, 0, maxEnemiesQueued); }
     public bool LockAttackQueue { get => attackQueueLocked; set => attackQueueLocked = value; }
     public bool AttackSlotOpen { get => attackSlotOpen; set => attackSlotOpen = value; }
     public GameObject[] AttackPositions { get => attackPositions; set => attackPositions = value; }

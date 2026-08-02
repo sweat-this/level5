@@ -206,9 +206,8 @@ public class AutoPlayerDefense : MonoBehaviour
         Vector3 targetPosition = new();
         targetPosition = (target - transform.position);
         
-        movement = targetPosition * (movementSpeed * Time.deltaTime);
-        transform.Translate(movement);
-        //rigidBody.MovePosition(transform.position + movement);
+        movement = targetPosition * (movementSpeed * Time.fixedDeltaTime);
+        rigidBody.MovePosition(rigidBody.position + movement);
     }
 
     private void getAnimatorStateHashes()

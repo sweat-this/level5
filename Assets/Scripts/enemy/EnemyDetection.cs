@@ -4,6 +4,7 @@ using UnityEngine;
 public class EnemyDetection : MonoBehaviour
 {
     EnemyController enemyController;
+    PlayerAttackQueue playerAttackQueue;
     [SerializeField]
     bool playerSighted;
     bool enemyDetectionEnabled = true;
@@ -19,6 +20,7 @@ public class EnemyDetection : MonoBehaviour
     private void Start()
     {
         enemyController = GetComponent<EnemyController>();
+        playerAttackQueue = GameLevelManager.instance.PlayerController1.PlayerAttackQueue;
         // if only enemies, make increase enemy sight
         if (GameOptions.EnemiesOnlyEnabled || GameOptions.enemiesEnabled)
         {
@@ -38,9 +40,9 @@ public class EnemyDetection : MonoBehaviour
         if (enemyController.DistanceFromPlayer < enemySightDistance
             && enemyDetectionEnabled)
         {
-            if (GameLevelManager.instance.PlayerController1.PlayerAttackQueue.AttackSlotOpen && !attacking)
+            if (playerAttackQueue.AttackSlotOpen && !attacking)
             {
-                StartCoroutine(GameLevelManager.instance.PlayerController1.PlayerAttackQueue.RequestAddToQueue(gameObject));
+                playerAttackQueue.TryAddToQueue(gameObject);
             }
         }
         // if player NOT within enemy sight distance
@@ -52,7 +54,7 @@ public class EnemyDetection : MonoBehaviour
             if (attacking)
             {
                 attacking = false;
-                StartCoroutine(GameLevelManager.instance.PlayerController1.PlayerAttackQueue.removeEnemyFromAttackQueue(gameObject, AttackPositionId));
+                playerAttackQueue.RemoveFromQueue(gameObject, AttackPositionId);
             }
         }
     }

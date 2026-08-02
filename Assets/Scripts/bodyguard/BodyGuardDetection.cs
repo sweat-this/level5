@@ -4,6 +4,7 @@ using UnityEngine;
 public class BodyGuardDetection : MonoBehaviour
 {
     BodyGuardController bodyGuardController;
+    PlayerAttackQueue playerAttackQueue;
     [SerializeField]
     bool enemySighted;
     bool enemyDetectionEnabled = true;
@@ -19,6 +20,7 @@ public class BodyGuardDetection : MonoBehaviour
     private void Start()
     {
         bodyGuardController = GetComponent<BodyGuardController>();
+        playerAttackQueue = GameLevelManager.instance.players[0].GetComponent<PlayerAttackQueue>();
         //if (enemySightDistance == 0)
         //{
         //    enemySightDistance = 5;
@@ -62,7 +64,7 @@ public class BodyGuardDetection : MonoBehaviour
         //    // move towards player
         //}
 
-        if (GameLevelManager.instance.players[0].GetComponent<PlayerAttackQueue>().CurrentEnemiesQueued > 0)
+        if (playerAttackQueue != null && playerAttackQueue.CurrentEnemiesQueued > 0)
         {
             enemySighted = true;
         }

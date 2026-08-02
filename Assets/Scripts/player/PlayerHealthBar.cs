@@ -46,6 +46,9 @@ public class PlayerHealthBar : MonoBehaviour
             healthSliderValueText = GameObject.Find(healthSliderValueName).GetComponent<Text>();
 
             characterNameText.text = GameLevelManager.instance.Player1.GetComponent<CharacterProfile>().PlayerDisplayName;
+            playerHealth.OnHealthChanged += setHealthSliderValue;
+            playerHealth.OnBlockChanged += setBlockSliderValue;
+            playerHealth.OnSpecialChanged += setSpecialSliderValue;
             setHealthSliderValue();
             setBlockSliderValue();
             setSpecialSliderValue();
@@ -56,6 +59,22 @@ public class PlayerHealthBar : MonoBehaviour
         }
     }
 
+    private void OnDestroy()
+    {
+        if (playerHealth == null)
+        {
+            return;
+        }
+
+        playerHealth.OnHealthChanged -= setHealthSliderValue;
+        playerHealth.OnBlockChanged -= setBlockSliderValue;
+        playerHealth.OnSpecialChanged -= setSpecialSliderValue;
+    }
+
+    public bool IsTracking(PlayerHealth health)
+    {
+        return playerHealth == health;
+    }
 
     public void setHealthSliderValue()
     {

@@ -1,7 +1,6 @@
 ﻿
 using System.Collections;
 using UnityEngine;
-using Random = System.Random;
 
 public class AutoPlayerCollisions : MonoBehaviour
 {
@@ -112,13 +111,16 @@ public class AutoPlayerCollisions : MonoBehaviour
             if (autoPlayerController.currentState != autoPlayerController.blockState)
             {
                 locked = true;
-                // deduct from player health 
-                playerHealth.Health -= damage;
-                // null check
-                if (PlayerHealthBar.instance != null) // null check for health bar
+                playerHealth.TakeDamage(damage);
+                if (PlayerHealthBar.instance != null && PlayerHealthBar.instance.IsTracking(playerHealth))
                 {
-                    PlayerHealthBar.instance.setHealthSliderValue();
                     StartCoroutine(PlayerHealthBar.instance.DisplayDamageTakenValue(damage));
+                }
+
+                if (playerHealth.IsDead)
+                {
+                    locked = false;
+                    return;
                 }
 
                 // player can be knocked down and other
@@ -143,10 +145,9 @@ public class AutoPlayerCollisions : MonoBehaviour
                 // blocking play sound
                 // block meter goes down
                 SFXBB.instance.playSFX(SFXBB.instance.blocked);
-                PlayerHealthBar.instance.setBlockSliderValue();
                 if (enemyAttackBox != null)
                 {
-                    playerHealth.Block -= enemyAttackBox.attackDamage;
+                    playerHealth.SpendBlock(enemyAttackBox.attackDamage);
                 }
                 locked = false;
             }
@@ -157,9 +158,8 @@ public class AutoPlayerCollisions : MonoBehaviour
     // player has a chance to evade attack based on character profile's luck value
     bool rollForPlayerEvadeAttackChance(float maxPercent)
     {
-        Random random = new Random();
-        float percent = random.Next(1, 100);
-        if (percent <= maxPercent)
+        float percent = UnityEngine.Random.Range(0f, 100f);
+        if (percent < maxPercent)
         {
             if (PlayerHealthBar.instance != null)
             {
