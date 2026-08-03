@@ -12,6 +12,17 @@ public class ProgressionManager : MonoBehaviour
     public string currentHighlightedButton;
     // option select buttons, this will be disabled with touch input
     [SerializeField] Button playerSelectButton;
+    [SerializeField] Button startButton;
+    [SerializeField] Button statsMenuButton;
+    [SerializeField] Button quitButton;
+    [SerializeField] Button playerSelectOptionButton;
+    [SerializeField] Button progression3AccuracyButton;
+    [SerializeField] Button progression4AccuracyButton;
+    [SerializeField] Button progression7AccuracyButton;
+    [SerializeField] Button confirmButton;
+    [SerializeField] Button cancelButton;
+    [SerializeField] Button saveButton;
+    [SerializeField] Button resetButton;
 
     //list of all shooter profiles with player data
     private List<CharacterProfile> playerSelectedData;
@@ -85,6 +96,8 @@ public class ProgressionManager : MonoBehaviour
     // flags
     bool buttonPressed = false;
     bool dataLoaded = false;
+    bool initialized = false;
+    int lastActionFrame = -1;
 
     // confirm save dialogue
     bool confirmationDialogueBoxEnabled = false;
@@ -118,9 +131,14 @@ public class ProgressionManager : MonoBehaviour
     {
         controls = PlayerControlsProvider.Controls;
         PlayerControlsProvider.EnableMenuMaps();
+        if (initialized)
+        {
+            RegisterButtonCallbacks();
+        }
     }
     private void OnDisable()
     {
+        UnregisterButtonCallbacks();
         PlayerControlsProvider.DisableMenuMaps();
     }
 
@@ -150,230 +168,402 @@ public class ProgressionManager : MonoBehaviour
     void Start()
     {
         //AnaylticsManager.MenuProgressionLoaded();
+        if (EventSystem.current == null)
+        {
+            enabled = false;
+            return;
+        }
 
-        EventSystem.current.SetSelectedGameObject(EventSystem.current.firstSelectedGameObject);
+        UiSelectionAdapter.EnsureInputSystemUiModule();
+        ResolveButtonReferences();
+        RegisterButtonCallbacks();
+        UiSelectionAdapter.EnsureSelected(GetDefaultSelectedButton());
         // default display
         StartCoroutine(InitializeDisplay());
+        initialized = true;
     }
 
     // Update is called once per frame
     void Update()
     {
-        // check for some button not selected
-        if (EventSystem.current.currentSelectedGameObject == null)
+        GameObject selectedObject = UiSelectionAdapter.EnsureSelected(GetDefaultSelectedButton());
+        if (selectedObject == null)
         {
-            EventSystem.current.SetSelectedGameObject(EventSystem.current.firstSelectedGameObject); // + "_description";
-        }
-        currentHighlightedButton = EventSystem.current.currentSelectedGameObject.name; // + "_description";
-
-        // ================================== footer buttons =====================================================================
-        // start button | start game
-        if (PlayerControlsProvider.MenuSubmitTriggered
-            && currentHighlightedButton.Equals(startButtonName))
-        {
-            confirmChanges();
-            loadScene(Constants.SCENE_NAME_level_00_start);
-        }
-        // quit button | quit game
-        if (PlayerControlsProvider.MenuSubmitTriggered
-            && currentHighlightedButton.Equals(quitButtonName))
-        {
-            confirmChanges();
-            Application.Quit();
-        }
-        // stats menu button | load stats menu
-        if (PlayerControlsProvider.MenuSubmitTriggered
-            && currentHighlightedButton.Equals(statsMenuButtonName))
-        {
-            confirmChanges();
-            loadScene(Constants.SCENE_NAME_level_00_stats);
+            return;
         }
 
-        // ================================== navigation =====================================================================
+        currentHighlightedButton = selectedObject.name; // + "_description";
+        HandleSelectedProgressionControl(selectedObject);
+    }
+
+    private void HandleSelectedProgressionControl(GameObject selectedObject)
+    {
+        if (buttonPressed || string.IsNullOrEmpty(currentHighlightedButton))
+        {
+            return;
+        }
+
+        HandleSelectionMovement(selectedObject);
+        HandleProgressionInput();
+    }
+
+    private void HandleSelectionMovement(GameObject selectedObject)
+    {
+        Button selectedButton = selectedObject.GetComponent<Button>();
 
         // right, go to change options
         if (controls.UINavigation.Right.triggered
-            && EventSystem.current.currentSelectedGameObject.GetComponent<Button>().FindSelectableOnRight() != null
+            && selectedButton != null
+            && selectedButton.FindSelectableOnRight() != null
             && currentHighlightedButton.Equals(playerSelectButtonName))
         {
-            EventSystem.current.SetSelectedGameObject(EventSystem.current.currentSelectedGameObject
-                .GetComponent<Button>().FindSelectableOnRight().gameObject);
+            UiSelectionAdapter.TrySelect(selectedButton.FindSelectableOnRight().gameObject);
         }
 
         // left, return to option select
         if (controls.UINavigation.Left.triggered
+            && selectedButton != null
             && currentHighlightedButton.Equals(playerSelectButtonName))
         {
             // check if button exists. if no selectable on left, throws null object exception
-            if (EventSystem.current.currentSelectedGameObject.GetComponent<Button>().FindSelectableOnLeft() != null)
+            if (selectedButton.FindSelectableOnLeft() != null)
             {
-                EventSystem.current.SetSelectedGameObject(EventSystem.current.currentSelectedGameObject
-                    .GetComponent<Button>().FindSelectableOnLeft().gameObject);
+                UiSelectionAdapter.TrySelect(selectedButton.FindSelectableOnLeft().gameObject);
             }
         }
-        // ================================== confirmation dialogue / save / reset ===================================================
+    }
 
-        // save button triggered
-        if (controls.UINavigation.Submit.triggered && currentHighlightedButton.Equals(saveButtonName) && !buttonPressed)
-        {
-            saveChanges();
-        }
-        // reset button triggered
-        if (controls.UINavigation.Submit.triggered && currentHighlightedButton.Equals(resetButtonName) && !buttonPressed)
-        {
-            // enable confirmation object
-            // set selected object to confirm button
-            //confirmationDialogueBox.SetActive(true);
-            resetChanges();
-
-            // reset stats
-            //EventSystem.current.SetSelectedGameObject(GameObject.Find(progression3AccuracyName).gameObject);
-        }
-        if (controls.UINavigation.Submit.triggered && currentHighlightedButton.Equals(confirmButtonName) && !buttonPressed)
-        {
-            confirmChanges();
-        }
-        // cancel popup
-        if (controls.UINavigation.Submit.triggered && currentHighlightedButton.Equals(cancelButtonName) && !buttonPressed)
-        {
-            // do nothing, continue state
-
-            cancelChanges();
-        }
+    private void HandleProgressionInput()
+    {
         // ================================== change options =============================================================
         // up, change options
-        if (controls.UINavigation.Up.triggered && !buttonPressed
-            && currentHighlightedButton.Equals(playerSelectOptionButtonName)
-            && !buttonPressed)
+        if (controls.UINavigation.Up.triggered && currentHighlightedButton.Equals(playerSelectOptionButtonName))
         {
             changePlayerUp();
         }
         // down, change option
-        if (controls.UINavigation.Down.triggered && !buttonPressed
-            && currentHighlightedButton.Equals(playerSelectOptionButtonName)
-            && !buttonPressed)
+        if (controls.UINavigation.Down.triggered && currentHighlightedButton.Equals(playerSelectOptionButtonName))
         {
             changePlayerDown();
-
         }
         // add a point to selected category
         if (!buttonPressed && dataLoaded
             && progressionState.PointsAvailable > 0
             && controls.UINavigation.Submit.triggered
-            && !buttonPressed)
+            && IsProgressionStatButton(currentHighlightedButton))
         {
             addPoint();
         }
         // subtract a point
         if (!buttonPressed && dataLoaded
             && controls.UINavigation.Cancel.triggered
-            && !buttonPressed)
+            && IsProgressionStatButton(currentHighlightedButton))
         {
             subtractPoint();
         }
     }
 
-    public void changePlayerUp()
+    private void ResolveButtonReferences()
     {
+        startButton = ResolveButton(startButton, startButtonName);
+        statsMenuButton = ResolveButton(statsMenuButton, statsMenuButtonName);
+        quitButton = ResolveButton(quitButton, quitButtonName);
+        playerSelectButton = ResolveButton(playerSelectButton, playerSelectButtonName);
+        playerSelectOptionButton = ResolveButton(playerSelectOptionButton, playerSelectOptionButtonName);
+        progression3AccuracyButton = ResolveButton(progression3AccuracyButton, progression3AccuracyName);
+        progression4AccuracyButton = ResolveButton(progression4AccuracyButton, progression4AccuracyName);
+        progression7AccuracyButton = ResolveButton(progression7AccuracyButton, progression7AccuracyName);
+        confirmButton = ResolveButton(confirmButton, confirmButtonName);
+        cancelButton = ResolveButton(cancelButton, cancelButtonName);
+        saveButton = ResolveButton(saveButton, saveButtonName);
+        resetButton = ResolveButton(resetButton, resetButtonName);
+    }
+
+    private Button ResolveButton(Button button, string buttonName)
+    {
+        if (button != null)
+        {
+            return button;
+        }
+
+        GameObject buttonObject = GameObject.Find(buttonName);
+        if (buttonObject != null)
+        {
+            return buttonObject.GetComponent<Button>();
+        }
+
+        return FindButtonInInactiveChildren(buttonName);
+    }
+
+    private Button FindButtonInInactiveChildren(string buttonName)
+    {
+        if (confirmationDialogueBox == null)
+        {
+            return null;
+        }
+
+        Button[] buttons = confirmationDialogueBox.GetComponentsInChildren<Button>(true);
+        foreach (Button button in buttons)
+        {
+            if (button.name.Equals(buttonName))
+            {
+                return button;
+            }
+        }
+
+        return null;
+    }
+
+    private void RegisterButtonCallbacks()
+    {
+        RegisterRequiredButtonCallback(startButton, StartGame);
+        RegisterRequiredButtonCallback(statsMenuButton, LoadStatsMenu);
+        RegisterRequiredButtonCallback(quitButton, QuitGame);
+        RegisterRequiredButtonCallback(saveButton, saveChanges);
+        RegisterRequiredButtonCallback(resetButton, resetChanges);
+        RegisterRequiredButtonCallback(confirmButton, confirmChanges);
+        RegisterRequiredButtonCallback(cancelButton, cancelChanges);
+    }
+
+    private void UnregisterButtonCallbacks()
+    {
+        UiSelectionAdapter.UnregisterButton(startButton, StartGame);
+        UiSelectionAdapter.UnregisterButton(statsMenuButton, LoadStatsMenu);
+        UiSelectionAdapter.UnregisterButton(quitButton, QuitGame);
+        UiSelectionAdapter.UnregisterButton(saveButton, saveChanges);
+        UiSelectionAdapter.UnregisterButton(resetButton, resetChanges);
+        UiSelectionAdapter.UnregisterButton(confirmButton, confirmChanges);
+        UiSelectionAdapter.UnregisterButton(cancelButton, cancelChanges);
+    }
+
+    private void RegisterRequiredButtonCallback(Button button, UnityEngine.Events.UnityAction action)
+    {
+        if (button == null || action == null)
+        {
+            return;
+        }
+
+        button.onClick.RemoveListener(action);
+        button.onClick.AddListener(action);
+    }
+
+    private GameObject GetDefaultSelectedButton()
+    {
+        if (EventSystem.current != null && EventSystem.current.firstSelectedGameObject != null)
+        {
+            return EventSystem.current.firstSelectedGameObject;
+        }
+
+        if (playerSelectOptionButton != null)
+        {
+            return playerSelectOptionButton.gameObject;
+        }
+
+        return startButton != null ? startButton.gameObject : null;
+    }
+
+    private bool IsProgressionStatButton(string selectedButtonName)
+    {
+        return selectedButtonName.Equals(progression3AccuracyName)
+            || selectedButtonName.Equals(progression4AccuracyName)
+            || selectedButtonName.Equals(progression7AccuracyName);
+    }
+
+    private void SelectProgressionButton(Button button, string buttonName)
+    {
+        Button targetButton = ResolveButton(button, buttonName);
+        if (targetButton != null)
+        {
+            UiSelectionAdapter.TrySelect(targetButton.gameObject);
+        }
+    }
+
+    private bool HasSelectedCharacterData()
+    {
+        return dataLoaded
+            && playerSelectedData != null
+            && playerSelectedData.Count > 0
+            && playerSelectedIndex >= 0
+            && playerSelectedIndex < playerSelectedData.Count;
+    }
+
+    private void RunProgressionAction(Action action)
+    {
+        if (buttonPressed || action == null || lastActionFrame == Time.frameCount)
+        {
+            return;
+        }
+
         buttonPressed = true;
+        lastActionFrame = Time.frameCount;
         try
         {
-            changeSelectedPlayerUp();
-            initializePlayerDisplay();
+            action();
         }
         catch (Exception e)
         {
             Debug.Log("ERROR : " + e);
-            return;
         }
-        buttonPressed = false;
+        finally
+        {
+            buttonPressed = false;
+        }
+    }
+
+    public void StartGame()
+    {
+        RunProgressionAction(() =>
+        {
+            ConfirmChangesInternal();
+            loadScene(Constants.SCENE_NAME_level_00_start);
+        });
+    }
+
+    public void LoadStatsMenu()
+    {
+        RunProgressionAction(() =>
+        {
+            ConfirmChangesInternal();
+            loadScene(Constants.SCENE_NAME_level_00_stats);
+        });
+    }
+
+    public void QuitGame()
+    {
+        RunProgressionAction(() =>
+        {
+            ConfirmChangesInternal();
+            Application.Quit();
+        });
+    }
+
+    public void changePlayerUp()
+    {
+        RunProgressionAction(() =>
+        {
+            if (!HasSelectedCharacterData())
+            {
+                return;
+            }
+
+            changeSelectedPlayerUp();
+            initializePlayerDisplay();
+        });
     }
 
     public void changePlayerDown()
     {
-        buttonPressed = true;
-        try
+        RunProgressionAction(() =>
         {
+            if (!HasSelectedCharacterData())
+            {
+                return;
+            }
+
             changeSelectedPlayerDown();
             initializePlayerDisplay();
-        }
-        catch (Exception e)
-        {
-            Debug.Log("ERROR : " + e);
-            return;
-        }
-        buttonPressed = false;
+        });
     }
 
     public void addPoint()
     {
-        buttonPressed = true;
-        if (currentHighlightedButton.Equals(progression3AccuracyName))
+        RunProgressionAction(() =>
         {
-            updateThreeAccuracy(UpdateType.Add);
-        }
-        if (currentHighlightedButton.Equals(progression4AccuracyName))
-        {
-            updateFourAccuracy(UpdateType.Add);
-        }
-        if (currentHighlightedButton.Equals(progression7AccuracyName))
-        {
-            updateSevenAccuracy(UpdateType.Add);
-        }
-        initializePlayerDisplay();
-        buttonPressed = false;
+            if (!HasSelectedCharacterData())
+            {
+                return;
+            }
+
+            if (currentHighlightedButton.Equals(progression3AccuracyName))
+            {
+                updateThreeAccuracy(UpdateType.Add);
+            }
+            if (currentHighlightedButton.Equals(progression4AccuracyName))
+            {
+                updateFourAccuracy(UpdateType.Add);
+            }
+            if (currentHighlightedButton.Equals(progression7AccuracyName))
+            {
+                updateSevenAccuracy(UpdateType.Add);
+            }
+            initializePlayerDisplay();
+        });
     }
 
     public void subtractPoint()
     {
-        buttonPressed = true;
-        if (currentHighlightedButton.Equals(progression3AccuracyName)
-            && (progressionState.AddTo3 > 0 || progressionState.AddToRange > 0))
+        RunProgressionAction(() =>
         {
-            updateThreeAccuracy(UpdateType.Subtract);
-        }
-        if (currentHighlightedButton.Equals(progression4AccuracyName)
-            && (progressionState.AddTo4 > 0 || progressionState.AddToRange > 0))
-        {
-            updateFourAccuracy(UpdateType.Subtract);
-        }
-        if (currentHighlightedButton.Equals(progression7AccuracyName)
-            && (progressionState.AddTo7 > 0 || progressionState.AddToRange > 0))
-        {
-            updateSevenAccuracy(UpdateType.Subtract);
-        }
-        initializePlayerDisplay();
-        buttonPressed = false;
+            if (!HasSelectedCharacterData())
+            {
+                return;
+            }
+
+            if (currentHighlightedButton.Equals(progression3AccuracyName)
+                && (progressionState.AddTo3 > 0 || progressionState.AddToRange > 0))
+            {
+                updateThreeAccuracy(UpdateType.Subtract);
+            }
+            if (currentHighlightedButton.Equals(progression4AccuracyName)
+                && (progressionState.AddTo4 > 0 || progressionState.AddToRange > 0))
+            {
+                updateFourAccuracy(UpdateType.Subtract);
+            }
+            if (currentHighlightedButton.Equals(progression7AccuracyName)
+                && (progressionState.AddTo7 > 0 || progressionState.AddToRange > 0))
+            {
+                updateSevenAccuracy(UpdateType.Subtract);
+            }
+            initializePlayerDisplay();
+        });
     }
 
     public void saveChanges()
     {
-        buttonPressed = true;
-        confirmationDialogueBox.SetActive(true);
-        EventSystem.current.SetSelectedGameObject(GameObject.Find(confirmButtonName).gameObject);
-        buttonPressed = false;
+        RunProgressionAction(() =>
+        {
+            confirmationDialogueBox.SetActive(true);
+            SelectProgressionButton(confirmButton, confirmButtonName);
+        });
     }
 
     public void cancelChanges()
     {
-        buttonPressed = true;
-        confirmationDialogueBox.SetActive(false);
-        EventSystem.current.SetSelectedGameObject(GameObject.Find(progression3AccuracyName).gameObject);
-        buttonPressed = false;
+        RunProgressionAction(() =>
+        {
+            confirmationDialogueBox.SetActive(false);
+            SelectProgressionButton(progression3AccuracyButton, progression3AccuracyName);
+        });
     }
 
     public void resetChanges()
     {
-        buttonPressed = true;
-        ResetSelectedCharacterDraft();
-        initializePlayerDisplay();
+        RunProgressionAction(() =>
+        {
+            if (!HasSelectedCharacterData())
+            {
+                return;
+            }
 
-        EventSystem.current.SetSelectedGameObject(GameObject.Find(progression3AccuracyName).gameObject);
-        buttonPressed = false;
+            ResetSelectedCharacterDraft();
+            initializePlayerDisplay();
+
+            SelectProgressionButton(progression3AccuracyButton, progression3AccuracyName);
+        });
     }
 
     public void confirmChanges()
     {
+        RunProgressionAction(ConfirmChangesInternal);
+    }
+
+    private void ConfirmChangesInternal()
+    {
+        if (!HasSelectedCharacterData())
+        {
+            return;
+        }
+
         if (progressionDraft == null)
         {
             ResetSelectedCharacterDraft();
@@ -381,7 +571,7 @@ public class ProgressionManager : MonoBehaviour
 
         if (!progressionService.CommitDraft(progressionDraft, playerSelectedData[playerSelectedIndex]))
         {
-            EventSystem.current.SetSelectedGameObject(GameObject.Find(confirmButtonName).gameObject);
+            SelectProgressionButton(confirmButton, confirmButtonName);
             return;
         }
 
@@ -392,16 +582,26 @@ public class ProgressionManager : MonoBehaviour
         // display
         initializePlayerDisplay();
         // reset stats
-        EventSystem.current.SetSelectedGameObject(GameObject.Find(progression3AccuracyName).gameObject);
+        SelectProgressionButton(progression3AccuracyButton, progression3AccuracyName);
     }
 
     public void resetUpdatePoints()
     {
+        if (!HasSelectedCharacterData())
+        {
+            return;
+        }
+
         ResetSelectedCharacterDraft();
     }
 
     public void updateThreeAccuracy(UpdateType updateType)
     {
+        if (!HasSelectedCharacterData())
+        {
+            return;
+        }
+
         EnsureSelectedCharacterDraft();
         if (updateType == UpdateType.Add)
         {
@@ -414,10 +614,14 @@ public class ProgressionManager : MonoBehaviour
 
         SyncDraftToStateAndLabels();
         initializePlayerDisplay();
-        buttonPressed = false;
     }
     public void updateFourAccuracy(UpdateType updateType)
     {
+        if (!HasSelectedCharacterData())
+        {
+            return;
+        }
+
         EnsureSelectedCharacterDraft();
         if (updateType == UpdateType.Add)
         {
@@ -430,10 +634,14 @@ public class ProgressionManager : MonoBehaviour
 
         SyncDraftToStateAndLabels();
         initializePlayerDisplay();
-        buttonPressed = false;
     }
     public void updateSevenAccuracy(UpdateType updateType)
     {
+        if (!HasSelectedCharacterData())
+        {
+            return;
+        }
+
         EnsureSelectedCharacterDraft();
         if (updateType == UpdateType.Add)
         {
@@ -446,7 +654,6 @@ public class ProgressionManager : MonoBehaviour
 
         SyncDraftToStateAndLabels();
         initializePlayerDisplay();
-        buttonPressed = false;
     }
 
 

@@ -32,6 +32,12 @@ public class TouchInputProgressionScreenController : MonoBehaviour
 
     private void Start()
     {
+        if (UiSelectionAdapter.EnsureInputSystemUiModule())
+        {
+            enabled = false;
+            return;
+        }
+
 #if UNITY_ANDROID && !UNITY_EDITOR
         ProgressionManager.instance.disableButtonsNotUsedForTouchInput();
 #endif
@@ -57,6 +63,12 @@ public class TouchInputProgressionScreenController : MonoBehaviour
 
     void Update()
     {
+        if (UiSelectionAdapter.InputSystemUiActive)
+        {
+            enabled = false;
+            return;
+        }
+
         if (EventSystem.current == null)
         {
             return;
@@ -233,21 +245,21 @@ public class TouchInputProgressionScreenController : MonoBehaviour
             && !buttonPressed)
         {
             Debug.Log("load start");
-            ProgressionManager.instance.loadScene(Constants.SCENE_NAME_level_00_start);
+            ProgressionManager.instance.StartGame();
             buttonPressed = true;
         }
         if (selectedObject.name.Equals(ProgressionManager.StatsMenuButtonName)
             && !buttonPressed)
         {
             Debug.Log("load stats");
-            ProgressionManager.instance.loadScene(Constants.SCENE_NAME_level_00_stats);
+            ProgressionManager.instance.LoadStatsMenu();
             buttonPressed = true;
         }
         if (selectedObject.name.Equals(ProgressionManager.QuitButtonName)
                 && !buttonPressed)
         {
             Debug.Log("quit");
-            Application.Quit();
+            ProgressionManager.instance.QuitGame();
             buttonPressed = true;
         }
         buttonPressed = false;
