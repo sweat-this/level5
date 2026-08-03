@@ -37,6 +37,12 @@ public class TouchInputStartScreenController : MonoBehaviour
 
     private void Start()
     {
+        if (UiSelectionAdapter.EnsureInputSystemUiModule())
+        {
+            enabled = false;
+            return;
+        }
+
         //StartManager.instance.disableButtonsNotUsedForTouchInput();
         // set distance required for swipe up to be regeistered by device
         swipeUpTolerance = Screen.height / 7;
@@ -53,6 +59,12 @@ public class TouchInputStartScreenController : MonoBehaviour
 
     void Update()
     {
+        if (UiSelectionAdapter.InputSystemUiActive)
+        {
+            enabled = false;
+            return;
+        }
+
         if (EventSystem.current == null)
             return;
 
@@ -189,47 +201,46 @@ public class TouchInputStartScreenController : MonoBehaviour
         //stats
         if (currentHighlightedButton.Equals(StartManager.statsMenuButtonName))
         {
-            StartManager.instance.loadMenu(Constants.SCENE_NAME_level_00_stats);
+            StartManager.instance.LoadStatsMenu();
             buttonPressed = true;
         }
         // start
         if (currentHighlightedButton.Equals(StartManager.startButtonName))
         {
-            StartManager.instance.loadGame();
+            StartManager.instance.StartGame();
             buttonPressed = true;
         }
         // update /progression
         if (currentHighlightedButton.Equals(StartManager.updateMenuButtonName))
         {
             //Debug.Log("load prgression screen");
-            GameOptions.playerSelectedIndex = StartManager.instance.playerSelectedIndex;
-            StartManager.instance.loadMenu(Constants.SCENE_NAME_level_00_progression);
+            StartManager.instance.LoadProgressionMenu();
             buttonPressed = true;
         }
         // options
         if (currentHighlightedButton.Equals(StartManager.optionsMenuButtonName))
         {
             //Debug.Log("load prgression screen");
-            StartManager.instance.loadMenu(Constants.SCENE_NAME_level_00_options);
+            StartManager.instance.LoadOptionsMenu();
             buttonPressed = true;
         }
         // credits
         if (currentHighlightedButton.Equals(StartManager.creditsMenuButtonName))
         {
             //Debug.Log("load prgression screen");
-            StartManager.instance.loadMenu(Constants.SCENE_NAME_level_00_credits);
+            StartManager.instance.LoadCreditsMenu();
             buttonPressed = true;
         }
         // quit
         if (currentHighlightedButton.Equals(StartManager.quitButtonName))
         {
-            Application.Quit();
+            StartManager.instance.QuitGame();
             buttonPressed = true;
         }
         //account
         if (currentHighlightedButton.Equals(StartManager.accountMenuButtonName))
         {
-            StartManager.instance.loadMenu(Constants.SCENE_NAME_level_00_account);
+            StartManager.instance.LoadAccountMenu();
             buttonPressed = true;
         }
         //cpu select option

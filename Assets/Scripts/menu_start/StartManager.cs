@@ -46,6 +46,16 @@ public class StartManager : MonoBehaviour
     Button playerSelectButton;
     Button friendSelectButton;
     Button modeSelectButton;
+    Button cpu1OptionButton;
+    Button cpu2OptionButton;
+    Button cpu3OptionButton;
+    [SerializeField] Button startButton;
+    [SerializeField] Button statsMenuButton;
+    [SerializeField] Button quitButton;
+    [SerializeField] Button optionsMenuButton;
+    [SerializeField] Button creditsMenuButton;
+    [SerializeField] Button updateMenuButton;
+    [SerializeField] Button accountMenuButton;
 
     //player selected display
     private Text playerSelectOptionText;
@@ -198,14 +208,23 @@ public class StartManager : MonoBehaviour
 
     bool buttonPressed = false;
     bool dataLoaded = false;
+    bool initialized = false;
+    int lastCommandFrame = -1;
+    int lastLoadGameFrame = -1;
+    int lastOptionFrame = -1;
 
     private void OnEnable()
     {
         controls = PlayerControlsProvider.Controls;
         PlayerControlsProvider.EnableMenuMaps();
+        if (initialized)
+        {
+            RegisterButtonCallbacks();
+        }
     }
     private void OnDisable()
     {
+        UnregisterButtonCallbacks();
         PlayerControlsProvider.DisableMenuMaps();
     }
 
@@ -238,10 +257,20 @@ public class StartManager : MonoBehaviour
     void Start()
     {
         //UtilityFunctions.GetCurrentDeviceHour();
+        if (EventSystem.current == null)
+        {
+            enabled = false;
+            return;
+        }
 
+        UiSelectionAdapter.EnsureInputSystemUiModule();
+        ResolveCommandButtonReferences();
+        RegisterButtonCallbacks();
+        UiSelectionAdapter.EnsureSelected(GetDefaultSelectedButton());
         StartCoroutine(InitializeDisplay());
         StartCoroutine(SetVersion());
         AnaylticsManager.MenuStartLoaded();
+        initialized = true;
     }
 
 #if UNITY_EDITOR || UNITY_STANDALONE || UNITY_EDITOR_OSX
@@ -250,14 +279,15 @@ public class StartManager : MonoBehaviour
     void Update()
     {
 
-        // check for some button not selected
-        if (EventSystem.current != null)
+        GameObject selectedObject = UiSelectionAdapter.EnsureSelected(GetDefaultSelectedButton());
+        if (selectedObject != null)
         {
-            if (EventSystem.current.currentSelectedGameObject == null)
-            {
-                EventSystem.current.SetSelectedGameObject(EventSystem.current.firstSelectedGameObject); // + "_description";
-            }
-            currentHighlightedButton = EventSystem.current.currentSelectedGameObject.name; // + "_description";
+            currentHighlightedButton = selectedObject.name; // + "_description";
+        }
+
+        if (string.IsNullOrEmpty(currentHighlightedButton))
+        {
+            return;
         }
 
         // if player highlighted, display player
@@ -304,282 +334,627 @@ public class StartManager : MonoBehaviour
         {
             initializeOptionsDisplay();
         }
-        // ================================== footer buttons =====================================================================
-        // start button | start game
-        if (PlayerControlsProvider.MenuSubmitTriggered
-            && currentHighlightedButton.Equals(startButtonName))
-        {
-            loadGame();
-        }
-        // quit button | quit game
-        if (PlayerControlsProvider.MenuSubmitTriggered
-            && currentHighlightedButton.Equals(quitButtonName))
-        {
-            Application.Quit();
-        }
-        // stats menu button | load stats menu
-        if (PlayerControlsProvider.MenuSubmitTriggered
-            && currentHighlightedButton.Equals(statsMenuButtonName))
-        {
-            loadMenu(Constants.SCENE_NAME_level_00_stats);
-        }
-
-        // update menu button | load update menu
-        if (PlayerControlsProvider.MenuSubmitTriggered
-            && currentHighlightedButton.Equals(updateMenuButtonName))
-        {
-            GameOptions.playerSelectedIndex = playerSelectedIndex;
-            loadMenu(Constants.SCENE_NAME_level_00_progression);
-        }
-        // options menu button | load options menu
-        if (PlayerControlsProvider.MenuSubmitTriggered
-            && currentHighlightedButton.Equals(optionsMenuButtonName))
-        {
-            loadMenu(Constants.SCENE_NAME_level_00_options);
-        }
-        // credits menu button | load credits menu
-        if (PlayerControlsProvider.MenuSubmitTriggered
-            && currentHighlightedButton.Equals(creditsMenuButtonName))
-        {
-            loadMenu(Constants.SCENE_NAME_level_00_credits);
-        }
-
-        // account menu button | load account menu
-        if (PlayerControlsProvider.MenuSubmitTriggered
-            && currentHighlightedButton.Equals(accountMenuButtonName))
-        {
-            loadMenu(Constants.SCENE_NAME_level_00_account);
-        }
-
         // ================================== navigation =====================================================================
-        // up, option select
-        if (controls.UINavigation.Up.triggered && !buttonPressed
-            && !currentHighlightedButton.Equals(numPlayersSelectOptionButtonName)
-            && !currentHighlightedButton.Equals(playerSelectOptionButtonName)
-            && !currentHighlightedButton.Equals(levelSelectOptionButtonName)
-            && !currentHighlightedButton.Equals(modeSelectOptionButtonName)
-            && !currentHighlightedButton.Equals(trafficSelectOptionName)
-            && !currentHighlightedButton.Equals(FriendSelectOptionButtonName)
-            && !currentHighlightedButton.Equals(hardcoreSelectOptionName)
-            && !currentHighlightedButton.Equals(enemySelectOptionName)
-            && !currentHighlightedButton.Equals(difficultySelectOptionName)
-            && !currentHighlightedButton.Equals(obstacleSelectOptionName)
-            && !currentHighlightedButton.Equals(SniperSelectOptionName)
-            && !currentHighlightedButton.Equals(cpuSelectOptionButtonName)
-            && !currentHighlightedButton.Equals(optionsSelectOptionName))
+        if (!UiSelectionAdapter.InputSystemUiActive)
         {
-            buttonPressed = true;
-            EventSystem.current.SetSelectedGameObject(EventSystem.current.currentSelectedGameObject
-                .GetComponent<Button>().FindSelectableOnUp().gameObject);
-            buttonPressed = false;
-        }
-        // down, option select
-        if (controls.UINavigation.Down.triggered && !buttonPressed
-            && !currentHighlightedButton.Equals(numPlayersSelectOptionButtonName)
-            && !currentHighlightedButton.Equals(playerSelectOptionButtonName)
-            && !currentHighlightedButton.Equals(levelSelectOptionButtonName)
-            && !currentHighlightedButton.Equals(modeSelectOptionButtonName)
-            && !currentHighlightedButton.Equals(FriendSelectOptionButtonName)
-            && !currentHighlightedButton.Equals(trafficSelectOptionName)
-            && !currentHighlightedButton.Equals(hardcoreSelectOptionName)
-            && !currentHighlightedButton.Equals(difficultySelectOptionName)
-            && !currentHighlightedButton.Equals(enemySelectOptionName)
-            && !currentHighlightedButton.Equals(obstacleSelectOptionName)
-            && !currentHighlightedButton.Equals(cpuSelectOptionButtonName)
-            && !currentHighlightedButton.Equals(SniperSelectOptionName)
-            && !currentHighlightedButton.Equals(optionsSelectOptionName))
-        {
-            buttonPressed = true;
-            EventSystem.current.SetSelectedGameObject(EventSystem.current.currentSelectedGameObject
-                .GetComponent<Button>().FindSelectableOnDown().gameObject);
-            buttonPressed = false;
-        }
+            // up, option select
+            if (controls.UINavigation.Up.triggered && !buttonPressed
+                && !currentHighlightedButton.Equals(numPlayersSelectOptionButtonName)
+                && !currentHighlightedButton.Equals(playerSelectOptionButtonName)
+                && !currentHighlightedButton.Equals(levelSelectOptionButtonName)
+                && !currentHighlightedButton.Equals(modeSelectOptionButtonName)
+                && !currentHighlightedButton.Equals(trafficSelectOptionName)
+                && !currentHighlightedButton.Equals(FriendSelectOptionButtonName)
+                && !currentHighlightedButton.Equals(hardcoreSelectOptionName)
+                && !currentHighlightedButton.Equals(enemySelectOptionName)
+                && !currentHighlightedButton.Equals(difficultySelectOptionName)
+                && !currentHighlightedButton.Equals(obstacleSelectOptionName)
+                && !currentHighlightedButton.Equals(SniperSelectOptionName)
+                && !currentHighlightedButton.Equals(cpuSelectOptionButtonName)
+                && !currentHighlightedButton.Equals(optionsSelectOptionName))
+            {
+                buttonPressed = true;
+                EventSystem.current.SetSelectedGameObject(EventSystem.current.currentSelectedGameObject
+                    .GetComponent<Button>().FindSelectableOnUp().gameObject);
+                buttonPressed = false;
+            }
+            // down, option select
+            if (controls.UINavigation.Down.triggered && !buttonPressed
+                && !currentHighlightedButton.Equals(numPlayersSelectOptionButtonName)
+                && !currentHighlightedButton.Equals(playerSelectOptionButtonName)
+                && !currentHighlightedButton.Equals(levelSelectOptionButtonName)
+                && !currentHighlightedButton.Equals(modeSelectOptionButtonName)
+                && !currentHighlightedButton.Equals(FriendSelectOptionButtonName)
+                && !currentHighlightedButton.Equals(trafficSelectOptionName)
+                && !currentHighlightedButton.Equals(hardcoreSelectOptionName)
+                && !currentHighlightedButton.Equals(difficultySelectOptionName)
+                && !currentHighlightedButton.Equals(enemySelectOptionName)
+                && !currentHighlightedButton.Equals(obstacleSelectOptionName)
+                && !currentHighlightedButton.Equals(cpuSelectOptionButtonName)
+                && !currentHighlightedButton.Equals(SniperSelectOptionName)
+                && !currentHighlightedButton.Equals(optionsSelectOptionName))
+            {
+                buttonPressed = true;
+                EventSystem.current.SetSelectedGameObject(EventSystem.current.currentSelectedGameObject
+                    .GetComponent<Button>().FindSelectableOnDown().gameObject);
+                buttonPressed = false;
+            }
 
-        // right, go to change options
-        if (controls.UINavigation.Right.triggered
-            && EventSystem.current.currentSelectedGameObject.GetComponent<Button>()
-            .FindSelectableOnRight() != null)
-        {
-            EventSystem.current.SetSelectedGameObject(EventSystem.current.currentSelectedGameObject
-                .GetComponent<Button>().FindSelectableOnRight().gameObject);
-        }
-
-        // left, return to option select
-        if (controls.UINavigation.Left.triggered)
-        {
-            // check if button exists. if no selectable on left, throws null object exception
-            if (EventSystem.current.currentSelectedGameObject.GetComponent<Button>().FindSelectableOnLeft() != null)
+            // right, go to change options
+            if (controls.UINavigation.Right.triggered
+                && EventSystem.current.currentSelectedGameObject.GetComponent<Button>()
+                .FindSelectableOnRight() != null)
             {
                 EventSystem.current.SetSelectedGameObject(EventSystem.current.currentSelectedGameObject
-                    .GetComponent<Button>().FindSelectableOnLeft().gameObject);
+                    .GetComponent<Button>().FindSelectableOnRight().gameObject);
+            }
+
+            // left, return to option select
+            if (controls.UINavigation.Left.triggered)
+            {
+                // check if button exists. if no selectable on left, throws null object exception
+                if (EventSystem.current.currentSelectedGameObject.GetComponent<Button>().FindSelectableOnLeft() != null)
+                {
+                    EventSystem.current.SetSelectedGameObject(EventSystem.current.currentSelectedGameObject
+                        .GetComponent<Button>().FindSelectableOnLeft().gameObject);
+                }
             }
         }
 
         // ================================== change options =============================================================
-        // up, change options
-        if (controls.UINavigation.Up.triggered && !buttonPressed)
+        if (!UiSelectionAdapter.InputSystemUiActive)
         {
-            buttonPressed = true;
-            try
+            // up, change options
+            if (controls.UINavigation.Up.triggered && !buttonPressed)
             {
-                //if (currentHighlightedButton.Equals(numPlayersSelectOptionButtonName))
-                //{
-                //    changeSelectedNumPlayersUp();
-                //    initializeNumPlayersDisplay();
-                //}
-                if (currentHighlightedButton.Equals(playerSelectOptionButtonName))
+                buttonPressed = true;
+                try
                 {
-                    changeSelectedPlayerUp();
-                    initializePlayerDisplay();
+                    //if (currentHighlightedButton.Equals(numPlayersSelectOptionButtonName))
+                    //{
+                    //    changeSelectedNumPlayersUp();
+                    //    initializeNumPlayersDisplay();
+                    //}
+                    if (currentHighlightedButton.Equals(playerSelectOptionButtonName))
+                    {
+                        changeSelectedPlayerUp();
+                        initializePlayerDisplay();
+                    }
+                    if (currentHighlightedButton.Equals(levelSelectOptionButtonName))
+                    {
+                        changeSelectedLevelUp();
+                        initializeLevelDisplay();
+                    }
+                    if (currentHighlightedButton.Equals(modeSelectOptionButtonName))
+                    {
+                        changeSelectedModeUp();
+                        initializeModeDisplay();
+                    }
+                    if (currentHighlightedButton.Equals(FriendSelectOptionButtonName))
+                    {
+                        changeSelectedfriendUp();
+                        initializefriendDisplay();
+                    }
+                    //if (currentHighlightedButton.Equals(optionsSelectOptionName))
+                    //{
+                    //    Debug.Log("option up");
+                    //    //changeSelectedfriendUp();
+                    //    //initializefriendDisplay();
+                    //}
+                    if (currentHighlightedButton.Equals(trafficSelectOptionName))
+                    {
+                        // disabled for now. default : OFF
+                        changeSelectedTrafficOption();
+                        initializeTrafficOptionDisplay();
+                    }
+                    if (currentHighlightedButton.Equals(hardcoreSelectOptionName))
+                    {
+                        changeSelectedHardcoreOption();
+                        initializeHardcoreOptionDisplay();
+                    }
+                    if (currentHighlightedButton.Equals(enemySelectOptionName))
+                    {
+                        changeSelectedEnemiesOption();
+                        initializeEnemyOptionDisplay();
+                    }
+                    if (currentHighlightedButton.Equals(SniperSelectOptionName))
+                    {
+                        changeSelectedSniperOption();
+                        initializeSniperOptionDisplay();
+                    }
+                    if (currentHighlightedButton.Equals(difficultySelectOptionName))
+                    {
+                        changeSelectedDifficultyOption(difficultySelected);
+                        initializeDifficultyOptionDisplay();
+                    }
+                    if (currentHighlightedButton.Equals(ObstacleSelectOptionName))
+                    {
+                        changeSelectedObstacleOption();
+                        initializeObstacleOptionDisplay();
+                    }
+                    if (currentHighlightedButton.Equals(Cpu1SelectOptionName)
+                        || currentHighlightedButton.Equals(Cpu2SelectOptionName)
+                        || currentHighlightedButton.Equals(Cpu3SelectOptionName))
+                    {
+                        changeSelectedCpuOptionUp(currentHighlightedButton);
+                    }
                 }
-                if (currentHighlightedButton.Equals(levelSelectOptionButtonName))
+                catch (Exception e)
                 {
-                    changeSelectedLevelUp();
-                    initializeLevelDisplay();
+                    Debug.Log("ERROR : " + e);
                 }
-                if (currentHighlightedButton.Equals(modeSelectOptionButtonName))
-                {
-                    changeSelectedModeUp();
-                    initializeModeDisplay();
-                }
-                if (currentHighlightedButton.Equals(FriendSelectOptionButtonName))
-                {
-                    changeSelectedfriendUp();
-                    initializefriendDisplay();
-                }
-                //if (currentHighlightedButton.Equals(optionsSelectOptionName))
-                //{
-                //    Debug.Log("option up");
-                //    //changeSelectedfriendUp();
-                //    //initializefriendDisplay();
-                //}
-                if (currentHighlightedButton.Equals(trafficSelectOptionName))
-                {
-                    // disabled for now. default : OFF
-                    changeSelectedTrafficOption();
-                    initializeTrafficOptionDisplay();
-                }
-                if (currentHighlightedButton.Equals(hardcoreSelectOptionName))
-                {
-                    changeSelectedHardcoreOption();
-                    initializeHardcoreOptionDisplay();
-                }
-                if (currentHighlightedButton.Equals(enemySelectOptionName))
-                {
-                    changeSelectedEnemiesOption();
-                    initializeEnemyOptionDisplay();
-                }
-                if (currentHighlightedButton.Equals(SniperSelectOptionName))
-                {
-                    changeSelectedSniperOption();
-                    initializeSniperOptionDisplay();
-                }
-                if (currentHighlightedButton.Equals(difficultySelectOptionName))
-                {
-                    changeSelectedDifficultyOption(difficultySelected);
-                    initializeDifficultyOptionDisplay();
-                }
-                if (currentHighlightedButton.Equals(ObstacleSelectOptionName))
-                {
-                    changeSelectedObstacleOption();
-                    initializeObstacleOptionDisplay();
-                }
-                if (currentHighlightedButton.Equals(Cpu1SelectOptionName)
-                    || currentHighlightedButton.Equals(Cpu2SelectOptionName)
-                    || currentHighlightedButton.Equals(Cpu3SelectOptionName))
-                {
-                    changeSelectedCpuOptionUp(currentHighlightedButton);
-                }
+                buttonPressed = false;
             }
-            catch
+            // down, change option
+            if (controls.UINavigation.Down.triggered && !buttonPressed)
             {
-                return;
-            }
-            buttonPressed = false;
-        }
-        // down, change option
-        if (controls.UINavigation.Down.triggered && !buttonPressed)
-        {
-            buttonPressed = true;
-            try
-            {
-                //if (currentHighlightedButton.Equals(numPlayersSelectOptionButtonName))
-                //{
-                //    changeSelectedNumPlayersDown();
-                //    initializeNumPlayersDisplay();
-                //}
-                if (currentHighlightedButton.Equals(playerSelectOptionButtonName))
+                buttonPressed = true;
+                try
                 {
-                    changeSelectedPlayerDown();
-                    initializePlayerDisplay();
-                }
-                if (currentHighlightedButton.Equals(levelSelectOptionButtonName))
-                {
-                    changeSelectedLevelDown();
-                    initializeLevelDisplay();
-                }
-                if (currentHighlightedButton.Equals(modeSelectOptionButtonName))
-                {
-                    changeSelectedModeDown();
-                    initializeModeDisplay();
-                }
-                if (currentHighlightedButton.Equals(FriendSelectOptionButtonName))
-                {
-                    changeSelectedfriendDown();
-                    initializefriendDisplay();
-                }
-                //if (currentHighlightedButton.Equals(optionsSelectOptionName))
-                //{
-                //    //changeSelectedfriendUp();
-                //    //initializefriendDisplay();
-                //}
-                if (currentHighlightedButton.Equals(trafficSelectOptionName))
-                {
-                    changeSelectedTrafficOption();
-                    initializeTrafficOptionDisplay();
+                    //if (currentHighlightedButton.Equals(numPlayersSelectOptionButtonName))
+                    //{
+                    //    changeSelectedNumPlayersDown();
+                    //    initializeNumPlayersDisplay();
+                    //}
+                    if (currentHighlightedButton.Equals(playerSelectOptionButtonName))
+                    {
+                        changeSelectedPlayerDown();
+                        initializePlayerDisplay();
+                    }
+                    if (currentHighlightedButton.Equals(levelSelectOptionButtonName))
+                    {
+                        changeSelectedLevelDown();
+                        initializeLevelDisplay();
+                    }
+                    if (currentHighlightedButton.Equals(modeSelectOptionButtonName))
+                    {
+                        changeSelectedModeDown();
+                        initializeModeDisplay();
+                    }
+                    if (currentHighlightedButton.Equals(FriendSelectOptionButtonName))
+                    {
+                        changeSelectedfriendDown();
+                        initializefriendDisplay();
+                    }
+                    //if (currentHighlightedButton.Equals(optionsSelectOptionName))
+                    //{
+                    //    //changeSelectedfriendUp();
+                    //    //initializefriendDisplay();
+                    //}
+                    if (currentHighlightedButton.Equals(trafficSelectOptionName))
+                    {
+                        changeSelectedTrafficOption();
+                        initializeTrafficOptionDisplay();
 
+                    }
+                    if (currentHighlightedButton.Equals(hardcoreSelectOptionName))
+                    {
+                        changeSelectedHardcoreOption();
+                        initializeHardcoreOptionDisplay();
+                    }
+                    if (currentHighlightedButton.Equals(enemySelectOptionName))
+                    {
+                        changeSelectedEnemiesOption();
+                        initializeEnemyOptionDisplay();
+                    }
+                    if (currentHighlightedButton.Equals(SniperSelectOptionName))
+                    {
+                        changeSelectedSniperOption();
+                        initializeSniperOptionDisplay();
+                    }
+                    if (currentHighlightedButton.Equals(difficultySelectOptionName))
+                    {
+                        changeSelectedDifficultyOption(difficultySelected);
+                        initializeDifficultyOptionDisplay();
+                    }
+                    if (currentHighlightedButton.Equals(ObstacleSelectOptionName))
+                    {
+                        changeSelectedObstacleOption();
+                        initializeObstacleOptionDisplay();
+                    }
+                    if (currentHighlightedButton.Equals(Cpu1SelectOptionName)
+                        || currentHighlightedButton.Equals(Cpu2SelectOptionName)
+                        || currentHighlightedButton.Equals(Cpu3SelectOptionName))
+                    {
+                        changeSelectedCpuOptionDown(currentHighlightedButton);
+                    }
                 }
-                if (currentHighlightedButton.Equals(hardcoreSelectOptionName))
+                catch (Exception e)
                 {
-                    changeSelectedHardcoreOption();
-                    initializeHardcoreOptionDisplay();
+                    Debug.Log("ERROR : " + e);
                 }
-                if (currentHighlightedButton.Equals(enemySelectOptionName))
-                {
-                    changeSelectedEnemiesOption();
-                    initializeEnemyOptionDisplay();
-                }
-                if (currentHighlightedButton.Equals(SniperSelectOptionName))
-                {
-                    changeSelectedSniperOption();
-                    initializeSniperOptionDisplay();
-                }
-                if (currentHighlightedButton.Equals(difficultySelectOptionName))
-                {
-                    changeSelectedDifficultyOption(difficultySelected);
-                    initializeDifficultyOptionDisplay();
-                }
-                if (currentHighlightedButton.Equals(ObstacleSelectOptionName))
-                {
-                    changeSelectedObstacleOption();
-                    initializeObstacleOptionDisplay();
-                }
-                if (currentHighlightedButton.Equals(Cpu1SelectOptionName)
-                    || currentHighlightedButton.Equals(Cpu2SelectOptionName)
-                    || currentHighlightedButton.Equals(Cpu3SelectOptionName))
-                {
-                    changeSelectedCpuOptionDown(currentHighlightedButton);
-                }
+                buttonPressed = false;
             }
-            catch
-            {
-                return;
-            }
-            buttonPressed = false;
         }
-        
+
     }
 #endif
+
+    private void ResolveCommandButtonReferences()
+    {
+        startButton = ResolveButton(startButton, startButtonName);
+        statsMenuButton = ResolveButton(statsMenuButton, statsMenuButtonName);
+        quitButton = ResolveButton(quitButton, quitButtonName);
+        optionsMenuButton = ResolveButton(optionsMenuButton, optionsMenuButtonName);
+        creditsMenuButton = ResolveButton(creditsMenuButton, creditsMenuButtonName);
+        updateMenuButton = ResolveButton(updateMenuButton, updateMenuButtonName);
+        accountMenuButton = ResolveButton(accountMenuButton, accountMenuButtonName);
+    }
+
+    private Button ResolveButton(Button button, string buttonName)
+    {
+        if (button != null)
+        {
+            return button;
+        }
+
+        GameObject buttonObject = GameObject.Find(buttonName);
+        return buttonObject != null ? buttonObject.GetComponent<Button>() : null;
+    }
+
+    private Button GetButton(GameObject buttonObject)
+    {
+        return buttonObject != null ? buttonObject.GetComponent<Button>() : null;
+    }
+
+    private void RegisterButtonCallbacks()
+    {
+        RegisterRequiredButtonCallback(startButton, StartGame);
+        RegisterRequiredButtonCallback(statsMenuButton, LoadStatsMenu);
+        RegisterRequiredButtonCallback(quitButton, QuitGame);
+        RegisterRequiredButtonCallback(updateMenuButton, LoadProgressionMenu);
+        RegisterRequiredButtonCallback(optionsMenuButton, LoadOptionsMenu);
+        RegisterRequiredButtonCallback(creditsMenuButton, LoadCreditsMenu);
+        RegisterRequiredButtonCallback(accountMenuButton, LoadAccountMenu);
+        RegisterRequiredButtonCallback(playerSelectButton, SelectNextPlayer);
+        RegisterRequiredButtonCallback(friendSelectButton, SelectNextFriend);
+        RegisterRequiredButtonCallback(levelSelectButton, SelectNextLevel);
+        RegisterRequiredButtonCallback(modeSelectButton, SelectNextMode);
+        RegisterRequiredButtonCallback(trafficSelectButton, ToggleTrafficOption);
+        RegisterRequiredButtonCallback(hardcoreSelectButton, ToggleHardcoreOption);
+        RegisterRequiredButtonCallback(enemySelectButton, ToggleEnemiesOption);
+        RegisterRequiredButtonCallback(sniperSelectButton, ToggleSniperOption);
+        RegisterRequiredButtonCallback(difficultySelectButton, CycleDifficultyOption);
+        RegisterRequiredButtonCallback(obstacleSelectButton, ToggleObstacleOption);
+        RegisterRequiredButtonCallback(cpu1OptionButton, CycleCpu1Option);
+        RegisterRequiredButtonCallback(cpu2OptionButton, CycleCpu2Option);
+        RegisterRequiredButtonCallback(cpu3OptionButton, CycleCpu3Option);
+    }
+
+    private void UnregisterButtonCallbacks()
+    {
+        UiSelectionAdapter.UnregisterButton(startButton, StartGame);
+        UiSelectionAdapter.UnregisterButton(statsMenuButton, LoadStatsMenu);
+        UiSelectionAdapter.UnregisterButton(quitButton, QuitGame);
+        UiSelectionAdapter.UnregisterButton(updateMenuButton, LoadProgressionMenu);
+        UiSelectionAdapter.UnregisterButton(optionsMenuButton, LoadOptionsMenu);
+        UiSelectionAdapter.UnregisterButton(creditsMenuButton, LoadCreditsMenu);
+        UiSelectionAdapter.UnregisterButton(accountMenuButton, LoadAccountMenu);
+        UiSelectionAdapter.UnregisterButton(playerSelectButton, SelectNextPlayer);
+        UiSelectionAdapter.UnregisterButton(friendSelectButton, SelectNextFriend);
+        UiSelectionAdapter.UnregisterButton(levelSelectButton, SelectNextLevel);
+        UiSelectionAdapter.UnregisterButton(modeSelectButton, SelectNextMode);
+        UiSelectionAdapter.UnregisterButton(trafficSelectButton, ToggleTrafficOption);
+        UiSelectionAdapter.UnregisterButton(hardcoreSelectButton, ToggleHardcoreOption);
+        UiSelectionAdapter.UnregisterButton(enemySelectButton, ToggleEnemiesOption);
+        UiSelectionAdapter.UnregisterButton(sniperSelectButton, ToggleSniperOption);
+        UiSelectionAdapter.UnregisterButton(difficultySelectButton, CycleDifficultyOption);
+        UiSelectionAdapter.UnregisterButton(obstacleSelectButton, ToggleObstacleOption);
+        UiSelectionAdapter.UnregisterButton(cpu1OptionButton, CycleCpu1Option);
+        UiSelectionAdapter.UnregisterButton(cpu2OptionButton, CycleCpu2Option);
+        UiSelectionAdapter.UnregisterButton(cpu3OptionButton, CycleCpu3Option);
+    }
+
+    private void RegisterRequiredButtonCallback(Button button, UnityEngine.Events.UnityAction action)
+    {
+        if (button == null || action == null)
+        {
+            return;
+        }
+
+        button.onClick.RemoveListener(action);
+        button.onClick.AddListener(action);
+    }
+
+    private GameObject GetDefaultSelectedButton()
+    {
+        if (EventSystem.current != null && EventSystem.current.firstSelectedGameObject != null)
+        {
+            return EventSystem.current.firstSelectedGameObject;
+        }
+
+        return startButton != null ? startButton.gameObject : null;
+    }
+
+    private bool HasLoadedGameSetup()
+    {
+        return dataLoaded
+            && playerSelectedData != null
+            && playerSelectedData.Count > 0
+            && playerSelectedIndex >= 0
+            && playerSelectedIndex < playerSelectedData.Count
+            && cpuPlayerSelectedData != null
+            && cpuPlayerSelectedData.Count > 0
+            && friendSelectedData != null
+            && friendSelectedData.Count > 0
+            && friendSelectedIndex >= 0
+            && friendSelectedIndex < friendSelectedData.Count
+            && levelSelectedData != null
+            && levelSelectedData.Count > 0
+            && levelSelectedIndex >= 0
+            && levelSelectedIndex < levelSelectedData.Count
+            && modeSelectedData != null
+            && modeSelectedData.Count > 0
+            && modeSelectedIndex >= 0
+            && modeSelectedIndex < modeSelectedData.Count;
+    }
+
+    private bool HasLoadedStartUi()
+    {
+        return StartMenuUiObjects.instance != null
+            && playerSelectOptionText != null
+            && playerSelectOptionImage != null
+            && playerSelectOptionStatsText != null
+            && playerProgressionStatsText != null
+            && playerProgressionUpdatePointsText != null
+            && friendSelectOptionText != null
+            && friendSelectOptionImage != null
+            && levelSelectOptionText != null
+            && modeSelectOptionText != null
+            && trafficSelectOptionText != null
+            && hardcoreSelectOptionText != null
+            && enemySelectOptionText != null
+            && sniperSelectOptionText != null
+            && difficultySelectOptionText != null
+            && obstacleSelectOptionText != null;
+    }
+
+    private void RunCommand(Action action)
+    {
+        if (buttonPressed || action == null || lastCommandFrame == Time.frameCount)
+        {
+            return;
+        }
+
+        buttonPressed = true;
+        lastCommandFrame = Time.frameCount;
+        try
+        {
+            action();
+        }
+        catch (Exception e)
+        {
+            Debug.Log("ERROR : " + e);
+        }
+        finally
+        {
+            buttonPressed = false;
+        }
+    }
+
+    private void RunOptionAction(Action action)
+    {
+        if (buttonPressed || action == null || lastOptionFrame == Time.frameCount || !HasLoadedStartUi())
+        {
+            return;
+        }
+
+        buttonPressed = true;
+        lastOptionFrame = Time.frameCount;
+        try
+        {
+            action();
+        }
+        catch (Exception e)
+        {
+            Debug.Log("ERROR : " + e);
+        }
+        finally
+        {
+            buttonPressed = false;
+        }
+    }
+
+    public void StartGame()
+    {
+        RunCommand(() =>
+        {
+            if (!HasLoadedGameSetup())
+            {
+                return;
+            }
+
+            loadGame();
+        });
+    }
+
+    public void LoadStatsMenu()
+    {
+        RunCommand(() => loadMenu(Constants.SCENE_NAME_level_00_stats));
+    }
+
+    public void LoadProgressionMenu()
+    {
+        RunCommand(() =>
+        {
+            if (!HasLoadedGameSetup())
+            {
+                return;
+            }
+
+            GameOptions.playerSelectedIndex = playerSelectedIndex;
+            loadMenu(Constants.SCENE_NAME_level_00_progression);
+        });
+    }
+
+    public void LoadOptionsMenu()
+    {
+        RunCommand(() => loadMenu(Constants.SCENE_NAME_level_00_options));
+    }
+
+    public void LoadCreditsMenu()
+    {
+        RunCommand(() => loadMenu(Constants.SCENE_NAME_level_00_credits));
+    }
+
+    public void LoadAccountMenu()
+    {
+        RunCommand(() => loadMenu(Constants.SCENE_NAME_level_00_account));
+    }
+
+    public void QuitGame()
+    {
+        RunCommand(Application.Quit);
+    }
+
+    public void SelectNextPlayer()
+    {
+        RunOptionAction(() =>
+        {
+            if (!HasLoadedGameSetup())
+            {
+                return;
+            }
+
+            changeSelectedPlayerDown();
+            initializePlayerDisplay();
+        });
+    }
+
+    public void SelectNextFriend()
+    {
+        RunOptionAction(() =>
+        {
+            if (!HasLoadedGameSetup())
+            {
+                return;
+            }
+
+            changeSelectedfriendDown();
+            initializefriendDisplay();
+        });
+    }
+
+    public void SelectNextLevel()
+    {
+        RunOptionAction(() =>
+        {
+            if (!HasLoadedGameSetup())
+            {
+                return;
+            }
+
+            changeSelectedLevelDown();
+            initializeLevelDisplay();
+        });
+    }
+
+    public void SelectNextMode()
+    {
+        RunOptionAction(() =>
+        {
+            if (!HasLoadedGameSetup())
+            {
+                return;
+            }
+
+            changeSelectedModeDown();
+            initializeModeDisplay();
+        });
+    }
+
+    public void ToggleTrafficOption()
+    {
+        RunOptionAction(() =>
+        {
+            changeSelectedTrafficOption();
+            initializeTrafficOptionDisplay();
+        });
+    }
+
+    public void ToggleHardcoreOption()
+    {
+        RunOptionAction(() =>
+        {
+            changeSelectedHardcoreOption();
+            initializeHardcoreOptionDisplay();
+        });
+    }
+
+    public void ToggleEnemiesOption()
+    {
+        RunOptionAction(() =>
+        {
+            changeSelectedEnemiesOption();
+            initializeEnemyOptionDisplay();
+        });
+    }
+
+    public void ToggleSniperOption()
+    {
+        RunOptionAction(() =>
+        {
+            changeSelectedSniperOption();
+            initializeSniperOptionDisplay();
+        });
+    }
+
+    public void CycleDifficultyOption()
+    {
+        RunOptionAction(() =>
+        {
+            changeSelectedDifficultyOption(difficultySelected);
+            initializeDifficultyOptionDisplay();
+        });
+    }
+
+    public void ToggleObstacleOption()
+    {
+        RunOptionAction(() =>
+        {
+            changeSelectedObstacleOption();
+            initializeObstacleOptionDisplay();
+        });
+    }
+
+    public void CycleCpu1Option()
+    {
+        RunOptionAction(() =>
+        {
+            if (!HasLoadedGameSetup())
+            {
+                return;
+            }
+
+            changeSelectedCpuOptionUp(Cpu1SelectOptionName);
+        });
+    }
+
+    public void CycleCpu2Option()
+    {
+        RunOptionAction(() =>
+        {
+            if (!HasLoadedGameSetup())
+            {
+                return;
+            }
+
+            changeSelectedCpuOptionUp(Cpu2SelectOptionName);
+        });
+    }
+
+    public void CycleCpu3Option()
+    {
+        RunOptionAction(() =>
+        {
+            if (!HasLoadedGameSetup())
+            {
+                return;
+            }
+
+            changeSelectedCpuOptionUp(Cpu3SelectOptionName);
+        });
+    }
 
     private void changeSelectedCpuOptionDown(string currentHighlightedButton)
     {
@@ -777,6 +1152,9 @@ public class StartManager : MonoBehaviour
         playerSelectButton = StartMenuUiObjects.instance.column1_subgroup_column2_player_select_name_button;
         friendSelectButton = StartMenuUiObjects.instance.column1_subgroup_column2_friend_selected_name_button;
         modeSelectButton = StartMenuUiObjects.instance.column1_subgroup_column2_mode_selected_name_button;
+        cpu1OptionButton = GetButton(StartMenuUiObjects.instance.column4_cpu1_button);
+        cpu2OptionButton = GetButton(StartMenuUiObjects.instance.column4_cpu2_button);
+        cpu3OptionButton = GetButton(StartMenuUiObjects.instance.column4_cpu3_button);
 
         // player object with lock texture and unlock text
         playerSelectOptionText = StartMenuUiObjects.instance.column1_subgroup_column2_player_select_name_text;
@@ -791,6 +1169,9 @@ public class StartManager : MonoBehaviour
         friendSelectOptionText = StartMenuUiObjects.instance.column1_subgroup_column2_friend_selected_name_text;
         friendSelectOptionImage = StartMenuUiObjects.instance.column2_friend_tab_friend_selected_image;
 
+        // level object with selected level text
+        levelSelectOptionText = StartMenuUiObjects.instance.column1_subgroup_column2_level_selected_name_text;
+
         // options selection text
         trafficSelectOptionText = StartMenuUiObjects.instance.column2_options_tab_traffic_select_option_text;
         hardcoreSelectOptionText = StartMenuUiObjects.instance.column2_options_tab_hardcore_select_option_text;
@@ -803,6 +1184,8 @@ public class StartManager : MonoBehaviour
         versionText = StartMenuUiObjects.instance.header_version;
         latestVersionText = StartMenuUiObjects.instance.header_latestVersion;
         userNameText = StartMenuUiObjects.instance.header_username;
+
+        RegisterButtonCallbacks();
     }
 
     private void setInitialGameOptions()
@@ -1263,6 +1646,12 @@ public class StartManager : MonoBehaviour
     // ============================  footer options activate - load scene/stats/quit/etc ==============================
     public void loadGame()
     {
+        if (lastLoadGameFrame == Time.frameCount || !HasLoadedGameSetup())
+        {
+            return;
+        }
+
+        lastLoadGameFrame = Time.frameCount;
         // tells character profile to load profile from LoadedData.instance
         GameOptions.gameModeHasBeenSelected = true; 
         
