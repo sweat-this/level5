@@ -263,7 +263,7 @@ public class GameRules : MonoBehaviour
             moneyBallEnabled = false;
             //displayMoneyBallText.text = "";
         }
-        if (!moneyBallEnabled)
+        if (!moneyBallEnabled && displayMoneyBallText != null)
         {
             displayMoneyBallText.text = "";
         }
@@ -443,26 +443,26 @@ public class GameRules : MonoBehaviour
             }
             else
             {
-            DBConnector.instance.savePlayerGameStats(user);
-            matchScoreSaveCompleted = true;
+                DBConnector.instance.savePlayerGameStats(user);
+                matchScoreSaveCompleted = true;
 
-            // if username is logged in
-            try
-            {
-                if (!string.IsNullOrEmpty(GameOptions.userName) && GameOptions.userid != 0) //&& GameOptions.gameModeSelectedId != (int)Enums.ModeId.BeatThaComputahs))
+                // if username is logged in
+                try
                 {
-                    StartCoroutine(APIHelper.PostHighscore(user));
+                    if (!string.IsNullOrEmpty(GameOptions.userName) && GameOptions.userid != 0) //&& GameOptions.gameModeSelectedId != (int)Enums.ModeId.BeatThaComputahs))
+                    {
+                        StartCoroutine(APIHelper.PostHighscore(user));
+                    }
+                    // if user not logged in, set submitted score to false
+                    else if (DBHelper.instance != null)
+                    {
+                        DBHelper.instance.setGameScoreSubmitted(user.Scoreid, false);
+                    }
                 }
-                // if user not logged in, set submitted score to false
-                else if (DBHelper.instance != null)
+                catch (Exception e)
                 {
-                    DBHelper.instance.setGameScoreSubmitted(user.Scoreid, false);
+                    Debug.LogWarning("GameRules saved the match score but could not update submission state. " + e);
                 }
-            }
-            catch (Exception e)
-            {
-                Debug.LogWarning("GameRules saved the match score but could not update submission state. " + e);
-            }
             }
         }
 
