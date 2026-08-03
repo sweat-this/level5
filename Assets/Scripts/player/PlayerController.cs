@@ -3,7 +3,6 @@ using System;
 using System.Collections;
 using UnityEngine;
 using UnityEngine.UI;
-using Touch = UnityEngine.Touch;
 
 public class PlayerController : MonoBehaviour
 {
@@ -102,9 +101,6 @@ public class PlayerController : MonoBehaviour
     [SerializeField]
     float movementVertical;
 
-    // touch vars
-    Touch touch;
-    Vector2 startTouchPosition = new Vector2(0, 0);
     float screenXRange;
     float screenYRange;
 
@@ -141,6 +137,7 @@ public class PlayerController : MonoBehaviour
     public int lightningState;
 
     PlayerControls controls;
+    private PlayerInputReader inputReader;
     private float terrainYHeight;
     [SerializeField] private float idleTime;
     [SerializeField] private float idleStartTime;
@@ -149,6 +146,7 @@ public class PlayerController : MonoBehaviour
     private void OnEnable()
     {
         controls = PlayerControlsProvider.Controls;
+        EnsureInputReader();
         PlayerControlsProvider.EnableGameplayMaps();
         PlayerControlsProvider.EnableDebugMaps();
         //controls.PlayerTouch.Enable();
@@ -163,6 +161,22 @@ public class PlayerController : MonoBehaviour
     private void Awake()
     {
         controls = PlayerControlsProvider.Controls;
+        EnsureInputReader();
+    }
+
+    private PlayerInputReader EnsureInputReader()
+    {
+        if (controls == null)
+        {
+            controls = PlayerControlsProvider.Controls;
+        }
+
+        if (inputReader == null)
+        {
+            inputReader = new PlayerInputReader(controls);
+        }
+
+        return inputReader;
     }
     void Start()
     {
@@ -233,45 +247,9 @@ public class PlayerController : MonoBehaviour
         if (!KnockedDown && !Locked
             && currentState != takeDamageState)
         {
-#if UNITY_ANDROID || UNITY_IOS
-
-            if (Input.touchCount > 0)
-            {
-                Touch touch = Input.touches[0];
-                if (touch.phase == TouchPhase.Began)
-                {
-                    startTouchPosition = touch.position;
-                }
-
-                movementHorizontal = GameLevelManager.instance.Joystick.Horizontal;
-                movementVertical = GameLevelManager.instance.Joystick.Vertical;
-
-                //percent of finger move distance from start to end range that will max speed of movement
-                float XrangePercent = Mathf.Abs((touch.position.x - startTouchPosition.x) / screenXRange);
-                float YrangePercent = Mathf.Abs((touch.position.y - startTouchPosition.y) / screenYRange);
-
-                //if max finger move distance not achieved, multiply by percent of distance so far
-                if (XrangePercent < 1)
-                {
-                    movementHorizontal *= XrangePercent;
-                }
-                if (YrangePercent < 1)
-                {
-                    movementVertical *= YrangePercent;
-                }
-            }
-            if (Input.touchCount == 0)
-            {
-                movementHorizontal = 0;
-                movementVertical = 0;
-            }
-#endif
-
-#if UNITY_STANDALONE || UNITY_EDITOR || UNITY_EDITOR_OSX || UNITY_STANDALONE_OSX
-
-            movementHorizontal = controls.Player.movement.ReadValue<Vector2>().x;
-            movementVertical = controls.Player.movement.ReadValue<Vector2>().y;
-#endif
+            Vector2 moveInput = EnsureInputReader().ReadMove(screenXRange, screenYRange);
+            movementHorizontal = moveInput.x;
+            movementVertical = moveInput.y;
             movement = new Vector3(movementHorizontal, 0, movementVertical) * (movementSpeed * Time.fixedDeltaTime);
 
             // check jump trigger and execute jump
@@ -329,7 +307,9 @@ public class PlayerController : MonoBehaviour
             StartCoroutine(PlayerDisintegrated());
         }
 
-        if (GameLevelManager.instance.Controls.Other.change.enabled && Input.GetKeyDown(KeyCode.Alpha8))
+        PlayerInputReader reader = EnsureInputReader();
+
+        if (reader.DebugLightningPressed)
         {
             StartCoroutine(PlayerStruckByLightning());
         }
@@ -354,7 +334,7 @@ public class PlayerController : MonoBehaviour
         playerDistanceFromRimFeet = playerDistanceFromRim * 6;
 
         // if run input or run toggle on
-        if (controls.Player.run.ReadValue<float>() == 1 //if button is held
+        if (reader.RunHeld //if button is held
             && !InAir
             && !KnockedDown
             && rigidBody.linearVelocity.magnitude > 0.1f
@@ -442,7 +422,7 @@ public class PlayerController : MonoBehaviour
 
 #if UNITY_STANDALONE || UNITY_EDITOR || UNITY_EDITOR_OSX
         //------------------ jump -----------------------------------
-        if (controls.Player.jump.triggered
+        if (reader.JumpPressed
             //&& !controls.Player.shoot.triggered
             && hasBasketball
             && Grounded
@@ -465,7 +445,7 @@ public class PlayerController : MonoBehaviour
         // if has ball, is in air, and pressed shoot button.
         if (InAir
             && hasBasketball
-            && controls.Player.shoot.triggered
+            && reader.ShootPressed
             && !GameOptions.EnemiesOnlyEnabled
             && currentState != inAirDunkState)
         {
@@ -477,8 +457,8 @@ public class PlayerController : MonoBehaviour
             PlayerShoot();
         }
         //------------------ call ball -----------------------------------
-        if (Controls.Player.callball.triggered
-            && Controls.Other.change.ReadValue<float>() == 0
+        if (reader.CallBallPressed
+            && !reader.DebugChangeHeld
             && CurrentState != BlockState
             && !hasBasketball
             && basketball.BasketBallState.CanPullBall
@@ -493,7 +473,7 @@ public class PlayerController : MonoBehaviour
         }
         //------------------ attack -----------------------------------
 
-        if (controls.Player.attack.triggered
+        if (reader.AttackPressed
             //&& controls.Player.jump.ReadValue<float>() == 1
             && !hasBasketball
             && canAttack
@@ -508,8 +488,7 @@ public class PlayerController : MonoBehaviour
             anim.SetBool("attack", false);
         }
         //------------------ block -----------------------------------
-        if ((controls.Player.block.ReadValue<float>() == 1
-            || controls.Player.jump.ReadValue<float>() == 1)
+        if (reader.BlockHeld
             //&& controls.Player.run.ReadValue<float>() == 1
             //&& !hasBasketball
             && canBlock
@@ -529,7 +508,7 @@ public class PlayerController : MonoBehaviour
         else
         {
             // double check touch input not being used
-            if (TouchInputController.instance != null && !TouchInputController.instance.HoldDetected)
+            if (TouchInputController.instance != null && !reader.TouchBlockHeld)
             {
                 anim.SetBool("block", false);
             }
@@ -541,7 +520,7 @@ public class PlayerController : MonoBehaviour
         }
 
         //------------------ special -----------------------------------
-        if (controls.Player.special.triggered
+        if (reader.SpecialPressed
             && !InAir
             && Grounded
             && !KnockedDown
@@ -1014,7 +993,15 @@ public class PlayerController : MonoBehaviour
     public float PlayerDistanceFromRim { get => playerDistanceFromRim; set => playerDistanceFromRim = value; }
     public PlayerHealth PlayerHealth { get => playerHealth; set => playerHealth = value; }
     public CallBallToPlayer CallBallToPlayer { get => callBallToPlayer; set => callBallToPlayer = value; }
-    public PlayerControls Controls { get => controls; set => controls = value; }
+    public PlayerControls Controls
+    {
+        get => controls;
+        set
+        {
+            controls = value ?? PlayerControlsProvider.Controls;
+            inputReader = new PlayerInputReader(controls);
+        }
+    }
     public PlayerAttackQueue PlayerAttackQueue { get => playerAttackQueue; set => playerAttackQueue = value; }
     public PlayerDunk PlayerDunk { get => playerDunk; set => playerDunk = value; }
     public int Pid { get => pid; set => pid = value; }
