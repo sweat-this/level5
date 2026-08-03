@@ -361,6 +361,11 @@ public class PlayerAttackQueue : MonoBehaviour
 
     private void ClearAttackerDetection(GameObject attacker)
     {
+        if (attacker == null)
+        {
+            return;
+        }
+
         if (attacker.TryGetComponent(out EnemyDetection enemyDetection))
         {
             enemyDetection.Attacking = false;
@@ -383,7 +388,11 @@ public class PlayerAttackQueue : MonoBehaviour
             QueueEntry entry = entries[i];
             if (ShouldRemoveEntry(entry))
             {
-                ClearAttackerDetection(entry.attacker);
+                if (entry != null && entry.attacker != null)
+                {
+                    ClearAttackerDetection(entry.attacker);
+                }
+
                 entries.RemoveAt(i);
             }
         }
@@ -477,7 +486,15 @@ public class PlayerAttackQueue : MonoBehaviour
     public GameObject GetFirstQueuedEnemy()
     {
         CleanupStaleEntries();
+        UpdateQueueState();
         return enemiesQueued.Count > 0 ? enemiesQueued[0] : null;
+    }
+
+    public bool HasQueuedEnemies()
+    {
+        CleanupStaleEntries();
+        UpdateQueueState();
+        return currentEnemiesQueued > 0;
     }
 
     public GameObject GetFirstBodyGuard()
@@ -506,6 +523,25 @@ public class PlayerAttackQueue : MonoBehaviour
         }
 
         bodyGuards.Remove(bodyGuard);
+    }
+
+    public void RegisterBodyGuard(GameObject bodyGuard)
+    {
+        if (bodyGuard == null)
+        {
+            return;
+        }
+
+        bodyGuards.RemoveAll(existingBodyGuard => existingBodyGuard == null);
+        if (!bodyGuards.Contains(bodyGuard))
+        {
+            bodyGuards.Add(bodyGuard);
+        }
+    }
+
+    public void UnregisterBodyGuard(GameObject bodyGuard)
+    {
+        RemoveBodyGuard(bodyGuard);
     }
 
     public int CurrentEnemiesQueued { get => currentEnemiesQueued; set => currentEnemiesQueued = Mathf.Clamp(value, 0, maxEnemiesQueued); }

@@ -64,7 +64,7 @@ public class BodyGuardDetection : MonoBehaviour
         //    // move towards player
         //}
 
-        if (playerAttackQueue != null && playerAttackQueue.CurrentEnemiesQueued > 0)
+        if (playerAttackQueue != null && playerAttackQueue.HasQueuedEnemies())
         {
             enemySighted = true;
         }

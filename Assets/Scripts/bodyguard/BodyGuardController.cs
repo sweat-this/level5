@@ -127,7 +127,12 @@ public class BodyGuardController : MonoBehaviour, ICombatAgent
     private void OnDisable()
     {
         ReleaseAttackReservation();
-        removeBodyGuardFromQueueList(transform.root.gameObject);
+        UnregisterBodyGuard();
+    }
+
+    private void OnEnable()
+    {
+        RegisterBodyGuard();
     }
 
     private void FixedUpdate()
@@ -383,7 +388,7 @@ public class BodyGuardController : MonoBehaviour, ICombatAgent
             int attackPositionId = bodyGuardDetection.AttackPositionId;
             ReleaseAttackReservation(attackPositionId);
         }
-        removeBodyGuardFromQueueList(transform.root.gameObject);
+        UnregisterBodyGuard();
         //yield return new WaitUntil( ()=> PlayerAttackQueue.instance.AttackSlotOpen);
         Destroy(gameObject);
     }
@@ -413,7 +418,7 @@ public class BodyGuardController : MonoBehaviour, ICombatAgent
         playAnimation("disintegrated");
         //yield return new WaitUntil(() => currentState == AnimatorState_Disintegrated);
         // remove from body giard list in queue
-        removeBodyGuardFromQueueList(transform.root.gameObject);
+        UnregisterBodyGuard();
         yield return new WaitForSeconds(1.5f);
         Destroy(gameObject);
         stateKnockDown = false;
@@ -458,7 +463,7 @@ public class BodyGuardController : MonoBehaviour, ICombatAgent
         }
     }
 
-    void removeBodyGuardFromQueueList(GameObject bodyguard)
+    private void RegisterBodyGuard()
     {
         if (GameLevelManager.instance == null
             || GameLevelManager.instance.PlayerController1 == null
@@ -467,7 +472,19 @@ public class BodyGuardController : MonoBehaviour, ICombatAgent
             return;
         }
 
-        GameLevelManager.instance.PlayerController1.PlayerAttackQueue.RemoveBodyGuard(bodyguard);
+        GameLevelManager.instance.PlayerController1.PlayerAttackQueue.RegisterBodyGuard(transform.root.gameObject);
+    }
+
+    private void UnregisterBodyGuard()
+    {
+        if (GameLevelManager.instance == null
+            || GameLevelManager.instance.PlayerController1 == null
+            || GameLevelManager.instance.PlayerController1.PlayerAttackQueue == null)
+        {
+            return;
+        }
+
+        GameLevelManager.instance.PlayerController1.PlayerAttackQueue.UnregisterBodyGuard(transform.root.gameObject);
     }
 
     private void ReleaseAttackReservation(int attackPositionId = -1)
