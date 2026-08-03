@@ -50,6 +50,17 @@ public class StatsManager : MonoBehaviour
     [SerializeField]
     Text pageNumberOnlineSelectButtonText;
 
+    [SerializeField] Button modeSelectButton;
+    [SerializeField] Button modeSelectOnlineButton;
+    [SerializeField] Button allTimeSelectButton;
+    [SerializeField] Button mainMenuButton;
+    [SerializeField] Button pageNumberLocalButton;
+    [SerializeField] Button pageNumberOnlineButton;
+    [SerializeField] Button trafficOptionButton;
+    [SerializeField] Button hardcoreOptionButton;
+    [SerializeField] Button enemiesOptionButton;
+    [SerializeField] Button sniperOptionButton;
+
     // list of high score rows
     [SerializeField]
     List<StatsTableHighScoreRow> highScoreRowsDataList;
@@ -119,6 +130,7 @@ public class StatsManager : MonoBehaviour
     public int numOnlineResults;
 
     PlayerControls controls;
+    private bool initialized;
 
     public static StatsManager instance;
 
@@ -127,9 +139,14 @@ public class StatsManager : MonoBehaviour
     {
         controls = PlayerControlsProvider.Controls;
         PlayerControlsProvider.EnableMenuMaps();
+        if (initialized)
+        {
+            RegisterButtonCallbacks();
+        }
     }
     private void OnDisable()
     {
+        UnregisterButtonCallbacks();
         PlayerControlsProvider.DisableMenuMaps();
     }
 
@@ -200,6 +217,15 @@ public class StatsManager : MonoBehaviour
 
     private void Start()
     {
+        if (EventSystem.current == null)
+        {
+            enabled = false;
+            return;
+        }
+
+        UiSelectionAdapter.EnsureInputSystemUiModule();
+        ResolveButtonReferences();
+
         // default page number value, start on first page
         localResultsPageNumber = 0;
         onlineResultsPageNumber = 0;
@@ -246,245 +272,349 @@ public class StatsManager : MonoBehaviour
         changeHighScoreDataDisplayOnline();
         getUnsubmittedHighscores();
         //submitUnsubmittedScores();
+        RegisterButtonCallbacks();
+        UiSelectionAdapter.EnsureSelected(GetDefaultSelectedButton());
+        initialized = true;
+    }
+
+    private void ResolveButtonReferences()
+    {
+        modeSelectButton = ResolveButton(modeSelectButton, modeSelectButtonName);
+        modeSelectOnlineButton = ResolveButton(modeSelectOnlineButton, modeSelectButtonOnlineName);
+        allTimeSelectButton = ResolveButton(allTimeSelectButton, alltimeSelectButtonName);
+        mainMenuButton = ResolveButton(mainMenuButton, mainMenuButtonName);
+        pageNumberLocalButton = ResolveButton(pageNumberLocalButton, pageNumberLocalButtonName);
+        pageNumberOnlineButton = ResolveButton(pageNumberOnlineButton, pageNumberOnlineButtonName);
+        trafficOptionButton = ResolveButton(trafficOptionButton, trafficOptionButtonName);
+        hardcoreOptionButton = ResolveButton(hardcoreOptionButton, hardcoreOptionButtonName);
+        enemiesOptionButton = ResolveButton(enemiesOptionButton, enemiesOptionButtonName);
+        sniperOptionButton = ResolveButton(sniperOptionButton, sniperOptionButtonName);
+    }
+
+    private Button ResolveButton(Button button, string buttonName)
+    {
+        if (button != null)
+        {
+            return button;
+        }
+
+        GameObject buttonObject = GameObject.Find(buttonName);
+        return buttonObject != null ? buttonObject.GetComponent<Button>() : null;
+    }
+
+    private void RegisterButtonCallbacks()
+    {
+        RegisterRequiredButtonCallback(mainMenuButton, LoadStartMenu);
+    }
+
+    private void UnregisterButtonCallbacks()
+    {
+        UiSelectionAdapter.UnregisterButton(mainMenuButton, LoadStartMenu);
+    }
+
+    private void RegisterRequiredButtonCallback(Button button, UnityEngine.Events.UnityAction action)
+    {
+        if (button == null || action == null)
+        {
+            return;
+        }
+
+        button.onClick.RemoveListener(action);
+        button.onClick.AddListener(action);
+    }
+
+    private GameObject GetDefaultSelectedButton()
+    {
+        if (EventSystem.current != null && EventSystem.current.firstSelectedGameObject != null)
+        {
+            return EventSystem.current.firstSelectedGameObject;
+        }
+
+        if (modeSelectButton != null)
+        {
+            return modeSelectButton.gameObject;
+        }
+
+        return mainMenuButton != null ? mainMenuButton.gameObject : null;
     }
 
 
     // Update is called once per frame
     void Update()
     {
-        //// check for some button not selected
-        //if (EventSystem.current.currentSelectedGameObject == null)
-        //{
-        //    Debug.Log("if (EventSystem.current.currentSelectedGameObject == null) : ");
-        //    EventSystem.current.SetSelectedGameObject(EventSystem.current.firstSelectedGameObject);
-        //}
-
-        if (EventSystem.current.currentSelectedGameObject != null)
+        GameObject selectedObject = UiSelectionAdapter.EnsureSelected(GetDefaultSelectedButton());
+        if (selectedObject == null)
         {
-            currentHighlightedButton = EventSystem.current.currentSelectedGameObject.name;
+            return;
         }
 
-        // ================================== navigation =====================================================================
+        currentHighlightedButton = selectedObject.name;
 
-//#if UNITY_STANDALONE || UNITY_EDITOR
-        // high scores table button selected
-        if (currentHighlightedButton.Equals(trafficSelectValueName) && !buttonPressed)
+        HandleSelectedStatsControl();
+        previousHighlightedButton = currentHighlightedButton;
+    }
+
+    private void HandleSelectedStatsControl()
+    {
+        if (buttonPressed || string.IsNullOrEmpty(currentHighlightedButton))
         {
-            if (controls.UINavigation.Up.triggered || controls.UINavigation.Down.triggered)
-            {
-                buttonPressed = true;
-                changeSelectedTrafficOption();
-                initializeTrafficOptionDisplay();
-                changeHighScoreDataDisplay();
-                buttonPressed = false;
-            }
-        }
-        // high scores table button selected
-        if (currentHighlightedButton.Equals(hardcoreSelectValueName) && !buttonPressed)
-        {
-            if (controls.UINavigation.Up.triggered || controls.UINavigation.Down.triggered)
-            {
-                buttonPressed = true;
-                changeSelectedHardcoreOption();
-                initializeHardcoreOptionDisplay();
-                changeHighScoreDataDisplay();
-                buttonPressed = false;
-            }
-        }
-        // high scores table button selected
-        if (currentHighlightedButton.Equals(enemySelectValueName) && !buttonPressed)
-        {
-            if (controls.UINavigation.Up.triggered || controls.UINavigation.Down.triggered)
-            {
-                buttonPressed = true;
-                changeSelectedEnemiesOption();
-                initializeEnemyOptionDisplay();
-                changeHighScoreDataDisplay();
-                buttonPressed = false;
-            }
+            return;
         }
 
-        // high scores table button selected
-        if (currentHighlightedButton.Equals(sniperSelectValueName) && !buttonPressed)
+        if (controls.UINavigation.Up.triggered || controls.UINavigation.Down.triggered)
         {
-            if (controls.UINavigation.Up.triggered || controls.UINavigation.Down.triggered)
-            {
-                buttonPressed = true;
-                changeSelectedSniperOption();
-                initializeSniperOptionDisplay();
-                changeHighScoreDataDisplay();
-                buttonPressed = false;
-            }
+            HandleVerticalOptionInput();
         }
 
-        // high scores table button selected
+        if (controls.UINavigation.Left.triggered)
+        {
+            HandleLeftInput();
+        }
+
+        if (controls.UINavigation.Right.triggered)
+        {
+            HandleRightInput();
+        }
+
         if (currentHighlightedButton.Equals(modeSelectButtonName))
         {
+            ShowHighScoreTable();
             if (previousHighlightedButton != modeSelectButtonName)
             {
                 changeHighScoreDataDisplay();
             }
-            if (!highScoreTableObject.activeSelf)
-            {
-                highScoreTableObject.SetActive(true);
-            }
-            if (allTimeTableObject.activeSelf)
-            {
-                allTimeTableObject.SetActive(false);
-            }
 
-            if (controls.UINavigation.Left.triggered && !buttonPressed)
+            if (modeSelectButtonText != null)
             {
-                //save previous button
-                previousHighlightedButton = currentHighlightedButton;
-
-                buttonPressed = true;
-                localResultsPageNumber = 0;
-                // change selected mode and display data based on mode selected
-                changeSelectedMode("left");
-                changeHighScoreDataDisplay();
-                buttonPressed = false;
+                modeSelectButtonText.text = modesList[currentModeSelectedIndex].modeSelectedName;
             }
-
-            if (controls.UINavigation.Right.triggered && !buttonPressed)
-            {
-                //save previous button
-                previousHighlightedButton = currentHighlightedButton;
-
-                buttonPressed = true;
-                localResultsPageNumber = 0;
-                // change selected mode and display data based on mode selected
-                changeSelectedMode("right");
-                changeHighScoreDataDisplay();
-                buttonPressed = false;
-            }
-            modeSelectButtonText.text = modesList[currentModeSelectedIndex].modeSelectedName;
         }
-
-        // high scores table button selected
         if (currentHighlightedButton.Equals(modeSelectButtonOnlineName))
         {
-
+            ShowHighScoreTable();
             if (previousHighlightedButton != modeSelectButtonOnlineName)
             {
                 changeHighScoreDataDisplayOnline();
             }
-            if (!highScoreTableObject.activeSelf)
-            {
-                highScoreTableObject.SetActive(true);
-            }
-            if (allTimeTableObject.activeSelf)
-            {
-                allTimeTableObject.SetActive(false);
-            }
-
-            if (controls.UINavigation.Left.triggered && !buttonPressed)
-            {
-                onlineResultsPageNumber = 0;
-                //save previous button
-                previousHighlightedButton = currentHighlightedButton;
-
-                buttonPressed = true;
-                // change selected mode and display data based on mode selected
-                changeSelectedMode("left");
-                changeHighScoreDataDisplayOnline();
-                buttonPressed = false;
-            }
-
-            if (controls.UINavigation.Right.triggered && !buttonPressed)
-            {
-                onlineResultsPageNumber = 0;
-                //save previous button
-                previousHighlightedButton = currentHighlightedButton;
-
-                buttonPressed = true;
-                // change selected mode and display data based on mode selected
-                changeSelectedMode("right");
-                changeHighScoreDataDisplayOnline();
-                buttonPressed = false;
-            }
         }
-
-        // all time stats table button selected
         if (currentHighlightedButton.Equals(alltimeSelectButtonName))
         {
-            if (highScoreTableObject.activeSelf)
-            {
-                highScoreTableObject.SetActive(false);
-            }
-            if (!allTimeTableObject.activeSelf)
-            {
-                allTimeTableObject.SetActive(true);
-            }
+            ShowAllTimeTable();
+        }
+        if (currentHighlightedButton.Equals(pageNumberLocalButtonName)
+            || currentHighlightedButton.Equals(pageNumberOnlineButtonName))
+        {
+            ShowHighScoreTable();
+        }
+    }
+
+    private void HandleVerticalOptionInput()
+    {
+        if (currentHighlightedButton.Equals(trafficSelectValueName))
+        {
+            ToggleTrafficFilter();
+        }
+        if (currentHighlightedButton.Equals(hardcoreSelectValueName))
+        {
+            ToggleHardcoreFilter();
+        }
+        if (currentHighlightedButton.Equals(enemySelectValueName))
+        {
+            ToggleEnemiesFilter();
+        }
+        if (currentHighlightedButton.Equals(sniperSelectValueName))
+        {
+            ToggleSniperFilter();
+        }
+    }
+
+    private void HandleLeftInput()
+    {
+        if (currentHighlightedButton.Equals(modeSelectButtonName))
+        {
+            ChangeLocalModeLeft();
+        }
+        if (currentHighlightedButton.Equals(modeSelectButtonOnlineName))
+        {
+            ChangeOnlineModeLeft();
+        }
+        if (currentHighlightedButton.Equals(pageNumberLocalButtonName))
+        {
+            DecreaseLocalPage();
+        }
+        if (currentHighlightedButton.Equals(pageNumberOnlineButtonName))
+        {
+            DecreaseOnlinePage();
+        }
+    }
+
+    private void HandleRightInput()
+    {
+        if (currentHighlightedButton.Equals(modeSelectButtonName))
+        {
+            ChangeLocalModeRight();
+        }
+        if (currentHighlightedButton.Equals(modeSelectButtonOnlineName))
+        {
+            ChangeOnlineModeRight();
+        }
+        if (currentHighlightedButton.Equals(pageNumberLocalButtonName))
+        {
+            IncreaseLocalPage();
+        }
+        if (currentHighlightedButton.Equals(pageNumberOnlineButtonName))
+        {
+            IncreaseOnlinePage();
+        }
+    }
+
+    private void RunStatsAction(Action action)
+    {
+        if (buttonPressed || action == null)
+        {
+            return;
         }
 
-        // main menu button selected
-        if (currentHighlightedButton.Equals(mainMenuButtonName) && !buttonPressed)
+        buttonPressed = true;
+        try
         {
-            if (controls.UINavigation.Submit.triggered)
-            {
-                buttonPressed = true;
-                loadMainMenu(Constants.SCENE_NAME_level_00_start);
-                buttonPressed = false;
-            }
+            action();
         }
-        // local page number
-        if (currentHighlightedButton.Equals(pageNumberLocalButtonName) && !buttonPressed)
+        finally
         {
-            //if (previousHighlightedButton != modeSelectButtonName)
-            //{
-            //    changeHighScoreDataDisplayOnline();
-            //}
-            if (!highScoreTableObject.activeSelf)
-            {
-                highScoreTableObject.SetActive(true);
-            }
-            if (allTimeTableObject.activeSelf)
-            {
-                allTimeTableObject.SetActive(false);
-            }
+            buttonPressed = false;
+        }
+    }
 
-            if (controls.UINavigation.Left.triggered && !buttonPressed)
-            {
-                buttonPressed = true;
-                decreaseLocalResultsPageNumber();
-                buttonPressed = false;
-            }
-            if (controls.UINavigation.Right.triggered && !buttonPressed)
-            {
-                buttonPressed = true;
-                increaseLocalResultsPageNumber();
-                buttonPressed = false;
-            }
-        }
-        // online page number
-        if (currentHighlightedButton.Equals(pageNumberOnlineButtonName) && !buttonPressed)
+    private void ToggleTrafficFilter()
+    {
+        RunStatsAction(() =>
         {
-            if (!highScoreTableObject.activeSelf)
-            {
-                highScoreTableObject.SetActive(true);
-            }
-            if (allTimeTableObject.activeSelf)
-            {
-                allTimeTableObject.SetActive(false);
-            }
+            changeSelectedTrafficOption();
+            initializeTrafficOptionDisplay();
+            changeHighScoreDataDisplay();
+        });
+    }
 
-            if (controls.UINavigation.Left.triggered && !buttonPressed)
-            {
-                buttonPressed = true;
-                decreaseOnlineResultsPageNumber();
-                buttonPressed = false;
-            }
-            if (controls.UINavigation.Right.triggered && !buttonPressed)
-            {
-                buttonPressed = true;
-                increaseOnlineResultsPageNumber();
-                buttonPressed = false;
-            }
+    private void ToggleHardcoreFilter()
+    {
+        RunStatsAction(() =>
+        {
+            changeSelectedHardcoreOption();
+            initializeHardcoreOptionDisplay();
+            changeHighScoreDataDisplay();
+        });
+    }
+
+    private void ToggleEnemiesFilter()
+    {
+        RunStatsAction(() =>
+        {
+            changeSelectedEnemiesOption();
+            initializeEnemyOptionDisplay();
+            changeHighScoreDataDisplay();
+        });
+    }
+
+    private void ToggleSniperFilter()
+    {
+        RunStatsAction(() =>
+        {
+            changeSelectedSniperOption();
+            initializeSniperOptionDisplay();
+            changeHighScoreDataDisplay();
+        });
+    }
+
+    private void ChangeLocalModeLeft()
+    {
+        ChangeLocalMode("left");
+    }
+
+    private void ChangeLocalModeRight()
+    {
+        ChangeLocalMode("right");
+    }
+
+    private void ChangeLocalMode(string direction)
+    {
+        RunStatsAction(() =>
+        {
+            previousHighlightedButton = currentHighlightedButton;
+            localResultsPageNumber = 0;
+            changeSelectedMode(direction);
+            changeHighScoreDataDisplay();
+        });
+    }
+
+    private void ChangeOnlineModeLeft()
+    {
+        ChangeOnlineMode("left");
+    }
+
+    private void ChangeOnlineModeRight()
+    {
+        ChangeOnlineMode("right");
+    }
+
+    private void ChangeOnlineMode(string direction)
+    {
+        RunStatsAction(() =>
+        {
+            onlineResultsPageNumber = 0;
+            previousHighlightedButton = currentHighlightedButton;
+            changeSelectedMode(direction);
+            changeHighScoreDataDisplayOnline();
+        });
+    }
+
+    private void IncreaseLocalPage()
+    {
+        RunStatsAction(increaseLocalResultsPageNumber);
+    }
+
+    private void DecreaseLocalPage()
+    {
+        RunStatsAction(decreaseLocalResultsPageNumber);
+    }
+
+    private void IncreaseOnlinePage()
+    {
+        RunStatsAction(increaseOnlineResultsPageNumber);
+    }
+
+    private void DecreaseOnlinePage()
+    {
+        RunStatsAction(decreaseOnlineResultsPageNumber);
+    }
+
+    private void LoadStartMenu()
+    {
+        loadMainMenu(Constants.SCENE_NAME_level_00_start);
+    }
+
+    private void ShowHighScoreTable()
+    {
+        if (highScoreTableObject != null && !highScoreTableObject.activeSelf)
+        {
+            highScoreTableObject.SetActive(true);
         }
-//#endif
-        // save at end of frame
-        previousHighlightedButton = currentHighlightedButton;
+        if (allTimeTableObject != null && allTimeTableObject.activeSelf)
+        {
+            allTimeTableObject.SetActive(false);
+        }
+    }
+
+    private void ShowAllTimeTable()
+    {
+        if (highScoreTableObject != null && highScoreTableObject.activeSelf)
+        {
+            highScoreTableObject.SetActive(false);
+        }
+        if (allTimeTableObject != null && !allTimeTableObject.activeSelf)
+        {
+            allTimeTableObject.SetActive(true);
+        }
     }
 
     public static void navigateUp()
