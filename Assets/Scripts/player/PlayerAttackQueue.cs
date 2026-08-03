@@ -29,6 +29,7 @@ public class PlayerAttackQueue : MonoBehaviour
     class QueueEntry
     {
         public GameObject attacker;
+        public ICombatAgent agent;
         public PlayerAttackPosition slot;
     }
 
@@ -106,7 +107,29 @@ public class PlayerAttackQueue : MonoBehaviour
 
     public bool TryAddToQueue(GameObject enemy)
     {
-        if (enemy == null)
+        return TryReserve(enemy, out _);
+    }
+
+    public bool TryReserve(ICombatAgent agent, out CombatReservation reservation)
+    {
+        reservation = default;
+        if (agent == null || !agent.CanAct)
+        {
+            return false;
+        }
+
+        return TryReserve(agent.CombatObject, agent, out reservation);
+    }
+
+    public bool TryReserve(GameObject attacker, out CombatReservation reservation)
+    {
+        return TryReserve(attacker, null, out reservation);
+    }
+
+    private bool TryReserve(GameObject attacker, ICombatAgent agent, out CombatReservation reservation)
+    {
+        reservation = default;
+        if (attacker == null || attackQueueLocked)
         {
             return false;
         }
@@ -114,9 +137,16 @@ public class PlayerAttackQueue : MonoBehaviour
         CleanupStaleEntries();
         UpdateQueueState();
 
-        if (entriesByAttacker.TryGetValue(enemy, out QueueEntry existingEntry))
+        agent = agent ?? attacker.GetComponent<ICombatAgent>();
+        if (agent != null && !agent.CanAct)
         {
-            ApplyEnemyDetection(enemy, existingEntry.slot);
+            return false;
+        }
+
+        if (entriesByAttacker.TryGetValue(attacker, out QueueEntry existingEntry))
+        {
+            ApplyReservationState(attacker, existingEntry.slot);
+            reservation = CreateReservation(existingEntry);
             return true;
         }
 
@@ -125,13 +155,12 @@ public class PlayerAttackQueue : MonoBehaviour
             return false;
         }
 
-        EnemyDetection enemyDetection = enemy.GetComponent<EnemyDetection>();
-        if (enemyDetection == null || enemyDetection.Attacking)
+        if (!CanReserve(attacker))
         {
             return false;
         }
 
-        PlayerAttackPosition slot = SelectAttackSlot(enemy);
+        PlayerAttackPosition slot = SelectAttackSlot(attacker);
         if (slot == null)
         {
             return false;
@@ -139,20 +168,22 @@ public class PlayerAttackQueue : MonoBehaviour
 
         QueueEntry entry = new QueueEntry
         {
-            attacker = enemy,
+            attacker = attacker,
+            agent = agent,
             slot = slot
         };
 
         entries.Add(entry);
-        entriesByAttacker[enemy] = entry;
-        if (!enemiesQueued.Contains(enemy))
+        entriesByAttacker[attacker] = entry;
+        if (!enemiesQueued.Contains(attacker))
         {
-            enemiesQueued.Add(enemy);
+            enemiesQueued.Add(attacker);
         }
 
-        ApplyEnemyDetection(enemy, slot);
+        ApplyReservationState(attacker, slot);
         UpdateSlotEngagements();
         UpdateQueueState();
+        reservation = CreateReservation(entry);
         return true;
     }
 
@@ -168,6 +199,26 @@ public class PlayerAttackQueue : MonoBehaviour
     }
 
     public bool RemoveFromQueue(GameObject attacker, int attackPositionId)
+    {
+        return ReleaseReservation(attacker, attackPositionId);
+    }
+
+    public bool ReleaseReservation(GameObject attacker)
+    {
+        return ReleaseReservation(attacker, -1);
+    }
+
+    public bool ReleaseReservation(ICombatAgent agent)
+    {
+        if (agent == null)
+        {
+            return false;
+        }
+
+        return ReleaseReservation(agent.CombatObject, -1);
+    }
+
+    private bool ReleaseReservation(GameObject attacker, int attackPositionId)
     {
         if (attacker == null)
         {
@@ -187,6 +238,31 @@ public class PlayerAttackQueue : MonoBehaviour
         UpdateSlotEngagements();
         UpdateQueueState();
         return removed;
+    }
+
+    private bool CanReserve(GameObject attacker)
+    {
+        if (attacker.TryGetComponent(out EnemyDetection enemyDetection))
+        {
+            return !enemyDetection.Attacking;
+        }
+
+        if (attacker.TryGetComponent(out BodyGuardDetection bodyGuardDetection))
+        {
+            return !bodyGuardDetection.Attacking;
+        }
+
+        return attacker.GetComponent<ICombatAgent>() != null;
+    }
+
+    private CombatReservation CreateReservation(QueueEntry entry)
+    {
+        if (entry == null || entry.slot == null)
+        {
+            return default;
+        }
+
+        return new CombatReservation(entry.attacker, entry.slot.attackPositionId, entry.slot.transform);
     }
 
     private PlayerAttackPosition SelectAttackSlot(GameObject attacker)
@@ -261,17 +337,26 @@ public class PlayerAttackQueue : MonoBehaviour
         }
     }
 
-    private void ApplyEnemyDetection(GameObject enemy, PlayerAttackPosition slot)
+    private void ApplyReservationState(GameObject attacker, PlayerAttackPosition slot)
     {
-        EnemyDetection enemyDetection = enemy.GetComponent<EnemyDetection>();
-        if (enemyDetection == null || slot == null)
+        if (attacker == null || slot == null)
         {
             return;
         }
 
-        enemyDetection.Attacking = true;
-        enemyDetection.AttackPositionId = slot.attackPositionId;
-        enemyDetection.PlayerSighted = true;
+        if (attacker.TryGetComponent(out EnemyDetection enemyDetection))
+        {
+            enemyDetection.Attacking = true;
+            enemyDetection.AttackPositionId = slot.attackPositionId;
+            enemyDetection.PlayerSighted = true;
+        }
+
+        if (attacker.TryGetComponent(out BodyGuardDetection bodyGuardDetection))
+        {
+            bodyGuardDetection.Attacking = true;
+            bodyGuardDetection.AttackPositionId = slot.attackPositionId;
+            bodyGuardDetection.EnemySighted = true;
+        }
     }
 
     private void ClearAttackerDetection(GameObject attacker)
@@ -295,8 +380,10 @@ public class PlayerAttackQueue : MonoBehaviour
     {
         for (int i = entries.Count - 1; i >= 0; i--)
         {
-            if (entries[i].attacker == null)
+            QueueEntry entry = entries[i];
+            if (ShouldRemoveEntry(entry))
             {
+                ClearAttackerDetection(entry.attacker);
                 entries.RemoveAt(i);
             }
         }
@@ -310,6 +397,26 @@ public class PlayerAttackQueue : MonoBehaviour
         }
 
         bodyGuards.RemoveAll(bodyGuard => bodyGuard == null);
+    }
+
+    private bool ShouldRemoveEntry(QueueEntry entry)
+    {
+        if (entry == null || entry.attacker == null)
+        {
+            return true;
+        }
+
+        if (!entry.attacker.activeInHierarchy)
+        {
+            return true;
+        }
+
+        if (entry.agent != null && !entry.agent.CanAct)
+        {
+            return true;
+        }
+
+        return entry.attacker.TryGetComponent(out IDamageable damageable) && damageable.IsDead;
     }
 
     private void UpdateAttackPositionTransforms()
@@ -367,11 +474,45 @@ public class PlayerAttackQueue : MonoBehaviour
         attackSlotOpen = currentEnemiesQueued < maxEnemiesQueued && attackPositions.Length > 0;
     }
 
+    public GameObject GetFirstQueuedEnemy()
+    {
+        CleanupStaleEntries();
+        return enemiesQueued.Count > 0 ? enemiesQueued[0] : null;
+    }
+
+    public GameObject GetFirstBodyGuard()
+    {
+        bodyGuards.RemoveAll(bodyGuard => bodyGuard == null);
+        return bodyGuards.Count > 0 ? bodyGuards[0] : null;
+    }
+
+    public Transform GetAttackPositionTransform(int attackPositionId)
+    {
+        if (attackPositionId < 0 || attackPositionId >= attackPositions.Length)
+        {
+            return null;
+        }
+
+        GameObject attackPosition = attackPositions[attackPositionId];
+        return attackPosition != null ? attackPosition.transform : null;
+    }
+
+    public void RemoveBodyGuard(GameObject bodyGuard)
+    {
+        if (bodyGuard == null)
+        {
+            bodyGuards.RemoveAll(existingBodyGuard => existingBodyGuard == null);
+            return;
+        }
+
+        bodyGuards.Remove(bodyGuard);
+    }
+
     public int CurrentEnemiesQueued { get => currentEnemiesQueued; set => currentEnemiesQueued = Mathf.Clamp(value, 0, maxEnemiesQueued); }
     public bool LockAttackQueue { get => attackQueueLocked; set => attackQueueLocked = value; }
     public bool AttackSlotOpen { get => attackSlotOpen; set => attackSlotOpen = value; }
-    public GameObject[] AttackPositions { get => attackPositions; set => attackPositions = value; }
-    public List<GameObject> EnemiesQueued { get => enemiesQueued; set => enemiesQueued = value; }
-    public List<GameObject> BodyGuards { get => bodyGuards; set => bodyGuards = value; }
+    public IReadOnlyList<GameObject> AttackPositions => attackPositions;
+    public IReadOnlyList<GameObject> EnemiesQueued => enemiesQueued;
+    public IReadOnlyList<GameObject> BodyGuards => bodyGuards;
     public bool BodyGuardEngaged { get => bodyGuardEngaged; set => bodyGuardEngaged = value; }
 }

@@ -105,7 +105,21 @@ Acceptance criteria:
 
 ### Phase 2: Attack Queue And Combat Reservations
 
-Status: Next
+Status: In Progress
+
+Problem review:
+
+- `PlayerAttackQueue` has a useful internal reservation model, but callers still interact with concrete `GameObject`, `EnemyDetection`, `BodyGuardDetection`, and mutable lists.
+- Enemy/bodyguard controllers read `EnemiesQueued`, `BodyGuards`, and `AttackPositions` directly, which lets queue invariants leak outside the owner.
+- Queue release happens in several death paths, but there is not yet a single reservation release API for death, disable, target loss, and cleanup.
+
+Solution plan:
+
+- Add `TryReserve` and `ReleaseReservation` APIs that return or consume `CombatReservation`. Done for the current queue.
+- Keep legacy `TryAddToQueue`, `RemoveFromQueue`, and `removeEnemyFromQueue` wrappers while callers migrate.
+- Make enemy/bodyguard controllers implement `ICombatAgent`. Done for current controllers.
+- Expose read-only queue state plus intention-revealing accessors such as first queued enemy, first bodyguard, and attack slot transform lookup. Done for current queue callers.
+- Add cleanup for disabled/dead attackers in the queue and release reservations from actor disable paths.
 
 Work:
 
@@ -370,10 +384,10 @@ Acceptance criteria:
 1. Add edit-mode tests for `PlayerHealth`, `EnemyHealth`, and `BodyGuardHealth`.
 2. Replace direct enemy/bodyguard `Health -=` collision calls with `ApplyDamage(new DamageInfo(...))`. Done for collision damage and enemy lightning damage.
 3. Add `AttackDefinition` as a ScriptableObject for authored attack tuning.
-4. Add reservation-oriented methods to `PlayerAttackQueue`.
-5. Add `ICombatAgent` adapters to enemy/bodyguard controllers.
-6. Make queue internals read-only and preserve legacy wrappers.
-7. Add queue cleanup on actor disable/death.
+4. Add reservation-oriented methods to `PlayerAttackQueue`. Done for current queue.
+5. Add `ICombatAgent` adapters to enemy/bodyguard controllers. Done for current controllers.
+6. Make queue internals read-only and preserve legacy wrappers. Done for current direct callers.
+7. Add queue cleanup on actor disable/death. Done for enemy/bodyguard controllers; still needs edit/play-mode tests.
 8. Document animation event methods and classify critical gameplay callbacks.
 
 ## Verification Gates
@@ -417,3 +431,4 @@ Every implementation slice should pass the relevant gates:
 | Keep compatibility wrappers during migration. | Unity scenes, animation events, and serialized references can call old names. |
 | Refactor by vertical slice. | Gameplay feel depends on interactions between input, animation, physics, UI, and rules. |
 | Update docs with each slice. | The audit should remain a living system map, not a stale snapshot. |
+| Make attack queue ownership explicit before AI refactors. | AI state machines need a stable reservation contract before behavior is reorganized. |

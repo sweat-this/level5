@@ -4,7 +4,7 @@ using System.Collections.Generic;
 using Unity.Mathematics;
 using UnityEngine;
 
-public class EnemyController : MonoBehaviour
+public class EnemyController : MonoBehaviour, ICombatAgent
 {
     private Animator anim;
     private Rigidbody rigidBody;
@@ -150,6 +150,11 @@ public class EnemyController : MonoBehaviour
         InvokeRepeating("UpdateDistanceFromPlayer", 0, 0.1f);
     }
 
+    private void OnDisable()
+    {
+        ReleaseAttackReservation();
+    }
+
     private void FixedUpdate()
     {
         if (stateWalk 
@@ -176,13 +181,15 @@ public class EnemyController : MonoBehaviour
         currentStateInfo = anim.GetCurrentAnimatorStateInfo(0);
         currentState = currentStateInfo.fullPathHash;
         // ================== enemy facing player ==========================
-        if (GameLevelManager.instance.PlayerController1.PlayerAttackQueue.BodyGuards.Count == 0 && !GameLevelManager.instance.PlayerController1.PlayerAttackQueue.BodyGuardEngaged)
+        PlayerAttackQueue playerAttackQueue = GameLevelManager.instance.PlayerController1.PlayerAttackQueue;
+        GameObject firstBodyGuard = playerAttackQueue.GetFirstBodyGuard();
+        if (firstBodyGuard == null)
         {
             relativePositionToPlayer = GameLevelManager.instance.Player1.transform.position.x - transform.position.x;
         }
         else
         {
-            relativePositionToPlayer = GameLevelManager.instance.PlayerController1.PlayerAttackQueue.BodyGuards[0].transform.position.x - transform.position.x;
+            relativePositionToPlayer = firstBodyGuard.transform.position.x - transform.position.x;
         }
 
         // ================== enemy idle ==========================
@@ -424,7 +431,7 @@ public class EnemyController : MonoBehaviour
         if (enemyDetection.Attacking)
         {
             int attackPositionId = enemyDetection.AttackPositionId;
-            GameLevelManager.instance.PlayerController1.PlayerAttackQueue.removeEnemyFromQueue(gameObject, attackPositionId);
+            ReleaseAttackReservation(attackPositionId);
         }
         Destroy(gameObject);
     }
@@ -468,14 +475,22 @@ public class EnemyController : MonoBehaviour
         //targetPosition = (GameLevelManager.instance.Player.transform.position - transform.position).normalized;
 
         // if no bodyguards found
-        if (GameLevelManager.instance.PlayerController1.PlayerAttackQueue.BodyGuards.Count == 0 && !GameLevelManager.instance.PlayerController1.PlayerAttackQueue.BodyGuardEngaged)
+        PlayerAttackQueue playerAttackQueue = GameLevelManager.instance.PlayerController1.PlayerAttackQueue;
+        GameObject firstBodyGuard = playerAttackQueue.GetFirstBodyGuard();
+        if (firstBodyGuard == null)
         {
-            targetPosition = (GameLevelManager.instance.PlayerController1.PlayerAttackQueue.AttackPositions[enemyDetection.AttackPositionId].transform.position - transform.position).normalized;
+            Transform attackPosition = playerAttackQueue.GetAttackPositionTransform(enemyDetection.AttackPositionId);
+            if (attackPosition == null)
+            {
+                return;
+            }
+
+            targetPosition = (attackPosition.position - transform.position).normalized;
         }
         // if bodyguards, attack 1 first bodyguard
         else
         {
-            targetPosition = (GameLevelManager.instance.PlayerController1.PlayerAttackQueue.BodyGuards[0].transform.position - transform.position).normalized;
+            targetPosition = (firstBodyGuard.transform.position - transform.position).normalized;
         }
         movement = targetPosition * (movementSpeed * Time.fixedDeltaTime);
         //movement = targetPosition * (movementSpeed * Time.deltaTime);
@@ -523,16 +538,36 @@ public class EnemyController : MonoBehaviour
 
     public void UpdateDistanceFromPlayer()
     {
-        if (GameLevelManager.instance.PlayerController1.PlayerAttackQueue.BodyGuards.Count == 0 && !GameLevelManager.instance.PlayerController1.PlayerAttackQueue.BodyGuardEngaged)
+        PlayerAttackQueue playerAttackQueue = GameLevelManager.instance.PlayerController1.PlayerAttackQueue;
+        GameObject firstBodyGuard = playerAttackQueue.GetFirstBodyGuard();
+        if (firstBodyGuard == null)
         {
             distanceFromPlayer = Vector3.Distance(GameLevelManager.instance.Player1.transform.position, transform.position);
             lineOfSight = GameLevelManager.instance.Player1.transform.position.z - transform.position.z;
         }
         else
         {
-            distanceFromPlayer = Vector3.Distance(GameLevelManager.instance.PlayerController1.PlayerAttackQueue.BodyGuards[0].transform.position, transform.position);
-            lineOfSight = GameLevelManager.instance.PlayerController1.PlayerAttackQueue.BodyGuards[0].transform.position.z - transform.position.z;
+            distanceFromPlayer = Vector3.Distance(firstBodyGuard.transform.position, transform.position);
+            lineOfSight = firstBodyGuard.transform.position.z - transform.position.z;
         }
+    }
+
+    private void ReleaseAttackReservation(int attackPositionId = -1)
+    {
+        if (GameLevelManager.instance == null
+            || GameLevelManager.instance.PlayerController1 == null
+            || GameLevelManager.instance.PlayerController1.PlayerAttackQueue == null)
+        {
+            return;
+        }
+
+        if (attackPositionId >= 0)
+        {
+            GameLevelManager.instance.PlayerController1.PlayerAttackQueue.RemoveFromQueue(gameObject, attackPositionId);
+            return;
+        }
+
+        GameLevelManager.instance.PlayerController1.PlayerAttackQueue.ReleaseReservation(this);
     }
 
     private void enemyIsDead()
@@ -578,4 +613,7 @@ public class EnemyController : MonoBehaviour
     public bool IsMinion { get => isMinion; set => isMinion = value; }
     public bool IsBoss { get => isBoss; set => isBoss = value; }
     public float DistanceFromBodyGuard { get => distanceFromBodyGuard; }
+    public GameObject CombatObject => gameObject;
+    public Transform CombatTransform => transform;
+    public bool CanAct => isActiveAndEnabled && (enemyHealth == null || !enemyHealth.IsDead);
 }
