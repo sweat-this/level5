@@ -39,6 +39,12 @@ public class TouchInputEndRoundMenuController : MonoBehaviour
 
     private void Start()
     {
+        if (UiSelectionAdapter.EnsureInputSystemUiModule())
+        {
+            enabled = false;
+            return;
+        }
+
         //StartManager.instance.disableButtonsNotUsedForTouchInput();
         // set distance required for swipe up to be regeistered by device
         swipeUpTolerance = Screen.height / 7;
@@ -55,6 +61,12 @@ public class TouchInputEndRoundMenuController : MonoBehaviour
 
     void Update()
     {
+        if (UiSelectionAdapter.InputSystemUiActive)
+        {
+            enabled = false;
+            return;
+        }
+
         if (EventSystem.current == null)
             return;
 

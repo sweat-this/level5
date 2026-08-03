@@ -15,6 +15,7 @@ public class PlatformCheck : MonoBehaviour
         {
             standaloneInputModule = eventSystem.GetComponent<StandaloneInputModule>();
             inputSystemUIInputModule = eventSystem.GetComponent<InputSystemUIInputModule>();
+            EnsureInputSystemUiModule(eventSystem);
 
             if (standaloneInputModule == null && inputSystemUIInputModule == null)
             {
@@ -63,5 +64,17 @@ public class PlatformCheck : MonoBehaviour
     {
         return inputSystemUIInputModule != null
             && inputSystemUIInputModule.actionsAsset != null;
+    }
+
+    private void EnsureInputSystemUiModule(EventSystem eventSystem)
+    {
+        if (eventSystem == null)
+        {
+            return;
+        }
+
+        UiSelectionAdapter.EnsureInputSystemUiModule();
+        standaloneInputModule = eventSystem.GetComponent<StandaloneInputModule>();
+        inputSystemUIInputModule = eventSystem.GetComponent<InputSystemUIInputModule>();
     }
 }

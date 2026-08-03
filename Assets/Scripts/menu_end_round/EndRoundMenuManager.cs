@@ -2,8 +2,8 @@ using Assets.Scripts.database;
 using Assets.Scripts.restapi;
 using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.EventSystems;
 using UnityEngine.SceneManagement;
+using UnityEngine.UI;
 
 public class EndRoundMenuManager : MonoBehaviour
 {
@@ -24,36 +24,28 @@ public class EndRoundMenuManager : MonoBehaviour
     bool isGameSaved = false;
     bool finalLevel = false;
 
-    const string nextButton = "next_button";
-    const string startMenuButton = "start_menu_button";
-    const string quitButton = "quit_button";
-
-    PlayerControls controls;
-
     public static EndRoundMenuManager instance;
-    private bool buttonPressed;
 
     private void OnEnable()
     {
-        controls = PlayerControlsProvider.Controls;
         PlayerControlsProvider.EnableMenuMaps();
     }
     private void OnDisable()
     {
+        UnregisterMenuButtonCallbacks();
         PlayerControlsProvider.DisableMenuMaps();
     }
 
     private void Awake()
     {
         instance = this;
-        controls = PlayerControlsProvider.Controls;
     }
     void Start()
     {
         if (EndRoundData.currentLevelIndex == GameOptions.levelsList.Count-1)
         {
             finalLevel = true;
-            EventSystem.current.SetSelectedGameObject(EndRoundUIObjects.instance.startMenuButton.gameObject);
+            UiSelectionAdapter.TrySelect(EndRoundUIObjects.instance.startMenuButton.gameObject);
             EndRoundUIObjects.instance.nextInfoObject.SetActive(false);
             EndRoundUIObjects.instance.endMessageObject.SetActive(true);
             EndRoundUIObjects.instance.endMessageText.text = "You beat all the Computahs. Sick.";
@@ -87,57 +79,115 @@ public class EndRoundMenuManager : MonoBehaviour
         {
             //PlayerData.instance.CampaignGameStats.campaignLosses++;
             //EndRoundUIObjects.instance.continueOptionObject.SetActive(false);
-            EventSystem.current.SetSelectedGameObject(EndRoundUIObjects.instance.startMenuButton.gameObject);
+            UiSelectionAdapter.TrySelect(EndRoundUIObjects.instance.startMenuButton.gameObject);
             EndRoundUIObjects.instance.nextInfoObject.SetActive(false);
             EndRoundUIObjects.instance.endMessageObject.SetActive(true);
             EndRoundUIObjects.instance.endMessageText.text = "You suck. go sit on the tire.";
             saveGame();
         }
         LoadData();
+        UiSelectionAdapter.EnsureInputSystemUiModule();
+        RegisterMenuButtonCallbacks();
+        UiSelectionAdapter.EnsureSelected(GetDefaultSelectedButton());
     }
 
-#if UNITY_STANDALONE || UNITY_EDITOR
     private void Update()
     {
-        if (EventSystem.current.currentSelectedGameObject != null)
+        GameObject selectedObject = UiSelectionAdapter.EnsureSelected(GetDefaultSelectedButton());
+        if (selectedObject != null)
         {
-            currentHighlightedButton = EventSystem.current.currentSelectedGameObject.name;
+            currentHighlightedButton = selectedObject.name;
         }
 
-        // ================================== navigation =====================================================================
-
-        //#if UNITY_STANDALONE || UNITY_EDITOR
-        // high scores table button selected
-        if (currentHighlightedButton.Equals(nextButton) 
-            && !buttonPressed
-            && controls.UINavigation.Submit.triggered)
-        {
-            buttonPressed = true;
-            pressNext();
-                
-        }
-        if (currentHighlightedButton.Equals(startMenuButton)
-            && !buttonPressed
-            && controls.UINavigation.Submit.triggered)
-        {
-            buttonPressed = true;
-            pressStartMenu();
-
-        }
-        if (currentHighlightedButton.Equals(quitButton)
-            && !buttonPressed
-            && controls.UINavigation.Submit.triggered)
-        {
-            buttonPressed = true;
-            pressQuit();
-
-        }
-        buttonPressed = false;
-        //#endif
         // save at end of frame
         previousHighlightedButton = currentHighlightedButton;
     }
-#endif
+
+    private void RegisterMenuButtonCallbacks()
+    {
+        EndRoundUIObjects uiObjects = EndRoundUIObjects.instance;
+        if (uiObjects == null)
+        {
+            return;
+        }
+
+        RegisterButton(uiObjects.nextRoundButton, pressNext);
+        RegisterButton(uiObjects.startMenuButton, pressStartMenu);
+        RegisterButton(uiObjects.QuitMenuButton, pressQuit);
+    }
+
+    private void UnregisterMenuButtonCallbacks()
+    {
+        EndRoundUIObjects uiObjects = EndRoundUIObjects.instance;
+        if (uiObjects == null)
+        {
+            return;
+        }
+
+        UnregisterButton(uiObjects.nextRoundButton, pressNext);
+        UnregisterButton(uiObjects.startMenuButton, pressStartMenu);
+        UnregisterButton(uiObjects.QuitMenuButton, pressQuit);
+    }
+
+    private void RegisterButton(Button button, UnityEngine.Events.UnityAction action)
+    {
+        if (button == null)
+        {
+            return;
+        }
+
+        button.onClick.RemoveListener(action);
+        if (!HasPersistentListener(button, action))
+        {
+            button.onClick.AddListener(action);
+        }
+    }
+
+    private void UnregisterButton(Button button, UnityEngine.Events.UnityAction action)
+    {
+        if (button == null)
+        {
+            return;
+        }
+
+        button.onClick.RemoveListener(action);
+    }
+
+    private bool HasPersistentListener(Button button, UnityEngine.Events.UnityAction action)
+    {
+        if (button == null || action == null)
+        {
+            return false;
+        }
+
+        for (int i = 0; i < button.onClick.GetPersistentEventCount(); i++)
+        {
+            if (button.onClick.GetPersistentTarget(i) == action.Target
+                && button.onClick.GetPersistentMethodName(i) == action.Method.Name)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private GameObject GetDefaultSelectedButton()
+    {
+        EndRoundUIObjects uiObjects = EndRoundUIObjects.instance;
+        if (uiObjects == null)
+        {
+            return null;
+        }
+
+        if (finalLevel || (EndRoundData.numberOfContinues <= 0 && currentWinnerisCpu && !tieGame))
+        {
+            return uiObjects.startMenuButton != null ? uiObjects.startMenuButton.gameObject : null;
+        }
+
+        return uiObjects.nextRoundButton != null ? uiObjects.nextRoundButton.gameObject : null;
+    }
+
     public void saveGame()
     {
         isGameSaved = true;

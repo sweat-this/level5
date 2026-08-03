@@ -8,6 +8,7 @@ This folder is the baseline documentation home for the Level5 Unity project. It 
 - [Architecture Audit](architecture-audit.md) - running audit register for main problems, risks, recommended solutions, and remediation status.
 - [Architecture Remediation Plan](architecture-remediation-plan.md) - staged implementation plan for clean architecture, Unity best practices, performance, and risk control.
 - [Player Input Architecture](player-input-architecture.md) - current input ownership, modernization target, migration plan, and first input-reader slice.
+- [UI Input Architecture](ui-input-architecture.md) - menu input baseline, UI module target, EndRound pilot, and mobile/desktop smoke checks.
 
 ## Documentation Backlog
 

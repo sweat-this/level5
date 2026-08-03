@@ -56,5 +56,9 @@ public class EndRoundUIObjects : MonoBehaviour
         instance = this;
     }
 
+    public Button QuitMenuButton
+    {
+        get { return QuitButton; }
+    }
 
 }
