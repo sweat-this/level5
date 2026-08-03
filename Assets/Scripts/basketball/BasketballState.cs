@@ -125,6 +125,17 @@ public class BasketBallState : MonoBehaviour
         }
     }
 
+    public void ResetShotAttemptSnapshot()
+    {
+        TwoAttempt = false;
+        ThreeAttempt = false;
+        FourAttempt = false;
+        SevenAttempt = false;
+        MoneyBallEnabledOnShoot = false;
+        PlayerOnMarkerOnShoot = false;
+        OnShootShotMarkerId = 0;
+    }
+
     //public bool isConsecutiveShot(GameStats gameStats)
     //{
     //    // get current state of shots made/attempted

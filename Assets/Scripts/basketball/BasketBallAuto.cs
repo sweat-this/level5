@@ -367,6 +367,9 @@ public class BasketBallAuto : MonoBehaviour
         //Debug.Log("*********************************************** 4 : " + four);
         //Debug.Log("*********************************************** 7 : " + seven);
 
+        // Clear stale shot snapshot data from a previous miss before setting the new attempt.
+        basketBallState.ResetShotAttemptSnapshot();
+
         // identify is in 2 or 3 point range for stat counters
         if (two && !three )
         {

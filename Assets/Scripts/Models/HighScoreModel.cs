@@ -171,14 +171,8 @@ namespace Assets.Scripts.database
         }
         public HighScoreModel convertBasketBallStatsToModel(List<PlayerIdentifier> pi)
         {
-            int index = 0;
-            foreach (PlayerIdentifier p in pi)
-            {
-                if (!p.isCpu)
-                {
-                    index = p.pid;
-                }
-            }
+            PlayerIdentifier primaryPlayer = GetPrimaryPlayer(pi);
+            GameStats primaryStats = primaryPlayer != null ? primaryPlayer.gameStats : null;
             int trafficEnabled = 0;
             if (GameOptions.trafficEnabled)
             {
@@ -211,31 +205,40 @@ namespace Assets.Scripts.database
             model.Os = SystemInfo.operatingSystem;
             model.Version = Application.version;
             model.Date = DateTime.Now.ToString();
-            model.Time = pi[index].gameStats.TimePlayed;
             model.Difficulty = GameOptions.difficultySelected;
-            model.TotalPoints = pi[index].gameStats.TotalPoints;
-            model.LongestShot = pi[index].gameStats.LongestShotMade;
-            model.TotalDistance = pi[index].gameStats.TotalDistance;
-            model.MaxShotMade = pi[index].gameStats.ShotMade;
-            model.MaxShotAtt = pi[index].gameStats.ShotAttempt;
-            model.ConsecutiveShots = pi[index].gameStats.MostConsecutiveShots;
+            if (primaryStats != null)
+            {
+                model.Time = primaryStats.TimePlayed;
+                model.TotalPoints = primaryStats.TotalPoints;
+                model.LongestShot = primaryStats.LongestShotMade;
+                model.TotalDistance = primaryStats.TotalDistance;
+                model.MaxShotMade = primaryStats.ShotMade;
+                model.MaxShotAtt = primaryStats.ShotAttempt;
+                model.ConsecutiveShots = primaryStats.MostConsecutiveShots;
+            }
             model.TrafficEnabled = trafficEnabled;
             model.HardcoreEnabled = hardcoreEnabled;
-            model.EnemiesKilled = pi[index].gameStats.EnemiesKilled;
+            if (primaryStats != null)
+            {
+                model.EnemiesKilled = primaryStats.EnemiesKilled;
+            }
             model.Device = SystemInfo.deviceModel;
             model.Platform = SystemInfo.deviceType.ToString();
             //model.Ipaddress = GetExternalIpAdress();
-            model.TwoMade = pi[index].gameStats.TwoPointerMade;
-            model.TwoAtt = pi[index].gameStats.TwoPointerAttempts;
-            model.ThreeMade = pi[index].gameStats.ThreePointerMade;
-            model.ThreeAtt = pi[index].gameStats.ThreePointerAttempts;
-            model.FourMade = pi[index].gameStats.FourPointerMade;
-            model.FourAtt = pi[index].gameStats.FourPointerAttempts;
-            model.SevenMade = pi[index].gameStats.SevenPointerMade;
-            model.SevenAtt = pi[index].gameStats.SevenPointerAttempts;
-            model.BonusPoints = pi[index].gameStats.BonusPoints;
-            model.MoneyBallMade = pi[index].gameStats.MoneyBallMade;
-            model.MoneyBallAtt = pi[index].gameStats.MoneyBallAttempts;
+            if (primaryStats != null)
+            {
+                model.TwoMade = primaryStats.TwoPointerMade;
+                model.TwoAtt = primaryStats.TwoPointerAttempts;
+                model.ThreeMade = primaryStats.ThreePointerMade;
+                model.ThreeAtt = primaryStats.ThreePointerAttempts;
+                model.FourMade = primaryStats.FourPointerMade;
+                model.FourAtt = primaryStats.FourPointerAttempts;
+                model.SevenMade = primaryStats.SevenPointerMade;
+                model.SevenAtt = primaryStats.SevenPointerAttempts;
+                model.BonusPoints = primaryStats.BonusPoints;
+                model.MoneyBallMade = primaryStats.MoneyBallMade;
+                model.MoneyBallAtt = primaryStats.MoneyBallAttempts;
+            }
             model.EnemiesEnabled = enemiesEnabled;
             model.UserName = GameOptions.userName;
             model.Userid = GameOptions.userid;
@@ -260,19 +263,21 @@ namespace Assets.Scripts.database
                 model.SniperMode = 3;
                 model.SniperModeName = "disintegration ray";
             }
-            model.SniperShots = pi[index].gameStats.SniperShots;
-            model.Sniperhits = pi[index].gameStats.SniperHits;
+            if (primaryStats != null)
+            {
+                model.SniperShots = primaryStats.SniperShots;
+                model.Sniperhits = primaryStats.SniperHits;
+            }
             //Debug.Log("GameOptions.numPlayers : " + GameOptions.numPlayers);
-            //Debug.Log("pi[index].isCpu : " + pi[index].isCpu);
-            //Debug.Log("pi[index]. : " + pi[index].characterProfile.PlayerDisplayName);
+            //Debug.Log("primaryPlayer.isCpu : " + primaryPlayer.isCpu);
+            //Debug.Log("primaryPlayer : " + primaryPlayer.characterProfile.PlayerDisplayName);
             //Debug.Log("pi[1]. : " + pi[1].characterProfile.PlayerDisplayName);
 
-            if (GameOptions.numPlayers > 0)
+            if (TryGetPlayer(pi, 0, out PlayerIdentifier firstPlacePlayer))
             {
-                model.p1TotalPoints = pi[index].gameStats.TotalPoints;
-                model.firstPlace = pi[index].characterProfile.PlayerDisplayName;
-                if (pi[index].isCpu) { model.p1IsCpu = 1; }
-                else { model.p1IsCpu = 0; }
+                model.p1TotalPoints = firstPlacePlayer.gameStats.TotalPoints;
+                model.firstPlace = firstPlacePlayer.characterProfile.PlayerDisplayName;
+                model.p1IsCpu = GetCpuFlag(firstPlacePlayer);
             }
             else
             {
@@ -281,12 +286,13 @@ namespace Assets.Scripts.database
                 model.p1IsCpu = 99;
             }
             //player2
-            if (GameOptions.numPlayers > 1 && GameOptions.gameModeSelectedId != Modes.Lockdown)
+            if (GameOptions.numPlayers > 1
+                && GameOptions.gameModeSelectedId != Modes.Lockdown
+                && TryGetPlayer(pi, 1, out PlayerIdentifier secondPlacePlayer))
             {
-                model.p2TotalPoints = pi[1].gameStats.TotalPoints;
-                model.secondPlace = pi[1].characterProfile.PlayerDisplayName;
-                if (pi[1].isCpu) { model.p2IsCpu = 1; }
-                else { model.p2IsCpu = 0; }
+                model.p2TotalPoints = secondPlacePlayer.gameStats.TotalPoints;
+                model.secondPlace = secondPlacePlayer.characterProfile.PlayerDisplayName;
+                model.p2IsCpu = GetCpuFlag(secondPlacePlayer);
             }
             else
             {
@@ -295,12 +301,11 @@ namespace Assets.Scripts.database
                 model.p2IsCpu = 99;
             }
             //player 3
-            if (GameOptions.numPlayers > 2)
+            if (GameOptions.numPlayers > 2 && TryGetPlayer(pi, 2, out PlayerIdentifier thirdPlacePlayer))
             {
-                model.p3TotalPoints = pi[2].gameStats.TotalPoints;
-                model.thirdPlace = pi[2].characterProfile.PlayerDisplayName;
-                if (pi[2].isCpu) { model.p3IsCpu = 1; }
-                else { model.p3IsCpu = 0; }
+                model.p3TotalPoints = thirdPlacePlayer.gameStats.TotalPoints;
+                model.thirdPlace = thirdPlacePlayer.characterProfile.PlayerDisplayName;
+                model.p3IsCpu = GetCpuFlag(thirdPlacePlayer);
             }
             else
             {
@@ -309,12 +314,11 @@ namespace Assets.Scripts.database
                 model.p3IsCpu = 99;
             }
             //player 4
-            if (GameOptions.numPlayers > 3)
+            if (GameOptions.numPlayers > 3 && TryGetPlayer(pi, 3, out PlayerIdentifier fourthPlacePlayer))
             {
-                model.p4TotalPoints = pi[3].gameStats.TotalPoints;
-                model.fourthPlace = pi[3].characterProfile.PlayerDisplayName;
-                if (pi[3].isCpu) { model.p4IsCpu = 1; }
-                else { model.p4IsCpu = 0; }
+                model.p4TotalPoints = fourthPlacePlayer.gameStats.TotalPoints;
+                model.fourthPlace = fourthPlacePlayer.characterProfile.PlayerDisplayName;
+                model.p4IsCpu = GetCpuFlag(fourthPlacePlayer);
             }
             else
             {
@@ -326,6 +330,49 @@ namespace Assets.Scripts.database
             model.Difficulty = GameOptions.difficultySelected;
 
             return model;
+        }
+
+        private static PlayerIdentifier GetPrimaryPlayer(List<PlayerIdentifier> players)
+        {
+            if (players == null)
+            {
+                return null;
+            }
+
+            foreach (PlayerIdentifier player in players)
+            {
+                if (player != null && !player.isCpu && player.gameStats != null)
+                {
+                    return player;
+                }
+            }
+
+            foreach (PlayerIdentifier player in players)
+            {
+                if (player != null && player.gameStats != null)
+                {
+                    return player;
+                }
+            }
+
+            return null;
+        }
+
+        private static bool TryGetPlayer(List<PlayerIdentifier> players, int index, out PlayerIdentifier player)
+        {
+            player = null;
+            if (players == null || index < 0 || index >= players.Count)
+            {
+                return false;
+            }
+
+            player = players[index];
+            return player != null && player.gameStats != null && player.characterProfile != null;
+        }
+
+        private static int GetCpuFlag(PlayerIdentifier player)
+        {
+            return player.isCpu ? 1 : 0;
         }
        
 

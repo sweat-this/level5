@@ -12,18 +12,19 @@ public class GroundCheck : MonoBehaviour
 
     private void Start()
     {
-        if (GetComponentInParent<PlayerIdentifier>().isCpu)
+        PlayerIdentifier playerIdentifier = GetComponentInParent<PlayerIdentifier>();
+        if (playerIdentifier.isCpu)
         {
-            autoPlayerController = GetComponentInParent<PlayerIdentifier>().autoPlayer.GetComponent<AutoPlayerController>();
-            if (!autoPlayerController.isDefensivePlayer)
+            autoPlayerController = playerIdentifier.autoPlayer.GetComponent<AutoPlayerController>();
+            if (!playerIdentifier.isDefensivePlayer)
             {
-                basketBallState = GetComponentInParent<PlayerIdentifier>().autoBasketball.GetComponent<BasketBallState>();
+                basketBallState = playerIdentifier.autoBasketball.GetComponent<BasketBallState>();
             }
         }
         else
         {
-            playerController = GetComponentInParent<PlayerIdentifier>().player.GetComponent<PlayerController>();
-            basketBallState = GetComponentInParent<PlayerIdentifier>().basketball.GetComponent<BasketBallState>();
+            playerController = playerIdentifier.player.GetComponent<PlayerController>();
+            basketBallState = playerIdentifier.basketball.GetComponent<BasketBallState>();
         }
     }
 

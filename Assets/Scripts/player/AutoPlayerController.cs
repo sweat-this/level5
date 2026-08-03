@@ -23,8 +23,12 @@ public class AutoPlayerController : MonoBehaviour
     private PlayerHealth playerHealth;
     private BasketBallAuto basketball;
     private GameStats gameStats;
+    private PlayerIdentifier playerIdentifier;
     CallBallToPlayer callBallToPlayer;
 
+    // PlayerIdentifier.isCpu/isDefensivePlayer (sibling component, same GameObject) is the source
+    // of truth for identity/role (AUD-013). These fields are independently set alongside it and
+    // can drift - new code should read from PlayerIdentifier rather than adding more readers here.
     public bool isCPU;
     public bool isDefensivePlayer;
     // walk speed #review can potentially remove
@@ -137,12 +141,13 @@ public class AutoPlayerController : MonoBehaviour
     void Start()
     {
         getAnimatorStateHashes();
-        basketball = isDefensivePlayer? null : GetComponent<PlayerIdentifier>().autoBasketball.GetComponent<BasketBallAuto>();
-        gameStats = isDefensivePlayer ? null : GetComponent<PlayerIdentifier>().autoBasketball.GetComponent<GameStats>();
+        playerIdentifier = GetComponent<PlayerIdentifier>();
+        basketball = playerIdentifier.isDefensivePlayer ? null : playerIdentifier.autoBasketball.GetComponent<BasketBallAuto>();
+        gameStats = playerIdentifier.isDefensivePlayer ? null : playerIdentifier.autoBasketball.GetComponent<GameStats>();
         inAirHasBasketballFrontState = Animator.StringToHash("base.inair.inair_hasBasketball_front");
         inAirHasBasketballSideState = Animator.StringToHash("base.inair.inair_hasBasketball_side");
         callBallToPlayer = GetComponent<CallBallToPlayer>();
-        anim = GetComponent<PlayerIdentifier>().autoPlayer.GetComponentInChildren<Animator>();
+        anim = playerIdentifier.autoPlayer.GetComponentInChildren<Animator>();
         characterProfile = GetComponent<CharacterProfile>();
         rigidBody = GetComponent<Rigidbody>();
         Shotmeter = GetComponentInChildren<ShotMeter>();
@@ -205,7 +210,7 @@ public class AutoPlayerController : MonoBehaviour
             && !(currentState == inAirHasBasketballFrontState || currentState == inAirHasBasketballSideState)
             && currentState != knockedDownState
             && currentState != disintegratedState
-            && !isDefensivePlayer
+            && !playerIdentifier.isDefensivePlayer
             && !arrivedAtTarget)
         {
             if (distanceToTarget > 0.05f)
@@ -229,7 +234,7 @@ public class AutoPlayerController : MonoBehaviour
 
         // call ball
         if (!hasBasketball
-            && !isDefensivePlayer
+            && !playerIdentifier.isDefensivePlayer
             && !InAir
             && basketball.BasketBallState.CanPullBall
             && !basketball.BasketBallState.Locked
@@ -254,7 +259,7 @@ public class AutoPlayerController : MonoBehaviour
 
         // ================== auto player facing goal ==========================
         //relativePositionToGoal = GameLevelManager.instance.BasketballRimVector.x + transform.position.x;
-        if (!arrivedAtTarget && !isDefensivePlayer)
+        if (!arrivedAtTarget && !playerIdentifier.isDefensivePlayer)
         {
             targetPosition = getClosestPositionMarker();
             //targetPosition = positionMarkers[closestPositionMarkerIndex].transform.position;

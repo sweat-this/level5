@@ -12,6 +12,9 @@ public class PlayerController : MonoBehaviour
     [SerializeField]
     public int bid;
 
+    // PlayerIdentifier.isCpu (sibling component, same GameObject) is the source of truth for
+    // CPU/human identity (AUD-013). This field is independently set alongside it and can drift -
+    // new code should read from PlayerIdentifier rather than adding more readers here.
     [SerializeField]
     public bool isCPU;
     [SerializeField]

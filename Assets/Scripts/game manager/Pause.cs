@@ -184,8 +184,10 @@ public class Pause : MonoBehaviour
                 StartCoroutine(loadstartScreen());
             }
             // cancel
+            bool gameOver = GameLevelManager.instance != null && GameLevelManager.instance.GameOver;
             if (currentHighlightedButton.name.Equals(cancelMenuButton.name)
-                && PlayerControlsProvider.MenuSubmitTriggered)
+                && PlayerControlsProvider.MenuSubmitTriggered
+                && !gameOver)
             {
                 TogglePause();
             }

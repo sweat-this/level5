@@ -125,7 +125,7 @@ public class BasketBallShotMarker : MonoBehaviour
                 if (GameRules.instance.IsGameOver())
                 {
                     //GameRules.instance.CounterTime = Timer.instance.CurrentTime;
-                    GameRules.instance.GameOver = true;
+                    GameRules.instance.RequestGameOver();
                 }
             }
         }
@@ -145,7 +145,7 @@ public class BasketBallShotMarker : MonoBehaviour
                 if (GameRules.instance.IsGameOver())
                 {
                     //GameRules.instance.CounterTime = Timer.instance.CurrentTime;
-                    GameRules.instance.GameOver = true;
+                    GameRules.instance.RequestGameOver();
                 }
             }
         }

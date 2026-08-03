@@ -101,6 +101,13 @@ public class GameRules : MonoBehaviour
 
     public bool killedOnIdle;
     private bool killedOnIdleTransitionStarted;
+    private bool matchEndHandled;
+    private bool matchEndHandling;
+    private bool matchScoreSaveCompleted;
+    private bool matchAllTimeStatsSaved;
+    private bool matchProgressionApplied;
+    private bool campaignStatsUpdated;
+    private bool campaignTransitionStarted;
 
     private void Awake()
     {
@@ -120,11 +127,22 @@ public class GameRules : MonoBehaviour
     private void Start()
     {
         GameOver = false;
+        matchEndHandled = false;
+        matchEndHandling = false;
+        matchScoreSaveCompleted = false;
+        matchAllTimeStatsSaved = false;
+        matchProgressionApplied = false;
+        campaignStatsUpdated = false;
+        campaignTransitionStarted = false;
         gameModeId = GameOptions.gameModeSelectedId;
 
         // components
         // player 1 game stats
         gameStats1 = GameLevelManager.instance.Player1.gameStats;
+        if (GameLevelManager.instance.PlayerHealth != null)
+        {
+            GameLevelManager.instance.PlayerHealth.OnDied += OnPlayerDied;
+        }
         displayScoreText = GameObject.Find(displayScoreObjectName).GetComponent<Text>();
         displayCurrentScoreText = GameObject.Find(displayCurrentScoreObjectName).GetComponent<Text>();
         displayHighScoreText = GameObject.Find(displayHighScoreObjectName).GetComponent<Text>();
@@ -195,23 +213,29 @@ public class GameRules : MonoBehaviour
         }
     }
 
+    private void OnDestroy()
+    {
+        if (GameLevelManager.instance != null && GameLevelManager.instance.PlayerHealth != null)
+        {
+            GameLevelManager.instance.PlayerHealth.OnDied -= OnPlayerDied;
+        }
+    }
+
     // ================================================ Update ============================================
     void Update()
     {
+        bool matchEnding = gameOver || IsPlayerDead();
+
         //// update current score
-        if (gameRulesEnabled && GameOptions.numPlayers >= 1)
+        if (gameRulesEnabled && GameOptions.numPlayers >= 1 && !matchEnding)
         {
             SetScoreDisplayText();
         }
 
         // if game over, empty text display
-        if (gameOver && gameRulesEnabled)
+        if (matchEnding && gameRulesEnabled)
         {
-            displayCurrentScoreText.text = "";
-            displayHighScoreText.text = "";
-            displayMoneyText.text = "";
-            displayMoneyBallText.text = "";
-            displayOtherMessageText.text = "";
+            ClearEndGameHudText();
         }
 
         if (killedOnIdle && !killedOnIdleTransitionStarted)
@@ -222,76 +246,9 @@ public class GameRules : MonoBehaviour
         }
 
         // game over. pause / display end game / save
-        if ((gameOver || GameLevelManager.instance.PlayerHealth.IsDead) && !Pause.instance.Paused && gameRulesEnabled)
+        if (!matchEndHandled && gameRulesEnabled && matchEnding)
         {
-            displayCurrentScoreText.text = "";
-            displayHighScoreText.text = "";
-            displayMoneyText.text = "";
-            displayMoneyBallText.text = "";
-            displayOtherMessageText.text = "";
-
-            // set end time for time played, store in basketballstats.timeplayed
-            setTimePlayed();
-            if (Input.touchSupported || SystemInfo.deviceType == DeviceType.Handheld)
-            {
-                Pause.instance.disableMobileOnlyPauseOptions();
-            }
-            //pause on game over
-            Pause.instance.TogglePause();
-            displayScoreText.text = GetDisplayText(GameModeId);
-
-            List<PlayerIdentifier> gameStatsList = new();
-            if (GameOptions.gameModeSelectedId == 26)
-            {
-                PlayerData.instance.updateCampaignStats(GameLevelManager.instance.players[0].gameStats);
-            }
-            if (GameOptions.gameModeSelectedId == 23)
-            {
-                gameStatsList = GameLevelManager.instance.getSortedGameStatsList();
-            }
-            else
-            {
-                gameStatsList = GameLevelManager.instance.players;
-            }
-
-
-            // ******** important : convert basketball stats to high score model
-            HighScoreModel dBHighScoreModel = new();
-            HighScoreModel user = dBHighScoreModel.convertBasketBallStatsToModel(gameStatsList);
-            //user = dBHighScoreModel.convertBasketBallStatsToModel(gameStats);
-            //save if at leat 1 minte played
-            if (GameObject.FindGameObjectWithTag("database") != null)//&& basketBallStats.TimePlayed > 60)
-            {
-                // dont save free play game score
-                if (gameModeId != Modes.FreePlay && gameModeId != Modes.BeatThaComputahs)
-                {
-                    DBConnector.instance.savePlayerGameStats(user);
-                    // if username is logged in
-                    if (!string.IsNullOrEmpty(GameOptions.userName) && GameOptions.userid != 0) //&& GameOptions.gameModeSelectedId != (int)Enums.ModeId.BeatThaComputahs))
-                    {
-                        StartCoroutine(APIHelper.PostHighscore(user));
-                    }
-                    // if user not logged in, set submitted score to false
-                    else
-                    {
-                        DBHelper.instance.setGameScoreSubmitted(user.Scoreid, false);
-                    }
-                }
-
-                DBConnector.instance.savePlayerAllTimeStats(GameLevelManager.instance.Player1.gameStats);
-                ApplyMatchProgressionResult();
-
-                // post to API
-            }
-            // alert game manager. trigger
-            GameOver = true;
-            if (gameModeId == Modes.BeatThaComputahs && !killedOnIdle)
-            {
-                GameObject.Find("footer").SetActive(false);
-                DBConnector.instance.savePlayerAllTimeStats(GameLevelManager.instance.Player1.gameStats);
-                ApplyMatchProgressionResult();
-                StartCoroutine(LoadNextCampaignLevel(5));
-            }
+            HandleMatchEnded();
         }
 
         //// enable moneyball if game requires moneyball
@@ -312,8 +269,250 @@ public class GameRules : MonoBehaviour
         }
     }
 
-    private void ApplyMatchProgressionResult()
+    private void OnPlayerDied()
     {
+        RequestGameOver();
+    }
+
+    public void RequestGameOver()
+    {
+        GameOver = true;
+    }
+
+    private bool IsPlayerDead()
+    {
+        return GameLevelManager.instance != null
+            && GameLevelManager.instance.PlayerHealth != null
+            && GameLevelManager.instance.PlayerHealth.IsDead;
+    }
+
+    private void HandleMatchEnded()
+    {
+        if (matchEndHandled || matchEndHandling)
+        {
+            return;
+        }
+
+        matchEndHandling = true;
+        GameOver = true;
+
+        try
+        {
+            TryShowMatchEndPresentation();
+            setTimePlayed();
+
+            List<PlayerIdentifier> gameStatsList = GetMatchEndStatsList();
+            TryUpdateCampaignStats();
+
+            // ******** important : convert basketball stats to high score model
+            HighScoreModel user = CreateHighScoreModel(gameStatsList);
+            //user = dBHighScoreModel.convertBasketBallStatsToModel(gameStats);
+
+            GameStats primaryGameStats = GetPrimaryGameStats();
+            bool persistenceComplete = SaveMatchResults(user, primaryGameStats);
+            bool progressionComplete = ApplyMatchProgressionResult(primaryGameStats);
+            bool transitionComplete = TryStartCampaignTransition();
+
+            matchEndHandled = persistenceComplete && progressionComplete && transitionComplete;
+        }
+        catch (Exception e)
+        {
+            Debug.LogError("GameRules failed while handling match end. It will retry next frame. " + e);
+        }
+        finally
+        {
+            matchEndHandling = false;
+        }
+    }
+
+    private HighScoreModel CreateHighScoreModel(List<PlayerIdentifier> gameStatsList)
+    {
+        try
+        {
+            HighScoreModel dBHighScoreModel = new HighScoreModel();
+            return dBHighScoreModel.convertBasketBallStatsToModel(gameStatsList);
+        }
+        catch (Exception e)
+        {
+            Debug.LogWarning("GameRules could not create a high score model. Match score save will be skipped. " + e);
+            return null;
+        }
+    }
+
+    private void TryShowMatchEndPresentation()
+    {
+        try
+        {
+            ClearEndGameHudText();
+            if (Pause.instance != null && (Input.touchSupported || SystemInfo.deviceType == DeviceType.Handheld))
+            {
+                Pause.instance.disableMobileOnlyPauseOptions();
+            }
+            //pause on game over
+            if (Pause.instance != null && !Pause.instance.Paused)
+            {
+                Pause.instance.TogglePause();
+            }
+
+            if (displayScoreText != null)
+            {
+                displayScoreText.text = GetDisplayText(GameModeId);
+            }
+        }
+        catch (Exception e)
+        {
+            Debug.LogWarning("GameRules could not update match-end presentation. Durable match-end work will continue. " + e);
+        }
+    }
+
+    private void ClearEndGameHudText()
+    {
+        if (displayCurrentScoreText != null)
+        {
+            displayCurrentScoreText.text = "";
+        }
+        if (displayHighScoreText != null)
+        {
+            displayHighScoreText.text = "";
+        }
+        if (displayMoneyText != null)
+        {
+            displayMoneyText.text = "";
+        }
+        if (displayMoneyBallText != null)
+        {
+            displayMoneyBallText.text = "";
+        }
+        if (displayOtherMessageText != null)
+        {
+            displayOtherMessageText.text = "";
+        }
+    }
+
+    private List<PlayerIdentifier> GetMatchEndStatsList()
+    {
+        if (GameLevelManager.instance == null)
+        {
+            return new List<PlayerIdentifier>();
+        }
+
+        if (GameOptions.gameModeSelectedId == Modes.VersusCpu)
+        {
+            List<PlayerIdentifier> sortedStats = GameLevelManager.instance.getSortedGameStatsList();
+            return sortedStats ?? new List<PlayerIdentifier>();
+        }
+
+        return GameLevelManager.instance.players ?? new List<PlayerIdentifier>();
+    }
+
+    private void TryUpdateCampaignStats()
+    {
+        if (campaignStatsUpdated || GameOptions.gameModeSelectedId != Modes.BeatThaComputahs)
+        {
+            return;
+        }
+
+        if (PlayerData.instance == null
+            || GameLevelManager.instance == null
+            || GameLevelManager.instance.players == null
+            || GameLevelManager.instance.players.Count == 0)
+        {
+            Debug.LogWarning("GameRules skipped campaign stats update because campaign player stats were unavailable.");
+            campaignStatsUpdated = true;
+            return;
+        }
+
+        PlayerData.instance.updateCampaignStats(GameLevelManager.instance.players[0].gameStats);
+        campaignStatsUpdated = true;
+    }
+
+    private bool SaveMatchResults(HighScoreModel user, GameStats primaryGameStats)
+    {
+        if (DBConnector.instance == null)
+        {
+            return true;
+        }
+
+        // dont save free play game score
+        if (!matchScoreSaveCompleted && gameModeId != Modes.FreePlay && gameModeId != Modes.BeatThaComputahs)
+        {
+            if (user == null)
+            {
+                Debug.LogWarning("GameRules skipped match score save because no high score model was available.");
+                matchScoreSaveCompleted = true;
+            }
+            else
+            {
+            DBConnector.instance.savePlayerGameStats(user);
+            matchScoreSaveCompleted = true;
+
+            // if username is logged in
+            try
+            {
+                if (!string.IsNullOrEmpty(GameOptions.userName) && GameOptions.userid != 0) //&& GameOptions.gameModeSelectedId != (int)Enums.ModeId.BeatThaComputahs))
+                {
+                    StartCoroutine(APIHelper.PostHighscore(user));
+                }
+                // if user not logged in, set submitted score to false
+                else if (DBHelper.instance != null)
+                {
+                    DBHelper.instance.setGameScoreSubmitted(user.Scoreid, false);
+                }
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning("GameRules saved the match score but could not update submission state. " + e);
+            }
+            }
+        }
+
+        if (gameModeId == Modes.FreePlay || gameModeId == Modes.BeatThaComputahs)
+        {
+            matchScoreSaveCompleted = true;
+        }
+
+        if (primaryGameStats == null)
+        {
+            Debug.LogWarning("GameRules skipped all-time stats save because no primary player stats were available.");
+            matchAllTimeStatsSaved = true;
+            return matchScoreSaveCompleted;
+        }
+
+        if (!matchAllTimeStatsSaved)
+        {
+            DBConnector.instance.savePlayerAllTimeStats(primaryGameStats);
+            matchAllTimeStatsSaved = true;
+        }
+
+        return matchScoreSaveCompleted && matchAllTimeStatsSaved;
+    }
+
+    private GameStats GetPrimaryGameStats()
+    {
+        if (GameLevelManager.instance != null
+            && GameLevelManager.instance.Player1 != null
+            && GameLevelManager.instance.Player1.gameStats != null)
+        {
+            return GameLevelManager.instance.Player1.gameStats;
+        }
+
+        return gameStats1;
+    }
+
+    private bool ApplyMatchProgressionResult(GameStats primaryGameStats)
+    {
+        if (matchProgressionApplied)
+        {
+            return true;
+        }
+
+        if (primaryGameStats == null)
+        {
+            Debug.LogWarning("GameRules skipped progression because no primary player stats were available.");
+            matchProgressionApplied = true;
+            return true;
+        }
+
         if (progressionService == null)
         {
             progressionService = new ProgressionService();
@@ -322,9 +521,29 @@ public class GameRules : MonoBehaviour
         MatchProgressionResult result = new MatchProgressionResult(
             matchProgressionResultId,
             GameOptions.characterId,
-            GameLevelManager.instance.Player1.gameStats.getExperienceGainedFromSession());
+            primaryGameStats.getExperienceGainedFromSession());
 
         progressionService.ApplyMatchResult(result);
+        matchProgressionApplied = true;
+        return true;
+    }
+
+    private bool TryStartCampaignTransition()
+    {
+        if (gameModeId != Modes.BeatThaComputahs || killedOnIdle || campaignTransitionStarted)
+        {
+            return true;
+        }
+
+        GameObject footer = GameObject.Find("footer");
+        if (footer != null)
+        {
+            footer.SetActive(false);
+        }
+
+        StartCoroutine(LoadNextCampaignLevel(5));
+        campaignTransitionStarted = true;
+        return true;
     }
 
     private IEnumerator LoadNextCampaignLevel(int seconds)
@@ -396,7 +615,14 @@ public class GameRules : MonoBehaviour
         // if player is killed in a game mode that requires a counter
         // if player is killed, high score is being set as time killed
         // must complete game mode to get high score
-        gameStats1.TimePlayed = timePlayedEnd - timePlayedStart;
+        GameStats primaryGameStats = GetPrimaryGameStats();
+        if (primaryGameStats == null)
+        {
+            Debug.LogWarning("GameRules could not set time played because no primary player stats were available.");
+            return;
+        }
+
+        primaryGameStats.TimePlayed = timePlayedEnd - timePlayedStart;
         //if (GameOptions.gameModeRequiresPlayerSurvive
         //    && GameLevelManager.instance.PlayerHealth.IsDead)
         //{
@@ -852,38 +1078,41 @@ public class GameRules : MonoBehaviour
             return displayText;
         }
 
-        if (gameModeId == 1)
+        if (gameModeId == Modes.TotalPoints)
         {
             displayText = "You scored " + gameStats1.TotalPoints + " total points\n\n" + GetStatsTotals();
         }
-        if (gameModeId == 2)
+        if (gameModeId == Modes.Total3Pointers)
         {
             displayText = "You made " + gameStats1.ThreePointerMade + " total 3 pointers\n\n" + GetStatsTotals();
         }
-        if (gameModeId == 3)
+        if (gameModeId == Modes.Total4Pointers)
         {
             displayText = "You made " + gameStats1.FourPointerMade + " total 4 pointers\n\n" + GetStatsTotals();
         }
-        if (gameModeId == 4)
+        if (gameModeId == Modes.Total7Pointers)
         {
-            displayText = "You made " + gameStats1.SevenPointerMade + " total 4 pointers\n\n" + GetStatsTotals();
+            displayText = "You made " + gameStats1.SevenPointerMade + " total 7 pointers\n\n" + GetStatsTotals();
         }
+        // mode 5 has no entry in Modes.cs - the enum skips from 4 straight to 6 (TotalDistance).
         if (gameModeId == 5)
         {
             displayText = "Your longest shot made was " + (gameStats1.LongestShotMade).ToString("0.00") + " ft.\n\n" + GetStatsTotals();
         }
-        if (gameModeId == 6)
+        if (gameModeId == Modes.TotalDistance)
         {
             displayText = "Your total distance for shots made was " + (gameStats1.TotalDistance).ToString("0.00") + " ft.\n\n" + GetStatsTotals();
         }
-        if (gameModeId > 6 && gameModeId <= 12 || gameModeId == 25)
+        // range covers modes 7-12 (SpotUp3s/SpotUp4s/SpotUpAll plus three more IDs with no
+        // entries in Modes.cs) and 25 (SpotUp7s).
+        if (gameModeId > 6 && gameModeId <= 12 || gameModeId == Modes.SpotUp7s)
         {
             int minutes = Mathf.FloorToInt(gameStats1.TimePlayed / 60);
             float seconds = (gameStats1.TimePlayed - (minutes * 60));
             //displayText = "Your time was " + (counterTime).ToString("0.000") + "\n\n" + getStatsTotals();
             displayText = "Your time was " + minutes.ToString("0") + ":" + seconds.ToString("00.000") + "\n\n" + GetStatsTotals();
         }
-        if (gameModeId == 14)
+        if (gameModeId == Modes.ConsecutiveShots)
         {
             displayText = "Your most consecutive shots was " + gameStats1.MostConsecutiveShots + "\n\n" + GetStatsTotals();
         }
@@ -891,22 +1120,23 @@ public class GameRules : MonoBehaviour
         //{
         //    displayText = "You scored " + basketBallStats.TotalPoints + " total points\n\n" + getStatsTotals();
         //}
-        if (gameModeId == 15 || gameModeId == 16 || gameModeId == 17 || gameModeId == 18 || gameModeId == 19
-            || gameModeId == 24 || gameModeId == 27)
+        if (gameModeId == Modes.InThePocket || gameModeId == Modes.ThreePointContest || gameModeId == Modes.FourPointContest
+            || gameModeId == Modes.AllPointContest || gameModeId == Modes.PointsByDistance
+            || gameModeId == Modes.SevenPointContest || gameModeId == Modes.Lockdown)
         {
             displayText = "You scored " + gameStats1.TotalPoints + " total points\n\n" + GetStatsTotals();
         }
-        if (gameModeId == 27)
+        if (gameModeId == Modes.Lockdown)
         {
-            displayText = "You scored " + gameStats1.TotalPoints + " total points\nYou were blocked " 
+            displayText = "You scored " + gameStats1.TotalPoints + " total points\nYou were blocked "
                 + gameStats1.blockedShots + " times \n\n" + GetStatsTotals();
         }
-        if (gameModeId == 20)
+        if (gameModeId == Modes.BashUpSomeNerds)
         {
             displayText = "You Bashed up " + gameStats1.EnemiesKilled + " nerds"
                 + "\n\nexperience gained : " + gameStats1.getExperienceGainedFromSession();
         }
-        if (gameModeId == 21)
+        if (gameModeId == Modes.BattleRoyal)
         {
             int minutes = Mathf.FloorToInt(gameStats1.TimePlayed / 60);
             float seconds = (gameStats1.TimePlayed - (minutes * 60));
@@ -914,30 +1144,39 @@ public class GameRules : MonoBehaviour
                 + "\n\nYou survived for  : " + minutes.ToString("0") + ":" + seconds.ToString("00.000") + "\n\n"
                 + "\n\nexperience gained : " + gameStats1.getExperienceGainedFromSession();
         }
-        if (gameModeId == 23 || gameModeId == 26)
+        if (gameModeId == Modes.VersusCpu || gameModeId == Modes.BeatThaComputahs)
         {
-            List<PlayerIdentifier> players = GameLevelManager.instance.getSortedGameStatsList();
+            List<PlayerIdentifier> players = GameLevelManager.instance != null
+                ? GameLevelManager.instance.getSortedGameStatsList()
+                : null;
+            if (players == null || players.Count == 0)
+            {
+                displayText = "Game over\n---------------------------------";
+                return displayText;
+            }
+
             displayText = players[0].characterProfile.PlayerDisplayName + " wins!"
                 + "\n---------------------------------"
                 + "\n" + players[0].characterProfile.PlayerDisplayName + " : " + players[0].gameStats.TotalPoints;
-            if (GameOptions.numPlayers > 1)
+            if (players.Count > 1)
             {
                 displayText += "\n" + players[1].characterProfile.PlayerDisplayName + " : " + players[1].gameStats.TotalPoints;
             }
-            if (GameOptions.numPlayers > 2)
+            if (players.Count > 2)
             {
                 displayText += "\n" + players[2].characterProfile.PlayerDisplayName + " : " + players[2].gameStats.TotalPoints;
             }
-            if (GameOptions.numPlayers > 3)
+            if (players.Count > 3)
             {
                 displayText += "\n" + players[3].characterProfile.PlayerDisplayName + " : " + players[3].gameStats.TotalPoints;
             }
         }
-        if (gameModeId == 98)
+        if (gameModeId == Modes.ArcadeMode)
         {
             displayText = "Arcade mode\n\n" + GetStatsTotals();
         }
-        if (gameModeId == 99 || gameModeId == 0)
+        // 0 is the "no mode selected" default, not an actual mode - kept as a raw literal.
+        if (gameModeId == Modes.FreePlay || gameModeId == 0)
         {
             displayText = "Free Play mode\n\n" + GetStatsTotals();
         }
@@ -948,23 +1187,24 @@ public class GameRules : MonoBehaviour
 
     string GetStatsTotals()
     {
+        // Percentages use gameStats1's own counts, not BasketBall.instance's mutable state.
         string scoreText;
         if ((gameModeAllPointContest || gameModeFourPointContest || gameModeThreePointContest || gameModeSevenPointContest)
             && !GameOptions.sniperEnabled)
         {
-            scoreText = "shots  : " + gameStats1.ShotMade + " / " + gameStats1.ShotAttempt + " " + BasketBall.instance.getTotalPointAccuracy().ToString("0.00") + "%\n"
+            scoreText = "shots  : " + gameStats1.ShotMade + " / " + gameStats1.ShotAttempt + " " + UtilityFunctions.getPercentageFloat(gameStats1.ShotMade, gameStats1.ShotAttempt).ToString("0.00") + "%\n"
                              + "points : " + gameStats1.TotalPoints + "\n"
                              //+ "bonus points : " + gameStats1.BonusPoints + "\n"
                              + "2 pointers : " + gameStats1.TwoPointerMade + " / " + gameStats1.TwoPointerAttempts + "    "
-                             + BasketBall.instance.getTwoPointAccuracy().ToString("00.0") + "%\n"
+                             + UtilityFunctions.getPercentageFloat(gameStats1.TwoPointerMade, gameStats1.TwoPointerAttempts).ToString("00.0") + "%\n"
                              + "3 pointers : " + gameStats1.ThreePointerMade + " / " + gameStats1.ThreePointerAttempts + "    "
-                             + BasketBall.instance.getThreePointAccuracy().ToString("00.0") + "%\n"
+                             + UtilityFunctions.getPercentageFloat(gameStats1.ThreePointerMade, gameStats1.ThreePointerAttempts).ToString("00.0") + "%\n"
                              + "4 pointers : " + gameStats1.FourPointerMade + " / " + gameStats1.FourPointerAttempts + "    "
-                             + BasketBall.instance.getFourPointAccuracy().ToString("00.0") + "%\n"
+                             + UtilityFunctions.getPercentageFloat(gameStats1.FourPointerMade, gameStats1.FourPointerAttempts).ToString("00.0") + "%\n"
                              + "7 pointers : " + gameStats1.SevenPointerMade + " / " + gameStats1.SevenPointerAttempts + "    "
-                             + BasketBall.instance.getSevenPointAccuracy().ToString("00.0") + "%\n"
+                             + UtilityFunctions.getPercentageFloat(gameStats1.SevenPointerMade, gameStats1.SevenPointerAttempts).ToString("00.0") + "%\n"
                              + "money ball : " + gameStats1.MoneyBallMade + " / " + gameStats1.MoneyBallAttempts + "    "
-                             + BasketBall.instance.getAccuracy(gameStats1.MoneyBallMade, gameStats1.MoneyBallAttempts).ToString("00.0") + "%\n"
+                             + UtilityFunctions.getPercentageFloat(gameStats1.MoneyBallMade, gameStats1.MoneyBallAttempts).ToString("00.0") + "%\n"
                              + "longest shot distance : " + (Math.Round(gameStats1.LongestShotMade, 2)).ToString("0.00") + " ft.\n"
                              + "total shots made distance : " + (Math.Round(gameStats1.TotalDistance, 2)).ToString("0.00") + " ft.\n"
                              + "most consecutive shots : " + gameStats1.MostConsecutiveShots + "\n"
@@ -972,16 +1212,16 @@ public class GameRules : MonoBehaviour
         }
         else if (GameOptions.sniperEnabled)
         {
-            scoreText = "shots  : " + gameStats1.ShotMade + " / " + gameStats1.ShotAttempt + " " + BasketBall.instance.getTotalPointAccuracy().ToString("0.00") + "%\n"
+            scoreText = "shots  : " + gameStats1.ShotMade + " / " + gameStats1.ShotAttempt + " " + UtilityFunctions.getPercentageFloat(gameStats1.ShotMade, gameStats1.ShotAttempt).ToString("0.00") + "%\n"
                  + "points : " + gameStats1.TotalPoints + "\n"
                  + "2 pointers : " + gameStats1.TwoPointerMade + " / " + gameStats1.TwoPointerAttempts + "    "
-                 + BasketBall.instance.getTwoPointAccuracy().ToString("00.0") + "%\n"
+                 + UtilityFunctions.getPercentageFloat(gameStats1.TwoPointerMade, gameStats1.TwoPointerAttempts).ToString("00.0") + "%\n"
                  + "3 pointers : " + gameStats1.ThreePointerMade + " / " + gameStats1.ThreePointerAttempts + "    "
-                 + BasketBall.instance.getThreePointAccuracy().ToString("00.0") + "%\n"
+                 + UtilityFunctions.getPercentageFloat(gameStats1.ThreePointerMade, gameStats1.ThreePointerAttempts).ToString("00.0") + "%\n"
                  + "4 pointers : " + gameStats1.FourPointerMade + " / " + gameStats1.FourPointerAttempts + "    "
-                 + BasketBall.instance.getFourPointAccuracy().ToString("00.0") + "%\n"
+                 + UtilityFunctions.getPercentageFloat(gameStats1.FourPointerMade, gameStats1.FourPointerAttempts).ToString("00.0") + "%\n"
                  + "7 pointers : " + gameStats1.SevenPointerMade + " / " + gameStats1.SevenPointerAttempts + "    "
-                 + BasketBall.instance.getSevenPointAccuracy().ToString("00.0") + "%\n"
+                 + UtilityFunctions.getPercentageFloat(gameStats1.SevenPointerMade, gameStats1.SevenPointerAttempts).ToString("00.0") + "%\n"
                  + "longest shot distance : " + (Math.Round(gameStats1.LongestShotMade, 2)).ToString("0.00") + " ft.\n"
                  + "total shots made distance : " + (Math.Round(gameStats1.TotalDistance, 2)).ToString("0.00") + " ft.\n"
                  + "most consecutive shots : " + gameStats1.MostConsecutiveShots + "\n"
@@ -991,16 +1231,16 @@ public class GameRules : MonoBehaviour
         }
         else
         {
-            scoreText = "shots  : " + gameStats1.ShotMade + " / " + gameStats1.ShotAttempt + " " + BasketBall.instance.getTotalPointAccuracy().ToString("0.00") + "%\n"
+            scoreText = "shots  : " + gameStats1.ShotMade + " / " + gameStats1.ShotAttempt + " " + UtilityFunctions.getPercentageFloat(gameStats1.ShotMade, gameStats1.ShotAttempt).ToString("0.00") + "%\n"
                  + "points : " + gameStats1.TotalPoints + "\n"
                  + "2 pointers : " + gameStats1.TwoPointerMade + " / " + gameStats1.TwoPointerAttempts + "    "
-                 + BasketBall.instance.getTwoPointAccuracy().ToString("00.0") + "%\n"
+                 + UtilityFunctions.getPercentageFloat(gameStats1.TwoPointerMade, gameStats1.TwoPointerAttempts).ToString("00.0") + "%\n"
                  + "3 pointers : " + gameStats1.ThreePointerMade + " / " + gameStats1.ThreePointerAttempts + "    "
-                 + BasketBall.instance.getThreePointAccuracy().ToString("00.0") + "%\n"
+                 + UtilityFunctions.getPercentageFloat(gameStats1.ThreePointerMade, gameStats1.ThreePointerAttempts).ToString("00.0") + "%\n"
                  + "4 pointers : " + gameStats1.FourPointerMade + " / " + gameStats1.FourPointerAttempts + "    "
-                 + BasketBall.instance.getFourPointAccuracy().ToString("00.0") + "%\n"
+                 + UtilityFunctions.getPercentageFloat(gameStats1.FourPointerMade, gameStats1.FourPointerAttempts).ToString("00.0") + "%\n"
                  + "7 pointers : " + gameStats1.SevenPointerMade + " / " + gameStats1.SevenPointerAttempts + "    "
-                 + BasketBall.instance.getSevenPointAccuracy().ToString("00.0") + "%\n"
+                 + UtilityFunctions.getPercentageFloat(gameStats1.SevenPointerMade, gameStats1.SevenPointerAttempts).ToString("00.0") + "%\n"
                  + "longest shot distance : " + (Math.Round(gameStats1.LongestShotMade, 2)).ToString("0.00") + " ft.\n"
                  + "total shots made distance : " + (Math.Round(gameStats1.TotalDistance, 2)).ToString("0.00") + " ft.\n"
                  + "most consecutive shots : " + gameStats1.MostConsecutiveShots + "\n"

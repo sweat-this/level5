@@ -147,7 +147,7 @@ public class Timer : MonoBehaviour
             {
           
                 //Debug.Log("game over");
-                GameRules.instance.GameOver = true;
+                GameRules.instance.RequestGameOver();
             }
             // if consecutive shots mode and streak is less than 2
             if (GameLevelManager.instance != null
@@ -158,7 +158,7 @@ public class Timer : MonoBehaviour
             {
                 //Debug.Log("game over");
                 
-                GameRules.instance.GameOver = true;
+                GameRules.instance.RequestGameOver();
             }
         }
         // countdown timer

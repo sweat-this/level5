@@ -15,6 +15,7 @@ public class BasketBall : MonoBehaviour
     GameStats gameStats;
     Animator anim;
     PlayerController playerController;
+    PlayerIdentifier playerIdentifier;
     GameObject basketBallSprite;
     GameObject basketBallPosition;
     GameObject player;
@@ -42,7 +43,8 @@ public class BasketBall : MonoBehaviour
     void Start()
     {
         instance = this;
-        player = GetComponent<PlayerIdentifier>().player;
+        playerIdentifier = GetComponent<PlayerIdentifier>();
+        player = playerIdentifier.player;
         playerController = player.GetComponent<PlayerController>();
         characterProfile = playerController.GetComponent<CharacterProfile>();
         basketBallPosition = player.transform.Find("basketBall_position").gameObject;
@@ -333,6 +335,9 @@ public class BasketBall : MonoBehaviour
         //Debug.Log("*********************************************** 3 : " + three);
         //Debug.Log("*********************************************** 4 : " + four);
         //Debug.Log("*********************************************** 7 : " + seven);
+        // Clear stale shot snapshot data from a previous miss before setting the new attempt.
+        basketBallState.ResetShotAttemptSnapshot();
+
         // identify is in 2 or 3 point range for stat counters
         if (two && !three)
         {
@@ -447,7 +452,9 @@ public class BasketBall : MonoBehaviour
         // if no mods, cheerleader action
         if (accuracyModifierX == 0 && accuracyModifierY == 0 && accuracyModifierZ == 0)
         {
-            if (BehaviorNpcCritical.instance != null && !playerController.isCPU)
+            // PlayerIdentifier.isCpu is the source of truth for CPU/human identity (AUD-013) -
+            // playerController.isCPU is a separate, independently-set field on the same slot.
+            if (BehaviorNpcCritical.instance != null && !playerIdentifier.isCpu)
             {
                 BehaviorNpcCritical.instance.playAnimationCriticalSuccesful();
             }

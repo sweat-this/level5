@@ -111,12 +111,7 @@ public class BasketBallShotMade : MonoBehaviour
             instantiateMoney(1);
         }
         // reset states
-        basketBallState.TwoAttempt = false;
-        basketBallState.ThreeAttempt = false;
-        basketBallState.FourAttempt = false;
-        basketBallState.SevenAttempt = false;
-        basketBallState.MoneyBallEnabledOnShoot = false;
-        basketBallState.PlayerOnMarkerOnShoot = false;
+        basketBallState.ResetShotAttemptSnapshot();
 
         //GameRules.instance.updatePlayerScore();
         //// update onscreen ui stats
@@ -330,10 +325,6 @@ public class BasketBallShotMade : MonoBehaviour
                 GameRules.instance.BasketBallShotMarkersList[basketBallState.OnShootShotMarkerId].ShotMade++;
             }
         }
-        basketBallState.TwoAttempt = false;
-        basketBallState.ThreeAttempt = false;
-        basketBallState.FourAttempt = false;
-        basketBallState.SevenAttempt = false;
     }
 
     //public int ConsecutiveShotsMade { get => _consecutiveShotsMade; }
