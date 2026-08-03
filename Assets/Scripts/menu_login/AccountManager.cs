@@ -16,7 +16,6 @@ public class AccountManager : MonoBehaviour
     string errorMessageUserName = "";
 
     UserModel user;
-    PlayerControls controls;
     APIConnector apiConnector;
     //buttonobject names
     const string checkEmailButtonName = "checkEmail";
@@ -52,6 +51,17 @@ public class AccountManager : MonoBehaviour
     InputField firstNameInputField;
     InputField lastNameInputField;
 
+    [SerializeField] Button checkEmailButton;
+    [SerializeField] Button checkUserNameButton;
+    [SerializeField] Button mainMenuButton;
+    [SerializeField] Button statsMenuButton;
+    [SerializeField] Button progressionMenuButton;
+    [SerializeField] Button creditsMenuButton;
+    [SerializeField] Button accountMenuButton;
+    [SerializeField] Button createNewButton;
+    [SerializeField] Button loginExistingButton;
+    [SerializeField] Button loginLocalButton;
+
     // button objects
     [SerializeField]
     GameObject emailAddressTextButtonObject;
@@ -68,173 +78,330 @@ public class AccountManager : MonoBehaviour
     [SerializeField]
     GameObject lastNameTextButtonObject;
 
-    bool buttonPressed;
     [SerializeField]
     bool emailAddressIsValid;
     [SerializeField]
     bool userNameIsValid;
 
+    private EventTrigger emailInputSubmitTrigger;
+    private EventTrigger.Entry emailInputSubmitEntry;
+    private EventTrigger usernameInputSubmitTrigger;
+    private EventTrigger.Entry usernameInputSubmitEntry;
+    private EventTrigger passwordInputSubmitTrigger;
+    private EventTrigger.Entry passwordInputSubmitEntry;
+    private EventTrigger firstNameInputSubmitTrigger;
+    private EventTrigger.Entry firstNameInputSubmitEntry;
+    private EventTrigger lastNameInputSubmitTrigger;
+    private EventTrigger.Entry lastNameInputSubmitEntry;
+    private bool initialized;
+
     private void OnEnable()
     {
-        controls = PlayerControlsProvider.Controls;
         PlayerControlsProvider.EnableMenuMaps();
-        //controls.PlayerTouch.Enable();
+        if (initialized)
+        {
+            RegisterButtonCallbacks();
+            RegisterInputSubmitCallbacks();
+        }
     }
     private void OnDisable()
     {
+        UnregisterButtonCallbacks();
+        UnregisterInputSubmitCallbacks();
         PlayerControlsProvider.DisableMenuMaps();
-        //controls.PlayerTouch.Disable();
     }
 
     void Awake()
     {
-        // mapped controls
-        controls = PlayerControlsProvider.Controls;
         apiConnector = UnityEngine.Object.FindAnyObjectByType<APIConnector>();
     }
 
     private void Start()
     {
-        // if current scene is NOT account scene (with links to login scenes)
-        if (!SceneManager.GetActiveScene().name.Equals(Constants.SCENE_NAME_level_00_account))
+        if (EventSystem.current == null)
         {
-
-            usernameInputField = GameObject.Find("UserNameInputField").GetComponent<InputField>();
-            passwordInputField = GameObject.Find("PasswordInputField").GetComponent<InputField>();
-            if (SceneManager.GetActiveScene().name.Equals(Constants.SCENE_NAME_level_00_account_createNew))
-            {
-                emailInputField = GameObject.Find("EmailInputField").GetComponent<InputField>();
-                firstNameInputField = GameObject.Find("FirstNameInputField").GetComponent<InputField>();
-                lastNameInputField = GameObject.Find("LastNameInputField").GetComponent<InputField>();
-            }
-            messageDisplay = GameObject.Find("messageDisplay").GetComponent<Text>();
-            messageDisplay.text = "";
+            enabled = false;
+            return;
         }
+
+        UiSelectionAdapter.EnsureInputSystemUiModule();
+        ResolveUiReferences();
+
+        SetMessage("");
+
+        RegisterButtonCallbacks();
+        RegisterInputSubmitCallbacks();
+        UiSelectionAdapter.EnsureSelected(GetDefaultSelectedButton());
+        initialized = true;
     }
 
     void Update()
     {
-        // check for some button not selected
-        if (EventSystem.current != null)
+        UiSelectionAdapter.EnsureSelected(GetDefaultSelectedButton());
+    }
+
+    private void ResolveUiReferences()
+    {
+        emailInputField = ResolveInputField(emailInputField, emailAddressInputFieldName);
+        usernameInputField = ResolveInputField(usernameInputField, userNameInputFieldName);
+        passwordInputField = ResolveInputField(passwordInputField, passwordInputFieldName);
+        firstNameInputField = ResolveInputField(firstNameInputField, firstNameInputFieldName);
+        lastNameInputField = ResolveInputField(lastNameInputField, lastNameInputFieldName);
+
+        messageDisplay = ResolveText(messageDisplay, "messageDisplay");
+
+        emailAddressTextButtonObject = ResolveGameObject(emailAddressTextButtonObject, emailAddressInputFieldName);
+        userNameTextButtonObject = ResolveGameObject(userNameTextButtonObject, userNameInputFieldName);
+        passwordTextButtonObject = ResolveGameObject(passwordTextButtonObject, passwordInputFieldName);
+        firstNameTextButtonObject = ResolveGameObject(firstNameTextButtonObject, firstNameInputFieldName);
+        lastNameTextButtonObject = ResolveGameObject(lastNameTextButtonObject, lastNameInputFieldName);
+        checkEmailButtonObject = ResolveGameObject(checkEmailButtonObject, checkEmailButtonName);
+        checkUserNameButtonObject = ResolveGameObject(checkUserNameButtonObject, checkUserNameButtonName);
+
+        checkEmailButton = ResolveButton(checkEmailButton, checkEmailButtonName);
+        checkUserNameButton = ResolveButton(checkUserNameButton, checkUserNameButtonName);
+        mainMenuButton = ResolveButton(mainMenuButton, mainMenuButtonName);
+        statsMenuButton = ResolveButton(statsMenuButton, statsMenuButtonName);
+        progressionMenuButton = ResolveButton(progressionMenuButton, progressionMenuButtonName);
+        creditsMenuButton = ResolveButton(creditsMenuButton, creditsMenuButtonName);
+        accountMenuButton = ResolveButton(accountMenuButton, accountMenuButtonName);
+        createNewButton = ResolveButton(createNewButton, createNewButtonName);
+        loginExistingButton = ResolveButton(loginExistingButton, loginExistingButtonName);
+        loginLocalButton = ResolveButton(loginLocalButton, loginLocalButtonName);
+    }
+
+    private Button ResolveButton(Button button, string buttonName)
+    {
+        if (button != null)
         {
-            if (EventSystem.current.currentSelectedGameObject == null)
-            {
-                EventSystem.current.SetSelectedGameObject(EventSystem.current.firstSelectedGameObject); // + "_description";
-            }
+            return button;
         }
 
-        GameObject selectedObject = EventSystem.current == null ? null : EventSystem.current.currentSelectedGameObject;
-        if (selectedObject == null)
+        GameObject buttonObject = GameObject.Find(buttonName);
+        return buttonObject != null ? buttonObject.GetComponent<Button>() : null;
+    }
+
+    private InputField ResolveInputField(InputField inputField, string inputFieldName)
+    {
+        if (inputField != null)
         {
-            buttonPressed = false;
+            return inputField;
+        }
+
+        GameObject inputFieldObject = GameObject.Find(inputFieldName);
+        return inputFieldObject != null ? inputFieldObject.GetComponent<InputField>() : null;
+    }
+
+    private Text ResolveText(Text text, string objectName)
+    {
+        if (text != null)
+        {
+            return text;
+        }
+
+        GameObject textObject = GameObject.Find(objectName);
+        return textObject != null ? textObject.GetComponent<Text>() : null;
+    }
+
+    private GameObject ResolveGameObject(GameObject gameObjectReference, string objectName)
+    {
+        return gameObjectReference != null ? gameObjectReference : GameObject.Find(objectName);
+    }
+
+    private void RegisterButtonCallbacks()
+    {
+        UiSelectionAdapter.RegisterButton(mainMenuButton, LoadStartMenu);
+        UiSelectionAdapter.RegisterButton(statsMenuButton, LoadStatsMenu);
+        UiSelectionAdapter.RegisterButton(progressionMenuButton, LoadProgressionMenu);
+        UiSelectionAdapter.RegisterButton(creditsMenuButton, LoadCreditsMenu);
+        UiSelectionAdapter.RegisterButton(accountMenuButton, LoadAccountMenu);
+        UiSelectionAdapter.RegisterButton(createNewButton, LoadCreateNewAccount);
+        UiSelectionAdapter.RegisterButton(loginExistingButton, LoadLoginExisting);
+        UiSelectionAdapter.RegisterButton(loginLocalButton, LoadLoginLocal);
+        RegisterRequiredButtonCallback(checkEmailButton, SelectEmailInput);
+        RegisterRequiredButtonCallback(checkUserNameButton, SelectUsernameInput);
+    }
+
+    private void UnregisterButtonCallbacks()
+    {
+        UiSelectionAdapter.UnregisterButton(mainMenuButton, LoadStartMenu);
+        UiSelectionAdapter.UnregisterButton(statsMenuButton, LoadStatsMenu);
+        UiSelectionAdapter.UnregisterButton(progressionMenuButton, LoadProgressionMenu);
+        UiSelectionAdapter.UnregisterButton(creditsMenuButton, LoadCreditsMenu);
+        UiSelectionAdapter.UnregisterButton(accountMenuButton, LoadAccountMenu);
+        UiSelectionAdapter.UnregisterButton(createNewButton, LoadCreateNewAccount);
+        UiSelectionAdapter.UnregisterButton(loginExistingButton, LoadLoginExisting);
+        UiSelectionAdapter.UnregisterButton(loginLocalButton, LoadLoginLocal);
+        UiSelectionAdapter.UnregisterButton(checkEmailButton, SelectEmailInput);
+        UiSelectionAdapter.UnregisterButton(checkUserNameButton, SelectUsernameInput);
+    }
+
+    private void RegisterRequiredButtonCallback(Button button, UnityEngine.Events.UnityAction action)
+    {
+        if (button == null || action == null)
+        {
             return;
         }
 
-        if (controls.UINavigation.Submit.triggered && !buttonPressed)
-        {
-            buttonPressed = true;
+        button.onClick.RemoveListener(action);
+        button.onClick.AddListener(action);
+    }
 
-            //check email
-            if (selectedObject.name.Equals(checkEmailButtonName))
-            {
-                EventSystem.current.SetSelectedGameObject(emailAddressTextButtonObject);
-            }
-            // check user name
-            if (selectedObject.name.Equals(checkUserNameButtonName))
-            {
-                EventSystem.current.SetSelectedGameObject(userNameTextButtonObject);
-            }
-            // enter email field
-            if (selectedObject.name.Equals(emailAddressInputFieldName))
-            {
-                EventSystem.current.SetSelectedGameObject(checkEmailButtonObject);
-            }
-            // enter username field
-            if (selectedObject.name.Equals(userNameInputFieldName))
-            {
-                EventSystem.current.SetSelectedGameObject(checkUserNameButtonObject);
-            }
-            // enter password field
-            if (selectedObject.name.Equals(passwordInputFieldName))
-            {
-                EventSystem.current.SetSelectedGameObject(passwordTextButtonObject);
-            }
-            // enter first name field
-            if (selectedObject.name.Equals(firstNameInputFieldName))
-            {
-                EventSystem.current.SetSelectedGameObject(firstNameTextButtonObject);
-            }
-            // enter last name field
-            if (selectedObject.name.Equals(lastNameInputFieldName))
-            {
-                EventSystem.current.SetSelectedGameObject(lastNameTextButtonObject);
-            }
-            // footer
-            // main menu
-            if (selectedObject.name.Equals(mainMenuButtonName))
-            {
-                SceneManager.LoadSceneAsync(Constants.SCENE_NAME_level_00_start);
-            }
-            //stats
-            if (selectedObject.name.Equals(statsMenuButtonName))
-            {
-                SceneManager.LoadSceneAsync(Constants.SCENE_NAME_level_00_stats);
-            }
-            //progression
-            if (selectedObject.name.Equals(progressionMenuButtonName))
-            {
-                SceneManager.LoadSceneAsync(Constants.SCENE_NAME_level_00_progression);
-            }
-            //credits
-            if (selectedObject.name.Equals(creditsMenuButtonName))
-            {
-                SceneManager.LoadSceneAsync(Constants.SCENE_NAME_level_00_credits);
-            }
-            // create new
-            if (selectedObject.name.Equals(createNewButtonName))
-            {
-                SceneManager.LoadSceneAsync(Constants.SCENE_NAME_level_00_account_createNew);
-            }
-            // login existing
-            if (selectedObject.name.Equals(loginExistingButtonName))
-            {
-                SceneManager.LoadSceneAsync(Constants.SCENE_NAME_level_00_account_loginExisting);
-            }
-            // login local
-            if (selectedObject.name.Equals(loginLocalButtonName))
-            {
-                SceneManager.LoadSceneAsync(Constants.SCENE_NAME_level_00_account_loginLocal);
-            }
-            // account
-            if (selectedObject.name.Equals(accountMenuButtonName))
-            {
-                SceneManager.LoadSceneAsync(Constants.SCENE_NAME_level_00_account);
-            }
-            buttonPressed = false;
+    private void RegisterInputSubmitCallbacks()
+    {
+        RegisterInputSubmitCallback(emailInputField, checkEmailButtonObject, ref emailInputSubmitTrigger, ref emailInputSubmitEntry);
+        RegisterInputSubmitCallback(usernameInputField, checkUserNameButtonObject, ref usernameInputSubmitTrigger, ref usernameInputSubmitEntry);
+        RegisterInputSubmitCallback(passwordInputField, passwordTextButtonObject, ref passwordInputSubmitTrigger, ref passwordInputSubmitEntry);
+        RegisterInputSubmitCallback(firstNameInputField, firstNameTextButtonObject, ref firstNameInputSubmitTrigger, ref firstNameInputSubmitEntry);
+        RegisterInputSubmitCallback(lastNameInputField, lastNameTextButtonObject, ref lastNameInputSubmitTrigger, ref lastNameInputSubmitEntry);
+    }
+
+    private void RegisterInputSubmitCallback(InputField inputField, GameObject targetObject, ref EventTrigger trigger, ref EventTrigger.Entry entry)
+    {
+        if (inputField == null || targetObject == null || entry != null)
+        {
+            return;
+        }
+
+        trigger = inputField.GetComponent<EventTrigger>();
+        if (trigger == null)
+        {
+            trigger = inputField.gameObject.AddComponent<EventTrigger>();
+        }
+
+        entry = new EventTrigger.Entry
+        {
+            eventID = EventTriggerType.Submit,
+            callback = new EventTrigger.TriggerEvent()
+        };
+        entry.callback.AddListener((eventData) => UiSelectionAdapter.TrySelect(targetObject));
+        trigger.triggers.Add(entry);
+    }
+
+    private void UnregisterInputSubmitCallbacks()
+    {
+        UnregisterInputSubmitCallback(ref emailInputSubmitTrigger, ref emailInputSubmitEntry);
+        UnregisterInputSubmitCallback(ref usernameInputSubmitTrigger, ref usernameInputSubmitEntry);
+        UnregisterInputSubmitCallback(ref passwordInputSubmitTrigger, ref passwordInputSubmitEntry);
+        UnregisterInputSubmitCallback(ref firstNameInputSubmitTrigger, ref firstNameInputSubmitEntry);
+        UnregisterInputSubmitCallback(ref lastNameInputSubmitTrigger, ref lastNameInputSubmitEntry);
+    }
+
+    private void UnregisterInputSubmitCallback(ref EventTrigger trigger, ref EventTrigger.Entry entry)
+    {
+        if (trigger != null && entry != null)
+        {
+            trigger.triggers.Remove(entry);
+        }
+
+        trigger = null;
+        entry = null;
+    }
+
+    private GameObject GetDefaultSelectedButton()
+    {
+        if (EventSystem.current != null && EventSystem.current.firstSelectedGameObject != null)
+        {
+            return EventSystem.current.firstSelectedGameObject;
+        }
+
+        if (createNewButton != null)
+        {
+            return createNewButton.gameObject;
+        }
+
+        if (usernameInputField != null)
+        {
+            return usernameInputField.gameObject;
+        }
+
+        return mainMenuButton != null ? mainMenuButton.gameObject : null;
+    }
+
+    private void SelectEmailInput()
+    {
+        UiSelectionAdapter.TrySelect(emailAddressTextButtonObject);
+    }
+
+    private void SelectUsernameInput()
+    {
+        UiSelectionAdapter.TrySelect(userNameTextButtonObject);
+    }
+
+    private void LoadStartMenu()
+    {
+        SceneManager.LoadSceneAsync(Constants.SCENE_NAME_level_00_start);
+    }
+
+    private void LoadStatsMenu()
+    {
+        SceneManager.LoadSceneAsync(Constants.SCENE_NAME_level_00_stats);
+    }
+
+    private void LoadProgressionMenu()
+    {
+        SceneManager.LoadSceneAsync(Constants.SCENE_NAME_level_00_progression);
+    }
+
+    private void LoadCreditsMenu()
+    {
+        SceneManager.LoadSceneAsync(Constants.SCENE_NAME_level_00_credits);
+    }
+
+    private void LoadAccountMenu()
+    {
+        SceneManager.LoadSceneAsync(Constants.SCENE_NAME_level_00_account);
+    }
+
+    private void LoadCreateNewAccount()
+    {
+        SceneManager.LoadSceneAsync(Constants.SCENE_NAME_level_00_account_createNew);
+    }
+
+    private void LoadLoginExisting()
+    {
+        SceneManager.LoadSceneAsync(Constants.SCENE_NAME_level_00_account_loginExisting);
+    }
+
+    private void LoadLoginLocal()
+    {
+        SceneManager.LoadSceneAsync(Constants.SCENE_NAME_level_00_account_loginLocal);
+    }
+
+    private void SetMessage(string message)
+    {
+        if (messageDisplay != null)
+        {
+            messageDisplay.text = message;
         }
     }
 
-    public void checkEmailAddressFormat()
+    private void RefreshInputValues()
     {
-        if (!UtilityFunctions.IsValidEmail(emailInput))
+        if (emailInputField != null)
         {
-            emailAddressIsValid = false;
+            emailInput = emailInputField.text;
         }
-        if (string.IsNullOrWhiteSpace(emailInput))
+        if (usernameInputField != null)
         {
-            emailAddressIsValid = false;
+            userNameInput = usernameInputField.text;
         }
-        else
+        if (passwordInputField != null)
         {
-            emailAddressIsValid = true;
+            passwordInput = passwordInputField.text;
         }
-        messageDisplay.text = getCheckEmailAddress();
+        if (firstNameInputField != null)
+        {
+            firstNameInput = firstNameInputField.text;
+        }
+        if (lastNameInputField != null)
+        {
+            lastNameInput = lastNameInputField.text;
+        }
     }
 
-    public string getCheckEmailAddress()
+    private string BuildCheckEmailAddressMessage()
     {
-        messageDisplay.text = "";
-        errorMessageUserName = "";
         errorMessageEmail = "";
 
         if (!UtilityFunctions.IsValidEmail(emailInput))
@@ -250,73 +417,92 @@ public class AccountManager : MonoBehaviour
             errorMessageEmail += "\nemail address is empty or contains white space";
         }
 
-        //setErrorMessage();
-        //messageDisplay.text = errorMessageEmail;
-        if (string.IsNullOrEmpty(errorMessageUserName))
-        {
-            messageDisplay.text = errorMessageEmail;
-        }
-        else
-        {
-            messageDisplay.text = errorMessageUserName + errorMessageEmail;
-        }
         return errorMessageEmail;
     }
 
-    public void checkUserName()
+    private string BuildCheckUserNameMessage(bool userNameExists)
     {
-        // check if user already exists or null
-        if (string.IsNullOrEmpty(userNameInput))
-        {
-            userNameIsValid = false;
-        }
-        if (APIHelper.UserNameExists(userNameInput))
-        {
-            userNameIsValid = false;
-        }
-        else
-        {
-            userNameIsValid = true;
-        }
-        messageDisplay.text = getCheckUserName();
+        return BuildCheckUserNameMessage(userNameInput, userNameExists);
     }
 
-    public string getCheckUserName()
+    private string BuildCheckUserNameMessage(string username, bool userNameExists)
     {
-        messageDisplay.text = "";
         errorMessageUserName = "";
-        errorMessageEmail = "";
 
-        // check if user already exists or null
-        if (string.IsNullOrEmpty(userNameInput))
+        if (string.IsNullOrWhiteSpace(username))
         {
             errorMessageUserName += "\nusername is empty or contains whitespace";
         }
-        if (APIHelper.UserNameExists(userNameInput))
+        if (userNameExists)
         {
             errorMessageUserName += "\nusername already exists";
         }
-        if (!APIHelper.UserNameExists(userNameInput) && !string.IsNullOrWhiteSpace(userNameInput))
+        if (!userNameExists && !string.IsNullOrWhiteSpace(username))
         {
             errorMessageUserName += "\nusername does not exist";
         }
 
-        if (string.IsNullOrEmpty(errorMessageEmail))
-        {
-            messageDisplay.text = errorMessageUserName;
-        }
-        else
-        {
-            messageDisplay.text = errorMessageEmail + errorMessageUserName;
-        }
         return errorMessageUserName;
+    }
+
+    private string BuildLoginUserNameMessage(string username, bool userNameExists)
+    {
+        errorMessageUserName = "";
+
+        if (string.IsNullOrWhiteSpace(username))
+        {
+            errorMessageUserName += "\nusername is empty or contains whitespace";
+        }
+        else if (!userNameExists)
+        {
+            errorMessageUserName += "\nusername does not exist";
+        }
+
+        return errorMessageUserName;
+    }
+
+    public void checkEmailAddressFormat()
+    {
+        RefreshInputValues();
+
+        emailAddressIsValid = UtilityFunctions.IsValidEmail(emailInput)
+            && !string.IsNullOrWhiteSpace(emailInput);
+        SetMessage(BuildCheckEmailAddressMessage());
+    }
+
+    public string getCheckEmailAddress()
+    {
+        string message = BuildCheckEmailAddressMessage();
+        SetMessage(message);
+        return message;
+    }
+
+    public void checkUserName()
+    {
+        RefreshInputValues();
+
+        bool userNameExists = APIHelper.UserNameExists(userNameInput);
+        userNameIsValid = !string.IsNullOrWhiteSpace(userNameInput)
+            && !userNameExists;
+        SetMessage(BuildCheckUserNameMessage(userNameExists));
+    }
+
+    public string getCheckUserName()
+    {
+        string message = BuildCheckUserNameMessage(APIHelper.UserNameExists(userNameInput));
+        SetMessage(message);
+        return message;
     }
 
     public void createUser()
     {
-        checkEmailAddressFormat();
-        checkUserName();
-        messageDisplay.text = getCheckEmailAddress() + getCheckUserName();
+        RefreshInputValues();
+        bool userNameExists = APIHelper.UserNameExists(userNameInput);
+        emailAddressIsValid = UtilityFunctions.IsValidEmail(emailInput)
+            && !string.IsNullOrWhiteSpace(emailInput);
+        userNameIsValid = !string.IsNullOrWhiteSpace(userNameInput)
+            && !userNameExists;
+        SetMessage(BuildCheckEmailAddressMessage() + BuildCheckUserNameMessage(userNameExists));
 
         if (userNameIsValid && emailAddressIsValid)
         {
@@ -349,8 +535,8 @@ public class AccountManager : MonoBehaviour
         float startTime;
         float timeout = 10.0f;
 
-        checkUserName();
-        messageDisplay.text = getCheckUserName();
+        RefreshInputValues();
+        SetMessage(BuildLoginUserNameMessage(userNameInput, APIHelper.UserNameExists(userNameInput)));
         UserModel user = APIHelper.GetUserByUserName(userNameInput);
 
         // 10 second time out for all internet calls is a good idea
@@ -384,8 +570,8 @@ public class AccountManager : MonoBehaviour
         float startTime;
         float timeout = 10.0f;
 
-        checkUserName();
-        messageDisplay.text = getCheckUserName();
+        RefreshInputValues();
+        SetMessage(BuildLoginUserNameMessage(username, APIHelper.UserNameExists(username)));
         UserModel user = APIHelper.GetUserByUserName(username);
 
         // 10 second time out for all internet calls is a good idea
@@ -433,26 +619,26 @@ public class AccountManager : MonoBehaviour
 
     public void readEmailAddressInput(string s)
     {
-        emailInput = emailInputField.text;
+        emailInput = emailInputField == null ? s : emailInputField.text;
     }
 
     public void readUsernameInput(string s)
     {
-        userNameInput = usernameInputField.text;
+        userNameInput = usernameInputField == null ? s : usernameInputField.text;
     }
 
     public void readPasswordInput(string s)
     {
-        passwordInput = passwordInputField.text;
+        passwordInput = passwordInputField == null ? s : passwordInputField.text;
     }
 
     public void readFirstNameInput(string s)
     {
-        firstNameInput = firstNameInputField.text;
+        firstNameInput = firstNameInputField == null ? s : firstNameInputField.text;
     }
     public void readLastNameInput(string s)
     {
-        lastNameInput = lastNameInputField.text;
+        lastNameInput = lastNameInputField == null ? s : lastNameInputField.text;
     }
 
     public string GetExternalIpAdress()

@@ -37,6 +37,12 @@ public class TouchInputAccountScreenController : MonoBehaviour
     }
     private void Start()
     {
+        if (UiSelectionAdapter.EnsureInputSystemUiModule())
+        {
+            enabled = false;
+            return;
+        }
+
         // set distance required for swipe up to be regeistered by device
         swipeUpTolerance = Screen.height / 7;
         swipeDownTolerance = Screen.height / 5;
@@ -51,6 +57,12 @@ public class TouchInputAccountScreenController : MonoBehaviour
 
     void Update()
     {
+        if (UiSelectionAdapter.InputSystemUiActive)
+        {
+            enabled = false;
+            return;
+        }
+
         if (EventSystem.current == null)
             return;
 
