@@ -18,12 +18,12 @@ Menu input is split between Unity UI selection, generated `PlayerControls.UINavi
 
 - Added `UiSelectionAdapter` as a shared wrapper for `EventSystem` selection, button invocation, and runtime `InputSystemUIInputModule` setup.
 - Updated `PlatformCheck` to use the same runtime UI module setup when it is present in a scene.
-- Migrated `EndRoundMenuManager` to normal `Button.onClick` callbacks while keeping the legacy touch controller available as fallback.
+- Migrated `EndRoundMenuManager` and `OptionsManager` to normal `Button.onClick` callbacks while keeping legacy touch controllers available only as fallback when the Input System UI path is unavailable.
 
 ## Migration Plan
 
 1. Keep `TouchInput*Controller` scripts until each screen passes keyboard, gamepad, mouse, and mobile touch checks.
-2. Convert simple screens to `Button.onClick` and `Selectable` navigation first.
+2. Convert simple screens to `Button.onClick` and `Selectable` navigation first. EndRound and Options are the first migrated pilots.
 3. Extract reusable option-stepper behavior for start and progression screens before migrating them.
 4. Migrate pause last with explicit guards for duplicate save, duplicate scene load, time-scale re-entry, and game-over/start-on-pause state.
 5. Remove direct `Input.touches` menu polling after every menu has a standard UI route and mobile device verification.
@@ -34,4 +34,5 @@ Menu input is split between Unity UI selection, generated `PlayerControls.UINavi
 - Keyboard/gamepad submit invokes the selected button once.
 - Keyboard/gamepad navigation never leaves selection null.
 - Start menu, progression, stats, options, credits, account, end-round, and pause each define a valid first selected object.
+- Options control preview updates when keyboard, keyboard+mouse, gamepad, or touch controls are selected or clicked.
 - Mobile touch no longer requires double tap once a screen is migrated to standard UI.

@@ -22,7 +22,7 @@ This document tracks the player input modernization plan. The project already us
 - Added `PlayerInputReader` as the first player input intent layer.
 - Added `PlayerTouchInputState` so touch gameplay can queue input intents instead of directly calling player gameplay methods.
 - Added `RacingInputReader` for racing movement/run/jump input ownership.
-- Added `UiSelectionAdapter` and migrated the EndRound menu pilot to `Button.onClick` callbacks.
+- Added `UiSelectionAdapter` and migrated the EndRound and Options menu pilots to `Button.onClick` callbacks.
 - Routed `PlayerController` movement, run, jump, shoot, call-ball, attack, block, special, and debug-lightning reads through `PlayerInputReader`.
 - Routed racing movement/run/jump reads through `RacingInputReader`.
 - Kept `PlayerControlsProvider` and `PlayerControls.inputactions` intact.

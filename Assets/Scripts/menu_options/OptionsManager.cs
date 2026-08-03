@@ -34,21 +34,30 @@ public class OptionsManager : MonoBehaviour
     [SerializeField]
     GameObject touchObject;
 
-    PlayerControls controls;
+    [SerializeField] Button mainMenuButton;
+    [SerializeField] Button statsMenuButton;
+    [SerializeField] Button quitButton;
+    [SerializeField] Button optionsMenuButton;
+    [SerializeField] Button creditsMenuButton;
+    [SerializeField] Button progressionMenuButton;
+    [SerializeField] Button accountMenuButton;
+    [SerializeField] Button keyboardOnlyButton;
+    [SerializeField] Button keyboardMouseButton;
+    [SerializeField] Button gamepadButton;
+    [SerializeField] Button touchButton;
 
     private void OnEnable()
     {
-        controls = PlayerControlsProvider.Controls;
         PlayerControlsProvider.EnableMenuMaps();
     }
     private void OnDisable()
     {
+        UnregisterButtonCallbacks();
         PlayerControlsProvider.DisableMenuMaps();
     }
 
     void Awake()
     {
-        controls = PlayerControlsProvider.Controls;
     }
 
     // Start is called before the first frame update
@@ -59,118 +68,176 @@ public class OptionsManager : MonoBehaviour
             enabled = false;
             return;
         }
-        displayControls(keyboardOnlyMenuButtonName);
+
+        UiSelectionAdapter.EnsureInputSystemUiModule();
+        ResolveButtonReferences();
+        RegisterButtonCallbacks();
+        DisplayKeyboardOnlyControls();
+        UiSelectionAdapter.EnsureSelected(GetDefaultSelectedButton());
     }
 
     private void Update()
     {
-        // check for some button not selected
-        if (EventSystem.current != null)
+        GameObject selectedObject = UiSelectionAdapter.EnsureSelected(GetDefaultSelectedButton());
+        if (selectedObject == null)
         {
-            if (EventSystem.current.currentSelectedGameObject == null)
-            {
-                EventSystem.current.SetSelectedGameObject(EventSystem.current.firstSelectedGameObject); // + "_description";
-            }
-            currentHighlightedButton = EventSystem.current.currentSelectedGameObject.name; // + "_description";
-        }
-        // ================================== footer buttons ===========================================
-        // start button | start game
-        if (controls.UINavigation.Submit.triggered
-            && currentHighlightedButton.Equals(mainMenuButtonName))
-        {
-            loadMenu(Constants.SCENE_NAME_level_00_start);
-        }
-        // quit button | quit game
-        if (controls.UINavigation.Submit.triggered
-            && currentHighlightedButton.Equals(quitButtonName))
-        {
-            Application.Quit();
-        }
-        // stats menu button | load stats menu
-        if (controls.UINavigation.Submit.triggered
-            && currentHighlightedButton.Equals(statsMenuButtonName))
-        {
-            loadMenu(Constants.SCENE_NAME_level_00_stats);
+            return;
         }
 
-        // update menu button | load update menu
-        if (controls.UINavigation.Submit.triggered
-            && currentHighlightedButton.Equals(progressionMenuButtonName))
-        {
-            loadMenu(Constants.SCENE_NAME_level_00_progression);
-        }
-        // options menu button | load options menu
-        if (controls.UINavigation.Submit.triggered
-            && currentHighlightedButton.Equals(optionsMenuButtonName))
-        {
-            loadMenu(Constants.SCENE_NAME_level_00_options);
-        }
-        // credits menu button | load credits menu
-        if (controls.UINavigation.Submit.triggered
-            && currentHighlightedButton.Equals(creditsMenuButtonName))
-        {
-            loadMenu(Constants.SCENE_NAME_level_00_credits);
-        }
-        // account menu button | load account menu
-        if (controls.UINavigation.Submit.triggered
-            && currentHighlightedButton.Equals(accountMenuButtonName))
-        {
-            loadMenu(Constants.SCENE_NAME_level_00_account);
-        }
-        // ================================== Display controls ===========================================
-
-        // keyboard only
+        currentHighlightedButton = selectedObject.name;
         if (currentHighlightedButton.Equals(keyboardOnlyMenuButtonName))
         {
-            displayControls("keyboardOnly");
+            DisplayKeyboardOnlyControls();
         }
-        // keyboard + mouse
         if (currentHighlightedButton.Equals(keyboardMouseMenuButtonName))
         {
-            displayControls("keyboardMouse");
+            DisplayKeyboardMouseControls();
         }
-        // gamepad
         if (currentHighlightedButton.Equals(gamepadMenuButtonName))
         {
-            displayControls("gamepad");
+            DisplayGamepadControls();
         }
-        // touch
         if (currentHighlightedButton.Equals(touchMenuButtonName))
         {
-            displayControls("touch");
+            DisplayTouchControls();
         }
     }
 
-    private void displayControls(string controls)
+    private void ResolveButtonReferences()
     {
-        if (controls.Contains("keyboardOnly"))
+        mainMenuButton = ResolveButton(mainMenuButton, mainMenuButtonName);
+        statsMenuButton = ResolveButton(statsMenuButton, statsMenuButtonName);
+        quitButton = ResolveButton(quitButton, quitButtonName);
+        optionsMenuButton = ResolveButton(optionsMenuButton, optionsMenuButtonName);
+        creditsMenuButton = ResolveButton(creditsMenuButton, creditsMenuButtonName);
+        progressionMenuButton = ResolveButton(progressionMenuButton, progressionMenuButtonName);
+        accountMenuButton = ResolveButton(accountMenuButton, accountMenuButtonName);
+        keyboardOnlyButton = ResolveButton(keyboardOnlyButton, keyboardOnlyMenuButtonName);
+        keyboardMouseButton = ResolveButton(keyboardMouseButton, keyboardMouseMenuButtonName);
+        gamepadButton = ResolveButton(gamepadButton, gamepadMenuButtonName);
+        touchButton = ResolveButton(touchButton, touchMenuButtonName);
+    }
+
+    private Button ResolveButton(Button button, string buttonName)
+    {
+        if (button != null)
         {
-            keyboardOnlyObject.SetActive(true);
-            keyboardMouseObject.SetActive(false);
-            gamepadObject.SetActive(false);
-            touchObject.SetActive(false);
+            return button;
         }
-        if (controls.Contains("keyboardMouse"))
+
+        GameObject buttonObject = GameObject.Find(buttonName);
+        return buttonObject != null ? buttonObject.GetComponent<Button>() : null;
+    }
+
+    private void RegisterButtonCallbacks()
+    {
+        UiSelectionAdapter.RegisterButton(mainMenuButton, LoadStartMenu);
+        UiSelectionAdapter.RegisterButton(statsMenuButton, LoadStatsMenu);
+        UiSelectionAdapter.RegisterButton(progressionMenuButton, LoadProgressionMenu);
+        UiSelectionAdapter.RegisterButton(optionsMenuButton, LoadOptionsMenu);
+        UiSelectionAdapter.RegisterButton(creditsMenuButton, LoadCreditsMenu);
+        UiSelectionAdapter.RegisterButton(accountMenuButton, LoadAccountMenu);
+        UiSelectionAdapter.RegisterButton(quitButton, QuitGame);
+        UiSelectionAdapter.RegisterButton(keyboardOnlyButton, DisplayKeyboardOnlyControls);
+        UiSelectionAdapter.RegisterButton(keyboardMouseButton, DisplayKeyboardMouseControls);
+        UiSelectionAdapter.RegisterButton(gamepadButton, DisplayGamepadControls);
+        UiSelectionAdapter.RegisterButton(touchButton, DisplayTouchControls);
+    }
+
+    private void UnregisterButtonCallbacks()
+    {
+        UiSelectionAdapter.UnregisterButton(mainMenuButton, LoadStartMenu);
+        UiSelectionAdapter.UnregisterButton(statsMenuButton, LoadStatsMenu);
+        UiSelectionAdapter.UnregisterButton(progressionMenuButton, LoadProgressionMenu);
+        UiSelectionAdapter.UnregisterButton(optionsMenuButton, LoadOptionsMenu);
+        UiSelectionAdapter.UnregisterButton(creditsMenuButton, LoadCreditsMenu);
+        UiSelectionAdapter.UnregisterButton(accountMenuButton, LoadAccountMenu);
+        UiSelectionAdapter.UnregisterButton(quitButton, QuitGame);
+        UiSelectionAdapter.UnregisterButton(keyboardOnlyButton, DisplayKeyboardOnlyControls);
+        UiSelectionAdapter.UnregisterButton(keyboardMouseButton, DisplayKeyboardMouseControls);
+        UiSelectionAdapter.UnregisterButton(gamepadButton, DisplayGamepadControls);
+        UiSelectionAdapter.UnregisterButton(touchButton, DisplayTouchControls);
+    }
+
+    private GameObject GetDefaultSelectedButton()
+    {
+        if (EventSystem.current != null && EventSystem.current.firstSelectedGameObject != null)
         {
-            keyboardOnlyObject.SetActive(false);
-            keyboardMouseObject.SetActive(true);
-            gamepadObject.SetActive(false);
-            touchObject.SetActive(false);
+            return EventSystem.current.firstSelectedGameObject;
         }
-        if (controls.Contains("gamepad"))
+
+        return keyboardOnlyButton != null ? keyboardOnlyButton.gameObject : null;
+    }
+
+    private void DisplayKeyboardOnlyControls()
+    {
+        DisplayControls("keyboardOnly");
+    }
+
+    private void DisplayKeyboardMouseControls()
+    {
+        DisplayControls("keyboardMouse");
+    }
+
+    private void DisplayGamepadControls()
+    {
+        DisplayControls("gamepad");
+    }
+
+    private void DisplayTouchControls()
+    {
+        DisplayControls("touch");
+    }
+
+    private void DisplayControls(string controls)
+    {
+        SetActiveIfNotNull(keyboardOnlyObject, controls.Contains("keyboardOnly"));
+        SetActiveIfNotNull(keyboardMouseObject, controls.Contains("keyboardMouse"));
+        SetActiveIfNotNull(gamepadObject, controls.Contains("gamepad"));
+        SetActiveIfNotNull(touchObject, controls.Contains("touch"));
+    }
+
+    private void SetActiveIfNotNull(GameObject target, bool active)
+    {
+        if (target != null)
         {
-            keyboardOnlyObject.SetActive(false);
-            keyboardMouseObject.SetActive(false);
-            gamepadObject.SetActive(true);
-            touchObject.SetActive(false);
+            target.SetActive(active);
         }
-        if (controls.Contains("touch"))
-        {
-            keyboardOnlyObject.SetActive(false);
-            keyboardMouseObject.SetActive(false);
-            gamepadObject.SetActive(false);
-            touchObject.SetActive(true);
-        }
+    }
+
+    private void LoadStartMenu()
+    {
+        loadMenu(Constants.SCENE_NAME_level_00_start);
+    }
+
+    private void LoadStatsMenu()
+    {
+        loadMenu(Constants.SCENE_NAME_level_00_stats);
+    }
+
+    private void LoadProgressionMenu()
+    {
+        loadMenu(Constants.SCENE_NAME_level_00_progression);
+    }
+
+    private void LoadOptionsMenu()
+    {
+        loadMenu(Constants.SCENE_NAME_level_00_options);
+    }
+
+    private void LoadCreditsMenu()
+    {
+        loadMenu(Constants.SCENE_NAME_level_00_credits);
+    }
+
+    private void LoadAccountMenu()
+    {
+        loadMenu(Constants.SCENE_NAME_level_00_account);
+    }
+
+    private void QuitGame()
+    {
+        Application.Quit();
     }
 
     public void loadMenu(string sceneName)

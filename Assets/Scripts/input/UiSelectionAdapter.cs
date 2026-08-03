@@ -1,6 +1,7 @@
 using System;
 using UnityEngine;
 using UnityEngine.EventSystems;
+using UnityEngine.Events;
 using UnityEngine.InputSystem.UI;
 using UnityEngine.UI;
 
@@ -84,6 +85,35 @@ public static class UiSelectionAdapter
 
         selectedName = selected.name;
         return true;
+    }
+
+    public static void RegisterButton(Button button, UnityAction action)
+    {
+        if (button == null || action == null)
+        {
+            return;
+        }
+
+        button.onClick.RemoveListener(action);
+        if (!HasPersistentListeners(button))
+        {
+            button.onClick.AddListener(action);
+        }
+    }
+
+    public static void UnregisterButton(Button button, UnityAction action)
+    {
+        if (button == null || action == null)
+        {
+            return;
+        }
+
+        button.onClick.RemoveListener(action);
+    }
+
+    public static bool HasPersistentListeners(Button button)
+    {
+        return button != null && button.onClick.GetPersistentEventCount() > 0;
     }
 
     public static bool EnsureInputSystemUiModule()

@@ -137,7 +137,7 @@ public class EndRoundMenuManager : MonoBehaviour
         }
 
         button.onClick.RemoveListener(action);
-        if (!HasPersistentListener(button, action))
+        if (!UiSelectionAdapter.HasPersistentListeners(button))
         {
             button.onClick.AddListener(action);
         }
@@ -151,25 +151,6 @@ public class EndRoundMenuManager : MonoBehaviour
         }
 
         button.onClick.RemoveListener(action);
-    }
-
-    private bool HasPersistentListener(Button button, UnityEngine.Events.UnityAction action)
-    {
-        if (button == null || action == null)
-        {
-            return false;
-        }
-
-        for (int i = 0; i < button.onClick.GetPersistentEventCount(); i++)
-        {
-            if (button.onClick.GetPersistentTarget(i) == action.Target
-                && button.onClick.GetPersistentMethodName(i) == action.Method.Name)
-            {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     private GameObject GetDefaultSelectedButton()
