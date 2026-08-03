@@ -30,20 +30,24 @@ public class PlatformCheck : MonoBehaviour
 
         QualitySettings.vSyncCount = 1;
         Application.targetFrameRate = 60;
-        SetUiModuleState(useStandaloneInputModule: true);
+        SetUiModuleState(useStandaloneInputModule: false);
 #endif
 
 #if UNITY_STANDALONE || UNITY_EDITOR
         QualitySettings.vSyncCount = 0;
         Application.targetFrameRate = -1;
 
-        bool useTouchUi = Input.touchSupported && SystemInfo.deviceType == DeviceType.Handheld;
-        SetUiModuleState(useStandaloneInputModule: useTouchUi);
+        SetUiModuleState(useStandaloneInputModule: false);
 #endif
     }
 
     private void SetUiModuleState(bool useStandaloneInputModule)
     {
+        if (!CanUseInputSystemUiModule() && standaloneInputModule != null)
+        {
+            useStandaloneInputModule = true;
+        }
+
         if (inputSystemUIInputModule != null)
         {
             inputSystemUIInputModule.enabled = !useStandaloneInputModule;
@@ -53,5 +57,11 @@ public class PlatformCheck : MonoBehaviour
         {
             standaloneInputModule.enabled = useStandaloneInputModule;
         }
+    }
+
+    private bool CanUseInputSystemUiModule()
+    {
+        return inputSystemUIInputModule != null
+            && inputSystemUIInputModule.actionsAsset != null;
     }
 }

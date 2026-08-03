@@ -68,6 +68,17 @@ public class TouchInputController : MonoBehaviour
         playerController = GameLevelManager.instance.players[0].playerController;
     }
 
+    private void OnDisable()
+    {
+        hold1Detected = false;
+        PlayerTouchInputState.BlockHeld = false;
+
+        if (instance == this)
+        {
+            instance = null;
+        }
+    }
+
 
     void Update()
     {
@@ -113,16 +124,13 @@ public class TouchInputController : MonoBehaviour
                 && GameOptions.enemiesEnabled) // if swipe on right 1/2 of screen)) )
             {
                 hold1Detected = true;
+                PlayerTouchInputState.BlockHeld = true;
                 startTouchPosition1 = touch1.position;
-                if (playerController.CanBlock)
-                {
-                    playerController.PlayerBlock();
-                }
             }
             if (touch1.phase == TouchPhase.Ended || touch1.phase == TouchPhase.Canceled)
             {
                 hold1Detected = false;
-                playerController.Anim.SetBool("block", false);
+                PlayerTouchInputState.BlockHeld = false;
             }
 
             // ====================== touch 2 : tap  =====================================
@@ -141,7 +149,7 @@ public class TouchInputController : MonoBehaviour
             }
             if (hasSecondTouch && tap2Detected && !tap1Detected)
             {
-               playerController.TouchControlJumpOrShoot(touch2.position);
+                PlayerTouchInputState.QueueJumpOrShoot(touch2.position);
                 //tap2Detected = false;
             }
 
@@ -163,7 +171,7 @@ public class TouchInputController : MonoBehaviour
                     {
                         //Debug.Log("player attack ");
                         tap2Detected = false;
-                        playerController.PlayerAttack();
+                        PlayerTouchInputState.QueueAttack();
                     }
                     buttonPressed = false;
                 }
@@ -180,7 +188,8 @@ public class TouchInputController : MonoBehaviour
                         //Debug.Log("player special attack ");
                         //doubleTap2Detected = false;
                         hold1Detected = false;
-                        playerController.PlayerSpecial();
+                        PlayerTouchInputState.BlockHeld = false;
+                        PlayerTouchInputState.QueueSpecial();
                     }
                     buttonPressed = false;
                 }
@@ -204,7 +213,7 @@ public class TouchInputController : MonoBehaviour
 
         if (tap1Detected && !GameOptions.EnemiesOnlyEnabled)
         {
-            playerController.TouchControlJumpOrShoot(touch1.position);
+            PlayerTouchInputState.QueueJumpOrShoot(touch1.position);
             //tap1Detected = false;
         }
 

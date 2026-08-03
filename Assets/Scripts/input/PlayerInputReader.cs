@@ -12,10 +12,16 @@ public class PlayerInputReader
 
     public Vector2 ReadMove(float screenXRange, float screenYRange)
     {
+        Vector2 actionMove = controls.Player.movement.ReadValue<Vector2>();
 #if (UNITY_ANDROID || UNITY_IOS) && !UNITY_EDITOR
-        return ReadTouchMove(screenXRange, screenYRange);
+        if (actionMove.sqrMagnitude > 0.001f)
+        {
+            return actionMove;
+        }
+
+        return ReadLegacyTouchMove(screenXRange, screenYRange);
 #else
-        return controls.Player.movement.ReadValue<Vector2>();
+        return actionMove;
 #endif
     }
 
@@ -41,7 +47,7 @@ public class PlayerInputReader
 
     public bool AttackPressed
     {
-        get { return controls.Player.attack.triggered; }
+        get { return controls.Player.attack.triggered || PlayerTouchInputState.ConsumeAttack(); }
     }
 
     public bool BlockHeld
@@ -49,13 +55,14 @@ public class PlayerInputReader
         get
         {
             return controls.Player.block.ReadValue<float>() == 1
-                || controls.Player.jump.ReadValue<float>() == 1;
+                || controls.Player.jump.ReadValue<float>() == 1
+                || PlayerTouchInputState.BlockHeld;
         }
     }
 
     public bool SpecialPressed
     {
-        get { return controls.Player.special.triggered; }
+        get { return controls.Player.special.triggered || PlayerTouchInputState.ConsumeSpecial(); }
     }
 
     public bool DebugChangeHeld
@@ -75,12 +82,18 @@ public class PlayerInputReader
     {
         get
         {
-            return TouchInputController.instance != null && TouchInputController.instance.HoldDetected;
+            return PlayerTouchInputState.BlockHeld
+                || (TouchInputController.instance != null && TouchInputController.instance.HoldDetected);
         }
     }
 
+    public bool ConsumeTouchJumpOrShoot(out Vector2 touchPosition)
+    {
+        return PlayerTouchInputState.ConsumeJumpOrShoot(out touchPosition);
+    }
+
 #if (UNITY_ANDROID || UNITY_IOS) && !UNITY_EDITOR
-    private Vector2 ReadTouchMove(float screenXRange, float screenYRange)
+    private Vector2 ReadLegacyTouchMove(float screenXRange, float screenYRange)
     {
         if (Input.touchCount == 0)
         {

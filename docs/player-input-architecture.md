@@ -10,19 +10,23 @@ This document tracks the player input modernization plan. The project already us
 | --- | --- | --- |
 | Input actions | `PlayerControls.inputactions`, generated `PlayerControls.cs` | Source for keyboard/gamepad gameplay, UI navigation, debug actions, and a partially-defined touch action map. |
 | Action lifecycle | `PlayerControlsProvider` | Reference-counted static provider for gameplay, menu, debug, and touch maps. Kept as the compatibility bridge. |
-| Player gameplay input | `PlayerInputReader`, `PlayerController` | `PlayerInputReader` now owns the player's movement/action reads. `PlayerController` consumes gameplay intent and keeps behavior logic. |
-| Mobile movement | `PlayerInputReader` wrapping current `FloatingJoystick`/legacy touch behavior | Preserved for this first slice. Target is Unity Input System `OnScreenStick` mapped to `Player/movement`. |
-| Mobile gestures/actions | `TouchInputController` | Still directly calls gameplay methods for tap/hold/quadrant gestures. Target is an input adapter or on-screen buttons that produce actions. |
+| Player gameplay input | `PlayerInputReader`, `PlayerTouchInputState`, `PlayerController` | `PlayerInputReader` owns the player's movement/action reads. `TouchInputController` queues touch gameplay intents through `PlayerTouchInputState`, and `PlayerController` consumes them in the normal gameplay path. |
+| Mobile movement | `PlayerInputReader` with Input System movement first and legacy `FloatingJoystick` fallback | Ready for Unity Input System `OnScreenStick` mapped to `Player/movement`; the old joystick remains as fallback until scenes/prefabs are migrated and playtested. |
+| Mobile gestures/actions | `TouchInputController`, `PlayerTouchInputState` | Gameplay gestures now queue input intents instead of directly calling player combat/basketball methods. Target is still `OnScreenButton` bindings where the UI/UX allows it. |
+| Racing input | `RacingInputReader`, `RacingVehicleController` | Racing movement, run, and jump reads are routed through a reader with Input System movement first and legacy touch joystick fallback. |
 | Menu touch input | `TouchInput*Controller` scripts | Duplicated per screen. Target is standard Unity UI through `InputSystemUIInputModule`. |
-| UI input modules | `PlatformCheck` toggles `StandaloneInputModule`/`InputSystemUIInputModule` | Target is consistent `InputSystemUIInputModule` once menu touch scripts are migrated. |
+| UI input modules | `PlatformCheck` prefers `InputSystemUIInputModule` and falls back to `StandaloneInputModule` only when needed | Menu touch scripts still exist, but the scene input module preference is now aligned with the Input System. |
 
 ## Implemented First Slice
 
 - Added `PlayerInputReader` as the first player input intent layer.
+- Added `PlayerTouchInputState` so touch gameplay can queue input intents instead of directly calling player gameplay methods.
+- Added `RacingInputReader` for racing movement/run/jump input ownership.
 - Routed `PlayerController` movement, run, jump, shoot, call-ball, attack, block, special, and debug-lightning reads through `PlayerInputReader`.
+- Routed racing movement/run/jump reads through `RacingInputReader`.
 - Kept `PlayerControlsProvider` and `PlayerControls.inputactions` intact.
-- Kept legacy touch movement behavior intact, but contained it inside `PlayerInputReader` instead of `PlayerController`.
-- Left racing and menu touch input unchanged for a separate slice.
+- Kept legacy touch movement behavior intact as a fallback, but prefer `Player/movement` first so `OnScreenStick` can drive movement once added to scenes.
+- Updated UI module selection to prefer `InputSystemUIInputModule` with fallback to `StandaloneInputModule` if the scene has no Input System module.
 
 ## Target Direction
 
@@ -37,10 +41,10 @@ This document tracks the player input modernization plan. The project already us
 
 1. Finish routing `PlayerController` input through `PlayerInputReader`. Done for the first gameplay reads.
 2. Add focused smoke tests/manual checklist for keyboard, gamepad, and mobile touch controls.
-3. Replace mobile movement with an Input System `OnScreenStick` bound to `Player/movement`.
+3. Add Input System `OnScreenStick` components in Unity scenes/prefabs and bind them to `Player/movement`; then remove the legacy joystick fallback after device playtesting.
 4. Replace touch combat quadrants with `OnScreenButton` bindings for jump, shoot, attack, block, special, and pause where the UI/UX allows it.
 5. Move retained gestures into one `GestureInputAdapter`.
-6. Route racing vehicle input through a racing input reader using the same movement action.
+6. Route racing vehicle input through a racing input reader using the same movement action. Done for movement/run/jump reads.
 7. Replace menu-specific `TouchInput*Controller` scripts with `InputSystemUIInputModule` plus UI submit/cancel/pointer events.
 8. Evaluate switching from `PlayerControlsProvider` to scene-owned `PlayerInput` components or `PlayerInputManager`.
 

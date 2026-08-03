@@ -420,7 +420,12 @@ public class PlayerController : MonoBehaviour
             canAttack = false;
         }
 
-#if UNITY_STANDALONE || UNITY_EDITOR || UNITY_EDITOR_OSX
+        Vector2 touchJumpOrShootPosition;
+        if (reader.ConsumeTouchJumpOrShoot(out touchJumpOrShootPosition) && !GameOptions.EnemiesOnlyEnabled)
+        {
+            TouchControlJumpOrShoot(touchJumpOrShootPosition);
+        }
+
         //------------------ jump -----------------------------------
         if (reader.JumpPressed
             //&& !controls.Player.shoot.triggered
@@ -507,13 +512,7 @@ public class PlayerController : MonoBehaviour
 
         else
         {
-            // double check touch input not being used
-            if (TouchInputController.instance != null && !reader.TouchBlockHeld)
-            {
-                anim.SetBool("block", false);
-            }
-            // double check touch input not being used
-            if (SystemInfo.deviceType != DeviceType.Handheld)
+            if (!reader.TouchBlockHeld || SystemInfo.deviceType != DeviceType.Handheld)
             {
                 anim.SetBool("block", false);
             }
@@ -538,7 +537,6 @@ public class PlayerController : MonoBehaviour
         //    //Debug.Log("intialHeight : " + initialHeight);  
         //    //Debug.Log("finalHeight : " + finalHeight);
         //}
-#endif
     }
 
     private void checkIdleTimeForSniper()

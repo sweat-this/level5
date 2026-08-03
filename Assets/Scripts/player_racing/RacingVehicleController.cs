@@ -2,7 +2,6 @@
 using System.Collections;
 using UnityEngine;
 using UnityEngine.UI;
-using Touch = UnityEngine.Touch;
 
 public class RacingVehicleController : MonoBehaviour
 {
@@ -65,11 +64,9 @@ public class RacingVehicleController : MonoBehaviour
     float movementHorizontal;
     float movementVertical;
 
-    // touch vars
-    Touch touch;
-    Vector2 startTouchPosition = new Vector2(0, 0);
     float screenXRange;
     float screenYRange;
+    private RacingInputReader inputReader;
 
     // player take damage display
     Text damageDisplayValueText;
@@ -138,63 +135,43 @@ public class RacingVehicleController : MonoBehaviour
         }
     }
 
+    private RacingInputReader EnsureInputReader()
+    {
+        if (RacingGameManager.instance == null)
+        {
+            return null;
+        }
+
+        if (inputReader == null)
+        {
+            inputReader = new RacingInputReader(RacingGameManager.instance.Controls);
+        }
+
+        return inputReader;
+    }
+
     // not affected by framerate
     void FixedUpdate()
     {
         //------MOVEMENT---------------------------
         if (!KnockedDown && currentState != takeDamageState)
         {
-#if UNITY_ANDROID && !UNITY_EDITOR
-
-            if (Input.touchCount > 0)
-            {
-                Touch touch = Input.touches[0];
-                if (touch.phase == TouchPhase.Began)
-                {
-                    startTouchPosition = touch.position;
-                }
-
-                movementHorizontal = GameLevelManager.instance.Joystick.Horizontal;
-                movementVertical = GameLevelManager.instance.Joystick.Vertical;
-
-                //percent of finger move distance from start to end range that will max speed of movement
-                float XrangePercent = Mathf.Abs((touch.position.x - startTouchPosition.x) / screenXRange);
-                float YrangePercent = Mathf.Abs((touch.position.y - startTouchPosition.y) / screenYRange);
-
-                //if max finger move distance not achieved, multiply by percent of distance so far
-                if (XrangePercent < 1)
-                {
-                    movementHorizontal *= XrangePercent;
-                }
-                if (YrangePercent < 1)
-                {
-                    movementVertical *= YrangePercent;
-                }
-            }
-            if (Input.touchCount == 0)
-            {
-                movementHorizontal = 0;
-                movementVertical = 0;
-            }
-#endif
-
-#if UNITY_STANDALONE || UNITY_EDITOR
-
-            movementHorizontal = RacingGameManager.instance.Controls.Player.movement.ReadValue<Vector2>().x;
-            movementVertical = RacingGameManager.instance.Controls.Player.movement.ReadValue<Vector2>().y;
+            RacingInputReader reader = EnsureInputReader();
+            Vector2 moveInput = reader != null ? reader.ReadMove(screenXRange, screenYRange) : Vector2.zero;
+            movementHorizontal = moveInput.x;
+            movementVertical = moveInput.y;
             //movement = new Vector3(movementHorizontal, 0, movementVertical) * (movementSpeed * Time.deltaTime);
             //movement = new Vector3(movementHorizontal, 0, movementVertical) * (movementSpeed * Time.fixedDeltaTime);
 
-#endif
-
-            if (RacingGameManager.instance.Controls.Player.run.ReadValue<float>() == 1
+            if (reader != null
+                && reader.RunHeld
                 && movementSpeed < vehicleProfile.MaxSpeed
                 && !KnockedDown)
             {
                 //Debug.Log("movementSpeed : "+ movementSpeed);
                 movementSpeed = (movementSpeed * vehicleProfile.Acceleration);
             }
-            if ((RacingGameManager.instance.Controls.Player.run.ReadValue<float>() == 0
+            if (((reader == null || !reader.RunHeld)
                 //&& RacingGameManager.instance.Controls.Player.run.ReadValue<float>() > 1
                 && rigidBody.linearVelocity.magnitude > 0
                 && movementSpeed > vehicleProfile.Speed)
@@ -297,7 +274,9 @@ public class RacingVehicleController : MonoBehaviour
         //playerDistanceFromRimFeet = playerDistanceFromRim * 6;
 
         // if run input or run toggle on
-        if (RacingGameManager.instance.Controls.Player.run.ReadValue<float>() == 1 //if button is held
+        RacingInputReader reader = EnsureInputReader();
+        if (reader != null
+            && reader.RunHeld //if button is held
             && !InAir
             && !KnockedDown
             && rigidBody.linearVelocity.magnitude > 0.1f
@@ -383,9 +362,9 @@ public class RacingVehicleController : MonoBehaviour
         //    canAttack = false;
         //}
 
-#if UNITY_STANDALONE || UNITY_EDITOR
         //------------------ jump -----------------------------------
-        if (RacingGameManager.instance.Controls.Player.jump.triggered
+        if (reader != null
+            && reader.JumpPressed
             //&& !GameLevelManager.instance.Controls.Player.shoot.triggered
             //&& hasBasketball
             && (Grounded || IsGrinding)
@@ -477,7 +456,6 @@ public class RacingVehicleController : MonoBehaviour
         //    //Debug.Log("intialHeight : " + initialHeight);  
         //    //Debug.Log("finalHeight : " + finalHeight);
         //}
-#endif 
     }
 
     //public void TouchControlJumpOrShoot(Vector2 touchPosition)
