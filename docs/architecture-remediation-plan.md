@@ -397,7 +397,7 @@ Acceptance criteria:
 7. Add queue cleanup on actor disable/death. Done for enemy/bodyguard controllers; still needs edit/play-mode tests.
 8. Document animation event methods and classify critical gameplay callbacks.
 
-## Immediate Implementation Backlog (Player Identity / Basketball / Game Mode / Vehicles)
+## Immediate Implementation Backlog (Player Identity / Basketball / Game Mode / Vehicles / Campaign)
 
 A separate, independent track from the combat contracts and match-end-flow work - none of these touch `PlayerController`, health, the attack queue, animation events, `GameRules`, `Timer`, `Pause`, or `LoadGame`, so they can proceed in parallel without conflict.
 
@@ -410,6 +410,7 @@ A separate, independent track from the combat contracts and match-end-flow work 
 7. **Code fix in place 2026-08-02; verification pending.** AUD-019's original premise (a dead `GameRules.IsGameOver()` competing with a live `Timer` path) was factually wrong - `IsGameOver()` is live, marker-based win-condition logic for contest modes, and doesn't conflict with `Timer`'s time-based path for timed modes. The narrower, still-valid point was fixed by routing timer, marker, and death triggers through `GameRules.RequestGameOver()` and gating pause, persistence, progression, and campaign transition side effects behind `matchEndHandled`/`HandleMatchEnded()`.
 8. **Not done.** Reconcile the duplicate progression call sites in `Pause.updateFreePlayStats()` and `GameRules.ApplyMatchProgressionResult()` (AUD-011).
 9. **Done 2026-08-02.** Fix AUD-020: `TrafficManager`'s `spawnVehiclePrefabs`, `spawnCustomVehiclePrefabs`, and `spawnVehicleCoRoutine` now instantiate first and set `Direction`/`FacingRight`/`CurrentTarget` on the returned clone, instead of mutating the shared prefab-sourced `VehicleController` list entries before `Instantiate()` - closes a same-vehicle-ID respawn race. Confirmed via full-codebase grep that `VehicleController`/`VehiclesList` have no consumers outside `vehicle/TrafficManager.cs` and `vehicle/VehicleController.cs` before making the change.
+10. **Done 2026-08-02.** Fix AUD-021: user-requested audit of "Beat the Computahs" mode found `EndRoundData.numberOfContinues` (static field) was never reset between campaign attempts - only ever decremented or zeroed for hardcore mode. `StartManager.setGameOptions()` now resets it to a new `EndRoundData.DefaultContinues` constant (left at 2, the pre-existing default - not a confirmed design number, so not changed) for non-hardcore runs on every fresh game start. Also documented (not fixed - no live bug) a related campaign-index rollback gap in `GameRules.LoadNextCampaignLevel`/`EndRoundMenuManager.LoadData` that's currently only masked by `StartManager` hard-resetting the level index on every fresh "Beat the Computahs" start.
 
 ## Verification Gates
 

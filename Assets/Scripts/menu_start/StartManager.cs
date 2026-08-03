@@ -1434,7 +1434,11 @@ public class StartManager : MonoBehaviour
 
         EndRoundData.currentRoundPlayerWinnerImage = playerSelectedData[playerSelectedIndex].winPortrait;
         EndRoundData.currentRoundPlayerLoserImage = playerSelectedData[playerSelectedIndex].losePortrait;
-        if (hardcoreEnabled) { EndRoundData.numberOfContinues = 0; }
+        // Reset continues for this fresh run - numberOfContinues is a static field that only
+        // ever gets decremented during play, so without this a player who exhausted continues in
+        // an earlier campaign attempt would start every later attempt (in the same session) with
+        // zero continues left, silently.
+        EndRoundData.numberOfContinues = hardcoreEnabled ? 0 : EndRoundData.DefaultContinues;
 
         GameOptions.friendBonus3Accuracy += friendSelectedData[friendSelectedIndex].bonus3Accuracy;
         GameOptions.friendBonus4Accuracy += friendSelectedData[friendSelectedIndex].bonus4Accuracy;
