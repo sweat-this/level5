@@ -1,0 +1,62 @@
+name: Repository quality
+
+on:
+  pull_request:
+  push:
+    branches:
+      - dev
+
+permissions:
+  contents: read
+  checks: write
+
+jobs:
+  validate:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate repository invariants
+        shell: pwsh
+        run: ./scripts/validate-repository.ps1
+
+  unity-editmode:
+    runs-on: ubuntu-latest
+    env:
+      UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+      UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+      UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+    steps:
+      - name: Report missing Unity license
+        if: ${{ env.UNITY_LICENSE == '' || env.UNITY_EMAIL == '' || env.UNITY_PASSWORD == '' }}
+        run: echo "::warning::Unity EditMode tests require UNITY_LICENSE, UNITY_EMAIL, and UNITY_PASSWORD repository secrets."
+
+      - uses: actions/checkout@v4
+        if: ${{ env.UNITY_LICENSE != '' && env.UNITY_EMAIL != '' && env.UNITY_PASSWORD != '' }}
+        with:
+          lfs: true
+
+      - uses: actions/cache@v4
+        if: ${{ env.UNITY_LICENSE != '' && env.UNITY_EMAIL != '' && env.UNITY_PASSWORD != '' }}
+        with:
+          path: Library
+          key: Library-editmode-${{ hashFiles('Assets/**', 'Packages/**', 'ProjectSettings/**') }}
+          restore-keys: |
+            Library-editmode-
+            Library-
+
+      - name: Run Unity EditMode tests
+        if: ${{ env.UNITY_LICENSE != '' && env.UNITY_EMAIL != '' && env.UNITY_PASSWORD != '' }}
+        id: unity-tests
+        uses: game-ci/unity-test-runner@v4
+        with:
+          testMode: editmode
+          artifactsPath: editmode-artifacts
+          githubToken: ${{ secrets.GITHUB_TOKEN }}
+          checkName: Unity EditMode test results
+
+      - name: Upload Unity test results
+        if: ${{ always() && env.UNITY_LICENSE != '' && env.UNITY_EMAIL != '' && env.UNITY_PASSWORD != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: Unity EditMode test results
+          path: ${{ steps.unity-tests.outputs.artifactsPath }}

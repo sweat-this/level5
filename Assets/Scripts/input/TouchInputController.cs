@@ -117,8 +117,8 @@ public class TouchInputController : MonoBehaviour
                 && touch1.phase == TouchPhase.Stationary
                 //&& (touch1.phase == TouchPhase.Stationary || touch1.phase == TouchPhase.Moved)
                 && !buttonPressed
-                && touch1.position.x < (Screen.width / 2)
-                && touch1.position.y > (Screen.height / 2)
+                && touch1.position.x < Screen.safeArea.center.x
+                && touch1.position.y > Screen.safeArea.center.y
                 && playerController.PlayerCanBlock
                 //&& playerController.PlayerHealth.Block > 0
                 && GameOptions.enemiesEnabled) // if swipe on right 1/2 of screen)) )
@@ -157,13 +157,13 @@ public class TouchInputController : MonoBehaviour
             if (hasSecondTouch
                 && hold1Detected
                 && !buttonPressed
-                && startTouchPosition2.x > (Screen.width / 2)
+                && startTouchPosition2.x > Screen.safeArea.center.x
                 && GameOptions.enemiesEnabled)
             // if swipe on right 1/2 of screen)) 
             //&& startTouchPosition2.x < (Screen.height / 2)) // if swipe on right 1/2 of screen)) )
             {
                 // ====================== touch 2 + bottom right =====================================
-                if (tap2Detected && startTouchPosition2.y < (Screen.height / 2))
+                if (tap2Detected && startTouchPosition2.y < Screen.safeArea.center.y)
                 {
                     //Debug.Log("tap2Detected && !doubleTap2Detected");
                     buttonPressed = true;
@@ -176,7 +176,7 @@ public class TouchInputController : MonoBehaviour
                     buttonPressed = false;
                 }
                 // ====================== touch 2 + top right =====================================
-                if (tap2Detected && startTouchPosition2.y > (Screen.height / 2))
+                if (tap2Detected && startTouchPosition2.y > Screen.safeArea.center.y)
                 {
                     //Debug.Log("!tap2Detected && doubleTap2Detected");
                     buttonPressed = true;
@@ -204,8 +204,8 @@ public class TouchInputController : MonoBehaviour
             if (touch1.tapCount == 1 && touch1.phase == TouchPhase.Ended // finger stoppped moving | *tapcount = 1 keeps pause from being called twice
                 && Mathf.Abs(swipeDistance) > swipeDownTolerance // swipe is long enough
                 && swipeDistance < 0 // swipe down
-                && startTouchPosition1.x > (Screen.width / 2) // if swipe on right 1/2 of screen)) 
-                && startTouchPosition1.x > (Screen.height / 2)) // if swipe on right 1/2 of screen)) 
+                && startTouchPosition1.x > Screen.safeArea.center.x
+                && startTouchPosition1.y > Screen.safeArea.center.y)
             {
                 Pause.instance.TogglePause();
             }

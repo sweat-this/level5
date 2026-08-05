@@ -7,10 +7,10 @@ using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
-using Random = System.Random;
 
 public class StartManager : MonoBehaviour
 {
+    private const float DataWaitTimeoutSeconds = 12f;
 
     [SerializeField]
     public string currentHighlightedButton;
@@ -354,8 +354,7 @@ public class StartManager : MonoBehaviour
                 && !currentHighlightedButton.Equals(optionsSelectOptionName))
             {
                 buttonPressed = true;
-                EventSystem.current.SetSelectedGameObject(EventSystem.current.currentSelectedGameObject
-                    .GetComponent<Button>().FindSelectableOnUp().gameObject);
+                MoveSelection(button => button.FindSelectableOnUp());
                 buttonPressed = false;
             }
             // down, option select
@@ -375,29 +374,21 @@ public class StartManager : MonoBehaviour
                 && !currentHighlightedButton.Equals(optionsSelectOptionName))
             {
                 buttonPressed = true;
-                EventSystem.current.SetSelectedGameObject(EventSystem.current.currentSelectedGameObject
-                    .GetComponent<Button>().FindSelectableOnDown().gameObject);
+                MoveSelection(button => button.FindSelectableOnDown());
                 buttonPressed = false;
             }
 
             // right, go to change options
             if (controls.UINavigation.Right.triggered
-                && EventSystem.current.currentSelectedGameObject.GetComponent<Button>()
-                .FindSelectableOnRight() != null)
+                && EventSystem.current.currentSelectedGameObject != null)
             {
-                EventSystem.current.SetSelectedGameObject(EventSystem.current.currentSelectedGameObject
-                    .GetComponent<Button>().FindSelectableOnRight().gameObject);
+                MoveSelection(button => button.FindSelectableOnRight());
             }
 
             // left, return to option select
             if (controls.UINavigation.Left.triggered)
             {
-                // check if button exists. if no selectable on left, throws null object exception
-                if (EventSystem.current.currentSelectedGameObject.GetComponent<Button>().FindSelectableOnLeft() != null)
-                {
-                    EventSystem.current.SetSelectedGameObject(EventSystem.current.currentSelectedGameObject
-                        .GetComponent<Button>().FindSelectableOnLeft().gameObject);
-                }
+                MoveSelection(button => button.FindSelectableOnLeft());
             }
         }
 
@@ -664,6 +655,42 @@ public class StartManager : MonoBehaviour
         }
 
         return startButton != null ? startButton.gameObject : null;
+    }
+
+    private void MoveSelection(Func<Selectable, Selectable> findNext)
+    {
+        if (EventSystem.current == null || EventSystem.current.currentSelectedGameObject == null)
+        {
+            return;
+        }
+
+        Selectable current = EventSystem.current.currentSelectedGameObject.GetComponent<Selectable>();
+        Selectable next = current != null ? findNext(current) : null;
+        if (next != null && next.IsActive() && next.IsInteractable())
+        {
+            EventSystem.current.SetSelectedGameObject(next.gameObject);
+        }
+    }
+
+    private static IEnumerator WaitForCondition(Func<bool> condition)
+    {
+        float deadline = Time.realtimeSinceStartup + DataWaitTimeoutSeconds;
+        while (!condition() && Time.realtimeSinceStartup < deadline)
+        {
+            yield return null;
+        }
+    }
+
+    private static void ReturnToLoadingScene()
+    {
+        string activeScene = SceneManager.GetActiveScene().name;
+        if (activeScene == Constants.SCENE_NAME_level_00_loading)
+        {
+            return;
+        }
+
+        GameOptions.previousSceneName = activeScene;
+        SceneManager.LoadScene(Constants.SCENE_NAME_level_00_loading);
     }
 
     private bool HasLoadedGameSetup()
@@ -1038,7 +1065,11 @@ public class StartManager : MonoBehaviour
 
     IEnumerator UpdateLevelAndExperienceFromDatabase()
     {
-        yield return new WaitUntil(() => dataLoaded);
+        yield return WaitForCondition(() => dataLoaded);
+        if (!dataLoaded || DBHelper.instance == null)
+        {
+            yield break;
+        }
 
         foreach (CharacterProfile s in playerSelectedData)
         {
@@ -1051,19 +1082,30 @@ public class StartManager : MonoBehaviour
     {
         if (LoadedData.instance != null)
         {
-            yield return new WaitUntil(() => LoadedData.instance != null && LoadedData.instance.PlayerSelectedData != null);
+            yield return WaitForCondition(() => LoadedData.instance != null
+                && !LoadedData.instance.LoadFailed
+                && LoadedData.instance.PlayerSelectedData != null
+                && LoadedData.instance.CpuPlayerSelectedData != null
+                && LoadedData.instance.CheerleaderSelectedData != null
+                && LoadedData.instance.LevelSelectedData != null
+                && LoadedData.instance.ModeSelectedData != null);
+
+            if (LoadedData.instance == null
+                || LoadedData.instance.LoadFailed
+                || LoadedData.instance.PlayerSelectedData == null
+                || LoadedData.instance.CpuPlayerSelectedData == null
+                || LoadedData.instance.CheerleaderSelectedData == null
+                || LoadedData.instance.LevelSelectedData == null
+                || LoadedData.instance.ModeSelectedData == null)
+            {
+                ReturnToLoadingScene();
+                yield break;
+            }
+
             playerSelectedData = LoadedData.instance.PlayerSelectedData;
-
-            yield return new WaitUntil(() => LoadedData.instance != null && LoadedData.instance.CpuPlayerSelectedData != null);
             cpuPlayerSelectedData = LoadedData.instance.CpuPlayerSelectedData;
-
-            yield return new WaitUntil(() => LoadedData.instance != null && LoadedData.instance.CheerleaderSelectedData != null);
             friendSelectedData = LoadedData.instance.CheerleaderSelectedData;
-
-            yield return new WaitUntil(() => LoadedData.instance != null && LoadedData.instance.LevelSelectedData != null);
             levelSelectedData = LoadedData.instance.LevelSelectedData;
-
-            yield return new WaitUntil(() => LoadedData.instance != null && LoadedData.instance.ModeSelectedData != null);
             modeSelectedData = LoadedData.instance.ModeSelectedData;
 
             if (playerSelectedData != null
@@ -1076,13 +1118,17 @@ public class StartManager : MonoBehaviour
         }
         else
         {
-            SceneManager.LoadScene(Constants.SCENE_NAME_level_00_loading);
+            ReturnToLoadingScene();
         }
     }
 
     IEnumerator InitializeDisplay()
     {
-        yield return new WaitUntil(() => dataLoaded);
+        yield return WaitForCondition(() => dataLoaded);
+        if (!dataLoaded)
+        {
+            yield break;
+        }
         // display default data
         initializeNumPlayersDisplay();
         initializefriendDisplay();
@@ -1111,7 +1157,11 @@ public class StartManager : MonoBehaviour
 
     private IEnumerator SetVersion()
     {
-        yield return new WaitUntil(() => StartMenuUiObjects.instance != null);
+        yield return WaitForCondition(() => StartMenuUiObjects.instance != null);
+        if (StartMenuUiObjects.instance == null)
+        {
+            yield break;
+        }
 
         //Debug.Log(GameOptions.userName);
         if (APIHelper.BearerToken != null && !string.IsNullOrEmpty(GameOptions.userName))
@@ -1123,22 +1173,23 @@ public class StartManager : MonoBehaviour
             userNameText.text = "username : " + GameOptions.userName + " disconnected";
         }
         versionText.text = "current version : " + Application.version;
-        yield return new WaitUntil(() => !APIHelper.ApiLocked);
-        latestVersionText.text = "latest version: " + APIHelper.GetLatestBuildVersion();
-        //if (UtilityFunctions.IsConnectedToInternet())
-        //{
-        //    latestVersionText.text = "latest version: " + APIHelper.GetLatestBuildVersion();
-        //}
-        //else
-        //{
-        //    latestVersionText.text = "latest version: " + "No Internet";
-        //}
+        ApiResult<string> versionResult = null;
+        yield return APIHelper.GetLatestBuildVersion(result => versionResult = result);
+        latestVersionText.text = versionResult.Success
+            ? "latest version: " + versionResult.Value.Trim().Trim('"')
+            : "latest version: unavailable";
     }
 
     // ============================  get UI buttons / text references ==============================
     private IEnumerator GetUiObjectReferences()
     {
-        yield return new WaitUntil(() => StartMenuUiObjects.instance != null);
+        yield return WaitForCondition(() => StartMenuUiObjects.instance != null);
+        if (StartMenuUiObjects.instance == null)
+        {
+            Debug.LogError("StartManager could not resolve StartMenuUiObjects.");
+            enabled = false;
+            yield break;
+        }
 
         //buttons to disable for touch input
 
@@ -1217,8 +1268,7 @@ public class StartManager : MonoBehaviour
     public String getRandomWizardOfBoat()
     {
 
-        Random random = new Random();
-        int randNum = random.Next(1, 100);
+        int randNum = UnityEngine.Random.Range(1, 100);
 
         if (randNum > 50)
         {
@@ -1692,6 +1742,7 @@ public class StartManager : MonoBehaviour
     // this is necessary for setting Game Rules on game manager
     private void setGameOptions()
     {
+        GameOptions.matchResultId = null;
         GameOptions.characterId = playerSelectedData[playerSelectedIndex].PlayerId;
         GameOptions.characterDisplayName = playerSelectedData[playerSelectedIndex].PlayerDisplayName;
         // if Wizard of Boat selected, randomly choose which one to spawn
@@ -1817,7 +1868,9 @@ public class StartManager : MonoBehaviour
         if (GameOptions.cpu3SelectedIndex != 0 && modeSelectedData[modeSelectedIndex].ModeId != Modes.Lockdown)
         { GameOptions.characterObjectNames.Add(cpuPlayerSelectedData[GameOptions.cpu3SelectedIndex].PlayerObjectName); }
 
-        GameOptions.numPlayers = GameOptions.characterObjectNames.Count;
+        GameOptions.ConfigureSingleHumanRoster(
+            GameOptions.characterObjectNames.Count,
+            modeSelectedData[modeSelectedIndex].ModeId == Modes.Lockdown);
 
         GameOptions.levelsList = PlayerData.instance.LevelsList;
 

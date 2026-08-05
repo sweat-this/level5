@@ -104,7 +104,7 @@ public class TouchInputProgressionScreenController : MonoBehaviour
             if (touch.tapCount == 1 && touch.phase == TouchPhase.Ended // finger stoppped moving | *tapcount = 1 keeps pause from being called twice
                 && Mathf.Abs(swipeDistance) > swipeDownTolerance // swipe is long enough
                 && swipeDistance < 0 // swipe down
-                && (startTouchPosition.x > (Screen.width / 2))) // if swipe on right 1/2 of screen)) 
+                && startTouchPosition.x > Screen.safeArea.center.x)
             {
                 //change option
                 swipeDownOnOption();
@@ -118,7 +118,7 @@ public class TouchInputProgressionScreenController : MonoBehaviour
             if (touch.tapCount == 1 && touch.phase == TouchPhase.Ended // finger stoppped moving | *tapcount = 1 keeps pause from being called twice
                 && Mathf.Abs(swipeDistance) > swipeDownTolerance // swipe is long enough
                 && swipeDistance > 0 // swipe down
-                && (startTouchPosition.x > (Screen.width / 2))) // if swipe on right 1/2 of screen)) 
+                && startTouchPosition.x > Screen.safeArea.center.x)
             {
                 //change option
                 swipeUpOnOption();

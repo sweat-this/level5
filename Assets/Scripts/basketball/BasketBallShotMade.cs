@@ -1,6 +1,5 @@
 ﻿
 using UnityEngine;
-using Random = System.Random;
 
 
 public class BasketBallShotMade : MonoBehaviour
@@ -131,8 +130,7 @@ public class BasketBallShotMade : MonoBehaviour
     {
         // set value of shot
         moneyClone.GetComponent<PickupObject>().updateMoneyValue(value);
-        Random random = new Random();
-        float distance = (float)(random.NextDouble());
+        float distance = Random.value;
         Vector3 tempPos = new Vector3(transform.position.x + distance, 0, transform.position.z - 2);
         Instantiate(moneyClone, tempPos, Quaternion.identity);
     }

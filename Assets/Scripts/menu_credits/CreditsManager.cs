@@ -336,9 +336,7 @@ public class CreditsManager : MonoBehaviour
             yield break;
         }
 
-        StartCoroutine(APIHelper.PostReport(userReportModel, reportInputField));
-
-        yield return new WaitUntil(() => !APIHelper.ApiLocked);
+        yield return APIHelper.PostReport(userReportModel, reportInputField);
 
         buttonPressed = false;
     }

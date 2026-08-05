@@ -1,6 +1,5 @@
 using Assets.Scripts.database;
 using Assets.Scripts.restapi;
-using Assets.Scripts.Utility;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -12,6 +11,7 @@ using UnityEngine.UI;
 
 public class UserAccountManager : MonoBehaviour
 {
+    private const float DatabaseWaitTimeoutSeconds = 8f;
 
     [SerializeField]
     private List<UserModel> userAccountData;
@@ -69,22 +69,11 @@ public class UserAccountManager : MonoBehaviour
         {
             GameOptions.userName = user.UserName;
             GameOptions.userid = user.Userid;
-        }
-        else
-        {
-            user = CreateGuestUser();
-            ApplyGameOptions(user);
+            SceneManager.LoadScene(Constants.SCENE_NAME_level_00_account_loginExisting);
+            return;
         }
 
-        // if connected to internet
-        if (UtilityFunctions.IsConnectedToInternet())
-        {
-            StartCoroutine(APIHelper.PostToken(user));
-        }
-        else
-        {
-            SceneManager.LoadScene(Constants.SCENE_NAME_level_00_loading);
-        }
+        StartCoroutine(LoginGuestCoroutine());
     }
 
     public void ContinueButton()
@@ -93,6 +82,7 @@ public class UserAccountManager : MonoBehaviour
         //GameOptions.userid = 0;
         //SceneManager.LoadScene(Constants.SCENE_NAME_level_00_loading);
         UserModel user = CreateGuestUser();
+        APIHelper.ClearSession();
         ApplyGameOptions(user);
 
         SceneManager.LoadScene(Constants.SCENE_NAME_level_00_loading);
@@ -105,6 +95,20 @@ public class UserAccountManager : MonoBehaviour
         //{
         //    SceneManager.LoadScene(Constants.SCENE_NAME_level_00_loading);
         //}
+    }
+
+    private IEnumerator LoginGuestCoroutine()
+    {
+        UserModel guest = CreateGuestUser();
+        ApiResult<string> result = null;
+        yield return APIHelper.PostToken(guest, value => result = value, false);
+        if (result == null || !result.Success)
+        {
+            APIHelper.ClearSession();
+            ApplyGameOptions(guest);
+        }
+
+        SceneManager.LoadScene(Constants.SCENE_NAME_level_00_loading);
     }
 
     private static UserModel CreateGuestUser()
@@ -167,7 +171,13 @@ public class UserAccountManager : MonoBehaviour
             DBHelper.instance.DatabaseLocked = true;
             DBHelper.instance.deleteLocalUser(userName);
 
-            yield return new WaitUntil(IsDatabaseUnlocked);
+            bool databaseReady = false;
+            yield return WaitForDatabase(value => databaseReady = value);
+            if (!databaseReady)
+            {
+                SetMessage("The local account database is busy. Try again.");
+                yield break;
+            }
 
             SceneManager.LoadScene(Constants.SCENE_NAME_level_00_account_loginLocal);
         }
@@ -183,7 +193,14 @@ public class UserAccountManager : MonoBehaviour
 
     IEnumerator loadUserData()
     {
-        yield return new WaitUntil(IsDatabaseUnlocked);
+        bool databaseReady = false;
+        yield return WaitForDatabase(value => databaseReady = value);
+        if (!databaseReady)
+        {
+            usersLoaded = false;
+            SetMessage("Local accounts are unavailable. Continue as guest or retry.");
+            yield break;
+        }
 
         try
         {
@@ -231,7 +248,19 @@ public class UserAccountManager : MonoBehaviour
     }
     IEnumerator CreateUserButtons()
     {
-        yield return new WaitUntil(IsDatabaseUnlocked);
+        bool databaseReady = false;
+        yield return WaitForDatabase(value => databaseReady = value);
+        if (!databaseReady)
+        {
+            SetMessage("Local accounts are unavailable.");
+            yield break;
+        }
+
+        if (localAccountPrefab == null || localAccountPrefabSpawnLocation == null || localAccounsList == null)
+        {
+            SetMessage("The local account screen is missing required UI references.");
+            yield break;
+        }
 
         int index = 0;
         if (usersLoaded)
@@ -273,6 +302,25 @@ public class UserAccountManager : MonoBehaviour
     private static bool IsDatabaseUnlocked()
     {
         return DBHelper.instance != null && !DBHelper.instance.DatabaseLocked;
+    }
+
+    private static IEnumerator WaitForDatabase(Action<bool> completed)
+    {
+        float deadline = Time.realtimeSinceStartup + DatabaseWaitTimeoutSeconds;
+        while (!IsDatabaseUnlocked() && Time.realtimeSinceStartup < deadline)
+        {
+            yield return null;
+        }
+
+        completed?.Invoke(IsDatabaseUnlocked());
+    }
+
+    private void SetMessage(string message)
+    {
+        if (messageText != null)
+        {
+            messageText.text = message;
+        }
     }
 
     public List<UserModel> UserAccountData { get => userAccountData; }

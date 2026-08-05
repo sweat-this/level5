@@ -1,6 +1,6 @@
 ﻿using System;
 using UnityEngine;
-using Random = System.Random;
+using Random = UnityEngine.Random;
 
 public class PickupObject : MonoBehaviour
 {
@@ -36,8 +36,7 @@ public class PickupObject : MonoBehaviour
 
     float generateRandomCents()
     {
-        var random = new Random();
-        decimal cents = random.Next(1, 100);
+        decimal cents = Random.Range(1, 100);
 
         //Debug.Log("rand change: "+ (float)(Math.Round(cents, 2)) / 100);
         return (float)(Math.Round(cents, 2)) / 100;

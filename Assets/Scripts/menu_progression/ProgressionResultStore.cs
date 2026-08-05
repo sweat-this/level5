@@ -46,14 +46,13 @@ public static class ProgressionResultStore
     private static ProgressionResultLedger Load(string userId)
     {
         string path = GetAccountResultPath(userId);
-        if (!File.Exists(path))
+        if (!AtomicFile.TryReadAllText(path, IsValidLedgerJson, out string json))
         {
             return new ProgressionResultLedger();
         }
 
         try
         {
-            string json = File.ReadAllText(path);
             ProgressionResultLedger ledger = JsonUtility.FromJson<ProgressionResultLedger>(json);
             if (ledger == null)
             {
@@ -70,6 +69,18 @@ public static class ProgressionResultStore
         }
     }
 
+    private static bool IsValidLedgerJson(string json)
+    {
+        try
+        {
+            return JsonUtility.FromJson<ProgressionResultLedger>(json) != null;
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    }
+
     private static void Save(string userId, ProgressionResultLedger ledger)
     {
         string path = GetAccountResultPath(userId);
@@ -80,7 +91,7 @@ public static class ProgressionResultStore
         }
 
         ledger.Normalize();
-        File.WriteAllText(path, JsonUtility.ToJson(ledger, true));
+        AtomicFile.WriteAllText(path, JsonUtility.ToJson(ledger, true));
     }
 
     private static string GetAccountResultPath(string userId)

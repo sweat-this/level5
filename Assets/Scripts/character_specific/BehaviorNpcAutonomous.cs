@@ -290,8 +290,7 @@ public class BehaviorNpcAutonomous : MonoBehaviour
 
     int RandomNumber(int min, int max)
     {
-        System.Random rnd = new System.Random();
-        int randNum = rnd.Next(min, max);
+        int randNum = Random.Range(min, max);
         return randNum;
     }
 }

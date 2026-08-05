@@ -2,6 +2,7 @@
 using Assets.Scripts.database;
 using Assets.Scripts.restapi;
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
@@ -131,6 +132,7 @@ public class StatsManager : MonoBehaviour
 
     PlayerControls controls;
     private bool initialized;
+    private int onlineRequestVersion;
 
     public static StatsManager instance;
 
@@ -755,40 +757,36 @@ public class StatsManager : MonoBehaviour
 
     public void submitUnsubmittedScores()
     {
-        //if (!String.IsNullOrEmpty(GameOptions.userName) && GameOptions.userid != 0)
-        //{
-            try
-            {
-                DBHelper.instance.DatabaseLocked = true;
-                // get unsubmitted scores
-                unsubmittedHighScores = DBHelper.instance.getUnsubmittedHighScoreFromDatabase();
-                numUnsubmittedHighscores = unsubmittedHighScores.Count();
-                // if count > 0,  set appropriate text
-                if (numUnsubmittedHighscores > 0)
-                {
-                    //Debug.Log("if");
-                    submittedHighscoresText.text = "submit scores";
-                    numUnsubmittedHighscoresText.text = "+" + numUnsubmittedHighscores.ToString();
-                    APIHelper.PostUnsubmittedHighscores(unsubmittedHighScores);
-                }
-                // if none, set appropriate text
-                if (numUnsubmittedHighscores == 0)
-                {
-                    //Debug.Log("if");
-                    submittedHighscoresText.text = "no scores to submit";
-                    numUnsubmittedHighscoresText.text = "";
-                }
+        StartCoroutine(SubmitUnsubmittedScoresCoroutine());
+    }
 
-            }
-            catch (Exception e)
-            {
-                DBHelper.instance.DatabaseLocked = false;
-                Debug.Log("ERROR : " + e);
-            }
-        //}
-        //getUnsubmittedHighscores();
-        DBHelper.instance.DatabaseLocked = false;
-        SceneManager.LoadScene(Constants.SCENE_NAME_level_00_stats);
+    private IEnumerator SubmitUnsubmittedScoresCoroutine()
+    {
+        try
+        {
+            unsubmittedHighScores = DBHelper.instance.getUnsubmittedHighScoreFromDatabase()
+                ?? new List<HighScoreModel>();
+        }
+        catch (Exception exception)
+        {
+            Debug.LogError("Could not read unsubmitted scores: " + exception.Message);
+            submittedHighscoresText.text = "scores unavailable";
+            yield break;
+        }
+
+        numUnsubmittedHighscores = unsubmittedHighScores.Count;
+        if (numUnsubmittedHighscores == 0)
+        {
+            submittedHighscoresText.text = "no scores to submit";
+            numUnsubmittedHighscoresText.text = string.Empty;
+            yield break;
+        }
+
+        submittedHighscoresText.text = "submitting...";
+        ApiResult<int> result = null;
+        yield return APIHelper.PostUnsubmittedHighscores(unsubmittedHighScores, value => result = value);
+        submittedHighscoresText.text = result.Success ? "scores submitted" : "submission failed";
+        numUnsubmittedHighscoresText.text = result.Success ? string.Empty : "+" + numUnsubmittedHighscores;
     }
 
     private void getUnsubmittedHighscores()
@@ -876,68 +874,57 @@ public class StatsManager : MonoBehaviour
 
     public void changeHighScoreDataDisplayOnline()
     {
-        // if not free play
-        if (GameObject.Find("restapi") != null)
+        StartCoroutine(ChangeHighScoreDataDisplayOnlineCoroutine(++onlineRequestVersion));
+    }
+
+    private IEnumerator ChangeHighScoreDataDisplayOnlineCoroutine(int requestVersion)
+    {
+        if (modesList == null || currentModeSelectedIndex < 0 || currentModeSelectedIndex >= modesList.Count)
         {
-            try
-            {
-                // counts number entries returned.
-                int index = 0;
-                int modeid = modesList[currentModeSelectedIndex].modeSelectedId;
-                // get highscore field from mode prefab
-                string field = modesList[currentModeSelectedIndex].modeSelectedHighScoreField;
-
-                List<StatsTableHighScoreRow> highScoreRowList = new List<StatsTableHighScoreRow>();
-
-                // # of results for pagination
-                numOnlineResults = APIHelper.GetHighscoreCountByModeid(modeid,
-                    Convert.ToInt32(hardcoreEnabled),
-                    Convert.ToInt32(trafficEnabled),
-                    Convert.ToInt32(enemiesEnabled),
-                    Convert.ToInt32(sniperEnabled));
-
-                //Debug.Log("numOnlineResults : " + numOnlineResults);
-                //Debug.Log("-Convert.ToInt32(hardcoreEnabled) : " + Convert.ToInt32(hardcoreEnabled));
-                //Debug.Log("-Convert.ToInt32(traffEnabled) : " + Convert.ToInt32(trafficEnabled));
-                //Debug.Log("-Convert.ToInt32(enemyEnabled) : " + Convert.ToInt32(enemiesEnabled));
-                //Debug.Log("-Convert.ToInt32(sniperEnabled) : " + Convert.ToInt32(sniperEnabled));
-                // scores got display
-                highScoreRowList = APIHelper.GetHighscoreByModeid(modeid,
-                    Convert.ToInt32(hardcoreEnabled),
-                    Convert.ToInt32(trafficEnabled),
-                    Convert.ToInt32(enemiesEnabled),
-                    Convert.ToInt32(sniperEnabled),
-                    onlineResultsPageNumber,
-                    ResultsPerPage) ?? new List<StatsTableHighScoreRow>();
-
-                //Debug.Log("numOnlineResults : " + numOnlineResults);
-
-                int rowCount = Math.Min(highScoreRowList.Count, highScoreRowsObjectsList.Count);
-                //if modeid = free play, zero it out
-                if (modeid != 99)
-                {
-                    // updates row with new data
-                    for (int i = 0; i < rowCount; i++)
-                    {
-                        SetHighScoreRow(i, highScoreRowList[i]);
-                        index++;
-                    }
-                }
-                else
-                {
-                    index = 0;
-                }
-                // empty out rows if scores do not exist or there isnt at least 10
-                ClearHighScoreRows(index);
-                initializeOnlinePageNumberDisplay();
-            }
-            catch (Exception e)
-            {
-                Debug.Log("ERROR : " + e);
-                //onlineLoaded = false;
-                return;
-            }
+            yield break;
         }
+
+        int modeId = modesList[currentModeSelectedIndex].modeSelectedId;
+        int hardcore = Convert.ToInt32(hardcoreEnabled);
+        int traffic = Convert.ToInt32(trafficEnabled);
+        int enemies = Convert.ToInt32(enemiesEnabled);
+        int sniper = Convert.ToInt32(sniperEnabled);
+
+        ApiResult<int> countResult = null;
+        yield return APIHelper.GetHighscoreCountByModeid(
+            modeId, hardcore, traffic, enemies, sniper, value => countResult = value);
+        if (requestVersion != onlineRequestVersion)
+        {
+            yield break;
+        }
+
+        ApiResult<List<StatsTableHighScoreRow>> rowsResult = null;
+        yield return APIHelper.GetHighscoreByModeid(
+            modeId,
+            hardcore,
+            traffic,
+            enemies,
+            sniper,
+            onlineResultsPageNumber,
+            ResultsPerPage,
+            value => rowsResult = value);
+        if (requestVersion != onlineRequestVersion)
+        {
+            yield break;
+        }
+
+        numOnlineResults = countResult.Success ? countResult.Value : 0;
+        List<StatsTableHighScoreRow> rows = rowsResult.Success && rowsResult.Value != null
+            ? rowsResult.Value
+            : new List<StatsTableHighScoreRow>();
+        int displayedRows = modeId == 99 ? 0 : Math.Min(rows.Count, highScoreRowsObjectsList.Count);
+        for (int i = 0; i < displayedRows; i++)
+        {
+            SetHighScoreRow(i, rows[i]);
+        }
+
+        ClearHighScoreRows(displayedRows);
+        initializeOnlinePageNumberDisplay();
         modeSelectButtonOnlineText.text = modesList[currentModeSelectedIndex].modeSelectedName;
     }
 

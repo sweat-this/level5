@@ -8,6 +8,7 @@ using UnityEngine.UI;
 
 public class ProgressionManager : MonoBehaviour
 {
+    private const float DataWaitTimeoutSeconds = 12f;
     [SerializeField]
     public string currentHighlightedButton;
     // option select buttons, this will be disabled with touch input
@@ -148,7 +149,10 @@ public class ProgressionManager : MonoBehaviour
         instance = this;
         // disable confirmation dialogue
         confirmationDialogueBox = GameObject.Find("confirm_update");
-        confirmationDialogueBox.SetActive(confirmationDialogueBoxEnabled);
+        if (confirmationDialogueBox != null)
+        {
+            confirmationDialogueBox.SetActive(confirmationDialogueBoxEnabled);
+        }
 
         progressionState = GetComponent<ProgressionState>();
         progressionService = new CharacterProgressionService();
@@ -677,11 +681,21 @@ public class ProgressionManager : MonoBehaviour
     {
         if (LoadedData.instance != null)
         {
-            yield return new WaitUntil(() => LoadedData.instance != null && LoadedData.instance.PlayerSelectedData != null);
+            yield return WaitForCondition(() => LoadedData.instance != null
+                && !LoadedData.instance.LoadFailed
+                && LoadedData.instance.PlayerSelectedData != null
+                && LoadedData.instance.CheerleaderSelectedData != null);
+
+            if (LoadedData.instance == null
+                || LoadedData.instance.LoadFailed
+                || LoadedData.instance.PlayerSelectedData == null
+                || LoadedData.instance.CheerleaderSelectedData == null)
+            {
+                ReturnToLoadingScene();
+                yield break;
+            }
 
             playerSelectedData = LoadedData.instance.PlayerSelectedData;
-
-            yield return new WaitUntil(() => LoadedData.instance != null && LoadedData.instance.CheerleaderSelectedData != null);
             cheerleaderSelectedData = LoadedData.instance.CheerleaderSelectedData;
 
             if (playerSelectedData != null
@@ -692,23 +706,18 @@ public class ProgressionManager : MonoBehaviour
         }
         else
         {
-            if (String.IsNullOrEmpty(GameOptions.previousSceneName))
-            {
-                GameOptions.previousSceneName = SceneManager.GetActiveScene().name;
-                SceneManager.LoadScene(Constants.SCENE_NAME_level_00_loading);
-            }
-            else
-            {
-                GameOptions.previousSceneName = SceneManager.GetActiveScene().name;
-                SceneManager.LoadScene(GameOptions.previousSceneName);
-            }
+            ReturnToLoadingScene();
         }
     }
 
     IEnumerator InitializeDisplay()
     {
         //Debug.Log("------------------------------- start manager InitializeDisplay");
-        yield return new WaitUntil(() => dataLoaded);
+        yield return WaitForCondition(() => dataLoaded);
+        if (!dataLoaded)
+        {
+            yield break;
+        }
 
         // display default data
         progressionState.clearState();
@@ -747,6 +756,27 @@ public class ProgressionManager : MonoBehaviour
         addTo3Text = GameObject.Find(progression3AccuracyName).GetComponent<Text>();
         addTo4Text = GameObject.Find(progression4AccuracyName).GetComponent<Text>();
         addTo7Text = GameObject.Find(progression7AccuracyName).GetComponent<Text>();
+    }
+
+    private static IEnumerator WaitForCondition(Func<bool> condition)
+    {
+        float deadline = Time.realtimeSinceStartup + DataWaitTimeoutSeconds;
+        while (!condition() && Time.realtimeSinceStartup < deadline)
+        {
+            yield return null;
+        }
+    }
+
+    private static void ReturnToLoadingScene()
+    {
+        string activeScene = SceneManager.GetActiveScene().name;
+        if (activeScene == Constants.SCENE_NAME_level_00_loading)
+        {
+            return;
+        }
+
+        GameOptions.previousSceneName = activeScene;
+        SceneManager.LoadScene(Constants.SCENE_NAME_level_00_loading);
     }
 
     public void disableButtonsNotUsedForTouchInput()

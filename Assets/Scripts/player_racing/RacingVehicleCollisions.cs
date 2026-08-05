@@ -1,7 +1,6 @@
 ﻿
 using System.Collections;
 using UnityEngine;
-using Random = System.Random;
 
 public class RacingVehicleCollisions : MonoBehaviour
 {
@@ -134,8 +133,7 @@ public class RacingVehicleCollisions : MonoBehaviour
     // player has a chance to evade attack based on character profile's luck value
     bool rollForPlayerEvadeAttackChance(float maxPercent)
     {
-        Random random = new Random();
-        float percent = random.Next(1, 100);
+        float percent = Random.Range(1, 100);
         if (percent <= maxPercent)
         {
             StartCoroutine(PlayerHealthBar.instance.DisplayCustomMessageOnDamageDisplay("dodged"));

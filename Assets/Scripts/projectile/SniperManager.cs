@@ -4,6 +4,7 @@ using UnityEngine;
 
 public class SniperManager : MonoBehaviour
 {
+    private const float InitializationTimeoutSeconds = 10f;
     [SerializeField]
     private GameObject playerHitbox;
     [SerializeField]
@@ -29,6 +30,12 @@ public class SniperManager : MonoBehaviour
 
     private void Awake()
     {
+        if (instance != null && instance != this)
+        {
+            Destroy(gameObject);
+            return;
+        }
+
         instance = this;
     }
     private void Start()
@@ -50,31 +57,63 @@ public class SniperManager : MonoBehaviour
 
     IEnumerator LoadVariables()
     {
-        yield return new WaitUntil(() => GameLevelManager.instance.players[0] != null);
-        yield return new WaitUntil(() => GameLevelManager.instance.players[0].playerController != null);
-        playerController = GameLevelManager.instance.players[0].playerController;
-        playerHitbox = GameLevelManager.instance.players[0].transform.Find("hitbox").gameObject;
+        float deadline = Time.realtimeSinceStartup + InitializationTimeoutSeconds;
+        while (!TryResolvePlayer() && Time.realtimeSinceStartup < deadline)
+        {
+            yield return null;
+        }
+
+        if (!TryResolvePlayer())
+        {
+            Debug.LogError("SniperManager could not resolve a playable character and has been disabled.");
+            CancelInvoke();
+            enabled = false;
+            yield break;
+        }
+
         audioSource = GetComponent<AudioSource>();
+    }
+
+    private bool TryResolvePlayer()
+    {
+        if (GameLevelManager.instance == null
+            || GameLevelManager.instance.players == null
+            || GameLevelManager.instance.players.Count == 0
+            || GameLevelManager.instance.players[0] == null
+            || GameLevelManager.instance.players[0].playerController == null)
+        {
+            return false;
+        }
+
+        Transform hitbox = GameLevelManager.instance.players[0].transform.Find("hitbox");
+        if (hitbox == null)
+        {
+            return false;
+        }
+
+        playerController = GameLevelManager.instance.players[0].playerController;
+        playerHitbox = hitbox.gameObject;
+        return true;
     }
 
     void startSniper()
     {
-        if (!locked && playerHitbox != null)
+        if (!locked && playerHitbox != null && playerController != null && playerController.PlayerHealth != null)
         {
             locked = true;
             float random = UtilityFunctions.GetRandomFloat(0, 4);
 
             //// test flag to enable
             //GameOptions.sniperEnabledBullet = true;
-            if (GameOptions.sniperEnabledBullet && !GameLevelManager.instance.Player1.playerController.PlayerHealth.IsDead)
+            if (GameOptions.sniperEnabledBullet && !playerController.PlayerHealth.IsDead)
             {
                 StartCoroutine(StartSniperBullet(random));
             }
-            if (GameOptions.sniperEnabledLaser && !GameLevelManager.instance.Player1.playerController.PlayerHealth.IsDead)
+            if (GameOptions.sniperEnabledLaser && !playerController.PlayerHealth.IsDead)
             {
                 StartCoroutine(StartSniperLaser(random));
             }
-            if (GameOptions.sniperEnabledBulletAuto && !GameLevelManager.instance.Player1.playerController.PlayerHealth.IsDead)
+            if (GameOptions.sniperEnabledBulletAuto && !playerController.PlayerHealth.IsDead)
             {
                 StartCoroutine(StartSniperBulletAuto(random));
             }
@@ -196,7 +235,7 @@ public class SniperManager : MonoBehaviour
 
     private void InstantiateConfiguredProjectile(GameObject projectilePrefab, Vector3 projectileForceSniper)
     {
-        ProjectilePool.Spawn(projectilePrefab, gameObject.transform.position, Quaternion.identity, projectile =>
+        GameObject projectileInstance = ProjectilePool.Spawn(projectilePrefab, gameObject.transform.position, Quaternion.identity, projectile =>
         {
             EnemyProjectile enemyProjectile = projectile.GetComponentInChildren<EnemyProjectile>();
             if (enemyProjectile == null)
@@ -208,6 +247,12 @@ public class SniperManager : MonoBehaviour
             enemyProjectile.impactProjectile = true;
             enemyProjectile.projectileForceSniper = projectileForceSniper;
         });
+
+        if (projectileInstance == null)
+        {
+            Debug.LogError("SniperManager is missing a configured projectile prefab.");
+            locked = false;
+        }
     }
     public Vector3 PlayerPosAtShoot { get => playerPosAtShoot; set => playerPosAtShoot = value; }
 }

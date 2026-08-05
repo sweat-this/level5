@@ -4,8 +4,6 @@ using UnityEngine;
 
 public class ProgressionService
 {
-    private static readonly HashSet<string> AppliedResultIds = new HashSet<string>();
-
     public static string CreateResultId(string prefix)
     {
         string safePrefix = string.IsNullOrEmpty(prefix) ? "match" : prefix;
@@ -18,73 +16,76 @@ public class ProgressionService
         {
             result = new MatchProgressionResult(CreateResultId("missing"), GameOptions.characterId, 0);
             result.Message = "ProgressionService received a null match result.";
-            Debug.LogWarning(result.Message);
-            return result;
-        }
-
-        string accountId = CharacterProgressAccountId.GetCurrent();
-        if (AppliedResultIds.Contains(result.ResultId) || ProgressionResultStore.HasApplied(accountId, result.ResultId))
-        {
-            result.Duplicate = true;
-            result.Message = "Progression result already applied: " + result.ResultId;
-            Debug.LogWarning(result.Message);
             return result;
         }
 
         if (DBConnector.instance == null)
         {
-            result.Message = "Progression result could not be applied because DBConnector is unavailable: " + result.ResultId;
+            result.Message = "Progression could not be saved because the local database is unavailable.";
             Debug.LogWarning(result.Message);
             return result;
         }
 
-        if (!DBConnector.instance.savePlayerProfileProgression(result.ExperienceGained, result.CharacterId))
-        {
-            result.Message = "Progression result could not be applied because the database write failed: " + result.ResultId;
-            Debug.LogWarning(result.Message);
-            return result;
-        }
+        string accountId = CharacterProgressAccountId.GetCurrent();
+        ProgressionApplyStatus status = DBConnector.instance.ApplyProgressionResult(
+            result.ResultId,
+            accountId,
+            result.ExperienceGained,
+            result.CharacterId,
+            out ProgressionSnapshot snapshot);
 
-        ApplyJsonProgression(accountId, result);
-        AppliedResultIds.Add(result.ResultId);
-        if (!ProgressionResultStore.TryMarkApplied(accountId, result.ResultId))
+        if (status == ProgressionApplyStatus.Failed)
         {
-            result.Message = "Progression result applied, but the duplicate ledger could not be updated: " + result.ResultId;
+            result.Message = "Progression could not be saved. It can be retried with the same result ID.";
             Debug.LogWarning(result.Message);
-            result.Applied = true;
             return result;
         }
 
         result.Applied = true;
-        result.Message = "Progression result applied: " + result.ResultId;
+        result.Duplicate = status == ProgressionApplyStatus.Duplicate;
+        bool projectionComplete = RepairPendingJsonProjections(accountId);
+        result.Message = result.Duplicate
+            ? "Progression result was already applied."
+            : projectionComplete
+                ? "Progression result applied."
+                : "Progression result applied; its JSON projection is queued for repair.";
         return result;
     }
 
-    private static void ApplyJsonProgression(string accountId, MatchProgressionResult result)
+    public bool RepairPendingJsonProjections()
     {
-        try
+        return RepairPendingJsonProjections(CharacterProgressAccountId.GetCurrent());
+    }
+
+    private static bool RepairPendingJsonProjections(string accountId)
+    {
+        if (DBConnector.instance == null)
         {
-            if (!CharacterProgressStore.TryLoadExisting(accountId, out CharacterProgressSave save)
-                || save.characters == null)
+            return false;
+        }
+
+        List<ProgressionSnapshot> pending = DBConnector.instance.GetPendingProgressionProjections(accountId);
+        bool allApplied = true;
+        foreach (ProgressionSnapshot snapshot in pending)
+        {
+            if (!CharacterProgressStore.TryApplyProgressionSnapshot(
+                accountId,
+                snapshot.CharacterId,
+                snapshot.Experience,
+                snapshot.Level,
+                out string error))
             {
-                return;
+                allApplied = false;
+                Debug.LogWarning("Progression projection remains pending: " + error);
+                continue;
             }
 
-            PlayerCharacterProgress progress = save.characters.Find(character =>
-                character != null && character.legacyPlayerId == result.CharacterId);
-            if (progress == null)
+            if (!DBConnector.instance.MarkProgressionProjectionApplied(snapshot.ResultId))
             {
-                return;
+                allApplied = false;
             }
+        }
 
-            progress.experience += (int)result.ExperienceGained;
-            progress.level = progress.experience / 3000;
-            progress.lastModifiedUtc = DateTime.UtcNow.ToString("o");
-            CharacterProgressStore.Save(save);
-        }
-        catch (Exception e)
-        {
-            Debug.LogWarning("Progression JSON save could not be updated for result " + result.ResultId + ": " + e);
-        }
+        return allApplied;
     }
 }

@@ -139,29 +139,57 @@ public class PlayerController : MonoBehaviour
     PlayerControls controls;
     private PlayerInputReader inputReader;
     private float terrainYHeight;
+    private int inputPlayerId = -1;
+    private bool hasStarted;
     [SerializeField] private float idleTime;
     [SerializeField] private float idleStartTime;
     private bool isLocked;
 
     private void OnEnable()
     {
-        controls = PlayerControlsProvider.Controls;
-        EnsureInputReader();
-        PlayerControlsProvider.EnableGameplayMaps();
-        PlayerControlsProvider.EnableDebugMaps();
-        //controls.PlayerTouch.Enable();
+        if (hasStarted)
+        {
+            InitializeInput();
+        }
     }
     private void OnDisable()
     {
-        PlayerControlsProvider.DisableDebugMaps();
-        PlayerControlsProvider.DisableGameplayMaps();
-        //controls.PlayerTouch.Disable();
+        if (inputPlayerId >= 0)
+        {
+            PlayerControlsProvider.ReleaseGameplayControls(inputPlayerId);
+            inputPlayerId = -1;
+        }
+
+        controls = null;
+        inputReader = null;
     }
 
     private void Awake()
     {
-        controls = PlayerControlsProvider.Controls;
-        EnsureInputReader();
+    }
+
+    private void InitializeInput()
+    {
+        PlayerIdentifier identifier = GetComponent<PlayerIdentifier>();
+        int playerId = identifier != null ? identifier.pid : 0;
+
+        if (identifier != null && identifier.isCpu)
+        {
+            Debug.LogError("PlayerController cannot own input for a CPU player. Use AutoPlayerController.", this);
+            enabled = false;
+            return;
+        }
+
+        inputPlayerId = GameOptions.GetHumanPlayerInputSlot(playerId);
+        if (inputPlayerId < 0)
+        {
+            Debug.LogError("PlayerController could not resolve a human input slot.", this);
+            enabled = false;
+            return;
+        }
+
+        controls = PlayerControlsProvider.AcquireGameplayControls(inputPlayerId);
+        inputReader = new PlayerInputReader(controls);
     }
 
     private PlayerInputReader EnsureInputReader()
@@ -180,6 +208,8 @@ public class PlayerController : MonoBehaviour
     }
     void Start()
     {
+        hasStarted = true;
+        InitializeInput();
         getAnimatorStateHashes();
         playerDunk = GetComponent<PlayerDunk>();
         callBallToPlayer = GetComponent<CallBallToPlayer>();
@@ -209,7 +239,7 @@ public class PlayerController : MonoBehaviour
         //inAirSpeed = 0;
 
         screenXRange = Screen.width / 10;
-        screenYRange = Screen.width / 10;
+        screenYRange = Screen.height / 10;
 
         if (GameOptions.customCamera)
         {
@@ -322,7 +352,9 @@ public class PlayerController : MonoBehaviour
         }
         if (!Grounded) // player in air
         {
-            terrainYHeight = Terrain.activeTerrain.SampleHeight(transform.position) + 0.02f;
+            terrainYHeight = Terrain.activeTerrain != null
+                ? Terrain.activeTerrain.SampleHeight(transform.position) + 0.02f
+                : GameLevelManager.instance.TerrainHeight + 0.02f;
             dropShadow.transform.position = new Vector3(transform.root.position.x, terrainYHeight,
             transform.root.position.z);
         }
@@ -541,6 +573,13 @@ public class PlayerController : MonoBehaviour
 
     private void checkIdleTimeForSniper()
     {
+        if (!GameOptions.sniperEnabled || SniperManager.instance == null)
+        {
+            idleStartTime = Time.time;
+            idleTime = 0;
+            return;
+        }
+
         if (movementHorizontal == 0 && movementVertical == 0 && Grounded)
         {
             idleTime = Time.time - idleStartTime;
@@ -591,7 +630,7 @@ public class PlayerController : MonoBehaviour
             && !KnockedDown
             && hasBasketball
             && playerDistanceFromRimFeet > PlayerDunk.DunkRangeFeet
-            && touchPosition.x > (Screen.width / 2)
+            && touchPosition.x > Screen.safeArea.center.x
             && !Locked)
         {
             jumpTrigger = true;
@@ -603,7 +642,7 @@ public class PlayerController : MonoBehaviour
             && !InAir
             && Grounded
             && hasBasketball
-            && touchPosition.x > (Screen.width / 2)
+            && touchPosition.x > Screen.safeArea.center.x
             && !Locked)
         {
             dunkTrigger = true;
@@ -612,7 +651,7 @@ public class PlayerController : MonoBehaviour
         // shoot ball
         if (InAir
             && hasBasketball
-            && touchPosition.x > (Screen.width / 2)
+            && touchPosition.x > Screen.safeArea.center.x
             && currentState != inAirDunkState)
         {
             callBallToPlayer.Locked = true;
@@ -628,7 +667,7 @@ public class PlayerController : MonoBehaviour
             && !basketball.BasketBallState.Locked
             && Grounded
             && !callBallToPlayer.Locked
-            && touchPosition.x > (Screen.width / 2))
+            && touchPosition.x > Screen.safeArea.center.x)
         {
             callBallToPlayer.Locked = true;
             callBallToPlayer.pullBallToPlayer(basketball.gameObject);
@@ -996,7 +1035,7 @@ public class PlayerController : MonoBehaviour
         get => controls;
         set
         {
-            controls = value ?? PlayerControlsProvider.Controls;
+            controls = value ?? PlayerControlsProvider.AcquireGameplayControls(inputPlayerId < 0 ? 0 : inputPlayerId);
             inputReader = new PlayerInputReader(controls);
         }
     }

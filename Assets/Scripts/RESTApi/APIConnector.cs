@@ -7,23 +7,38 @@ using UnityEngine;
 
 public class APIConnector : MonoBehaviour
 {
-
     public void CreateNewUser(UserModel user)
     {
         if (!UtilityFunctions.IsValidEmail(user.Email))
         {
-            // halt, fix email
-            Debug.Log("invalid email address format ");
+            Debug.LogWarning("Account creation rejected because the email address is invalid.");
+            return;
         }
-        // check if user already exists
-        if (APIHelper.UserNameExists(user.UserName))
+
+        StartCoroutine(CreateNewUserCoroutine(user));
+    }
+
+    private System.Collections.IEnumerator CreateNewUserCoroutine(UserModel user)
+    {
+        ApiResult<bool> existsResult = null;
+        yield return APIHelper.UserNameExists(user.UserName, result => existsResult = result);
+        if (!existsResult.Success)
         {
-            Debug.Log("username already exists...try again");
+            Debug.LogWarning(existsResult.Error);
+            yield break;
         }
-        else
+
+        if (existsResult.Value)
         {
-            Debug.Log("username does not exist");
-            StartCoroutine(APIHelper.PostUser(user));
+            Debug.LogWarning("Account creation rejected because the username already exists.");
+            yield break;
+        }
+
+        ApiResult<UserModel> createResult = null;
+        yield return APIHelper.PostUser(user, result => createResult = result);
+        if (!createResult.Success)
+        {
+            Debug.LogWarning(createResult.Error);
         }
     }
 }

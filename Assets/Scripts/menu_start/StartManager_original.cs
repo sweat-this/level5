@@ -8,7 +8,6 @@ using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
-using Random = System.Random;
 
 #if UNITY_EDITOR
 namespace Assets.Scripts.menu_start
@@ -753,15 +752,11 @@ namespace Assets.Scripts.menu_start
                 userNameText.text = "username : " + GameOptions.userName + " disconnected";
             }
             versionText.text = "current version: " + Application.version;
-            yield return new WaitUntil(() => !APIHelper.ApiLocked);
-            if (UtilityFunctions.IsConnectedToInternet())
-            {
-                latestVersionText.text = "latest version: " + APIHelper.GetLatestBuildVersion();
-            }
-            else
-            {
-                latestVersionText.text = "latest version: " + "No Internet";
-            }
+            ApiResult<string> versionResult = null;
+            yield return APIHelper.GetLatestBuildVersion(result => versionResult = result);
+            latestVersionText.text = versionResult.Success
+                ? "latest version: " + versionResult.Value.Trim().Trim('"')
+                : "latest version: unavailable";
         }
 
         // ============================  get UI buttons / text references ==============================
@@ -837,8 +832,7 @@ namespace Assets.Scripts.menu_start
         public string getRandomWizardOfBoat()
         {
 
-            Random random = new Random();
-            int randNum = random.Next(1, 100);
+            int randNum = UnityEngine.Random.Range(1, 100);
 
             if (randNum > 50)
             {

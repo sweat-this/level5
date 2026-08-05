@@ -73,7 +73,7 @@ namespace Assets.Scripts.Utility
                 "pony"
             };
 
-            GameOptions.numPlayers = GameOptions.characterObjectNames.Count;
+            GameOptions.ConfigureSingleHumanRoster(GameOptions.characterObjectNames.Count);
             GameOptions.levelsList = PlayerData.instance.LevelsList;
 
             yield return new WaitForSecondsRealtime(seconds);

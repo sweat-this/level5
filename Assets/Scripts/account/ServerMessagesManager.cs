@@ -1,5 +1,6 @@
 using Assets.Scripts.Models;
 using Assets.Scripts.restapi;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
@@ -13,13 +14,23 @@ public class ServerMessagesManager : MonoBehaviour
     // Start is called before the first frame update
     void Start()
     {
-        serverMessagesModels = APIHelper.GetServerMessages();
-        setUIMessages();
+        StartCoroutine(LoadMessages());
     }
 
-    private void setUIMessages()
+    private IEnumerator LoadMessages()
     {
-        for (int i = 0; i < serverMessagesModels.Count; i++)
+        ApiResult<List<ServerMessageModel>> result = null;
+        yield return APIHelper.GetServerMessages(value => result = value);
+        serverMessagesModels = result.Success && result.Value != null
+            ? result.Value
+            : new List<ServerMessageModel>();
+        SetUiMessages();
+    }
+
+    private void SetUiMessages()
+    {
+        int count = Mathf.Min(serverMessagesModels.Count, serverMessagesText.Count);
+        for (int i = 0; i < count; i++)
         {
             serverMessagesText[i].text = serverMessagesModels[i].Date +"\n" + serverMessagesModels[i].Message;
         }

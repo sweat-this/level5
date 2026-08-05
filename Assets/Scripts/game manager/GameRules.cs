@@ -10,6 +10,9 @@ using UnityEngine.UI;
 
 public class GameRules : MonoBehaviour
 {
+    private const int MaxProgressionSaveAttempts = 3;
+    private const string ProgressionPersistenceWarning =
+        "Progress could not be saved. Check local storage before playing another match.";
     [SerializeField]
     private int gameModeId;
 
@@ -106,8 +109,11 @@ public class GameRules : MonoBehaviour
     private bool matchScoreSaveCompleted;
     private bool matchAllTimeStatsSaved;
     private bool matchProgressionApplied;
+    private bool progressionPersistenceFailed;
+    private int progressionSaveAttempts;
     private bool campaignStatsUpdated;
     private bool campaignTransitionStarted;
+    private float nextMatchEndRetryTime;
 
     private void Awake()
     {
@@ -119,7 +125,9 @@ public class GameRules : MonoBehaviour
 
         instance = this;
         progressionService = new ProgressionService();
-        matchProgressionResultId = ProgressionService.CreateResultId("match");
+        matchProgressionResultId = string.IsNullOrEmpty(GameOptions.matchResultId)
+            ? ProgressionService.CreateResultId("match")
+            : GameOptions.matchResultId;
         timePlayedStart = Time.time;
         inThePocketActivateValue = 0;
     }
@@ -132,6 +140,8 @@ public class GameRules : MonoBehaviour
         matchScoreSaveCompleted = false;
         matchAllTimeStatsSaved = false;
         matchProgressionApplied = false;
+        progressionPersistenceFailed = false;
+        progressionSaveAttempts = 0;
         campaignStatsUpdated = false;
         campaignTransitionStarted = false;
         gameModeId = GameOptions.gameModeSelectedId;
@@ -246,7 +256,10 @@ public class GameRules : MonoBehaviour
         }
 
         // game over. pause / display end game / save
-        if (!matchEndHandled && gameRulesEnabled && matchEnding)
+        if (!matchEndHandled
+            && gameRulesEnabled
+            && matchEnding
+            && Time.unscaledTime >= nextMatchEndRetryTime)
         {
             HandleMatchEnded();
         }
@@ -314,10 +327,15 @@ public class GameRules : MonoBehaviour
             bool transitionComplete = TryStartCampaignTransition();
 
             matchEndHandled = persistenceComplete && progressionComplete && transitionComplete;
+            if (!matchEndHandled)
+            {
+                nextMatchEndRetryTime = Time.unscaledTime + 1f;
+            }
         }
         catch (Exception e)
         {
-            Debug.LogError("GameRules failed while handling match end. It will retry next frame. " + e);
+            nextMatchEndRetryTime = Time.unscaledTime + 1f;
+            Debug.LogError("GameRules failed while handling match end. It will retry shortly. " + e);
         }
         finally
         {
@@ -385,7 +403,9 @@ public class GameRules : MonoBehaviour
         }
         if (displayOtherMessageText != null)
         {
-            displayOtherMessageText.text = "";
+            displayOtherMessageText.text = progressionPersistenceFailed
+                ? ProgressionPersistenceWarning
+                : "";
         }
     }
 
@@ -523,9 +543,25 @@ public class GameRules : MonoBehaviour
             GameOptions.characterId,
             primaryGameStats.getExperienceGainedFromSession());
 
-        progressionService.ApplyMatchResult(result);
-        matchProgressionApplied = true;
-        return true;
+        MatchProgressionResult appliedResult = progressionService.ApplyMatchResult(result);
+        matchProgressionApplied = appliedResult.Applied;
+        if (!matchProgressionApplied)
+        {
+            progressionSaveAttempts++;
+            if (progressionSaveAttempts >= MaxProgressionSaveAttempts)
+            {
+                progressionPersistenceFailed = true;
+                if (displayOtherMessageText != null)
+                {
+                    displayOtherMessageText.text = ProgressionPersistenceWarning;
+                }
+
+                Debug.LogError(ProgressionPersistenceWarning);
+                matchProgressionApplied = true;
+            }
+        }
+
+        return matchProgressionApplied;
     }
 
     private bool TryStartCampaignTransition()

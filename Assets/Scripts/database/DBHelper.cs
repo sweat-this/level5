@@ -9,6 +9,7 @@ using UnityEngine.UI;
 
 public class DBHelper : MonoBehaviour
 {
+    private const string LegacyCharacterAccountId = "legacy";
     private String connection;
     private String databaseNamePath = "/level5.db";
     private String filepath;
@@ -67,6 +68,16 @@ public class DBHelper : MonoBehaviour
         throw new ArgumentException("SQL sort order must be ASC or DESC.", nameof(value));
     }
 
+    private static string NormalizeAccountId(string accountId)
+    {
+        return string.IsNullOrWhiteSpace(accountId) ? "guest" : accountId.Trim();
+    }
+
+    private static string CurrentAccountId()
+    {
+        return NormalizeAccountId(CharacterProgressAccountId.GetCurrent());
+    }
+
     void Awake()
     {
         if (instance != null && instance != this)
@@ -119,6 +130,88 @@ public class DBHelper : MonoBehaviour
         {
             Debug.Log("ERROR : " + e);
             return false;
+        }
+    }
+
+    public bool EnsureCharacterProfilesForAccount(string accountId)
+    {
+        if (databaseLocked)
+        {
+            return false;
+        }
+
+        string normalizedAccountId = NormalizeAccountId(accountId);
+        databaseLocked = true;
+        try
+        {
+            using (SqliteConnection dbconn = new SqliteConnection(connection))
+            {
+                dbconn.Open();
+                using (SqliteTransaction transaction = dbconn.BeginTransaction())
+                using (SqliteCommand command = dbconn.CreateCommand())
+                {
+                    command.Transaction = transaction;
+                    command.CommandText =
+                        "SELECT COUNT(*) FROM CharacterProfile WHERE accountId = @accountId";
+                    command.Parameters.Add(new SqliteParameter("@accountId", normalizedAccountId));
+                    long accountRows = Convert.ToInt64(command.ExecuteScalar());
+
+                    if (accountRows == 0)
+                    {
+                        command.CommandText =
+                            "UPDATE CharacterProfile SET accountId = @accountId "
+                            + "WHERE accountId IS NULL OR TRIM(accountId) = '' OR accountId = @legacyAccountId";
+                        command.Parameters.Add(new SqliteParameter("@legacyAccountId", LegacyCharacterAccountId));
+                        command.ExecuteNonQuery();
+                    }
+
+                    transaction.Commit();
+                }
+            }
+
+            return true;
+        }
+        catch (Exception exception)
+        {
+            Debug.LogError("Could not initialize character profiles for account " + normalizedAccountId + ": " + exception);
+            return false;
+        }
+        finally
+        {
+            databaseLocked = false;
+        }
+    }
+
+    public bool HasCharacterProfilesForAccount(string accountId)
+    {
+        if (databaseLocked)
+        {
+            return false;
+        }
+
+        databaseLocked = true;
+        try
+        {
+            using (IDbConnection dbconn = new SqliteConnection(connection))
+            {
+                dbconn.Open();
+                using (IDbCommand command = dbconn.CreateCommand())
+                {
+                    command.CommandText =
+                        "SELECT EXISTS(SELECT 1 FROM CharacterProfile WHERE accountId = @accountId LIMIT 1)";
+                    command.Parameters.Add(new SqliteParameter("@accountId", NormalizeAccountId(accountId)));
+                    return Convert.ToInt32(command.ExecuteScalar()) == 1;
+                }
+            }
+        }
+        catch (Exception exception)
+        {
+            Debug.LogError("Could not inspect account character profiles: " + exception);
+            return false;
+        }
+        finally
+        {
+            databaseLocked = false;
         }
     }
 
@@ -278,6 +371,7 @@ public class DBHelper : MonoBehaviour
     {
         try
         {
+            string accountId = CurrentAccountId();
             int prevLevel = PlayerData.instance.CurrentExperience / 3000;
             int currentLevel = ((int)((PlayerData.instance.CurrentExperience + expGained) / 3000));
 
@@ -317,13 +411,14 @@ public class DBHelper : MonoBehaviour
                        + ", level = @level"
                        + ", pointsAvailable = @pointsAvailable"
                        + ", pointsUsed = @pointsUsed"
-                       + " WHERE charid = @charid";
+                       + " WHERE accountId = @accountId AND charid = @charid";
 
                     dbcmd.CommandText = sqlQuery1;
                     dbcmd.Parameters.Add(new SqliteParameter("@experience", PlayerData.instance.CurrentExperience + expGained));
                     dbcmd.Parameters.Add(new SqliteParameter("@level", currentLevel));
                     dbcmd.Parameters.Add(new SqliteParameter("@pointsAvailable", updatePointsAvailable));
                     dbcmd.Parameters.Add(new SqliteParameter("@pointsUsed", updatePointsUsed));
+                    dbcmd.Parameters.Add(new SqliteParameter("@accountId", accountId));
                     dbcmd.Parameters.Add(new SqliteParameter("@charid", characterId));
 
                     int rowsUpdated = dbcmd.ExecuteNonQuery();
@@ -345,12 +440,257 @@ public class DBHelper : MonoBehaviour
         }
     }
 
+    internal ProgressionApplyStatus ApplyProgressionResult(
+        string resultId,
+        string accountId,
+        float experienceGained,
+        int characterId,
+        out ProgressionSnapshot snapshot)
+    {
+        snapshot = null;
+        if (string.IsNullOrWhiteSpace(resultId) || databaseLocked)
+        {
+            return ProgressionApplyStatus.Failed;
+        }
+
+        databaseLocked = true;
+        string normalizedAccountId = NormalizeAccountId(accountId);
+        try
+        {
+            using (SqliteConnection dbconn = new SqliteConnection(connection))
+            {
+                dbconn.Open();
+                using (SqliteTransaction transaction = dbconn.BeginTransaction())
+                {
+                    EnsureProgressionLedgerTable(dbconn, transaction);
+
+                    using (SqliteCommand duplicateCommand = dbconn.CreateCommand())
+                    {
+                        duplicateCommand.Transaction = transaction;
+                        duplicateCommand.CommandText =
+                            "SELECT accountId, characterId, experienceAfter, levelAfter "
+                            + "FROM ProgressionResultLedger WHERE resultId = @resultId";
+                        duplicateCommand.Parameters.Add(new SqliteParameter("@resultId", resultId));
+                        using (SqliteDataReader reader = duplicateCommand.ExecuteReader())
+                        {
+                            if (reader.Read())
+                            {
+                                snapshot = new ProgressionSnapshot
+                                {
+                                    ResultId = resultId,
+                                    AccountId = reader.IsDBNull(0) ? accountId : reader.GetString(0),
+                                    CharacterId = reader.GetInt32(1),
+                                    Experience = reader.GetInt32(2),
+                                    Level = reader.GetInt32(3)
+                                };
+                                transaction.Rollback();
+                                return ProgressionApplyStatus.Duplicate;
+                            }
+                        }
+                    }
+
+                    int currentExperience;
+                    int pointsUsed;
+                    using (SqliteCommand selectCommand = dbconn.CreateCommand())
+                    {
+                        selectCommand.Transaction = transaction;
+                        selectCommand.CommandText =
+                            "SELECT experience, pointsUsed FROM CharacterProfile "
+                            + "WHERE accountId = @accountId AND charid = @charid";
+                        selectCommand.Parameters.Add(new SqliteParameter("@accountId", normalizedAccountId));
+                        selectCommand.Parameters.Add(new SqliteParameter("@charid", characterId));
+                        using (SqliteDataReader reader = selectCommand.ExecuteReader())
+                        {
+                            if (!reader.Read())
+                            {
+                                transaction.Rollback();
+                                return ProgressionApplyStatus.Failed;
+                            }
+
+                            currentExperience = reader.IsDBNull(0) ? 0 : reader.GetInt32(0);
+                            pointsUsed = reader.IsDBNull(1) ? 0 : reader.GetInt32(1);
+                        }
+                    }
+
+                    int experienceAfter = Math.Max(0, currentExperience + Mathf.RoundToInt(experienceGained));
+                    int levelAfter = experienceAfter / 3000;
+                    int clampedPointsUsed = Math.Min(Math.Max(0, pointsUsed), levelAfter);
+                    int pointsAvailable = Math.Max(0, levelAfter - clampedPointsUsed);
+
+                    using (SqliteCommand updateCommand = dbconn.CreateCommand())
+                    {
+                        updateCommand.Transaction = transaction;
+                        updateCommand.CommandText =
+                            "UPDATE CharacterProfile SET experience = @experience, level = @level, "
+                            + "pointsAvailable = @pointsAvailable, pointsUsed = @pointsUsed "
+                            + "WHERE accountId = @accountId AND charid = @charid";
+                        updateCommand.Parameters.Add(new SqliteParameter("@experience", experienceAfter));
+                        updateCommand.Parameters.Add(new SqliteParameter("@level", levelAfter));
+                        updateCommand.Parameters.Add(new SqliteParameter("@pointsAvailable", pointsAvailable));
+                        updateCommand.Parameters.Add(new SqliteParameter("@pointsUsed", clampedPointsUsed));
+                        updateCommand.Parameters.Add(new SqliteParameter("@accountId", normalizedAccountId));
+                        updateCommand.Parameters.Add(new SqliteParameter("@charid", characterId));
+                        if (updateCommand.ExecuteNonQuery() != 1)
+                        {
+                            transaction.Rollback();
+                            return ProgressionApplyStatus.Failed;
+                        }
+                    }
+
+                    using (SqliteCommand ledgerCommand = dbconn.CreateCommand())
+                    {
+                        ledgerCommand.Transaction = transaction;
+                        ledgerCommand.CommandText =
+                            "INSERT INTO ProgressionResultLedger "
+                            + "(resultId, accountId, characterId, experienceAfter, levelAfter, projectionApplied, appliedUtc) "
+                            + "VALUES (@resultId, @accountId, @characterId, @experience, @level, 0, @appliedUtc)";
+                        ledgerCommand.Parameters.Add(new SqliteParameter("@resultId", resultId));
+                        ledgerCommand.Parameters.Add(new SqliteParameter("@accountId", normalizedAccountId));
+                        ledgerCommand.Parameters.Add(new SqliteParameter("@characterId", characterId));
+                        ledgerCommand.Parameters.Add(new SqliteParameter("@experience", experienceAfter));
+                        ledgerCommand.Parameters.Add(new SqliteParameter("@level", levelAfter));
+                        ledgerCommand.Parameters.Add(new SqliteParameter("@appliedUtc", DateTime.UtcNow.ToString("o")));
+                        ledgerCommand.ExecuteNonQuery();
+                    }
+
+                    transaction.Commit();
+                    snapshot = new ProgressionSnapshot
+                    {
+                        ResultId = resultId,
+                        AccountId = normalizedAccountId,
+                        CharacterId = characterId,
+                        Experience = experienceAfter,
+                        Level = levelAfter
+                    };
+                    return ProgressionApplyStatus.Applied;
+                }
+            }
+        }
+        catch (Exception exception)
+        {
+            Debug.LogError("Progression transaction failed: " + exception);
+            return ProgressionApplyStatus.Failed;
+        }
+        finally
+        {
+            databaseLocked = false;
+        }
+    }
+
+    internal List<ProgressionSnapshot> GetPendingProgressionProjections(string accountId)
+    {
+        List<ProgressionSnapshot> pending = new List<ProgressionSnapshot>();
+        if (databaseLocked)
+        {
+            return pending;
+        }
+
+        databaseLocked = true;
+        try
+        {
+            using (SqliteConnection dbconn = new SqliteConnection(connection))
+            {
+                dbconn.Open();
+                using (SqliteTransaction transaction = dbconn.BeginTransaction())
+                {
+                    EnsureProgressionLedgerTable(dbconn, transaction);
+                    using (SqliteCommand command = dbconn.CreateCommand())
+                    {
+                        command.Transaction = transaction;
+                        command.CommandText =
+                            "SELECT resultId, accountId, characterId, experienceAfter, levelAfter "
+                            + "FROM ProgressionResultLedger WHERE accountId = @accountId AND projectionApplied = 0 "
+                            + "ORDER BY appliedUtc";
+                        command.Parameters.Add(new SqliteParameter("@accountId", accountId ?? "guest"));
+                        using (SqliteDataReader reader = command.ExecuteReader())
+                        {
+                            while (reader.Read())
+                            {
+                                pending.Add(new ProgressionSnapshot
+                                {
+                                    ResultId = reader.GetString(0),
+                                    AccountId = reader.GetString(1),
+                                    CharacterId = reader.GetInt32(2),
+                                    Experience = reader.GetInt32(3),
+                                    Level = reader.GetInt32(4)
+                                });
+                            }
+                        }
+                    }
+                    transaction.Commit();
+                }
+            }
+        }
+        catch (Exception exception)
+        {
+            Debug.LogError("Could not read pending progression projections: " + exception);
+        }
+        finally
+        {
+            databaseLocked = false;
+        }
+
+        return pending;
+    }
+
+    internal bool MarkProgressionProjectionApplied(string resultId)
+    {
+        if (string.IsNullOrWhiteSpace(resultId) || databaseLocked)
+        {
+            return false;
+        }
+
+        databaseLocked = true;
+        try
+        {
+            using (SqliteConnection dbconn = new SqliteConnection(connection))
+            {
+                dbconn.Open();
+                using (SqliteCommand command = dbconn.CreateCommand())
+                {
+                    command.CommandText =
+                        "UPDATE ProgressionResultLedger SET projectionApplied = 1 WHERE resultId = @resultId";
+                    command.Parameters.Add(new SqliteParameter("@resultId", resultId));
+                    return command.ExecuteNonQuery() == 1;
+                }
+            }
+        }
+        catch (Exception exception)
+        {
+            Debug.LogError("Could not mark the progression projection complete: " + exception);
+            return false;
+        }
+        finally
+        {
+            databaseLocked = false;
+        }
+    }
+
+    private static void EnsureProgressionLedgerTable(SqliteConnection connection, SqliteTransaction transaction)
+    {
+        using (SqliteCommand command = connection.CreateCommand())
+        {
+            command.Transaction = transaction;
+            command.CommandText =
+                "CREATE TABLE IF NOT EXISTS ProgressionResultLedger ("
+                + "resultId TEXT PRIMARY KEY, "
+                + "accountId TEXT NOT NULL, "
+                + "characterId INTEGER NOT NULL, "
+                + "experienceAfter INTEGER NOT NULL, "
+                + "levelAfter INTEGER NOT NULL, "
+                + "projectionApplied INTEGER NOT NULL DEFAULT 0, "
+                + "appliedUtc TEXT NOT NULL)";
+            command.ExecuteNonQuery();
+        }
+    }
+
     // insert default Player profiles
     public IEnumerator InsertCharacterProfile(List<CharacterProfile> shooterProfileList)
     {
         yield return new WaitUntil(() => !databaseLocked);
         try
         {
+            string accountId = CurrentAccountId();
             databaseLocked = true;
             var dbconn = new SqliteConnection(connection);
             using (dbconn)
@@ -365,13 +705,14 @@ public class DBHelper : MonoBehaviour
                         {
                             string sqlQuery =
                             "Insert INTO "
-                            + Constants.LOCAL_DATABASE_tableName_characterProfile + " ( charid, playerName, objectName, accuracy2, accuracy3, accuracy4, accuracy7, jump, " +
+                            + Constants.LOCAL_DATABASE_tableName_characterProfile + " ( accountId, charid, playerName, objectName, accuracy2, accuracy3, accuracy4, accuracy7, jump, " +
                             "speed, runSpeed, runSpeedHasBall, luck, shootAngle, experience, level, pointsAvailable, pointsUsed, range, release, isLocked) "
-                            + " Values(@charid, @playerName, @objectName, @accuracy2, @accuracy3, @accuracy4, @accuracy7, @jump, " +
+                            + " Values(@accountId, @charid, @playerName, @objectName, @accuracy2, @accuracy3, @accuracy4, @accuracy7, @jump, " +
                             "@speed, @runSpeed, @runSpeedHasBall, @luck, @shootAngle, @experience, @level, @pointsAvailable, @pointsUsed, @range, @release, @isLocked)";
 
                             cmd.CommandText = sqlQuery;
                             cmd.Parameters.Clear();
+                            cmd.Parameters.Add(new SqliteParameter("@accountId", accountId));
                             cmd.Parameters.Add(new SqliteParameter("@charid", shooter.PlayerId));
                             cmd.Parameters.Add(new SqliteParameter("@playerName", shooter.PlayerDisplayName));
                             cmd.Parameters.Add(new SqliteParameter("@objectName", shooter.PlayerObjectName));
@@ -414,6 +755,7 @@ public class DBHelper : MonoBehaviour
     {
         try
         {
+            string accountId = CurrentAccountId();
             databaseLocked = true;
             var dbconn = new SqliteConnection(connection);
             using (dbconn)
@@ -427,12 +769,13 @@ public class DBHelper : MonoBehaviour
 
                         string sqlQuery =
                         "Insert INTO "
-                        + Constants.LOCAL_DATABASE_tableName_characterProfile + " ( charid, playerName, objectName, accuracy2, accuracy3, accuracy4, accuracy7, jump, " +
+                        + Constants.LOCAL_DATABASE_tableName_characterProfile + " ( accountId, charid, playerName, objectName, accuracy2, accuracy3, accuracy4, accuracy7, jump, " +
                         "speed, runSpeed, runSpeedHasBall, luck, shootAngle, experience, level, pointsAvailable, pointsUsed, range, release, islocked) "
-                        + " Values(@charid, @playerName, @objectName, @accuracy2, @accuracy3, @accuracy4, @accuracy7, @jump, " +
+                        + " Values(@accountId, @charid, @playerName, @objectName, @accuracy2, @accuracy3, @accuracy4, @accuracy7, @jump, " +
                         "@speed, @runSpeed, @runSpeedHasBall, @luck, @shootAngle, @experience, @level, @pointsAvailable, @pointsUsed, @range, @release, @isLocked)";
 
                         cmd.CommandText = sqlQuery;
+                        cmd.Parameters.Add(new SqliteParameter("@accountId", accountId));
                         cmd.Parameters.Add(new SqliteParameter("@charid", character.PlayerId));
                         cmd.Parameters.Add(new SqliteParameter("@playerName", character.PlayerDisplayName));
                         cmd.Parameters.Add(new SqliteParameter("@objectName", character.PlayerObjectName));
@@ -475,6 +818,7 @@ public class DBHelper : MonoBehaviour
     {
         try
         {
+            string accountId = CurrentAccountId();
             databaseLocked = true;
             var dbconn = new SqliteConnection(connection);
             using (dbconn)
@@ -497,8 +841,7 @@ public class DBHelper : MonoBehaviour
                         + ", luck = @luck"
                         + ", pointsAvailable = @pointsAvailable"
                         + ", pointsUsed = @pointsUsed"
-                        + " WHERE charid = @charid";
-                        //+ " AND userid = "+ GameOptions.userid;
+                        + " WHERE accountId = @accountId AND charid = @charid";
 
                         cmd.CommandText = sqlQuery;
                         cmd.Parameters.Add(new SqliteParameter("@accuracy2", character.Accuracy2Pt));
@@ -510,8 +853,13 @@ public class DBHelper : MonoBehaviour
                         cmd.Parameters.Add(new SqliteParameter("@luck", character.Luck));
                         cmd.Parameters.Add(new SqliteParameter("@pointsAvailable", character.PointsAvailable));
                         cmd.Parameters.Add(new SqliteParameter("@pointsUsed", character.PointsUsed));
+                        cmd.Parameters.Add(new SqliteParameter("@accountId", accountId));
                         cmd.Parameters.Add(new SqliteParameter("@charid", character.PlayerId));
-                        cmd.ExecuteNonQuery();
+                        if (cmd.ExecuteNonQuery() != 1)
+                        {
+                            throw new InvalidOperationException(
+                                "No character profile row was updated for the active account.");
+                        }
 
                     }
                     tr.Commit();
@@ -641,50 +989,49 @@ public class DBHelper : MonoBehaviour
         List<CharacterProfileRecord> characterStats = new List<CharacterProfileRecord>();
         try
         {
+            string accountId = userid > 0 ? NormalizeAccountId(userid.ToString()) : CurrentAccountId();
             DatabaseLocked = true;
 
             using (IDbConnection dbconn = new SqliteConnection(connection))
             {
                 dbconn.Open(); //Open connection to the database.
-
-                if (!isTableEmpty(Constants.LOCAL_DATABASE_tableName_characterProfile))
+                using (IDbCommand dbcmd = dbconn.CreateCommand())
                 {
-                    using (IDbCommand dbcmd = dbconn.CreateCommand())
-                    {
-                        string sqlQuery = "Select charid, playerName, objectName, accuracy2, accuracy3, accuracy4, accuracy7, jump, speed,"
-                            + "runSpeed, runSpeedHasBall, luck, shootAngle, experience, level, pointsAvailable, pointsUsed, range, release, isLocked"
-                            + " From " + Constants.LOCAL_DATABASE_tableName_characterProfile;
+                    string sqlQuery = "Select charid, playerName, objectName, accuracy2, accuracy3, accuracy4, accuracy7, jump, speed,"
+                        + "runSpeed, runSpeedHasBall, luck, shootAngle, experience, level, pointsAvailable, pointsUsed, range, release, isLocked"
+                        + " From " + Constants.LOCAL_DATABASE_tableName_characterProfile
+                        + " WHERE accountId = @accountId";
 
-                        dbcmd.CommandText = sqlQuery;
-                        using (IDataReader reader = dbcmd.ExecuteReader())
+                    dbcmd.CommandText = sqlQuery;
+                    dbcmd.Parameters.Add(new SqliteParameter("@accountId", accountId));
+                    using (IDataReader reader = dbcmd.ExecuteReader())
+                    {
+                        while (reader.Read())
                         {
-                            while (reader.Read())
+                            CharacterProfileRecord temp = new CharacterProfileRecord
                             {
-                                CharacterProfileRecord temp = new CharacterProfileRecord
-                                {
-                                    PlayerId = reader.GetInt32(0),
-                                    PlayerDisplayName = reader.GetString(1),
-                                    PlayerObjectName = reader.GetString(2),
-                                    Accuracy2Pt = reader.GetInt32(3),
-                                    Accuracy3Pt = reader.GetInt32(4),
-                                    Accuracy4Pt = reader.GetInt32(5),
-                                    Accuracy7Pt = reader.GetInt32(6),
-                                    JumpForce = reader.GetFloat(7),
-                                    Speed = reader.GetFloat(8),
-                                    RunSpeed = reader.GetFloat(9),
-                                    RunSpeedHasBall = reader.GetFloat(10),
-                                    Luck = reader.GetInt32(11),
-                                    ShootAngle = reader.GetInt32(12),
-                                    Experience = reader.GetInt32(13),
-                                    Level = reader.GetInt32(14),
-                                    PointsAvailable = reader.GetInt32(15),
-                                    PointsUsed = reader.GetInt32(16),
-                                    Range = reader.GetInt32(17),
-                                    Release = reader.GetInt32(18),
-                                    IsLocked = Convert.ToBoolean(reader.GetValue(19))
-                                };
-                                characterStats.Add(temp);
-                            }
+                                PlayerId = reader.GetInt32(0),
+                                PlayerDisplayName = reader.GetString(1),
+                                PlayerObjectName = reader.GetString(2),
+                                Accuracy2Pt = reader.GetInt32(3),
+                                Accuracy3Pt = reader.GetInt32(4),
+                                Accuracy4Pt = reader.GetInt32(5),
+                                Accuracy7Pt = reader.GetInt32(6),
+                                JumpForce = reader.GetFloat(7),
+                                Speed = reader.GetFloat(8),
+                                RunSpeed = reader.GetFloat(9),
+                                RunSpeedHasBall = reader.GetFloat(10),
+                                Luck = reader.GetInt32(11),
+                                ShootAngle = reader.GetInt32(12),
+                                Experience = reader.GetInt32(13),
+                                Level = reader.GetInt32(14),
+                                PointsAvailable = reader.GetInt32(15),
+                                PointsUsed = reader.GetInt32(16),
+                                Range = reader.GetInt32(17),
+                                Release = reader.GetInt32(18),
+                                IsLocked = Convert.ToBoolean(reader.GetValue(19))
+                            };
+                            characterStats.Add(temp);
                         }
                     }
                 }
@@ -1020,8 +1367,18 @@ public class DBHelper : MonoBehaviour
                 dbconn.Open(); //Open connection to the database.
                 using (IDbCommand dbcmd = dbconn.CreateCommand())
                 {
-                    dbcmd.CommandText = "SELECT " + field + " FROM " + tableName + " WHERE charid = @charid";
+                    bool isCharacterProfile = string.Equals(
+                        tableName,
+                        Constants.LOCAL_DATABASE_tableName_characterProfile,
+                        StringComparison.OrdinalIgnoreCase);
+                    dbcmd.CommandText = "SELECT " + field + " FROM " + tableName
+                        + " WHERE charid = @charid"
+                        + (isCharacterProfile ? " AND accountId = @accountId" : string.Empty);
                     dbcmd.Parameters.Add(new SqliteParameter("@charid", charid));
+                    if (isCharacterProfile)
+                    {
+                        dbcmd.Parameters.Add(new SqliteParameter("@accountId", CurrentAccountId()));
+                    }
 
                     using (IDataReader reader = dbcmd.ExecuteReader())
                     {
@@ -1802,11 +2159,10 @@ public class DBHelper : MonoBehaviour
                                     && (!string.IsNullOrWhiteSpace(GameOptions.userName) || !string.IsNullOrEmpty(GameOptions.userName)))
                                 {
                                     highscore.UserName = GameOptions.userName;
-                                    highscores.Add(highscore);
                                 }
                                 // if username != null or empty, add to list
                                 // this will catch if user has logged in
-                                if (!string.IsNullOrEmpty(highscore.UserName) || !string.IsNullOrWhiteSpace(highscore.UserName))
+                                if (!string.IsNullOrWhiteSpace(highscore.UserName))
                                 {
                                     highscores.Add(highscore);
                                 }
@@ -1878,6 +2234,22 @@ public class CharacterProfileRecord
             IsLocked = profile.IsLocked
         };
     }
+}
+
+public enum ProgressionApplyStatus
+{
+    Failed,
+    Applied,
+    Duplicate
+}
+
+public sealed class ProgressionSnapshot
+{
+    public string ResultId { get; set; }
+    public string AccountId { get; set; }
+    public int CharacterId { get; set; }
+    public int Experience { get; set; }
+    public int Level { get; set; }
 }
 
 public class CheerleaderProfileRecord

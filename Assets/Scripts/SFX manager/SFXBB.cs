@@ -1,5 +1,4 @@
 ﻿using UnityEngine;
-using Random = System.Random;
 
 public class SFXBB : MonoBehaviour
 {
@@ -96,8 +95,7 @@ public class SFXBB : MonoBehaviour
     {
         if (musicEnabled && musicList != null && musicList.Length > 0)
         {
-            Random random = new Random();
-            int randNum = random.Next(0, musicList.Length);
+            int randNum = Random.Range(0, musicList.Length);
             currentSongIndex = randNum;
             audioSource.clip = musicList[currentSongIndex];
             audioSource.Play();

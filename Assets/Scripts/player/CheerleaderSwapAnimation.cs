@@ -26,6 +26,7 @@ public class CheerleaderSwapAnimation : MonoBehaviour
 
     public void Update()
     {
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
         if (GameLevelManager.instance.Controls.Other.change.enabled
             && Input.GetKeyDown(KeyCode.Alpha9)
             && !swapped)
@@ -40,6 +41,7 @@ public class CheerleaderSwapAnimation : MonoBehaviour
                 SetOriginalAnimation(anim);
             }
         }
+#endif
     }
 
     public void SetCurrentAnimation(Animator animator)

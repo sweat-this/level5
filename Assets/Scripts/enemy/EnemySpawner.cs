@@ -1,6 +1,5 @@
 ﻿using System.Collections.Generic;
 using UnityEngine;
-using Random = System.Random;
 
 public class EnemySpawner : MonoBehaviour
 {
@@ -36,18 +35,7 @@ public class EnemySpawner : MonoBehaviour
             // this needs to second option or enabling it will spawn enemies
             // ***** DISABLE FOR TESTING
             //GameOptions.enemiesEnabled = true;
-            GameObject[] enemyHealthList = GameObject.FindGameObjectsWithTag("enemy");
-            foreach (GameObject go in enemyHealthList)
-            {
-                if (go.GetComponentInChildren<EnemyController>().IsBoss)
-                {
-                    numberOfBoss++;
-                }
-                else
-                {
-                    numberOfMinions++;
-                }
-            }
+            RefreshEnemyCounts();
         }
         steelcage = GameObject.Find("steelCageRootObject");
         battleRoyalSpawnPosition = GameObject.Find("battleRoyalSpawnPosition");
@@ -67,6 +55,11 @@ public class EnemySpawner : MonoBehaviour
         //Debug.Log(GameOptions.gameModeHasBeenSelected);
         if ((GameOptions.enemiesEnabled || GameOptions.EnemiesOnlyEnabled) /* && GameOptions.gameModeHasBeenSelected */)
         {
+            if (!HasSpawnConfiguration())
+            {
+                enabled = false;
+                return;
+            }
             if (GameOptions.hardcoreModeEnabled && GameOptions.EnemiesOnlyEnabled)
             {
                 maxNumberOfEnemies = 8;
@@ -139,104 +132,52 @@ public class EnemySpawner : MonoBehaviour
 
     void spawnDefaultMinions()
     {
-        Debug.Log("spawn");
-        int numberToSpawn = maxNumberOfMinions - numberOfMinions - numberOfBoss;
-        Random random = new Random();
+        int numberToSpawn = maxNumberOfMinions - numberOfMinions;
         if (numberToSpawn > 0)
         {
             for (int i = 0; i < numberToSpawn; i++)
             {
-                //Random random = new Random();
-                int randomIndex = random.Next(0, enemyMinionPrefabs.Count);
-                //Debug.Log("randomIndex : " + randomIndex + "  max : " + (enemyMinionPrefabs.Count));
-                if (i > spawnPositions.Count - 1)
-                {
-                    Instantiate(enemyMinionPrefabs[randomIndex], spawnPositions[0].transform.position, Quaternion.identity);
-                }
-                else
-                {
-                    Instantiate(enemyMinionPrefabs[randomIndex], spawnPositions[i].transform.position, Quaternion.identity);
-                }
+                int randomIndex = Random.Range(0, enemyMinionPrefabs.Count);
+                int spawnIndex = i % spawnPositions.Count;
+                Instantiate(enemyMinionPrefabs[randomIndex], spawnPositions[spawnIndex].transform.position, Quaternion.identity);
             }
         }
     }
 
     void spawnDefaultBoss()
     {
-        //Debug.Break();
-        Debug.Log("spawn");
         int numberToSpawn = maxNumberOfBoss - numberOfBoss;
-        Random random = new Random();
-        int randomIndex = random.Next(0, enemyBossPrefabs.Count);
         if (numberToSpawn > 0)
         {
             for (int i = 0; i < numberToSpawn; i++)
             {
-                // if spawn more enemies than enemy list has, spawn random enemy
-                if (i >= enemyBossPrefabs.Count)
-                {
-                    //Random random = new Random();
-                    //int randomIndex = random.Next(0, enemyBossPrefabs.Count);
-                    Instantiate(enemyBossPrefabs[randomIndex], spawnPositions[i].transform.position, Quaternion.identity);
-                }
-                else
-                {
-                    Instantiate(enemyBossPrefabs[randomIndex], spawnPositions[i].transform.position, Quaternion.identity);
-                }
+                int randomIndex = Random.Range(0, enemyBossPrefabs.Count);
+                int spawnIndex = i % spawnPositions.Count;
+                Instantiate(enemyBossPrefabs[randomIndex], spawnPositions[spawnIndex].transform.position, Quaternion.identity);
             }
         }
     }
 
     void spawnSingleMinion()
     {
-        Random random = new Random();
-        int randomIndex = random.Next(0, enemyMinionPrefabs.Count);
-
-        int spawnIndex = 0;
-        if (randomIndex >= spawnPositions.Count - 1)
-        {
-            spawnIndex = spawnPositions.Count - 1;
-        }
-        else
-        {
-            spawnIndex = randomIndex;
-        }
-        // if spawn more enemies than enemy list has, spawn random enemy
-        if (randomIndex >= enemyMinionPrefabs.Count)
-        {
-            Instantiate(enemyMinionPrefabs[0], spawnPositions[spawnIndex].transform.position, Quaternion.identity);
-        }
-        else
-        {
-            Instantiate(enemyMinionPrefabs[randomIndex], spawnPositions[spawnIndex].transform.position, Quaternion.identity);
-        }
+        int randomIndex = Random.Range(0, enemyMinionPrefabs.Count);
+        int spawnIndex = Random.Range(0, spawnPositions.Count);
+        Instantiate(enemyMinionPrefabs[randomIndex], spawnPositions[spawnIndex].transform.position, Quaternion.identity);
     }
 
     void spawnBoss()
     {
-        //Debug.Log("spawn");
-        Random random = new Random();
-        int randomIndex = random.Next(0, enemyBossPrefabs.Count);
-
-        // if spawn more enemies than enemy list has, spawn random enemy
-        if (randomIndex >= enemyBossPrefabs.Count)
-        {
-            Instantiate(enemyBossPrefabs[0], spawnPositions[0].transform.position, Quaternion.identity);
-            numberOfBoss++;
-        }
-        else
-        {
-            Instantiate(enemyBossPrefabs[randomIndex], spawnPositions[randomIndex].transform.position, Quaternion.identity);
-            numberOfBoss++;
-        }
+        int randomIndex = Random.Range(0, enemyBossPrefabs.Count);
+        int spawnIndex = Random.Range(0, spawnPositions.Count);
+        Instantiate(enemyBossPrefabs[randomIndex], spawnPositions[spawnIndex].transform.position, Quaternion.identity);
+        numberOfBoss++;
     }
 
     void getNumberOfCurrentEnemiesInScene()
     {
         // *note : dont need to check for boss. if boss killed, doesnt respawn
 
-        numberOfMinions = GameObject.FindGameObjectsWithTag("enemy").Length;
-        numberOfBoss = getNumberOfBoss();
+        RefreshEnemyCounts();
 
         //Debug.Log("numberOfMinions : " + numberOfMinions);
         if (numberOfMinions < maxNumberOfMinions)
@@ -253,56 +194,86 @@ public class EnemySpawner : MonoBehaviour
 
     int getNumberOfBoss()
     {
-        int value = 0;
-        //GameObject[] enemyHealthList = GameObject.FindGameObjectsWithTag("enemy");
-        //foreach (GameObject go in enemyHealthList)
-        //{
-        //    if (go.GetComponentInChildren<EnemyController>().IsBoss)
-        //    {
-        //        value++;
-        //    }
-        //}
-        EnemyController[] enemyHealthList = UnityEngine.Object.FindObjectsByType<EnemyController>();
-        foreach (EnemyController ec in enemyHealthList)
-        {
-            if (ec.IsBoss)
-            {
-                value++;
-            }
-        }
-        return value;
+        RefreshEnemyCounts();
+        return numberOfBoss;
     }
 
     void spawnBattleRoyalContestant()
     {
-        int randomIndex = 0;
-        Random random = new Random();
+        if (battleRoyalSpawnPosition == null)
+        {
+            Debug.LogError("EnemySpawner requires battleRoyalSpawnPosition for battle royal mode.");
+            CancelInvoke(nameof(spawnBattleRoyalContestant));
+            return;
+        }
+
+        RefreshEnemyCounts();
+        if (numberOfMinions + numberOfBoss >= maxNumberOfEnemies)
+        {
+            return;
+        }
+
+        int randomIndex;
 
         if (GameOptions.battleRoyalEnabled && !GameOptions.hardcoreModeEnabled)
         {
             if(getNumberOfBoss() == 0)
             {
-                randomIndex = random.Next(0, enemyBossPrefabs.Count);
+                randomIndex = Random.Range(0, enemyBossPrefabs.Count);
                 Instantiate(enemyBossPrefabs[randomIndex], battleRoyalSpawnPosition.transform.position, Quaternion.identity);
             }
             else
             {
-                randomIndex = random.Next(0, enemyMinionPrefabs.Count);
-                // if spawn more enemies than enemy list has, spawn random enemy
-                if (randomIndex >= enemyMinionPrefabs.Count)
-                {
-                    Instantiate(enemyMinionPrefabs[0], battleRoyalSpawnPosition.transform.position, Quaternion.identity);
-                }
-                else
-                {
-                    Instantiate(enemyMinionPrefabs[randomIndex], battleRoyalSpawnPosition.transform.position, Quaternion.identity);
-                }
+                randomIndex = Random.Range(0, enemyMinionPrefabs.Count);
+                Instantiate(enemyMinionPrefabs[randomIndex], battleRoyalSpawnPosition.transform.position, Quaternion.identity);
             }
         }
         if (GameOptions.battleRoyalEnabled && GameOptions.hardcoreModeEnabled)
         {
-            randomIndex = random.Next(0, enemyBossPrefabs.Count);
+            randomIndex = Random.Range(0, enemyBossPrefabs.Count);
             Instantiate(enemyBossPrefabs[randomIndex], battleRoyalSpawnPosition.transform.position, Quaternion.identity);
         }
+    }
+
+    private void RefreshEnemyCounts()
+    {
+        numberOfBoss = 0;
+        numberOfMinions = 0;
+        EnemyController[] enemies = UnityEngine.Object.FindObjectsByType<EnemyController>();
+        foreach (EnemyController enemy in enemies)
+        {
+            if (enemy != null && enemy.IsBoss)
+            {
+                numberOfBoss++;
+            }
+            else if (enemy != null)
+            {
+                numberOfMinions++;
+            }
+        }
+    }
+
+    private bool HasSpawnConfiguration()
+    {
+        bool usesBattleRoyalSpawn = GameOptions.battleRoyalEnabled && !GameOptions.cageMatchEnabled;
+        bool hasSpawnLocations = usesBattleRoyalSpawn
+            ? battleRoyalSpawnPosition != null
+            : spawnPositions != null
+                && spawnPositions.Count > 0
+                && spawnPositions.TrueForAll(position => position != null);
+        bool valid = hasSpawnLocations
+            && enemyMinionPrefabs != null
+            && enemyMinionPrefabs.Count > 0
+            && enemyMinionPrefabs.TrueForAll(prefab => prefab != null)
+            && enemyBossPrefabs != null
+            && enemyBossPrefabs.Count > 0
+            && enemyBossPrefabs.TrueForAll(prefab => prefab != null);
+
+        if (!valid)
+        {
+            Debug.LogError("EnemySpawner is missing the active mode's spawn position or enemy prefabs.");
+        }
+
+        return valid;
     }
 }

@@ -1,7 +1,11 @@
+using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.InputSystem;
+
 public static class PlayerControlsProvider
 {
     private static PlayerControls controls;
+    private static readonly Dictionary<int, PlayerControls> gameplayControls = new Dictionary<int, PlayerControls>();
     private static int playerUsers;
     private static int playerTouchUsers;
     private static int uiNavigationUsers;
@@ -38,10 +42,72 @@ public static class PlayerControlsProvider
             controls = null;
         }
 
+        foreach (PlayerControls playerControls in gameplayControls.Values)
+        {
+            playerControls.Disable();
+            playerControls.Dispose();
+        }
+
+        gameplayControls.Clear();
+
         playerUsers = 0;
         playerTouchUsers = 0;
         uiNavigationUsers = 0;
         otherUsers = 0;
+    }
+
+    public static PlayerControls AcquireGameplayControls(int playerId)
+    {
+        if (gameplayControls.TryGetValue(playerId, out PlayerControls playerControls))
+        {
+            playerControls.Player.Enable();
+            return playerControls;
+        }
+
+        playerControls = new PlayerControls();
+        InputDevice[] devices = GetDevicesForPlayer(playerId);
+        playerControls.devices = devices;
+        playerControls.Player.Enable();
+        gameplayControls.Add(playerId, playerControls);
+        return playerControls;
+    }
+
+    public static void ReleaseGameplayControls(int playerId)
+    {
+        if (!gameplayControls.TryGetValue(playerId, out PlayerControls playerControls))
+        {
+            return;
+        }
+
+        playerControls.Disable();
+        playerControls.Dispose();
+        gameplayControls.Remove(playerId);
+    }
+
+    private static InputDevice[] GetDevicesForPlayer(int playerId)
+    {
+        List<InputDevice> devices = new List<InputDevice>();
+        if (playerId == 0)
+        {
+            AddDevice(devices, Keyboard.current);
+            AddDevice(devices, Mouse.current);
+            AddDevice(devices, Touchscreen.current);
+        }
+
+        if (Gamepad.all.Count > playerId)
+        {
+            AddDevice(devices, Gamepad.all[playerId]);
+        }
+
+        return devices.ToArray();
+    }
+
+    private static void AddDevice(List<InputDevice> devices, InputDevice device)
+    {
+        if (device != null)
+        {
+            devices.Add(device);
+        }
     }
 
     public static void EnableGameplayMaps()
@@ -54,12 +120,12 @@ public static class PlayerControlsProvider
         DisablePlayer();
     }
 
-    public static void EnableDebugMaps()
+    public static void EnableOtherMaps()
     {
         EnableOther();
     }
 
-    public static void DisableDebugMaps()
+    public static void DisableOtherMaps()
     {
         DisableOther();
     }

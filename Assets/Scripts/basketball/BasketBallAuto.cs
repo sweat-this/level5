@@ -3,7 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
-using Random = System.Random;
+using Random = UnityEngine.Random;
 
 public class BasketBallAuto : MonoBehaviour
 {
@@ -541,8 +541,7 @@ public class BasketBallAuto : MonoBehaviour
     // ========================== shot accuracy functions ==========================================
     bool rollForCriticalShotChance(float maxPercent)
     {
-        Random random = new Random();
-        float percent = random.Next(1, 100);
+        float percent = Random.Range(1, 100);
         if (percent <= maxPercent)
         {
             GameStats.CriticalRolled++;
@@ -553,8 +552,7 @@ public class BasketBallAuto : MonoBehaviour
     }
     bool rollForCriticalRangeChance(float maxPercent)
     {
-        Random random = new Random();
-        float percent = random.Next(1, 100);
+        float percent = Random.Range(1, 100);
 
         if (percent <= maxPercent)
         {
@@ -564,8 +562,7 @@ public class BasketBallAuto : MonoBehaviour
     }
     bool rollForCriticalReleaseChance(float maxPercent)
     {
-        Random random = new Random();
-        float percent = random.Next(1, 100);
+        float percent = Random.Range(1, 100);
 
         if (percent <= maxPercent)
         {
@@ -583,8 +580,7 @@ public class BasketBallAuto : MonoBehaviour
         //default if none assigned
         if(shootPercent == 0) { shootPercent = 90; }
         // get base value
-        Random random = new Random();
-        float percent = random.Next(1, 100);
+        float percent = Random.Range(1, 100);
         if (percent <= shootPercent)
         {
             //Debug.Log("percent : " + percent + " shootPercent : "+ shootPercent);
@@ -596,17 +592,14 @@ public class BasketBallAuto : MonoBehaviour
             shootPercent =  90;
         }
         // accuracy variation. random -5, 5 range
-        Random accuracyVariation1 = new Random();
-        float accuracyVariationValue = accuracyVariation1.Next(-5, 5);
+        float accuracyVariationValue = Random.Range(-5, 5);
         shootPercent += accuracyVariationValue;
 
         // percent to calculate clutch bonus
-        Random accuracyVariation2 = new Random();
-        float accuracyVariationPercent = accuracyVariation2.Next(1, 100);
+        float accuracyVariationPercent = Random.Range(1, 100);
 
         // clutch bonus
-        Random clutchBonusRandom = new Random();
-        float clutchBonus = clutchBonusRandom.Next(1, 10);
+        float clutchBonus = Random.Range(1, 10);
         // variation % + consecutive shots (increase percent). shot streak ups percent
         // consecutive shots bonus capped at 10
         int consecShotsModifier = gameStats.ConsecutiveShotsMade;
@@ -699,12 +692,7 @@ public class BasketBallAuto : MonoBehaviour
 
     private int getRandomPositiveOrNegative()
     {
-        var Random = new Random();
-        List<int> list = new List<int> { 1, -1 };
-        int finder = Random.Next(list.Count); //Then you just use this; nameDisplayString = names[finder];
-        int shotDirectionModifier = list[finder];
-
-        return shotDirectionModifier;
+        return Random.value < 0.5f ? 1 : -1;
     }
 
     // ========================== ui display ===============================

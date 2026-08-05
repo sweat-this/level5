@@ -9,7 +9,7 @@
                     "name": "movement",
                     "type": "PassThrough",
                     "id": "bf35e5c3-88fc-4c25-a7d3-2e486eb588ef",
-                    "expectedControlType": "Button",
+                    "expectedControlType": "Vector2",
                     "processors": "",
                     "interactions": "",
                     "initialStateCheck": false

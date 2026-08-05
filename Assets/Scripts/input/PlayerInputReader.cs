@@ -74,7 +74,11 @@ public class PlayerInputReader
     {
         get
         {
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
             return controls.Other.change.enabled && Input.GetKeyDown(KeyCode.Alpha8);
+#else
+            return false;
+#endif
         }
     }
 

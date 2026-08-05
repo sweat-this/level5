@@ -44,12 +44,12 @@ public class RacingGameManager : MonoBehaviour
     {
         controls = PlayerControlsProvider.Controls;
         PlayerControlsProvider.EnableGameplayMaps();
-        PlayerControlsProvider.EnableDebugMaps();
+        PlayerControlsProvider.EnableOtherMaps();
         //controls.PlayerTouch.Enable();
     }
     private void OnDisable()
     {
-        PlayerControlsProvider.DisableDebugMaps();
+        PlayerControlsProvider.DisableOtherMaps();
         PlayerControlsProvider.DisableGameplayMaps();
         //controls.PlayerTouch.Disable();
     }

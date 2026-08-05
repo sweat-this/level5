@@ -35,6 +35,7 @@ public class DevFunctions : MonoBehaviour
     }
     private void Update()
     {
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
         //if (GameLevelManager.instance.Controls.Other.change.enabled
         //    && GameLevelManager.instance.Controls.Other.toggle_character_max_stats.triggered)
         //{
@@ -57,6 +58,7 @@ public class DevFunctions : MonoBehaviour
         {
             StartCoroutine( LoadGame.LoadDevLevelVersus(1));
         }
+#endif
     }
 
     private void Shrinkplayer()

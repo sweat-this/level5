@@ -22,10 +22,10 @@ public class LoadedData : MonoBehaviour
 
     [SerializeField] private bool dataLoaded;
 
-    float timeoutStart;
-    float timeoutEnd;
-    float timeoutMax = 10;
-    private bool loadTimeoutLogged;
+    [SerializeField] private float timeoutMax = 12f;
+    [SerializeField] private bool loadFailed;
+    [SerializeField] private string loadError;
+    private Coroutine loadCoroutine;
 
     public static LoadedData instance;
 
@@ -42,46 +42,91 @@ public class LoadedData : MonoBehaviour
     }
     private void Start()
     {
-        StartCoroutine(LoadStartScreenData());
+        Retry();
     }
 
-    private void Update()
+    public void Retry()
     {
-        if (!dataLoaded)
+        if (loadCoroutine != null)
         {
-            if (Time.time > timeoutEnd)
-            {
-                LogLoadTimeout();
-            }
+            StopCoroutine(loadCoroutine);
         }
+
+        dataLoaded = false;
+        loadFailed = false;
+        loadError = string.Empty;
+        loadCoroutine = StartCoroutine(LoadStartScreenData());
     }
 
     IEnumerator LoadStartScreenData()
     {
-        timeoutStart = Time.time;
-        timeoutEnd = Time.time + timeoutMax;
-
-        yield return new WaitUntil(() => LoadManager.instance != null && LoadManager.instance.playerDataLoaded);
-        playerSelectedData = LoadManager.instance.PlayerSelectedData;
-
-        yield return new WaitUntil(() => LoadManager.instance != null && LoadManager.instance.cpuPlayerDataLoaded);
-        cpuPlayerSelectedData = LoadManager.instance.CpuPlayerSelectedData;
-
-        yield return new WaitUntil(() => LoadManager.instance != null && LoadManager.instance.cheerleaderDataLoaded);
-        cheerleaderSelectedData = LoadManager.instance.CheerleaderSelectedData;
-
-        yield return new WaitUntil(() => LoadManager.instance != null && LoadManager.instance.levelDataLoaded);
-        levelSelectedData = LoadManager.instance.LevelSelectedData;
-        levelCatalog = LoadManager.instance.LevelCatalog;
-
-        yield return new WaitUntil(() => LoadManager.instance != null && LoadManager.instance.modeDataLoaded);
-        modeSelectedData = LoadManager.instance.ModeSelectedData;
-
-
-        if (HasAllRequiredData())
+        for (int attempt = 0; attempt < 2; attempt++)
         {
-            dataLoaded = true;
+            float deadline = Time.realtimeSinceStartup + timeoutMax;
+            while (!ManagerReportsReady() && Time.realtimeSinceStartup < deadline)
+            {
+                yield return null;
+            }
+
+            if (LoadManager.instance != null)
+            {
+                CopyFromManager(LoadManager.instance);
+            }
+
+            if (HasAllRequiredData())
+            {
+                dataLoaded = true;
+                loadCoroutine = null;
+                yield break;
+            }
+
+            if (LoadManager.instance != null
+                && LoadManager.instance.TryLoadFallbackData(out string fallbackError))
+            {
+                CopyFromManager(LoadManager.instance);
+                dataLoaded = HasAllRequiredData();
+                if (dataLoaded)
+                {
+                    loadCoroutine = null;
+                    yield break;
+                }
+
+                loadError = fallbackError;
+            }
+
+            if (attempt == 0 && LoadManager.instance != null)
+            {
+                LoadManager.instance.LoadAllData();
+            }
         }
+
+        loadFailed = true;
+        loadCoroutine = null;
+        loadError = string.IsNullOrEmpty(loadError)
+            ? "Required game catalogs could not be loaded."
+            : loadError;
+        Debug.LogError(loadError);
+    }
+
+    private static bool ManagerReportsReady()
+    {
+        return LoadManager.instance != null
+            && LoadManager.instance.playerDataLoaded
+            && LoadManager.instance.cpuPlayerDataLoaded
+            && LoadManager.instance.cheerleaderDataLoaded
+            && LoadManager.instance.levelDataLoaded
+            && LoadManager.instance.modeDataLoaded
+            && LoadManager.instance.PersistenceReady;
+    }
+
+    private void CopyFromManager(LoadManager manager)
+    {
+        playerSelectedData = manager.PlayerSelectedData;
+        cpuPlayerSelectedData = manager.CpuPlayerSelectedData;
+        cheerleaderSelectedData = manager.CheerleaderSelectedData;
+        levelSelectedData = manager.LevelSelectedData;
+        levelCatalog = manager.LevelCatalog;
+        modeSelectedData = manager.ModeSelectedData;
     }
 
     private bool HasAllRequiredData()
@@ -95,28 +140,9 @@ public class LoadedData : MonoBehaviour
             && levelSelectedData != null
             && levelSelectedData.Count > 0
             && modeSelectedData != null
-            && modeSelectedData.Count > 0;
-    }
-
-    private void LogLoadTimeout()
-    {
-        if (loadTimeoutLogged)
-        {
-            return;
-        }
-
-        loadTimeoutLogged = true;
-        Debug.LogError("Loading timed out before required start-screen data was ready. "
-            + "player=" + GetCount(playerSelectedData)
-            + ", cpu=" + GetCount(cpuPlayerSelectedData)
-            + ", cheerleader=" + GetCount(cheerleaderSelectedData)
-            + ", level=" + GetCount(levelSelectedData)
-            + ", mode=" + GetCount(modeSelectedData));
-    }
-
-    private static int GetCount<T>(List<T> values)
-    {
-        return values == null ? -1 : values.Count;
+            && modeSelectedData.Count > 0
+            && LoadManager.instance != null
+            && LoadManager.instance.PersistenceReady;
     }
 
     public CharacterProfile getSelectedCharacterProfile(int charid)
@@ -135,5 +161,7 @@ public class LoadedData : MonoBehaviour
     public LevelCatalog LevelCatalog { get => levelCatalog; }
     public List<StartScreenModeSelected> ModeSelectedData { get => modeSelectedData; }
     public bool DataLoaded { get => dataLoaded; }
+    public bool LoadFailed => loadFailed;
+    public string LoadError => loadError;
     public List<CharacterProfile> CpuPlayerSelectedData { get => cpuPlayerSelectedData; set => cpuPlayerSelectedData = value; }
 }

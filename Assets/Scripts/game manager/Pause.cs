@@ -9,6 +9,7 @@ using UnityEngine.UI;
 
 public class Pause : MonoBehaviour
 {
+    private const float DatabaseWaitTimeoutSeconds = 8f;
     // main flag
     [SerializeField]
     private bool paused;
@@ -60,7 +61,11 @@ public class Pause : MonoBehaviour
     {
         instance = this;
         progressionService = new ProgressionService();
-        freePlayProgressionResultId = ProgressionService.CreateResultId("freeplay");
+        if (string.IsNullOrEmpty(GameOptions.matchResultId))
+        {
+            GameOptions.matchResultId = ProgressionService.CreateResultId("match");
+        }
+        freePlayProgressionResultId = GameOptions.matchResultId;
 #if !UNITY_ANDROID
         if (!GameOptions.battleRoyalEnabled && !GameOptions.cageMatchEnabled)
         {
@@ -228,7 +233,7 @@ public class Pause : MonoBehaviour
         {
             updateFreePlayStats();
         }
-        yield return new WaitUntil(() => !DBHelper.instance.DatabaseLocked);
+        yield return WaitForDatabaseUnlock();
         QuitApplication();
     }
 
@@ -242,7 +247,7 @@ public class Pause : MonoBehaviour
         }
         if (DBConnector.instance != null)
         {
-            yield return new WaitUntil(() => !DBHelper.instance.DatabaseLocked);
+            yield return WaitForDatabaseUnlock();
             // load screen should be first scene in build
             SceneManager.LoadScene(Constants.SCENE_NAME_level_00_loading);
         }
@@ -307,6 +312,22 @@ public class Pause : MonoBehaviour
             GameOptions.characterId,
             BasketBall.instance.GameStats.ExperienceGained);
         progressionService.ApplyMatchResult(result);
+    }
+
+    private IEnumerator WaitForDatabaseUnlock()
+    {
+        float deadline = Time.realtimeSinceStartup + DatabaseWaitTimeoutSeconds;
+        while (DBHelper.instance != null
+            && DBHelper.instance.DatabaseLocked
+            && Time.realtimeSinceStartup < deadline)
+        {
+            yield return null;
+        }
+
+        if (DBHelper.instance != null && DBHelper.instance.DatabaseLocked)
+        {
+            Debug.LogWarning("Pause timed out waiting for the local database; continuing navigation.");
+        }
     }
 
     private void setPauseScreen(bool value)

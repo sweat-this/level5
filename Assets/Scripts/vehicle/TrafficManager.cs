@@ -12,6 +12,8 @@ public class TrafficManager : MonoBehaviour
     GameObject _vehicleSpawnLeftPosition;
     [SerializeField]
     GameObject _vehicleSpawnRightPosition;
+    private Transform eastBoundRightTarget;
+    private Transform westBoundLeftTarget;
 
     [SerializeField]
     List<VehicleController> _vehiclesList;
@@ -60,6 +62,18 @@ public class TrafficManager : MonoBehaviour
             // get spawn points
             _vehicleSpawnLeftPosition = GameObject.FindGameObjectWithTag(spawnLeftTag);
             _vehicleSpawnRightPosition = GameObject.FindGameObjectWithTag(spawnRightTag);
+            GameObject eastTarget = GameObject.Find(eastBoundRightText);
+            GameObject westTarget = GameObject.Find(westBoundLeftText);
+            eastBoundRightTarget = eastTarget != null ? eastTarget.transform : null;
+            westBoundLeftTarget = westTarget != null ? westTarget.transform : null;
+
+            if (_vehicleSpawnLeftPosition == null || _vehicleSpawnRightPosition == null
+                || eastBoundRightTarget == null || westBoundLeftTarget == null)
+            {
+                Debug.LogError("TrafficManager is missing required spawn or target markers and has been disabled.");
+                enabled = false;
+                return;
+            }
 
             // if vehicleslist is manually created
             if (customVehicles)
@@ -140,14 +154,14 @@ public class TrafficManager : MonoBehaviour
             yield return new WaitForSeconds(waitTimeToRespawn);
             VehicleController clone = Instantiate(vehicle, _vehicleSpawnLeftPosition.transform.position, Quaternion.identity);
             clone.Direction = "right";
-            clone.CurrentTarget = GameObject.Find(eastBoundRightText).transform.position;
+            clone.CurrentTarget = eastBoundRightTarget.position;
         }
         if (direction == "right")
         {
             yield return new WaitForSeconds(waitTimeToRespawn);
             VehicleController clone = Instantiate(vehicle, _vehicleSpawnRightPosition.transform.position, Quaternion.identity);
             clone.Direction = "left";
-            clone.CurrentTarget = GameObject.Find(westBoundLeftText).transform.position;
+            clone.CurrentTarget = westBoundLeftTarget.position;
         }
     }
 
@@ -176,7 +190,7 @@ public class TrafficManager : MonoBehaviour
                 clone.Direction = "right";
                 clone.FacingRight = true;
                 // set target to correct vector3
-                clone.CurrentTarget = GameObject.Find(eastBoundRightText).transform.position;
+                clone.CurrentTarget = eastBoundRightTarget.position;
             }
             else
             {
@@ -186,7 +200,7 @@ public class TrafficManager : MonoBehaviour
                 clone.Direction = "left";
                 clone.FacingRight = false;
                 // set target to vector3
-                clone.CurrentTarget = GameObject.Find(westBoundLeftText).transform.position;
+                clone.CurrentTarget = westBoundLeftTarget.position;
             }
             vehicleIndex++;
         }
@@ -216,7 +230,7 @@ public class TrafficManager : MonoBehaviour
                 clone.Direction = "right";
                 clone.FacingRight = true;
                 // set target to correct vector3
-                clone.CurrentTarget = GameObject.Find(eastBoundRightText).transform.position;
+                clone.CurrentTarget = eastBoundRightTarget.position;
             }
             else
             {
@@ -226,7 +240,7 @@ public class TrafficManager : MonoBehaviour
                 clone.Direction = "left";
                 clone.FacingRight = false;
                 // set target to vector3
-                clone.CurrentTarget = GameObject.Find(westBoundLeftText).transform.position;
+                clone.CurrentTarget = westBoundLeftTarget.position;
             }
             vehicleIndex++;
         }

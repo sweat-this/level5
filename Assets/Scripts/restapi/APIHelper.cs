@@ -1,604 +1,192 @@
-﻿
 using Assets.Scripts.database;
 using Assets.Scripts.Models;
-using Assets.Scripts.Utility;
 using Newtonsoft.Json;
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.IO;
-using System.Net;
+using System.Text;
 using UnityEngine;
+using UnityEngine.Networking;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
 namespace Assets.Scripts.restapi
 {
+    public sealed class ApiResult<T>
+    {
+        private ApiResult(bool success, long statusCode, T value, string error)
+        {
+            Success = success;
+            StatusCode = statusCode;
+            Value = value;
+            Error = error;
+        }
+
+        public bool Success { get; }
+        public long StatusCode { get; }
+        public T Value { get; }
+        public string Error { get; }
+
+        public static ApiResult<T> Ok(T value, long statusCode)
+        {
+            return new ApiResult<T>(true, statusCode, value, string.Empty);
+        }
+
+        public static ApiResult<T> Fail(string error, long statusCode = 0)
+        {
+            return new ApiResult<T>(false, statusCode, default(T), error);
+        }
+    }
+
     public static class APIHelper
     {
-        static bool apiLocked;
+        private const int RequestTimeoutSeconds = 10;
+        private const float LockTimeoutSeconds = 12f;
+
+        private static object activeRequestOwner;
         private static string bearerToken;
-        static int timeout = 1500;
-        //private static string username;
 
-        private static bool TryGetStatusCode(HttpWebResponse httpResponse, out HttpStatusCode statusCode)
+        public static string BearerToken => bearerToken;
+        public static bool ApiLocked => activeRequestOwner != null;
+
+        public static void ClearSession()
         {
-            if (httpResponse == null)
-            {
-                statusCode = default(HttpStatusCode);
-                return false;
-            }
-
-            statusCode = httpResponse.StatusCode;
-            return true;
+            bearerToken = null;
+            GameOptions.bearerToken = null;
+            GameOptions.userName = string.Empty;
+            GameOptions.userid = 0;
         }
 
-        private static void UnlockApi()
+        public static IEnumerator PostHighscore(HighScoreModel score, Action<ApiResult<bool>> completed = null)
         {
-            apiLocked = false;
-        }
-
-        private static void UnlockApiAndDatabase()
-        {
-            apiLocked = false;
-            if (DBHelper.instance != null)
+            if (score == null)
             {
-                DBHelper.instance.DatabaseLocked = false;
-            }
-        }
-
-        // -------------------------------------- HTTTP POST Highscore -------------------------------------------
-
-        // POST highscore by scoreid by hitting api at
-        // http://13.58.224.237/api/highscores/scoreid/{scoreid}
-        // return true if status code == 200 ok
-        // return false if status code != 200 ok
-        public static IEnumerator PostHighscore(HighScoreModel score)
-        {
-            // note * make this async. sending the request and hitting api should do
-            // this automatically.
-            // put something like if(!201 created, try again) limit to 10 tries
-            // check uniquescoreid not already inserted. hit that api first, then proceed
-
-            // wait for database operations
-            yield return new WaitUntil(() => !DBHelper.instance.DatabaseLocked);
-            //DBHelper.instance.DatabaseLocked = true;
-
-            // wait for api operations
-            yield return new WaitUntil(() => !apiLocked);
-            apiLocked = true;
-
-            //// verify unique scoreid does NOT exist in database already
-            //if (!APIHelper.ScoreIdExists(dbHighScoreModel.Scoreid))
-            //{
-            //serialize highscore to json for HTTP POST
-            string toJson = JsonUtility.ToJson(score);
-            HttpWebResponse httpResponse = null;
-            HttpStatusCode statusCode;
-            try
-            {
-                Debug.Log("try...post single score");
-                var httpWebRequest = (HttpWebRequest)WebRequest.Create(Constants.API_ADDRESS_DEV_publicApiHighScores) as HttpWebRequest;
-                httpWebRequest.Timeout = timeout;
-                httpWebRequest.ContentType = "application/json; charset=utf-8";
-                httpWebRequest.Method = "POST";
-                httpWebRequest.Headers.Add("Authorization", "Bearer " + bearerToken);
-                //post
-                using (var streamWriter = new StreamWriter(httpWebRequest.GetRequestStream()))
-                {
-                    string json = toJson;
-                    streamWriter.Write(json);
-                    streamWriter.Flush();
-                }
-                // response
-                httpResponse = (HttpWebResponse)httpWebRequest.GetResponse();
-                using (var streamReader = new StreamReader(httpResponse.GetResponseStream()))
-                {
-                    streamReader.ReadToEnd();
-                    //Debug.Log("result : " + result);
-                }
-            }
-            // on web exception
-            catch (WebException e)
-            {
-                httpResponse = (HttpWebResponse)e.Response;
-                Debug.Log("----------------- ERROR : " + e);
-                //unlock api + database
-                apiLocked = false;
-                DBHelper.instance.DatabaseLocked = false;
-            }
-            if (!TryGetStatusCode(httpResponse, out statusCode))
-            {
-                Debug.Log("HTTP POST failed: no response from server.");
-                DBHelper.instance.setGameScoreSubmitted(score.Scoreid, false);
-                UnlockApiAndDatabase();
+                completed?.Invoke(ApiResult<bool>.Fail("No score was provided."));
                 yield break;
             }
 
-            // if successful
-            if (httpResponse.StatusCode == HttpStatusCode.Created)
+            ApiResult<string> response = null;
+            yield return SendJson(
+                Constants.API_ADDRESS_DEV_publicApiHighScores,
+                UnityWebRequest.kHttpVerbPOST,
+                JsonUtility.ToJson(score),
+                true,
+                result => response = result);
+
+            bool accepted = response.Success || response.StatusCode == 409;
+            if (DBHelper.instance != null)
             {
-                Debug.Log("----------------- HTTP POST successful : " + (int)statusCode + " " + statusCode);
-                DBHelper.instance.setGameScoreSubmitted(score.Scoreid, true);
-                apiLocked = false;
-                DBHelper.instance.DatabaseLocked = false;
+                yield return SetScoreSubmittedWhenAvailable(score.Scoreid, accepted);
             }
-            // failed
-            else
-            {
-                Debug.Log("----------------- HTTP POST failed : " + (int)statusCode + " " + statusCode);
-                //unlock api + database
-                DBHelper.instance.setGameScoreSubmitted(score.Scoreid, false);
-                apiLocked = false;
-                DBHelper.instance.DatabaseLocked = false;
-            }
+
+            completed?.Invoke(accepted
+                ? ApiResult<bool>.Ok(true, response.StatusCode)
+                : ApiResult<bool>.Fail(response.Error, response.StatusCode));
         }
 
-        // -------------------------------------- HTTTP POST character profile info -------------------------------------------
-
-        // POST highscore by scoreid by hitting api at
-        // http://13.58.224.237/api/highscores/scoreid/{scoreid}
-        // return true if status code == 200 ok
-        // return false if status code != 200 ok
         public static IEnumerator PutCharacterProfileStats(List<CharacterProfile> characters)
         {
-            // note * make this async. sending the request and hitting api should do
-            // this automatically.
-            // put something like if(!201 created, try again) limit to 10 tries
-            // check uniquescoreid not already inserted. hit that api first, then proceed
-
-            // wait for database operations
-            yield return new WaitUntil(() => !DBHelper.instance.DatabaseLocked);
-            //DBHelper.instance.DatabaseLocked = true;
-
-            // wait for api operations
-            yield return new WaitUntil(() => !apiLocked);
-            apiLocked = true;
-
-            //foreach (HighScoreModel score in highscores)
-            //{
-            //    //serialize highscore to json for HTTP POST
-            //    string toJson = JsonUtility.ToJson(score);
-
-            //    HttpWebResponse httpResponse = null;
-            //    HttpStatusCode statusCode;
-
-            //    try
-            //    {
-            //        var httpWebRequest = (HttpWebRequest)WebRequest.Create(Constants.API_ADDRESS_DEV_publicApiHighScores) as HttpWebRequest;
-            //        httpWebRequest.ContentType = "application/json; charset=utf-8";
-            //        httpWebRequest.Method = "POST";
-            //        httpWebRequest.Headers.Add("Authorization", "Bearer " + bearerToken);
-            //        //post
-            //        using (var streamWriter = new StreamWriter(httpWebRequest.GetRequestStream()))
-            //        {
-            //            string json = toJson;
-
-            //            streamWriter.Write(json);
-            //            streamWriter.Flush();
-            //        }
-            //        // response
-            //        httpResponse = (HttpWebResponse)httpWebRequest.GetResponse();
-            //        using (var streamReader = new StreamReader(httpResponse.GetResponseStream()))
-            //        {
-            //            var result = streamReader.ReadToEnd();
-            //        }
-            //    }
-            //    // on web exception
-            //    catch (WebException e)
-            //    {
-            //        httpResponse = (HttpWebResponse)e.Response;
-            //        //unlock api + database
-            //        apiLocked = false;
-            //        DBHelper.instance.DatabaseLocked = false;
-            //    }
-            //    statusCode = httpResponse.StatusCode;
-            //    // if successful
-            //    if (httpResponse.StatusCode == HttpStatusCode.Created)
-            //    {
-            //        Debug.Log("----------------- HTTP POST successful : " + (int)statusCode + " " + statusCode);
-            //        DBHelper.instance.setGameScoreSubmitted(score.Scoreid, true);
-            //        apiLocked = false;
-            //        DBHelper.instance.DatabaseLocked = false;
-            //    }
-            //    // failed
-            //    else
-            //    {
-            //        // if conflict (scoreid already exists in database)
-            //        if (httpResponse.StatusCode == HttpStatusCode.Conflict)
-            //        {
-            //            //Debug.Log("----------------- HTTP POST failed : scoreid already exists : " + (int)statusCode + " " + statusCode);
-            //            DBHelper.instance.setGameScoreSubmitted(score.Scoreid, true);
-            //            apiLocked = false;
-            //            DBHelper.instance.DatabaseLocked = false;
-            //        }
-            //        else
-            //        {
-            //            //unlock api + database
-            //            DBHelper.instance.setGameScoreSubmitted(score.Scoreid, false);
-            //            apiLocked = false;
-            //            DBHelper.instance.DatabaseLocked = false;
-            //        }
-            //    }
-            //}
+            // The server currently exposes no character-profile batch endpoint.
+            yield break;
         }
 
-        // -------------------------------------- HTTTP POST unsubmitted Highscores -------------------------------------------
-
-        // POST highscore by scoreid by hitting api at
-        // http://13.58.224.237/api/highscores/scoreid/{scoreid}
-        // return true if status code == 200 ok
-        // return false if status code != 200 ok
-        public static void PostUnsubmittedHighscores(List<HighScoreModel> highscores)
+        public static IEnumerator PostUnsubmittedHighscores(
+            List<HighScoreModel> highscores,
+            Action<ApiResult<int>> completed = null)
         {
+            if (highscores == null || highscores.Count == 0)
+            {
+                completed?.Invoke(ApiResult<int>.Ok(0, 204));
+                yield break;
+            }
 
-
-            //Debug.Log("PostUnsubmittedHighscores");
-            //Debug.Log(DBHelper.instance.DatabaseLocked);
-            //Debug.Log(apiLocked);
-            //// wait for database operations
-            ////yield return new WaitUntil(() => !DBHelper.instance.DatabaseLocked);
-            ////DBHelper.instance.DatabaseLocked = true;
-
-            //// wait for api operations
-            ////yield return new WaitUntil(() => !apiLocked);
-            //Debug.Log("PostUnsubmittedHighscores");
-            ////foreach (HighScoreModel score in highscores)
-            ////{
-            ////    Debug.Log("highscores : "+ score);
-            ////}
-            ////bool locked = false;
-            //foreach (HighScoreModel score in highscores)
-            //{
-            //    score.Userid = GameOptions.userid;
-            //    score.UserName = GameOptions.userName;
-            //    //yield return new WaitUntil(() => locked = false);
-            //    //locked = true;
-            //    //serialize highscore to json for HTTP POST
-            //    string toJson = JsonUtility.ToJson(score);
-
-            //    HttpWebResponse httpResponse = null;
-            //    HttpStatusCode statusCode;
-            //    //Debug.Log("highscores : " + score.Date);
-            //    try
-            //    {
-            //        Debug.Log("highscores : " + score.Date);
-            //        var httpWebRequest = (HttpWebRequest)WebRequest.Create(Constants.API_ADDRESS_DEV_publicApiHighScoresUnsubmitted) as HttpWebRequest;
-            //        httpWebRequest.Timeout = timeout;
-            //        httpWebRequest.ContentType = "application/json; charset=utf-8";
-            //        httpWebRequest.Method = "POST";
-            //        httpWebRequest.Headers.Add("Authorization", "Bearer " + bearerToken);
-            //        //post
-            //        using (var streamWriter = new StreamWriter(httpWebRequest.GetRequestStream()))
-            //        {
-            //            Debug.Log("post");
-            //            string json = toJson;
-            //            Debug.Log("json : " + json);
-            //            streamWriter.Write(json);
-            //            Debug.Log("streamWriter.Write(json);");
-            //            streamWriter.Flush();
-            //            Debug.Log("streamWriter.Flush();");
-            //        }
-            //        // response
-            //        httpResponse = (HttpWebResponse)httpWebRequest.GetResponse();
-            //        Debug.Log("httpResponse : "+ httpResponse);
-            //        using (var streamReader = new StreamReader(httpResponse.GetResponseStream()))
-            //        {
-            //            var result = streamReader.ReadToEnd();
-            //            Debug.Log(result);
-            //        }
-            //    }
-            //    // on web exception
-            //    catch (WebException e)
-            //    {
-            //        httpResponse = (HttpWebResponse)e.Response;
-            //        Debug.Log("----------------- WEB EXCEPTION : " + e );
-            //        //unlock api + database
-            //        apiLocked = false;
-            //        DBHelper.instance.DatabaseLocked = false;
-            //    }
-            //    statusCode = httpResponse.StatusCode;
-            //    // if successful
-            //    if (httpResponse.StatusCode == HttpStatusCode.Created)
-            //    {
-            //        Debug.Log("----------------- HTTP POST successful : " + (int)statusCode + " " + statusCode);
-            //        DBHelper.instance.setGameScoreSubmitted(score.Scoreid, true);
-            //        apiLocked = false;
-            //        DBHelper.instance.DatabaseLocked = false;
-            //    }
-            //    // failed
-            //    else
-            //    {
-            //        // if conflict (scoreid already exists in database)
-            //        if (httpResponse.StatusCode == HttpStatusCode.Conflict)
-            //        {
-            //            Debug.Log("----------------- HTTP POST failed : scoreid already exists : " + (int)statusCode + " " + statusCode);
-            //            DBHelper.instance.setGameScoreSubmitted(score.Scoreid, true);
-            //            apiLocked = false;
-            //            DBHelper.instance.DatabaseLocked = false;
-            //        }
-            //        else
-            //        {
-            //            //unlock api + database
-            //            DBHelper.instance.setGameScoreSubmitted(score.Scoreid, false);
-            //            apiLocked = false;
-            //            DBHelper.instance.DatabaseLocked = false;
-            //        }
-            //    }
-            //    //locked = false;
-            //}
-
-
-            // wait for database operations
-            //yield return new WaitUntil(() => !DBHelper.instance.DatabaseLocked);
-            DBHelper.instance.DatabaseLocked = true;
-
-            // wait for api operations
-            //yield return new WaitUntil(() => !apiLocked);
-            //foreach (HighScoreModel score in highscores)
-            //{
-            //    Debug.Log("highscores : "+ score);
-            //}
-            //bool locked = false;
             foreach (HighScoreModel score in highscores)
             {
                 score.Userid = GameOptions.userid;
                 score.UserName = GameOptions.userName;
             }
-            //yield return new WaitUntil(() => locked = false);
-            //locked = true;
-            //serialize highscore to json for HTTP POST
-            //string toJson = JsonUtility.ToJson(highscores);
-            //string toJson = JsonUtility.ToJson(highscores);
-            string toJson = JsonConvert.SerializeObject(highscores, Formatting.Indented);
 
-            HttpWebResponse httpResponse = null;
-            HttpStatusCode statusCode;
+            ApiResult<string> response = null;
+            yield return SendJson(
+                Constants.API_ADDRESS_DEV_publicApiHighScoresUnsubmitted,
+                UnityWebRequest.kHttpVerbPOST,
+                JsonConvert.SerializeObject(highscores),
+                true,
+                result => response = result);
 
-
-            try
+            if (response.Success || response.StatusCode == 409)
             {
-                //HttpClient client = new HttpClient();
-                //client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-                //client.DefaultRequestHeaders.Authorization =
-                //new AuthenticationHeaderValue("Bearer", bearerToken);
-                var httpWebRequest = (HttpWebRequest)WebRequest.Create(Constants.API_ADDRESS_DEV_publicApiHighScoresUnsubmitted) as HttpWebRequest;
-                httpWebRequest.Timeout = timeout;
-                httpWebRequest.ContentType = "application/json; charset=utf-8";
-                httpWebRequest.Method = "POST";
-                httpWebRequest.Headers.Add("Authorization", "Bearer " + bearerToken);
-                httpWebRequest.Accept = "application/json";
-                //post
-                using (var streamWriter = new StreamWriter(httpWebRequest.GetRequestStream()))
+                if (DBHelper.instance != null)
                 {
-
-                    streamWriter.Write(toJson);
-                    streamWriter.Flush();
-                }
-                //var content = new StringContent(toJson, Encoding.UTF8, "application/json");
-                //var result = client.PostAsync(Constants.API_ADDRESS_DEV_publicApiHighScoresUnsubmitted, content).Result;
-                // response
-                httpResponse = (HttpWebResponse)httpWebRequest.GetResponse();
-                //Debug.Log("result : " + result);
-                using (var streamReader = new StreamReader(httpResponse.GetResponseStream()))
-                {
-                    streamReader.ReadToEnd();
-                }
-            }
-            // on web exception
-            catch (WebException e)
-            {
-                httpResponse = (HttpWebResponse)e.Response;
-                Debug.Log("----------------- WEB EXCEPTION : " + e);
-                //unlock api + database
-                apiLocked = false;
-                DBHelper.instance.DatabaseLocked = false;
-            }
-            if (!TryGetStatusCode(httpResponse, out statusCode))
-            {
-                Debug.Log("HTTP POST failed: no response from server.");
-                UnlockApiAndDatabase();
-                return;
-            }
-            // if successful
-            if (httpResponse.StatusCode == HttpStatusCode.Created)
-            {
-                Debug.Log("----------------- HTTP POST successful : " + (int)statusCode + " " + statusCode);
-                //DBHelper.instance.setGameScoreSubmitted(score.Scoreid, true);
-                apiLocked = false;
-                DBHelper.instance.DatabaseLocked = false;
-            }
-            // failed
-            else
-            {
-                // if conflict (scoreid already exists in database)
-                if (httpResponse.StatusCode == HttpStatusCode.Conflict)
-                {
-                    Debug.Log("----------------- HTTP POST failed : scoreid already exists : " + (int)statusCode + " " + statusCode);
-                    //DBHelper.instance.setGameScoreSubmitted(score.Scoreid, true);
-                    apiLocked = false;
-                    DBHelper.instance.DatabaseLocked = false;
-                }
-                else
-                {
-                    //unlock api + database
-                    //DBHelper.instance.setGameScoreSubmitted(score.Scoreid, false);
-                    apiLocked = false;
-                    DBHelper.instance.DatabaseLocked = false;
-                }
-            }
-            //locked = false;
-            //}
-
-        }
-
-        // -------------------------------------- HTTTP PUT Highscore -------------------------------------------
-
-        // PUT (if doesnt exist, insert) highscore by scoreid by hitting api at
-        // http://13.58.224.237/api/highscores/{scoreid}}
-        // return true if status code == 200 ok
-        // return false if status code != 200 ok
-        public static IEnumerator PutHighscore(HighScoreModel dbHighScoreModel)
-        {
-            // note * make this async. sending the request and hitting api should do
-            // this automatically.
-            // put something like if(!201 created, try again) limit to 10 tries
-            // check uniquescoreid not already inserted. hit that api first, then proceed
-
-
-            yield return new WaitUntil(() => !DBHelper.instance.DatabaseLocked);
-
-            yield return new WaitUntil(() => !apiLocked);
-            apiLocked = true;
-
-            string toJson = JsonUtility.ToJson(dbHighScoreModel);
-
-            HttpWebResponse httpResponse = null;
-            HttpStatusCode statusCode;
-
-            try
-            {
-                var httpWebRequest = (HttpWebRequest)WebRequest.Create(Constants.API_ADDRESS_DEV_publicApiHighScores + dbHighScoreModel.Scoreid) as HttpWebRequest;
-                httpWebRequest.Timeout = timeout;
-                httpWebRequest.ContentType = "application/json; charset=utf-8";
-                httpWebRequest.Method = "PUT";
-                httpWebRequest.Headers.Add("Authorization", "Bearer " + bearerToken);
-
-                using (var streamWriter = new StreamWriter(httpWebRequest.GetRequestStream()))
-                {
-                    string json = toJson;
-
-                    streamWriter.Write(json);
-                    streamWriter.Flush();
+                    foreach (HighScoreModel score in highscores)
+                    {
+                        yield return SetScoreSubmittedWhenAvailable(score.Scoreid, true);
+                    }
                 }
 
-                httpResponse = (HttpWebResponse)httpWebRequest.GetResponse();
-                using (var streamReader = new StreamReader(httpResponse.GetResponseStream()))
-                {
-                    streamReader.ReadToEnd();
-                }
-            }
-            // on web exception
-            catch (WebException e)
-            {
-                httpResponse = (HttpWebResponse)e.Response;
-                Debug.Log("----------------- ERROR : " + e);
-                apiLocked = false;
-                DBHelper.instance.DatabaseLocked = false;
-            }
-
-            if (!TryGetStatusCode(httpResponse, out statusCode))
-            {
-                Debug.Log("HTTP PUT failed: no response from server.");
-                UnlockApiAndDatabase();
+                completed?.Invoke(ApiResult<int>.Ok(highscores.Count, response.StatusCode));
                 yield break;
             }
 
-            // if successful
-            if (httpResponse.StatusCode == HttpStatusCode.Created)
-            {
-                Debug.Log("----------------- HTTP PUT successful : " + (int)statusCode + " " + statusCode);
-                apiLocked = false;
-                DBHelper.instance.DatabaseLocked = false;
-            }
-            // failed
-            else
-            {
-                Debug.Log("----------------- HTTP PUT failed : " + (int)statusCode + " " + statusCode);
-                apiLocked = false;
-                DBHelper.instance.DatabaseLocked = false;
-            }
+            completed?.Invoke(ApiResult<int>.Fail(response.Error, response.StatusCode));
         }
 
-        // -------------------------------------- HTTTP GET Highscore -------------------------------------------
-        // GET highscore by scoreid by hitting api at
-        // http://13.58.224.237/api/highscores/scoreid/{scoreid}
-        // return true if status code == 200 ok
-        // return false if status code != 200 ok
-        public static List<HighScoreModel> GetHighscoreByScoreid(string scoreid)
+        public static IEnumerator PutHighscore(HighScoreModel score, Action<ApiResult<bool>> completed = null)
         {
-
-            HttpWebResponse httpResponse = null;
-            HttpStatusCode statusCode;
-            List<HighScoreModel> dBHighScoreModels = new List<HighScoreModel>();
-
-            try
+            if (score == null)
             {
-                var httpWebRequest = (HttpWebRequest)WebRequest.Create((Constants.API_ADDRESS_DEV_publicApiHighScoresByScoreid + scoreid)) as HttpWebRequest;
-                httpWebRequest.Timeout = timeout;
-                httpWebRequest.ContentType = "application/json; charset=utf-8";
-                httpWebRequest.Method = "GET";
-                httpWebRequest.Headers.Add("Authorization", "Bearer " + bearerToken);
-
-                httpResponse = (HttpWebResponse)httpWebRequest.GetResponse();
-                using (var streamReader = new StreamReader(httpResponse.GetResponseStream()))
-                {
-                    var result = streamReader.ReadToEnd();
-                    dBHighScoreModels = (List<HighScoreModel>)JsonConvert.DeserializeObject<List<HighScoreModel>>(result);
-                }
-
-                //dBHighScoreModels = convertHttpWebResponseToDBHighscoreModelList(httpResponse);
-            }
-            // on web exception
-            catch (WebException e)
-            {
-                httpResponse = (HttpWebResponse)e.Response;
-                Debug.Log("----------------- ERROR : " + e);
-                apiLocked = false;
+                completed?.Invoke(ApiResult<bool>.Fail("No score was provided."));
+                yield break;
             }
 
-            if (!TryGetStatusCode(httpResponse, out statusCode))
-            {
-                Debug.Log("GetHighscoreByScoreid failed: no response from server.");
-                UnlockApi();
-                return dBHighScoreModels;
-            }
+            ApiResult<string> response = null;
+            string scoreId = UnityWebRequest.EscapeURL(score.Scoreid ?? string.Empty);
+            yield return SendJson(
+                Constants.API_ADDRESS_DEV_publicApiHighScores + scoreId,
+                UnityWebRequest.kHttpVerbPUT,
+                JsonUtility.ToJson(score),
+                true,
+                result => response = result);
 
-            // if successful
-            if (httpResponse.StatusCode == HttpStatusCode.OK)
-            {
-                Debug.Log("----------------- GetHighscoreByScoreid() successful : " + (int)statusCode + " " + statusCode);
-                apiLocked = false;
-            }
-            // failed
-            else
-            {
-                Debug.Log("----------------- GetHighscoreByScoreid() : " + (int)statusCode + " " + statusCode);
-                apiLocked = false;
-            }
-
-            return dBHighScoreModels;
+            completed?.Invoke(response.Success
+                ? ApiResult<bool>.Ok(true, response.StatusCode)
+                : ApiResult<bool>.Fail(response.Error, response.StatusCode));
         }
 
-        // GET highscore by scoreid by hitting api at
-        // http://13.58.224.237/api/highscores/modeid/{modeid}
-        // return true if status code == 200 ok
-        // return false if status code != 200 ok
-        public static List<StatsTableHighScoreRow> GetHighscoreByModeid(int modeid, int hardcore,
-            int traffic, int enemies, int sniper, int page, int results)
+        public static IEnumerator GetHighscoreByScoreid(
+            string scoreId,
+            Action<ApiResult<List<HighScoreModel>>> completed)
         {
-            HttpWebResponse httpResponse = null;
-            HttpStatusCode statusCode;
-            List<StatsTableHighScoreRow> highScoresList = new List<StatsTableHighScoreRow>();
+            string url = Constants.API_ADDRESS_DEV_publicApiHighScoresByScoreid
+                + UnityWebRequest.EscapeURL(scoreId ?? string.Empty);
+            yield return GetJson(url, true, completed);
+        }
 
-            // fighting modes
-            if (modeid > 19 && modeid < 23)
+        public static IEnumerator GetHighscoreByModeid(
+            int modeId,
+            int hardcore,
+            int traffic,
+            int enemies,
+            int sniper,
+            int page,
+            int results,
+            Action<ApiResult<List<StatsTableHighScoreRow>>> completed)
+        {
+            if (modeId > 19 && modeId < 23)
             {
                 enemies = 1;
             }
-            // build api request.
-            // if no filter selected, get all scores for modeid
-            // else, get specific scores
-            string apiRequest = "";
+
+            string url;
             if (hardcore == 0 && traffic == 0 && enemies == 0 && sniper == 0)
             {
-                apiRequest = Constants.API_ADDRESS_DEV_publicApiHighScoresByModeidInGameDisplayAll + modeid
+                url = Constants.API_ADDRESS_DEV_publicApiHighScoresByModeidInGameDisplayAll + modeId
                     + "?page=" + page
                     + "&results=" + results;
             }
             else
             {
-                apiRequest = Constants.API_ADDRESS_DEV_publicApiHighScoresByModeidInGameDisplayFiltered + modeid
+                url = Constants.API_ADDRESS_DEV_publicApiHighScoresByModeidInGameDisplayFiltered + modeId
                     + "?hardcore=" + hardcore
                     + "&traffic=" + traffic
                     + "&enemies=" + enemies
@@ -606,828 +194,363 @@ namespace Assets.Scripts.restapi
                     + "&page=" + page
                     + "&results=" + results;
             }
-            //Debug.Log("apiRequest : \n" + apiRequest);
-            try
-            {
-                var httpWebRequest = (HttpWebRequest)WebRequest.Create(apiRequest) as HttpWebRequest;
-                httpWebRequest.Timeout = timeout;
-                httpWebRequest.ContentType = "application/json; charset=utf-8";
-                httpWebRequest.Method = "GET";
-                httpWebRequest.Headers.Add("Authorization", "Bearer " + bearerToken);
 
-                httpResponse = (HttpWebResponse)httpWebRequest.GetResponse();
-                using (var streamReader = new StreamReader(httpResponse.GetResponseStream()))
-                {
-                    var result = streamReader.ReadToEnd();
-                    highScoresList = JsonConvert.DeserializeObject<List<StatsTableHighScoreRow>>(result);
-                    //Debug.Log("results : \n" + result);
-                }
-            }
-            // on web exception
-            catch (WebException e)
-            {
-                httpResponse = (HttpWebResponse)e.Response;
-                //Debug.Log("----------------- ERROR : " + e);
-                apiLocked = false;
-            }
-
-            if (!TryGetStatusCode(httpResponse, out statusCode))
-            {
-                UnlockApi();
-                return highScoresList;
-            }
-
-            // if successful
-            if (httpResponse.StatusCode == HttpStatusCode.OK)
-            {
-                //Debug.Log("----------------- GetHighscoreByModeid() successful : " + (int)statusCode + " " + statusCode);
-                apiLocked = false;
-            }
-            // failed
-            else
-            {
-                //Debug.Log("----------------- GetHighscoreByModeid() : " + (int)statusCode + " " + statusCode);
-                apiLocked = false;
-            }
-
-            return highScoresList;
+            yield return GetJson(url, true, completed);
         }
 
-        // GET highscore by scoreid by hitting api at
-        // http://13.58.224.237/api/highscores/modeid/{modeid}
-        // return true if status code == 200 ok
-        // return false if status code != 200 ok
-        public static int GetHighscoreCountByModeid(int modeid, int hardcore,
-            int traffic, int enemies, int sniper)
+        public static IEnumerator GetHighscoreCountByModeid(
+            int modeId,
+            int hardcore,
+            int traffic,
+            int enemies,
+            int sniper,
+            Action<ApiResult<int>> completed)
         {
-            HttpWebResponse httpResponse = null;
-            HttpStatusCode statusCode;
-
-            //fighting modes
-            if (modeid > 19 && modeid < 23)
+            if (modeId > 19 && modeId < 23)
             {
                 enemies = 1;
             }
 
-            //build api request
-            string apiRequest = Constants.API_ADDRESS_DEV_publicApiHighScoresCountByModeid + modeid
+            string url = Constants.API_ADDRESS_DEV_publicApiHighScoresCountByModeid + modeId
                 + "?hardcore=" + hardcore
                 + "&traffic=" + traffic
                 + "&enemies=" + enemies
                 + "&sniper=" + sniper;
-
-            //build api localhost request
-            //string apiRequest = localHostHighScoresCountByModeid + modeid
-            //    + "?hardcore=" + hardcore
-            //    + "&traffic=" + traffic
-            //    + "&enemies=" + enemies;
-            //Debug.Log(apiRequest);
-            int numResults = 0;
-            try
-            {
-                var httpWebRequest = (HttpWebRequest)WebRequest.Create(apiRequest) as HttpWebRequest;
-                httpWebRequest.Timeout = timeout;
-                httpWebRequest.ContentType = "application/json; charset=utf-8";
-                httpWebRequest.Method = "GET";
-                httpWebRequest.Headers.Add("Authorization", "Bearer " + bearerToken);
-                httpResponse = (HttpWebResponse)httpWebRequest.GetResponse();
-
-                using (var streamReader = new StreamReader(httpResponse.GetResponseStream()))
-                {
-                    var result = streamReader.ReadToEnd();
-                    numResults = Convert.ToInt32(JsonConvert.DeserializeObject(result));
-                    //Debug.Log("numresults : " + numResults);
-                }
-            }
-            // on web exception
-            catch (WebException e)
-            {
-                httpResponse = (HttpWebResponse)e.Response;
-                Debug.Log("----------------- ERROR : " + e);
-                apiLocked = false;
-            }
-
-            if (!TryGetStatusCode(httpResponse, out statusCode))
-            {
-                Debug.Log("GetHighscoreCountByModeid failed: no response from server.");
-                UnlockApi();
-                return numResults;
-            }
-
-            // if successful
-            if (httpResponse.StatusCode == HttpStatusCode.OK)
-            {
-                //Debug.Log("----------------- GetHighscoreCountByModeid() successful : " + (int)statusCode + " " + statusCode);
-                apiLocked = false;
-            }
-            // failed
-            else
-            {
-                //Debug.Log("----------------- GetHighscoreCountByModeid() : " + (int)statusCode + " " + statusCode);
-                apiLocked = false;
-            }
-
-            return numResults;
+            yield return GetJson(url, true, completed);
         }
 
-
-        // -------------------------------------- HTTTP POST User -------------------------------------------
-
-        // POST highscore by scoreid by hitting api at
-        // http://13.58.224.237/api/users/{username}
-        // return true if status code == 200 ok
-        // return false if status code != 200 ok
-        public static IEnumerator PostUser(UserModel user)
+        public static IEnumerator PostUser(UserModel user, Action<ApiResult<UserModel>> completed = null)
         {
-            // note * make this async. sending the request and hitting api should do
-            // this automatically.
-            // put something like if(!201 created, try again) limit to 10 tries
-            // check uniquescoreid not already inserted. hit that api first, then proceed
-            Debug.Log("...APIHelper.PostUser()");
-            // wait for database operations
-            yield return new WaitUntil(() => !DBHelper.instance.DatabaseLocked);
-
-            // wait for api operations
-            yield return new WaitUntil(() => !apiLocked);
-            apiLocked = true;
-
-            int userid;
-            // verify unique scoreid does NOT exist in database already
-            if (!APIHelper.UserNameExists(user.UserName))
+            if (user == null)
             {
-                //serialize highscore to json for HTTP POST
-                string toJson = JsonUtility.ToJson(user);
-
-                HttpWebResponse httpResponse = null;
-                HttpStatusCode statusCode;
-                try
-                {
-                    var httpWebRequest = (HttpWebRequest)WebRequest.Create(Constants.API_ADDRESS_DEV_publicApiUsers) as HttpWebRequest;
-                    httpWebRequest.Timeout = timeout;
-                    httpWebRequest.ContentType = "application/json; charset=utf-8";
-                    httpWebRequest.Method = "POST";
-                    //post
-                    using (var streamWriter = new StreamWriter(httpWebRequest.GetRequestStream()))
-                    {
-                        string json = toJson;
-                        streamWriter.Write(json);
-                        streamWriter.Flush();
-                        //Debug.Log(json);
-                    }
-                    // response
-                    httpResponse = (HttpWebResponse)httpWebRequest.GetResponse();
-                    using (var streamReader = new StreamReader(httpResponse.GetResponseStream()))
-                    {
-                        var result = streamReader.ReadToEnd();
-                        UserModel model = (UserModel)JsonConvert.DeserializeObject<UserModel>(result);
-                        userid = model.Userid;
-                        user.Userid = userid;
-
-                    }
-                }
-                // on web exception
-                catch (WebException e)
-                {
-                    httpResponse = (HttpWebResponse)e.Response;
-                    Debug.Log("----------------- ERROR : " + e);
-                    //unlock api + database
-                    apiLocked = false;
-                    DBHelper.instance.DatabaseLocked = false;
-
-                }
-
-                if (!TryGetStatusCode(httpResponse, out statusCode))
-                {
-                    Debug.Log("HTTP POST failed: no response from server.");
-                    UnlockApiAndDatabase();
-                    yield break;
-                }
-
-                // if successful
-                if (httpResponse.StatusCode == HttpStatusCode.Created)
-                {
-                    Debug.Log("----------------- HTTP POST successful : " + (int)statusCode + " " + statusCode);
-                    apiLocked = false;
-                    // created on api, insert to local db
-                    DBHelper.instance.InsertUser(user);
-                    yield return new WaitUntil(() => !DBHelper.instance.DatabaseLocked);
-
-                    // attempt to login newly created user
-                    AccountManager account = UnityEngine.Object.FindAnyObjectByType<AccountManager>();
-                    account.LoginUser(user.UserName, user.Password);
-
-                    //SceneManager.LoadScene(Constants.SCENE_NAME_level_00_loading);
-                }
-                // failed
-                else
-                {
-                    Debug.Log("----------------- HTTP POST failed : " + (int)statusCode + " " + statusCode);
-                    //unlock api + database
-                    apiLocked = false;
-                    DBHelper.instance.DatabaseLocked = false;
-                }
+                completed?.Invoke(ApiResult<UserModel>.Fail("No account data was provided."));
+                yield break;
             }
-            else
+
+            ApiResult<string> response = null;
+            yield return SendJson(
+                Constants.API_ADDRESS_DEV_publicApiUsers,
+                UnityWebRequest.kHttpVerbPOST,
+                JsonUtility.ToJson(user),
+                false,
+                result => response = result);
+
+            if (!response.Success)
             {
-                Debug.Log("User already exists.");
-                apiLocked = false;
+                completed?.Invoke(ApiResult<UserModel>.Fail(response.Error, response.StatusCode));
+                yield break;
             }
-        }
-
-        // -------------------------------------- HTTTP GET User -------------------------------------------
-        // GET highscore by scoreid by hitting api at
-        // http://13.58.224.237/api/users/username/{username}
-        // return true if status code == 200 ok
-        // return false if status code != 200 ok
-        public static bool UserExists(string username)
-        {
-
-            HttpWebResponse httpResponse = null;
-            HttpStatusCode statusCode;
-            //List<DBHighScoreModel> dBHighScoreModels = new List<DBHighScoreModel>();
 
             try
             {
-                var httpWebRequest = (HttpWebRequest)WebRequest.Create((Constants.API_ADDRESS_DEV_publicApiUsersByUserName + username)) as HttpWebRequest;
-                httpWebRequest.Timeout = timeout;
-                httpWebRequest.ContentType = "application/json; charset=utf-8";
-                httpWebRequest.Method = "GET";
-
-                httpResponse = (HttpWebResponse)httpWebRequest.GetResponse();
-
-                //dBHighScoreModels = new List<DBHighScoreModel>();
-                //dBHighScoreModels = convertHttpWebResponseToDBHighscoreModelList(httpResponse);
+                UserModel created = JsonConvert.DeserializeObject<UserModel>(response.Value);
+                completed?.Invoke(ApiResult<UserModel>.Ok(created, response.StatusCode));
             }
-            // on web exception
-            catch (WebException e)
+            catch (Exception exception)
             {
-                httpResponse = (HttpWebResponse)e.Response;
-                Debug.Log("----------------- ERROR : " + e);
-                apiLocked = false;
-            }
-
-            if (!TryGetStatusCode(httpResponse, out statusCode))
-            {
-                UnlockApi();
-                return false;
-            }
-
-            // if successful
-            if (httpResponse.StatusCode == HttpStatusCode.OK)
-            {
-                Debug.Log("----------------- GetHighscoreByScoreid() successful : " + (int)statusCode + " " + statusCode);
-                apiLocked = false;
-                return true;
-            }
-            // failed
-            else
-            {
-                Debug.Log("----------------- GetHighscoreByScoreid() : " + (int)statusCode + " " + statusCode);
-                apiLocked = false;
-                return false;
+                completed?.Invoke(ApiResult<UserModel>.Fail("The account response was invalid: " + exception.Message));
             }
         }
 
-        // --------------------------------------Utility functions -------------------------------------------
-
-        // send HttpWebResponse to function to be serialized into List of DBHighScore objects
-        public static List<HighScoreModel> convertHttpWebResponseToDBHighscoreModelList(HttpWebResponse httpWebResponse)
+        public static IEnumerator UserExists(string username, Action<ApiResult<bool>> completed)
         {
-            Debug.Log("convertHttpWebResponseToDBHighscoreModelList(HttpWebResponse httpWebResponse)");
-            List<HighScoreModel> dBHighScoreModels = new List<HighScoreModel>();
-
-            using (var streamReader = new StreamReader(httpWebResponse.GetResponseStream()))
-            {
-                var result = streamReader.ReadToEnd();
-                dBHighScoreModels = (List<HighScoreModel>)JsonConvert.DeserializeObject<List<HighScoreModel>>(result);
-            }
-
-            return dBHighScoreModels;
+            yield return UserNameExists(username, completed);
         }
 
-        // send HttpWebResponse to function to be serialized into a single DBHighScore object
-        public static HighScoreModel ConvertHttpWebResponseToDBHighscoreModel(HttpWebResponse httpWebResponse)
+        public static IEnumerator ScoreIdExists(string scoreId, Action<ApiResult<bool>> completed)
         {
-
-            HighScoreModel dBHighScoreModels = new HighScoreModel();
-            using (var streamReader = new StreamReader(httpWebResponse.GetResponseStream()))
-            {
-                var result = streamReader.ReadToEnd();
-                dBHighScoreModels = (HighScoreModel)JsonConvert.DeserializeObject<HighScoreModel>(result);
-            }
-
-            return dBHighScoreModels;
+            string url = Constants.API_ADDRESS_DEV_publicApiHighScoresByScoreid
+                + UnityWebRequest.EscapeURL(scoreId ?? string.Empty);
+            yield return ResourceExists(url, false, completed);
         }
 
-        // check if scoreid exists by hitting api at
-        // http://13.58.224.237/api/highscores/scoreid/{scoreid}
-        // return true if status code == 200 ok
-        // return false if status code != 200 ok
-        public static bool ScoreIdExists(string scoreid)
+        public static IEnumerator UserNameExists(string username, Action<ApiResult<bool>> completed)
         {
-
-            bool exists = false;
-            HttpWebResponse httpResponse = null;
-            HttpStatusCode statusCode;
-
-            //Debug.Log("scoredidexists uri :" + (Constants.API_ADDRESS_DEV_publicApiHighScoresByScoreid + scoreid));
-
-            try
-            {
-                var httpWebRequest = (HttpWebRequest)WebRequest.Create((Constants.API_ADDRESS_DEV_publicApiHighScoresByScoreid + scoreid)) as HttpWebRequest;
-                httpWebRequest.Timeout = timeout;
-                httpWebRequest.ContentType = "application/json; charset=utf-8";
-                httpWebRequest.Method = "GET";
-
-                httpResponse = (HttpWebResponse)httpWebRequest.GetResponse();
-            }
-            // on web exception
-            catch (WebException e)
-            {
-                httpResponse = (HttpWebResponse)e.Response;
-                //Debug.Log("----------------- ERROR : " + e);
-            }
-
-            if (!TryGetStatusCode(httpResponse, out statusCode))
-            {
-                return false;
-            }
-
-            // if successful
-            if (httpResponse.StatusCode == HttpStatusCode.OK)
-            {
-                //Debug.Log("----------------- scoreid found : " + (int)statusCode + " " + statusCode);
-                exists = true;
-            }
-            // failed
-            else
-            {
-                //Debug.Log("----------------- scoreid not found : " + (int)statusCode + " " + statusCode);
-                exists = false;
-            }
-
-            return exists;
+            string url = Constants.API_ADDRESS_DEV_publicApiUsersByUserName
+                + UnityWebRequest.EscapeURL(username ?? string.Empty);
+            yield return ResourceExists(url, false, completed);
         }
 
-        // check if username exists by hitting api at
-        // http://13.58.224.237/api/users/username/{username}found
-        // return true if status code == 200 ok
-        // return false if status code != 200 ok
-        public static bool UserNameExists(string username)
+        public static IEnumerator EmailExists(string email, Action<ApiResult<bool>> completed)
         {
-            Debug.Log("username exists");
-            bool exists = false;
-            HttpWebResponse httpResponse = null;
-            //HttpStatusCode statusCode;
-            var httpWebRequest = (HttpWebRequest)WebRequest.Create(Constants.API_ADDRESS_DEV_publicApiUsersByUserName + username) as HttpWebRequest;
-            httpWebRequest.Timeout = timeout;
-            try
-            {
-                using (HttpWebResponse response = (HttpWebResponse)httpWebRequest.GetResponse())
-                {
-                    httpWebRequest.ContentType = "application/json; charset=utf-8";
-                    httpWebRequest.Method = "GET";
-                    //httpWebRequest.Headers.Add("Authorization", bearerToken);
-                    httpResponse = (HttpWebResponse)httpWebRequest.GetResponse();
-                }
-            }
-            // on web exception
-            catch (WebException e)
-            {
-                httpResponse = (HttpWebResponse)e.Response;
-                Debug.Log("----------------- ERROR : " + e);
-            }
-
-            //statusCode = httpResponse.StatusCode;
-
-            // if successful
-            if (httpResponse == null)
-            {
-                return false;
-            }
-
-            if (httpResponse.StatusCode == HttpStatusCode.OK)
-            {
-                //Debug.Log("----------------- username found : " + (int)statusCode + " " + statusCode);
-                exists = true;
-            }
-            // failed
-            else
-            {
-                //Debug.Log("----------------- username not found : " + (int)statusCode + " " + statusCode);
-                exists = false;
-            }
-
-            return exists;
+            string url = Constants.API_ADDRESS_DEV_publicApiUsersByEmail
+                + UnityWebRequest.EscapeURL(email ?? string.Empty);
+            yield return ResourceExists(url, false, completed);
         }
 
-        // check if username email by hitting api at
-        // http://13.58.224.237/api/users/username/{username}
-        // return true if status code == 200 ok
-        // return false if status code != 200 ok
-        public static bool EmailExists(string email)
+        public static IEnumerator GetUserByUserName(string username, Action<ApiResult<UserModel>> completed)
         {
-            bool exists = false;
-            HttpWebResponse httpResponse = null;
-            HttpStatusCode statusCode;
-            try
-            {
-                var httpWebRequest = (HttpWebRequest)WebRequest.Create((Constants.API_ADDRESS_DEV_publicApiUsersByEmail + email)) as HttpWebRequest;
-                httpWebRequest.Timeout = timeout;
-                httpWebRequest.ContentType = "application/json; charset=utf-8";
-                httpWebRequest.Method = "GET";
-                httpWebRequest.Headers.Add("Authorization", bearerToken);
-                httpResponse = (HttpWebResponse)httpWebRequest.GetResponse();
-            }
-            // on web exception
-            catch (WebException e)
-            {
-                httpResponse = (HttpWebResponse)e.Response;
-                Debug.Log("----------------- ERROR : " + e);
-            }
-
-            if (!TryGetStatusCode(httpResponse, out statusCode))
-            {
-                return false;
-            }
-
-            // if successful
-            if (httpResponse.StatusCode == HttpStatusCode.OK)
-            {
-                Debug.Log("----------------- username found : " + (int)statusCode + " " + statusCode);
-                exists = true;
-            }
-            // failed
-            else
-            {
-                Debug.Log("----------------- username not found : " + (int)statusCode + " " + statusCode);
-                exists = false;
-            }
-
-            return exists;
+            string url = Constants.API_ADDRESS_DEV_publicApiUsersByUserName
+                + UnityWebRequest.EscapeURL(username ?? string.Empty);
+            yield return GetJson(url, false, completed);
         }
 
-        // check if username email by hitting api at
-        // http://13.58.224.237/api/users/username/{username}
-        // return true if status code == 200 ok
-        // return false if status code != 200 ok
-        public static UserModel GetUserByUserName(string username)
+        public static IEnumerator PostReport(
+            UserReportModel userReport,
+            InputField inputField,
+            Action<ApiResult<bool>> completed = null)
         {
-            apiLocked = true;
-            UserModel user = new UserModel();
-
-            HttpWebResponse httpResponse = null;
-            HttpStatusCode statusCode;
-            try
+            if (userReport == null)
             {
-                var httpWebRequest = (HttpWebRequest)WebRequest.Create((Constants.API_ADDRESS_DEV_publicApiUsersByUserName + username)) as HttpWebRequest;
-                httpWebRequest.Timeout = timeout;
-                httpWebRequest.ContentType = "application/json; charset=utf-8";
-                httpWebRequest.Method = "GET";
-                httpWebRequest.Headers.Add("Authorization", bearerToken);
-                httpResponse = (HttpWebResponse)httpWebRequest.GetResponse();
-
-                // response
-                httpResponse = (HttpWebResponse)httpWebRequest.GetResponse();
-                using (var streamReader = new StreamReader(httpResponse.GetResponseStream()))
-                {
-                    var result = streamReader.ReadToEnd();
-                    user = (UserModel)JsonConvert.DeserializeObject<UserModel>(result);
-                }
-            }
-            // on web exception
-            catch (WebException e)
-            {
-                httpResponse = (HttpWebResponse)e.Response;
-                Debug.Log("----------------- ERROR : " + e);
-                apiLocked = false;
+                ApiResult<bool> missing = ApiResult<bool>.Fail("No report was provided.");
+                SetInputMessage(inputField, missing.Error);
+                completed?.Invoke(missing);
+                yield break;
             }
 
-            if (!TryGetStatusCode(httpResponse, out statusCode))
-            {
-                UnlockApi();
-                return user;
-            }
-
-            // if successful
-            if (httpResponse.StatusCode == HttpStatusCode.OK)
-            {
-                //Debug.Log("----------------- username found : " + (int)statusCode + " " + statusCode);
-                apiLocked = false;
-            }
-            // failed
-            else
-            {
-                Debug.Log("----------------- username not found : " + (int)statusCode + " " + statusCode);
-                apiLocked = false;
-            }
-
-            return user;
-        }
-        // -------------------------------------- HTTTP POST User report -------------------------------------------
-
-        // POST user report
-        // http://13.58.224.237/api/userreports
-        // return true if status code == 200 ok
-        // return false if status code != 200 ok
-        public static IEnumerator PostReport(UserReportModel userReport, InputField inputField)
-        {
-            yield return new WaitUntil(() => !apiLocked);
-            apiLocked = true;
-
-            //Debug.Log("PostReport");
-            if (DBHelper.instance != null)
-            {
-                yield return new WaitUntil(() => !DBHelper.instance.DatabaseLocked);
-            }
-
-            if (!String.IsNullOrEmpty(GameOptions.userName))
-            {
-                userReport.UserId = GameOptions.userid;
-                userReport.UserName = GameOptions.userName;
-
-            }
-            else
-            {
-                userReport.UserId = 999;
-                userReport.UserName = "not logged in";
-            }
+            userReport.UserId = string.IsNullOrEmpty(GameOptions.userName) ? 999 : GameOptions.userid;
+            userReport.UserName = string.IsNullOrEmpty(GameOptions.userName) ? "not logged in" : GameOptions.userName;
             userReport.Os = SystemInfo.operatingSystem;
             userReport.Device = SystemInfo.deviceModel;
             userReport.DeviceName = SystemInfo.deviceModel;
             userReport.Version = Application.version;
-            userReport.IpAddress = UtilityFunctions.GetExternalIpAdress();
-            //serialize highscore to json for HTTP POST
-            string toJson = JsonUtility.ToJson(userReport);
-            HttpWebResponse httpResponse = null;
-            HttpStatusCode statusCode;
-            try
-            {
-                var httpWebRequest = (HttpWebRequest)WebRequest.Create(Constants.API_ADDRESS_DEV_publicUserReport) as HttpWebRequest;
-                httpWebRequest.Timeout = timeout;
-                httpWebRequest.ContentType = "application/json; charset=utf-8";
-                httpWebRequest.Method = "POST";
+            userReport.IpAddress = string.Empty;
 
-                //post
-                using (var streamWriter = new StreamWriter(httpWebRequest.GetRequestStream()))
-                {
-                    string json = toJson;
-                    streamWriter.Write(json);
-                    streamWriter.Flush();
-                }
-                // response
-                httpResponse = (HttpWebResponse)httpWebRequest.GetResponse();
-                using (var streamReader = new StreamReader(httpResponse.GetResponseStream()))
-                {
-                    var result = streamReader.ReadToEnd();
-                    bearerToken = result;
-                }
-            }
-            // on web exception
-            catch (WebException e)
-            {
-                httpResponse = (HttpWebResponse)e.Response;
-                Debug.Log("----------------- ERROR : " + e);
-                inputField.text = "ERROR : " + e;
-                apiLocked = false;
-            }
+            ApiResult<string> response = null;
+            yield return SendJson(
+                Constants.API_ADDRESS_DEV_publicUserReport,
+                UnityWebRequest.kHttpVerbPOST,
+                JsonUtility.ToJson(userReport),
+                false,
+                result => response = result);
 
-            if (!TryGetStatusCode(httpResponse, out statusCode))
+            ApiResult<bool> finalResult = response.Success
+                ? ApiResult<bool>.Ok(true, response.StatusCode)
+                : ApiResult<bool>.Fail(response.Error, response.StatusCode);
+            SetInputMessage(inputField, finalResult.Success ? "Report submitted." : finalResult.Error);
+            completed?.Invoke(finalResult);
+        }
+
+        public static IEnumerator PostToken(
+            UserModel user,
+            Action<ApiResult<string>> completed = null,
+            bool loadSceneOnSuccess = true)
+        {
+            ClearSession();
+            if (user == null || string.IsNullOrWhiteSpace(user.UserName) || string.IsNullOrEmpty(user.Password))
             {
-                inputField.text = "HTTP POST failed: no response from server.";
-                UnlockApi();
+                completed?.Invoke(ApiResult<string>.Fail("Enter a username and password."));
                 yield break;
             }
 
-            // if successful
-            if (httpResponse.StatusCode == HttpStatusCode.Created)
-            {
-                Debug.Log("----------------- HTTP POST successful : " + (int)statusCode + " " + statusCode);
-                inputField.text = "HTTP POST successful : " + (int)statusCode + " " + statusCode;
-                apiLocked = false;
-            }
-            // failed
-            else
-            {
-                Debug.Log("----------------- HTTP POST failed : " + (int)statusCode + " " + statusCode);
-                inputField.text = "HTTP POST failed : " + (int)statusCode + " " + statusCode;
-                apiLocked = false;
-            }
-            yield return new WaitUntil(() => !apiLocked);
-        }
+            ApiResult<string> response = null;
+            yield return SendJson(
+                Constants.API_ADDRESS_DEV_publicApiToken,
+                UnityWebRequest.kHttpVerbPOST,
+                JsonUtility.ToJson(user),
+                false,
+                result => response = result);
 
-        // -------------------------------------- HTTTP POST Token -------------------------------------------
-
-        // POST Token by User model to get token
-        // http://13.58.224.237/api/token
-        // return true if status code == 200 ok
-        // return false if status code != 200 ok
-        public static IEnumerator PostToken(UserModel user)
-        {
-            // note * make this async. sending the request and hitting api should do
-            // this automatically.
-            // put something like if(!201 created, try again) limit to 10 tries
-            // check uniquescoreid not already inserted. hit that api first, then proceed
-            // wait for database operations
-            yield return new WaitUntil(() => !DBHelper.instance.DatabaseLocked);
-
-            //serialize highscore to json for HTTP POST
-            string toJson = JsonUtility.ToJson(user);
-            HttpWebResponse httpResponse = null;
-            HttpStatusCode statusCode;
-            try
+            if (!response.Success || string.IsNullOrWhiteSpace(response.Value))
             {
-                var httpWebRequest = (HttpWebRequest)WebRequest.Create(Constants.API_ADDRESS_DEV_publicApiToken) as HttpWebRequest;
-                httpWebRequest.Timeout = timeout;
-                httpWebRequest.ContentType = "application/json; charset=utf-8";
-                httpWebRequest.Method = "POST";
-
-                //post
-                using (var streamWriter = new StreamWriter(httpWebRequest.GetRequestStream()))
-                {
-                    string json = toJson;
-                    streamWriter.Write(json);
-                    streamWriter.Flush();
-                }
-                // response
-                httpResponse = (HttpWebResponse)httpWebRequest.GetResponse();
-                using (var streamReader = new StreamReader(httpResponse.GetResponseStream()))
-                {
-                    var result = streamReader.ReadToEnd();
-                    bearerToken = result;
-                }
-            }
-            // on web exception
-            catch (WebException e)
-            {
-                httpResponse = (HttpWebResponse)e.Response;
-                Debug.Log("----------------- ERROR : " + e);
-                UnlockApiAndDatabase();
+                string error = response.StatusCode == 400 || response.StatusCode == 401
+                    ? "Invalid username or password."
+                    : response.Error;
+                completed?.Invoke(ApiResult<string>.Fail(error, response.StatusCode));
+                yield break;
             }
 
-            if (!TryGetStatusCode(httpResponse, out statusCode))
+            bearerToken = response.Value.Trim().Trim('"');
+            GameOptions.userName = user.UserName;
+            GameOptions.userid = user.Userid;
+            GameOptions.bearerToken = bearerToken;
+            ApiResult<string> success = ApiResult<string>.Ok(bearerToken, response.StatusCode);
+            completed?.Invoke(success);
+
+            if (loadSceneOnSuccess)
             {
-                UnlockApiAndDatabase();
                 SceneManager.LoadScene(Constants.SCENE_NAME_level_00_loading);
+            }
+        }
+
+        public static IEnumerator GetLatestBuildVersion(Action<ApiResult<string>> completed)
+        {
+            yield return GetText(Constants.API_ADDRESS_DEV_publicApplicationVersionCurrent, true, completed);
+        }
+
+        public static IEnumerator GetServerMessages(Action<ApiResult<List<ServerMessageModel>>> completed)
+        {
+            yield return GetJson(Constants.API_ADDRESS_DEV_publicServerMessages, false, completed);
+        }
+
+        private static IEnumerator ResourceExists(string url, bool authenticated, Action<ApiResult<bool>> completed)
+        {
+            ApiResult<string> response = null;
+            yield return GetText(url, authenticated, result => response = result, allowNotFound: true);
+
+            if (response.StatusCode == 404)
+            {
+                completed?.Invoke(ApiResult<bool>.Ok(false, response.StatusCode));
                 yield break;
             }
 
-            // if successful
-            if (statusCode == HttpStatusCode.OK)
-            {
-                //Debug.Log("----------------- HTTP POST successful : " + (int)statusCode + " " + statusCode);
-                GameOptions.userName = user.UserName;
-                GameOptions.userid = user.Userid;
-                GameOptions.bearerToken = APIHelper.BearerToken;
-
-                UnlockApiAndDatabase();
-            }
-            // failed
-            else
-            {
-                //Debug.Log("----------------- HTTP POST failed : " + (int)statusCode + " " + statusCode);
-                GameOptions.userName = user.UserName;
-                GameOptions.userid = user.Userid;
-
-                UnlockApiAndDatabase();
-            }
-
-            yield return new WaitUntil(() => !apiLocked);
-            yield return new WaitUntil(() => DBHelper.instance == null || !DBHelper.instance.DatabaseLocked);
-            //Debug.Log(APIHelper.bearerToken);
-            //if (httpResponse.StatusCode == HttpStatusCode.OK)
-            //{
-            //    SceneManager.LoadScene(Constants.SCENE_NAME_level_00_loading);
-            //}
-            SceneManager.LoadScene(Constants.SCENE_NAME_level_00_loading);
+            completed?.Invoke(response.Success
+                ? ApiResult<bool>.Ok(true, response.StatusCode)
+                : ApiResult<bool>.Fail(response.Error, response.StatusCode));
         }
 
-        //------------------------------------- GET Application  ----------------------------------------
-        // GET highscore by scoreid by hitting api at
-        // http://13.58.224.237/api/highscores/modeid/{modeid}
-        // return true if status code == 200 ok
-        // return false if status code != 200 ok
-        public static string GetLatestBuildVersion()
+        private static IEnumerator GetJson<T>(string url, bool authenticated, Action<ApiResult<T>> completed)
         {
-            apiLocked = true;
-            HttpWebResponse httpResponse = null;
-            HttpStatusCode statusCode;
-
-            string currentVersion = "";
-            //build api request
-            string apiRequest = Constants.API_ADDRESS_DEV_publicApplicationVersionCurrent;
-
+            ApiResult<string> response = null;
+            yield return GetText(url, authenticated, result => response = result);
+            if (!response.Success)
+            {
+                completed?.Invoke(ApiResult<T>.Fail(response.Error, response.StatusCode));
+                yield break;
+            }
 
             try
             {
-                var httpWebRequest = (HttpWebRequest)WebRequest.Create(apiRequest) as HttpWebRequest;
-                httpWebRequest.Timeout = timeout;
-                httpWebRequest.ContentType = "application/json; charset=utf-8";
-                httpWebRequest.Method = "GET";
-                httpWebRequest.Headers.Add("Authorization", "Bearer " + bearerToken);
-                httpResponse = (HttpWebResponse)httpWebRequest.GetResponse();
-
-                using (var streamReader = new StreamReader(httpResponse.GetResponseStream()))
-                {
-                    var result = streamReader.ReadToEnd();
-                    //Debug.Log("result : " + result);
-                    //currentVersion = Convert.ToString(JsonConvert.DeserializeObject(result));
-                    currentVersion = result;
-                }
+                T value = JsonConvert.DeserializeObject<T>(response.Value);
+                completed?.Invoke(ApiResult<T>.Ok(value, response.StatusCode));
             }
-            // on web exception
-            catch (WebException e)
+            catch (Exception exception)
             {
-                httpResponse = (HttpWebResponse)e.Response;
-                Debug.Log("----------------- ERROR : " + e);
-                apiLocked = false;
-                return "server down";
+                completed?.Invoke(ApiResult<T>.Fail("The server returned invalid data: " + exception.Message));
             }
-
-            if (!TryGetStatusCode(httpResponse, out statusCode))
-            {
-                UnlockApi();
-                return currentVersion;
-            }
-
-            // if successful
-            if (httpResponse.StatusCode == HttpStatusCode.OK)
-            {
-                apiLocked = false;
-            }
-            // failed
-            else
-            {
-                apiLocked = false;
-            }
-            //Debug.Log("api : latest build : " + currentVersion);
-            return currentVersion;
         }
 
-        //------------------------------------- GET Application  ----------------------------------------
-        // GET highscore by scoreid by hitting api at
-        // http://13.58.224.237/api/highscores/modeid/{modeid}
-        // return true if status code == 200 ok
-        // return false if status code != 200 ok
-        public static List<ServerMessageModel> GetServerMessages()
+        private static IEnumerator GetText(
+            string url,
+            bool authenticated,
+            Action<ApiResult<string>> completed,
+            bool allowNotFound = false)
         {
-            apiLocked = true;
-            HttpWebResponse httpResponse = null;
-            HttpStatusCode statusCode;
+            yield return SendJson(url, UnityWebRequest.kHttpVerbGET, null, authenticated, completed, allowNotFound);
+        }
 
-            List<ServerMessageModel> messages = new List<ServerMessageModel>();
-            //build api request
-            string apiRequest = Constants.API_ADDRESS_DEV_publicServerMessages;
+        private static IEnumerator SendJson(
+            string url,
+            string method,
+            string json,
+            bool authenticated,
+            Action<ApiResult<string>> completed,
+            bool allowNotFound = false)
+        {
+            if (!Uri.TryCreate(url, UriKind.Absolute, out Uri requestUri)
+                || (requestUri.Scheme != Uri.UriSchemeHttp && requestUri.Scheme != Uri.UriSchemeHttps))
+            {
+                completed?.Invoke(ApiResult<string>.Fail("The network service address is invalid."));
+                yield break;
+            }
 
-            //int numResults = 0;
+            object requestOwner = new object();
+            float lockDeadline = Time.realtimeSinceStartup + LockTimeoutSeconds;
+            while (activeRequestOwner != null && Time.realtimeSinceStartup < lockDeadline)
+            {
+                yield return null;
+            }
+
+            if (activeRequestOwner != null)
+            {
+                completed?.Invoke(ApiResult<string>.Fail("The network service is busy. Try again."));
+                yield break;
+            }
+
+            activeRequestOwner = requestOwner;
+            ApiResult<string> finalResult = null;
+            UnityWebRequest request = new UnityWebRequest(requestUri, method);
             try
             {
-                var httpWebRequest = (HttpWebRequest)WebRequest.Create(apiRequest) as HttpWebRequest;
-                httpWebRequest.Timeout = timeout;
-                httpWebRequest.ContentType = "application/json; charset=utf-8";
-                httpWebRequest.Method = "GET";
-                //httpWebRequest.Headers.Add("Authorization", "Bearer " + bearerToken);
-                httpResponse = (HttpWebResponse)httpWebRequest.GetResponse();
+                request.downloadHandler = new DownloadHandlerBuffer();
+                request.timeout = RequestTimeoutSeconds;
+                request.SetRequestHeader("Accept", "application/json");
 
-                using (var streamReader = new StreamReader(httpResponse.GetResponseStream()))
+                if (json != null)
                 {
-                    var result = streamReader.ReadToEnd();
-                    //Debug.Log("result : " + result);
-                    messages = (List<ServerMessageModel>)JsonConvert.DeserializeObject<List<ServerMessageModel>>(result);
+                    request.uploadHandler = new UploadHandlerRaw(Encoding.UTF8.GetBytes(json));
+                    request.SetRequestHeader("Content-Type", "application/json; charset=utf-8");
+                }
+
+                if (authenticated && !string.IsNullOrEmpty(bearerToken))
+                {
+                    request.SetRequestHeader("Authorization", "Bearer " + bearerToken);
+                }
+
+                yield return request.SendWebRequest();
+                long statusCode = request.responseCode;
+                string responseText = request.downloadHandler?.text ?? string.Empty;
+                bool successful = request.result == UnityWebRequest.Result.Success
+                    && statusCode >= 200
+                    && statusCode < 300;
+
+                if (successful)
+                {
+                    finalResult = ApiResult<string>.Ok(responseText, statusCode);
+                }
+                else if (allowNotFound && statusCode == 404)
+                {
+                    finalResult = ApiResult<string>.Fail("Not found.", statusCode);
+                }
+                else
+                {
+                    finalResult = ApiResult<string>.Fail(GetRequestError(request, statusCode), statusCode);
                 }
             }
-            // on web exception
-            catch (WebException e)
+            finally
             {
-                httpResponse = (HttpWebResponse)e.Response;
-                Debug.Log("----------------- ERROR : " + e);
-                apiLocked = false;
-            }
-            //Debug.Log(httpResponse.StatusCode);
-            if (!TryGetStatusCode(httpResponse, out statusCode))
-            {
-                UnlockApi();
-                return messages;
+                request.Dispose();
+                if (ReferenceEquals(activeRequestOwner, requestOwner))
+                {
+                    activeRequestOwner = null;
+                }
             }
 
-            // if successful
-            if (httpResponse.StatusCode == HttpStatusCode.OK)
-            {
-                //Debug.Log("----------------- GetHighscoreCountByModeid() successful : " + (int)statusCode + " " + statusCode);
-                apiLocked = false;
-            }
-            // failed
-            else
-            {
-                //Debug.Log("----------------- GetHighscoreCountByModeid() : " + (int)statusCode + " " + statusCode);
-                apiLocked = false;
-            }
-            //Debug.Log("api : latest build : " + currentVersion);
-            //Debug.Log("messages : " + messages);
-            return messages;
+            completed?.Invoke(finalResult ?? ApiResult<string>.Fail("The request did not complete."));
         }
 
-        public static string BearerToken { get => bearerToken; }
-        public static bool ApiLocked { get => apiLocked; set => apiLocked = value; }
+        private static string GetRequestError(UnityWebRequest request, long statusCode)
+        {
+            if (statusCode == 400 || statusCode == 401)
+            {
+                return "The request was rejected.";
+            }
+
+            if (statusCode == 403)
+            {
+                return "This account is not authorized for that action.";
+            }
+
+            if (statusCode == 404)
+            {
+                return "The requested resource was not found.";
+            }
+
+            if (statusCode >= 500)
+            {
+                return "The server is temporarily unavailable.";
+            }
+
+            return request.result == UnityWebRequest.Result.ConnectionError
+                ? "Could not connect to the server."
+                : "The request failed. Try again.";
+        }
+
+        private static void SetInputMessage(InputField inputField, string message)
+        {
+            if (inputField != null)
+            {
+                inputField.text = message;
+            }
+        }
+
+        private static IEnumerator SetScoreSubmittedWhenAvailable(string scoreId, bool submitted)
+        {
+            float deadline = Time.realtimeSinceStartup + 5f;
+            while (DBHelper.instance != null
+                && DBHelper.instance.DatabaseLocked
+                && Time.realtimeSinceStartup < deadline)
+            {
+                yield return null;
+            }
+
+            if (DBHelper.instance == null || DBHelper.instance.DatabaseLocked)
+            {
+                Debug.LogWarning("Could not update the local submission state for score " + scoreId + ".");
+                yield break;
+            }
+
+            DBHelper.instance.setGameScoreSubmitted(scoreId, submitted);
+        }
     }
 }

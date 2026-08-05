@@ -3,7 +3,6 @@ using Assets.Scripts.restapi;
 using Assets.Scripts.Utility;
 using System;
 using System.Collections;
-using System.Net;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.SceneManagement;
@@ -15,8 +14,6 @@ public class AccountManager : MonoBehaviour
     string errorMessageEmail = "";
     string errorMessageUserName = "";
 
-    UserModel user;
-    APIConnector apiConnector;
     //buttonobject names
     const string checkEmailButtonName = "checkEmail";
     const string checkUserNameButtonName = "checkUserName";
@@ -113,7 +110,6 @@ public class AccountManager : MonoBehaviour
 
     void Awake()
     {
-        apiConnector = UnityEngine.Object.FindAnyObjectByType<APIConnector>();
     }
 
     private void Start()
@@ -126,6 +122,15 @@ public class AccountManager : MonoBehaviour
 
         UiSelectionAdapter.EnsureInputSystemUiModule();
         ResolveUiReferences();
+
+        if (usernameInputField != null
+            && string.IsNullOrWhiteSpace(usernameInputField.text)
+            && !string.IsNullOrWhiteSpace(GameOptions.userName)
+            && !GameOptions.userName.Equals(UserAccountManager.GuestUsername, StringComparison.OrdinalIgnoreCase))
+        {
+            usernameInputField.text = GameOptions.userName;
+            userNameInput = GameOptions.userName;
+        }
 
         SetMessage("");
 
@@ -479,46 +484,95 @@ public class AccountManager : MonoBehaviour
 
     public void checkUserName()
     {
-        RefreshInputValues();
-
-        bool userNameExists = APIHelper.UserNameExists(userNameInput);
-        userNameIsValid = !string.IsNullOrWhiteSpace(userNameInput)
-            && !userNameExists;
-        SetMessage(BuildCheckUserNameMessage(userNameExists));
+        StartCoroutine(CheckUserNameCoroutine());
     }
 
     public string getCheckUserName()
     {
-        string message = BuildCheckUserNameMessage(APIHelper.UserNameExists(userNameInput));
-        SetMessage(message);
-        return message;
+        checkUserName();
+        return "checking username";
     }
 
     public void createUser()
     {
+        StartCoroutine(CreateUserCoroutine());
+    }
+
+    private IEnumerator CheckUserNameCoroutine()
+    {
         RefreshInputValues();
-        bool userNameExists = APIHelper.UserNameExists(userNameInput);
+        if (string.IsNullOrWhiteSpace(userNameInput))
+        {
+            userNameIsValid = false;
+            SetMessage(BuildCheckUserNameMessage(false));
+            yield break;
+        }
+
+        SetMessage("checking username...");
+        ApiResult<bool> result = null;
+        yield return APIHelper.UserNameExists(userNameInput, value => result = value);
+        if (!result.Success)
+        {
+            userNameIsValid = false;
+            SetMessage(result.Error);
+            yield break;
+        }
+
+        userNameIsValid = !result.Value;
+        SetMessage(BuildCheckUserNameMessage(result.Value));
+    }
+
+    private IEnumerator CreateUserCoroutine()
+    {
+        RefreshInputValues();
         emailAddressIsValid = UtilityFunctions.IsValidEmail(emailInput)
             && !string.IsNullOrWhiteSpace(emailInput);
-        userNameIsValid = !string.IsNullOrWhiteSpace(userNameInput)
-            && !userNameExists;
-        SetMessage(BuildCheckEmailAddressMessage() + BuildCheckUserNameMessage(userNameExists));
-
-        if (userNameIsValid && emailAddressIsValid)
+        if (!emailAddressIsValid || string.IsNullOrWhiteSpace(userNameInput) || string.IsNullOrEmpty(passwordInput))
         {
-            UserModel user = new UserModel();
-
-            user.Email = emailInput;
-            user.UserName = userNameInput;
-            user.Password = passwordInput;
-            user.FirstName = firstNameInput;
-            user.LastName = lastNameInput;
-            user.IpAddress = GetExternalIpAdress();
-            user.SignUpDate = DateTime.Now.ToString();
-            user.LastLogin = DateTime.Now.ToString();
-
-            apiConnector.CreateNewUser(user);
+            string passwordMessage = string.IsNullOrEmpty(passwordInput) ? "\npassword is required" : string.Empty;
+            SetMessage(BuildCheckEmailAddressMessage() + passwordMessage);
+            yield break;
         }
+
+        SetMessage("checking username...");
+        ApiResult<bool> existsResult = null;
+        yield return APIHelper.UserNameExists(userNameInput, value => existsResult = value);
+        if (!existsResult.Success)
+        {
+            SetMessage(existsResult.Error);
+            yield break;
+        }
+
+        userNameIsValid = !existsResult.Value;
+        if (!userNameIsValid)
+        {
+            SetMessage(BuildCheckUserNameMessage(true));
+            yield break;
+        }
+
+        UserModel newUser = new UserModel
+        {
+            Email = emailInput,
+            UserName = userNameInput,
+            Password = passwordInput,
+            FirstName = firstNameInput,
+            LastName = lastNameInput,
+            IpAddress = string.Empty,
+            SignUpDate = DateTime.UtcNow.ToString("o"),
+            LastLogin = DateTime.UtcNow.ToString("o")
+        };
+
+        SetMessage("creating account...");
+        ApiResult<UserModel> createResult = null;
+        yield return APIHelper.PostUser(newUser, value => createResult = value);
+        if (!createResult.Success)
+        {
+            SetMessage(createResult.StatusCode == 409 ? "username already exists" : createResult.Error);
+            yield break;
+        }
+
+        newUser.Userid = createResult.Value != null ? createResult.Value.Userid : newUser.Userid;
+        yield return LoginUserCoroutine(newUser.UserName, newUser.Password, newUser);
     }
 
     public void LoginUser()
@@ -532,72 +586,49 @@ public class AccountManager : MonoBehaviour
 
     private IEnumerator LoginUserCoroutine()
     {
-        float startTime;
-        float timeout = 10.0f;
-
         RefreshInputValues();
-        SetMessage(BuildLoginUserNameMessage(userNameInput, APIHelper.UserNameExists(userNameInput)));
-        UserModel user = APIHelper.GetUserByUserName(userNameInput);
-
-        // 10 second time out for all internet calls is a good idea
-        startTime = Time.time;
-
-        yield return new WaitUntil(() => user != null || (Time.time > startTime + timeout));
-        if (user == null)
-        {
-            yield break;
-        }
-
-        yield return new WaitUntil(IsDatabaseUnlocked);
-        yield return new WaitUntil(() => !APIHelper.ApiLocked);
-
-        // the server never returns the real password (see UsersApiController.HideUserDetails) -
-        // authentication is done with what the player actually typed, not whatever GetUserByUserName
-        // handed back.
-        user.Password = passwordInput;
-        StartCoroutine(APIHelper.PostToken(user));
-        startTime = Time.time;
-
-        // add 10 second timeout
-        yield return new WaitUntil(() => APIHelper.BearerToken != null || (Time.time > startTime + timeout));
-
-        // if local user doesnt exists, insert locally
-        InsertLocalUserIfMissing(user);
+        yield return LoginUserCoroutine(userNameInput, passwordInput, null);
     }
 
     private IEnumerator LoginUserCoroutine(string username, string password)
     {
-        float startTime;
-        float timeout = 10.0f;
+        yield return LoginUserCoroutine(username, password, null);
+    }
 
-        RefreshInputValues();
-        SetMessage(BuildLoginUserNameMessage(username, APIHelper.UserNameExists(username)));
-        UserModel user = APIHelper.GetUserByUserName(username);
-
-        // 10 second time out for all internet calls is a good idea
-        startTime = Time.time;
-
-        yield return new WaitUntil(() => user != null || (Time.time > startTime + timeout));
-        if (user == null)
+    private IEnumerator LoginUserCoroutine(string username, string password, UserModel knownUser)
+    {
+        if (string.IsNullOrWhiteSpace(username) || string.IsNullOrEmpty(password))
         {
+            SetMessage("enter a username and password");
             yield break;
         }
 
-        yield return new WaitUntil(IsDatabaseUnlocked);
-        yield return new WaitUntil(() => !APIHelper.ApiLocked);
+        SetMessage("signing in...");
+        UserModel loginUser = knownUser;
+        if (loginUser == null)
+        {
+            ApiResult<UserModel> userResult = null;
+            yield return APIHelper.GetUserByUserName(username, value => userResult = value);
+            if (!userResult.Success || userResult.Value == null)
+            {
+                SetMessage(userResult.StatusCode == 404 ? "username does not exist" : userResult.Error);
+                yield break;
+            }
 
-        // the server never returns the real password (see UsersApiController.HideUserDetails) -
-        // this overload is used for auto-login right after registration, so the caller passes
-        // along the password that was just typed on the sign-up form.
-        user.Password = password;
-        StartCoroutine(APIHelper.PostToken(user));
-        startTime = Time.time;
+            loginUser = userResult.Value;
+        }
 
-        // add 10 second timeout
-        yield return new WaitUntil(() => APIHelper.BearerToken != null || (Time.time > startTime + timeout));
+        loginUser.Password = password;
+        ApiResult<string> tokenResult = null;
+        yield return APIHelper.PostToken(loginUser, value => tokenResult = value, false);
+        if (!tokenResult.Success)
+        {
+            SetMessage(tokenResult.Error);
+            yield break;
+        }
 
-        // if local user doesnt exists, insert locally
-        InsertLocalUserIfMissing(user);
+        yield return InsertLocalUserIfMissing(loginUser);
+        SceneManager.LoadScene(Constants.SCENE_NAME_level_00_loading);
     }
 
     private static bool IsDatabaseUnlocked()
@@ -605,15 +636,24 @@ public class AccountManager : MonoBehaviour
         return DBHelper.instance != null && !DBHelper.instance.DatabaseLocked;
     }
 
-    private static void InsertLocalUserIfMissing(UserModel user)
+    private static IEnumerator InsertLocalUserIfMissing(UserModel user)
     {
-        if (DBHelper.instance == null || user == null || DBHelper.instance.localUserExists(user))
+        float deadline = Time.realtimeSinceStartup + 5f;
+        while (DBHelper.instance != null
+            && DBHelper.instance.DatabaseLocked
+            && Time.realtimeSinceStartup < deadline)
         {
-            return;
+            yield return null;
         }
 
-        DBHelper.instance.DatabaseLocked = false;
-        // created on api, insert to local db
+        if (DBHelper.instance == null
+            || DBHelper.instance.DatabaseLocked
+            || user == null
+            || DBHelper.instance.localUserExists(user))
+        {
+            yield break;
+        }
+
         DBHelper.instance.InsertUser(user);
     }
 
@@ -639,12 +679,6 @@ public class AccountManager : MonoBehaviour
     public void readLastNameInput(string s)
     {
         lastNameInput = lastNameInputField == null ? s : lastNameInputField.text;
-    }
-
-    public string GetExternalIpAdress()
-    {
-        string pubIp = new WebClient().DownloadString("https://api.ipify.org");
-        return pubIp;
     }
 
     public static string MainMenuButtonName => mainMenuButtonName;

@@ -207,6 +207,7 @@ public class DBConnector : MonoBehaviour
 
     private static readonly KeyValuePair<string, string>[] CharacterProfileExpectedColumns = new[]
     {
+        new KeyValuePair<string, string>("accountId", "TEXT NOT NULL DEFAULT 'legacy'"),
         new KeyValuePair<string, string>("charid", "INTEGER"),
         new KeyValuePair<string, string>("playerName", "TEXT"),
         new KeyValuePair<string, string>("objectName", "TEXT"),
@@ -357,6 +358,36 @@ public class DBConnector : MonoBehaviour
         return dbHelper.UpdatePlayerProfileProgression(expGained, characterId);
     }
 
+    public ProgressionApplyStatus ApplyProgressionResult(
+        string resultId,
+        string accountId,
+        float experienceGained,
+        int characterId,
+        out ProgressionSnapshot snapshot)
+    {
+        snapshot = null;
+        return dbHelper == null
+            ? ProgressionApplyStatus.Failed
+            : dbHelper.ApplyProgressionResult(
+                resultId,
+                accountId,
+                experienceGained,
+                characterId,
+                out snapshot);
+    }
+
+    public List<ProgressionSnapshot> GetPendingProgressionProjections(string accountId)
+    {
+        return dbHelper == null
+            ? new List<ProgressionSnapshot>()
+            : dbHelper.GetPendingProgressionProjections(accountId);
+    }
+
+    public bool MarkProgressionProjectionApplied(string resultId)
+    {
+        return dbHelper != null && dbHelper.MarkProgressionProjectionApplied(resultId);
+    }
+
     public void savePlayerAllTimeStats(GameStats stats)
     {
         dbHelper.UpdateAllTimeStats(stats);
@@ -462,6 +493,7 @@ public class DBConnector : MonoBehaviour
 
                     "CREATE TABLE if not exists CharacterProfile(" +
                     "id   INTEGER PRIMARY KEY, " +
+                    "accountId TEXT NOT NULL DEFAULT 'legacy', " +
                     "charid   INTEGER, " +
                     "playerName   TEXT," +
                     "objectName   TEXT," +
@@ -644,6 +676,7 @@ public class DBConnector : MonoBehaviour
                     dbcmd.CommandText =
                         "CREATE TABLE if not exists CharacterProfile(" +
                         "id   INTEGER PRIMARY KEY, " +
+                        "accountId TEXT NOT NULL DEFAULT 'legacy', " +
                         "charid   INTEGER," +
                         "playerName   TEXT NOT NULL," +
                         "objectName   TEXT NOT NULL," +

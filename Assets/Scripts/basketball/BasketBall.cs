@@ -3,7 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
-using Random = System.Random;
+using Random = UnityEngine.Random;
 
 public class BasketBall : MonoBehaviour
 {
@@ -505,8 +505,7 @@ public class BasketBall : MonoBehaviour
     // ========================== shot accuracy functions ==========================================
     bool rollForCriticalShotChance(float maxPercent)
     {
-        Random random = new Random();
-        float percent = random.Next(1, 100);
+        float percent = Random.Range(1, 100);
         if (percent <= maxPercent)
         {
             GameStats.CriticalRolled++;
@@ -516,8 +515,7 @@ public class BasketBall : MonoBehaviour
     }
     bool rollForCriticalRangeChance(float maxPercent)
     {
-        Random random = new Random();
-        float percent = random.Next(1, 100);
+        float percent = Random.Range(1, 100);
 
         if (percent <= maxPercent)
         {
@@ -527,8 +525,7 @@ public class BasketBall : MonoBehaviour
     }
     bool rollForCriticalReleaseChance(float maxPercent)
     {
-        Random random = new Random();
-        float percent = random.Next(1, 100);
+        float percent = Random.Range(1, 100);
 
         if (percent <= maxPercent)
         {
@@ -611,12 +608,7 @@ public class BasketBall : MonoBehaviour
 
     private int getRandomPositiveOrNegative()
     {
-        var Random = new Random();
-        List<int> list = new List<int> { 1, -1 };
-        int finder = Random.Next(list.Count); //Then you just use this; nameDisplayString = names[finder];
-        int shotDirectionModifier = list[finder];
-
-        return shotDirectionModifier;
+        return Random.value < 0.5f ? 1 : -1;
     }
 
     // ========================== ui display ===============================

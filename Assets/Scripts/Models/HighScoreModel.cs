@@ -1,7 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Net;
-using System.Text.RegularExpressions;
 using UnityEngine;
 using Random = System.Random;
 
@@ -375,65 +373,6 @@ namespace Assets.Scripts.database
             return player.isCpu ? 1 : 0;
         }
        
-
-        public string GetExternalIpAdress()
-        {
-            //string pubIp = new WebClient().DownloadString("https://api.ipify.org");
-            //return pubIp;
-
-            // External IP Address (get your external IP locally)  
-            //UTF8Encoding utf8 = new UTF8Encoding();
-            //WebClient webClient = new WebClient();
-            //String externalIp = utf8.GetString(webClient.DownloadData(
-            //"http://whatismyip.com/automation/n09230945.asp"));
-
-            try
-            {
-                string externalIP;
-                externalIP = (new WebClient()).DownloadString("https://api.ipify.org/");
-                externalIP = (new Regex(@"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}"))
-                             .Matches(externalIP)[0].ToString();
-                return externalIP;
-            }
-            catch (Exception e)
-            {
-                Debug.Log("ERROR : " + e);
-                return null;
-            }
-
-            //return externalIp;
-        }
-
-        public bool IsConnectedToInternet()
-        {
-            try
-            {
-                using (var client = new WebClient())
-                using (client.OpenRead("http://google.com/generate_204"))
-                    return true;
-            }
-            catch (Exception e)
-            {
-                Debug.Log("ERROR : " + e);
-                return false;
-            }
-        }
-
-        private string RandomString(int length)
-        {
-            var chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-            var stringChars = new char[length];
-            var random = new Random();
-
-            for (int i = 0; i < stringChars.Length; i++)
-            {
-                stringChars[i] = chars[random.Next(chars.Length)];
-            }
-
-            var finalString = new String(stringChars);
-
-            return finalString;
-        }
 
         string generateUniqueScoreID()
         {

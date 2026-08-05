@@ -112,7 +112,7 @@ public class RacingVehicleController : MonoBehaviour
         //if (attackSpeed == 0) { attackSpeed = 0f; }
 
         screenXRange = Screen.width / 10;
-        screenYRange = Screen.width / 10;
+        screenYRange = Screen.height / 10;
 
         damageDisplayObject = GameObject.Find(damageDisplayValueName);
         damageDisplayValueText = damageDisplayObject.GetComponent<Text>();

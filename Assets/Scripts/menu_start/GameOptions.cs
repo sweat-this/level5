@@ -15,6 +15,47 @@ public static class GameOptions
     static public bool player3IsCpu;
     static public bool player4IsCpu;
 
+    public static void ConfigureSingleHumanRoster(int rosterPlayerCount, bool hasImplicitSecondCpu = false)
+    {
+        numPlayers = Math.Max(1, Math.Min(4, rosterPlayerCount));
+        numCpuPlayers = Math.Max(0, numPlayers - 1) + (hasImplicitSecondCpu ? 1 : 0);
+        player1IsCpu = false;
+        player2IsCpu = numPlayers > 1 || hasImplicitSecondCpu;
+        player3IsCpu = numPlayers > 2;
+        player4IsCpu = numPlayers > 3;
+    }
+
+    public static bool IsCpuPlayer(int playerId)
+    {
+        switch (playerId)
+        {
+            case 0: return player1IsCpu;
+            case 1: return player2IsCpu;
+            case 2: return player3IsCpu;
+            case 3: return player4IsCpu;
+            default: return false;
+        }
+    }
+
+    public static int GetHumanPlayerInputSlot(int playerId)
+    {
+        if (IsCpuPlayer(playerId))
+        {
+            return -1;
+        }
+
+        int inputSlot = 0;
+        for (int slot = 0; slot < playerId; slot++)
+        {
+            if (!IsCpuPlayer(slot))
+            {
+                inputSlot++;
+            }
+        }
+
+        return inputSlot;
+    }
+
     // selected options
     static public string characterDisplayName;
     static public string cheerleaderDisplayName;
@@ -100,6 +141,7 @@ public static class GameOptions
     static public string userName;
     static public int userid;
     static public string bearerToken;
+    static public string matchResultId;
     static public int numOfLocalUsers;
 
     static public bool tipDialogueLoadedOnStart;

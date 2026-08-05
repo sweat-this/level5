@@ -238,8 +238,7 @@ public class BehaviorPrimo : MonoBehaviour
 
     int RandomNumber(int min, int max)
     {
-        System.Random rnd = new System.Random();
-        int randNum = rnd.Next(min, max);
+        int randNum = Random.Range(min, max);
         //Debug.Log("generate randNum : " + randNum);
         return randNum;
     }

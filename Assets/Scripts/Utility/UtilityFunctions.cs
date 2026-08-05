@@ -1,9 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Net;
-using System.Net.NetworkInformation;
 using UnityEngine;
-using Ping = System.Net.NetworkInformation.Ping;
 using Random = UnityEngine.Random;
 
 namespace Assets.Scripts.Utility
@@ -35,50 +32,6 @@ namespace Assets.Scripts.Utility
         public static bool ContainsWhiteSpace(String s)
         {
             return s.Contains(" ");
-        }
-        public static bool IsConnectedToInternet()
-        {
-            string host = "www.google.com";
-            Ping p = new Ping();
-            try
-            {
-                PingReply reply = p.Send(host, 500);
-
-                if (reply.Status == IPStatus.Success)
-                {
-                    return true;
-                }
-                else
-                {
-                    return false;
-                }
-            }
-            catch (Exception e)
-            {
-                Debug.Log("ERROR : " + e);
-                return false;
-            }
-        }
-
-        public static string RandomString(int length)
-        {
-            var chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-            var stringChars = new char[length];
-            var random = new System.Random();
-
-            for (int i = 0; i < stringChars.Length; i++)
-            {
-                stringChars[i] = chars[random.Next(chars.Length)];
-            }
-
-            var finalString = new String(stringChars);
-
-            return finalString;
-        }
-        public static string GetExternalIpAdress()
-        {
-            string pubIp = new WebClient().DownloadString("https://api.ipify.org");
-            return pubIp;
         }
         public static float GetRandomFloat(float min, float max)
         {

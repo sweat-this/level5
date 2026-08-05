@@ -3,6 +3,7 @@ using Assets.Scripts.restapi;
 using System.Linq;
 using UnityEngine;
 using UnityEngine.EventSystems;
+using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
 public class LocalAccount : MonoBehaviour
@@ -65,7 +66,7 @@ public class LocalAccount : MonoBehaviour
 
             GameOptions.userName = user.UserName;
             GameOptions.userid = user.Userid;
-            StartCoroutine(APIHelper.PostToken(user));
+            SceneManager.LoadScene(Constants.SCENE_NAME_level_00_account_loginExisting);
         }
         else
         {
@@ -82,10 +83,21 @@ public class LocalAccount : MonoBehaviour
             Password = UserAccountManager.GuestPassword
         };
 
-        GameOptions.userName = user.UserName;
-        GameOptions.userid = user.Userid;
+        StartCoroutine(LoginAsGuestCoroutine(user));
+    }
 
-        StartCoroutine(APIHelper.PostToken(user));
+    private System.Collections.IEnumerator LoginAsGuestCoroutine(UserModel user)
+    {
+        ApiResult<string> result = null;
+        yield return APIHelper.PostToken(user, value => result = value, false);
+        if (!result.Success)
+        {
+            APIHelper.ClearSession();
+            GameOptions.userName = user.UserName;
+            GameOptions.userid = user.Userid;
+        }
+
+        SceneManager.LoadScene(Constants.SCENE_NAME_level_00_loading);
     }
 
     // OnClick UI

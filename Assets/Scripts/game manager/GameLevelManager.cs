@@ -90,13 +90,11 @@ public class GameLevelManager : MonoBehaviour
     private void OnEnable()
     {
         controls = PlayerControlsProvider.Controls;
-        PlayerControlsProvider.EnableGameplayMaps();
-        PlayerControlsProvider.EnableDebugMaps();
+        PlayerControlsProvider.EnableOther();
     }
     private void OnDisable()
     {
-        PlayerControlsProvider.DisableDebugMaps();
-        PlayerControlsProvider.DisableGameplayMaps();
+        PlayerControlsProvider.DisableOther();
     }
 
     private void Awake()
@@ -114,6 +112,10 @@ public class GameLevelManager : MonoBehaviour
         //GameOptions.numPlayers = 4;
         numPlayers = Mathf.Max(1, GameOptions.numPlayers);
         GameOptions.numPlayers = numPlayers;
+        if (string.IsNullOrEmpty(GameOptions.matchResultId))
+        {
+            GameOptions.matchResultId = ProgressionService.CreateResultId("match");
+        }
         EnsureCharacterObjectNames();
         if (players == null)
         {
@@ -124,10 +126,6 @@ public class GameLevelManager : MonoBehaviour
             players.Clear();
         }
         //Debug.Log("numPlayers : " + numPlayers);
-        GameOptions.player2IsCpu = true;
-        GameOptions.player3IsCpu = true;
-        GameOptions.player4IsCpu = true;
-
         // spawn locations
         _playerSpawnLocation1 = GameObject.Find("player_spawn_location1");
         _playerSpawnLocation2 = GameObject.Find("player_spawn_location2");
@@ -152,8 +150,17 @@ public class GameLevelManager : MonoBehaviour
         // if basketball doesnt exists
         if (!GameOptions.gameModeRequiresBasketball && GameOptions.gameModeHasBeenSelected) { GameOptions.enemiesEnabled = true; }
         // if player doesnt exists, spawn default Player
-        checkPlayerPrefabExists();
-        checkBasketballPrefabExists();
+        try
+        {
+            checkPlayerPrefabExists();
+            checkBasketballPrefabExists();
+        }
+        catch (Exception exception)
+        {
+            Debug.LogError($"GameLevelManager could not initialize the level: {exception.Message}");
+            enabled = false;
+            return;
+        }
         // cheerleader doesnt exists
         checkCheerleaderPrefabExists();
         //// check if player is npc in scene
@@ -200,6 +207,24 @@ public class GameLevelManager : MonoBehaviour
         if (_playerSpawnLocation1 == null || _basketballSpawnLocation == null)
         {
             Debug.LogError("GameLevelManager missing required player or basketball spawn locations.");
+            return false;
+        }
+
+        if ((numPlayers > 1 || GameOptions.gameModeSelectedId == Modes.Lockdown) && _playerSpawnLocation2 == null)
+        {
+            Debug.LogError("GameLevelManager requires player_spawn_location2 for the selected mode.");
+            return false;
+        }
+
+        if (numPlayers > 2 && _playerSpawnLocation3 == null)
+        {
+            Debug.LogError("GameLevelManager requires player_spawn_location3 for three-player games.");
+            return false;
+        }
+
+        if (numPlayers > 3 && _playerSpawnLocation4 == null)
+        {
+            Debug.LogError("GameLevelManager requires player_spawn_location4 for four-player games.");
             return false;
         }
 
@@ -408,6 +433,11 @@ public class GameLevelManager : MonoBehaviour
         _basketballPrefabAuto = Resources.Load(Constants.PREFAB_PATH_BASKETBALL_cpu) as GameObject;
         _basketballPrefab = Resources.Load(Constants.PREFAB_PATH_BASKETBALL_human) as GameObject;
 
+        if (_basketballPrefab == null || _basketballPrefabAuto == null)
+        {
+            throw new InvalidOperationException("required human or CPU basketball prefab is missing");
+        }
+
         GameObject go1 = Instantiate(_basketballPrefab, _basketballSpawnLocation.transform.position, Quaternion.identity);
         _basketball1 = go1.GetComponent<PlayerIdentifier>();
         _basketball1.setIds(_player1.pid, _player1.pid, _player1.pid, false);
@@ -501,6 +531,10 @@ public class GameLevelManager : MonoBehaviour
             playerPrefabPath1 = Constants.PREFAB_PATH_CHARACTER_human + GameOptions.characterObjectNames[0];
         }
         _playerClone1 = Resources.Load(playerPrefabPath1) as GameObject;
+        if (_playerClone1 == null)
+        {
+            throw new InvalidOperationException($"player prefab not found at Resources/{playerPrefabPath1}");
+        }
         GameObject go1 = Instantiate(_playerClone1, _playerSpawnLocation1.transform.position, Quaternion.identity);
         _player1 = go1.GetComponent<PlayerIdentifier>();
         _player1.setIds(pid, pid, pid, false);

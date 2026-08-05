@@ -9,6 +9,7 @@ using UnityEngine.UI;
 
 public class LoadManager : MonoBehaviour
 {
+    private const float DatabaseReadyTimeoutSeconds = 8f;
     [SerializeField]
     public string currentHighlightedButton;
 
@@ -40,24 +41,41 @@ public class LoadManager : MonoBehaviour
     public List<CharacterProfile> CpuPlayerSelectedData { get => cpuPlayerSelectedData; set => cpuPlayerSelectedData = value; }
 
     bool CharacterProfileTableExists = false;
-    bool CharacterProfileTableCreated = false;
 
     [SerializeField] internal bool playerDataLoaded = false;
     [SerializeField] internal bool cpuPlayerDataLoaded = false;
     [SerializeField] internal bool cheerleaderDataLoaded = false;
     [SerializeField] internal bool levelDataLoaded = false;
     [SerializeField] internal bool modeDataLoaded = false;
+    [SerializeField] private bool persistenceReady;
+    public bool PersistenceReady => persistenceReady;
     private bool sceneLoadRequested;
+    private Coroutine loadRoutine;
+    private bool failureMessageShown;
 
     private bool CheerleaderProfileTableExists;
-    private bool CheerleaderProfileTableCreated;
 
     public static LoadManager instance;
 
+    private void OnEnable()
+    {
+        PlayerControlsProvider.EnableMenuMaps();
+    }
+
+    private void OnDisable()
+    {
+        PlayerControlsProvider.DisableMenuMaps();
+    }
+
     void Awake()
     {
-        instance = this;
+        if (instance != null && instance != this)
+        {
+            Destroy(gameObject);
+            return;
+        }
 
+        instance = this;
         LoadAllData();
     }
 
@@ -78,109 +96,164 @@ public class LoadManager : MonoBehaviour
                 SceneManager.LoadScene(Constants.SCENE_NAME_level_00_start);
             }
         }
+
+        if (LoadedData.instance != null && LoadedData.instance.LoadFailed)
+        {
+            ShowLoadFailure();
+            if (PlayerControlsProvider.Controls.UINavigation.Submit.triggered)
+            {
+                failureMessageShown = false;
+                LoadAllData();
+                LoadedData.instance.Retry();
+            }
+            else if (PlayerControlsProvider.Controls.UINavigation.Cancel.triggered)
+            {
+                SceneManager.LoadScene(Constants.SCENE_NAME_level_00_account);
+            }
+        }
+    }
+
+    private void ShowLoadFailure()
+    {
+        if (failureMessageShown)
+        {
+            return;
+        }
+
+        failureMessageShown = true;
+        GameObject messageObject = GameObject.Find("messageDisplay");
+        if (messageObject != null && messageObject.TryGetComponent(out Text messageText))
+        {
+            messageText.text = "Game data could not be loaded. Submit to retry or cancel to return.";
+        }
     }
 
     public void LoadAllData()
     {
-        //yield return new WaitUntil(() => GameOptions.architectureInfoLoaded == true);
-        //Debug.Log("LoadAllData : architectureInfoLoaded : " + GameOptions.architectureInfoLoaded);
-        StartCoroutine(verifyCharacterProfileTable());
-        StartCoroutine(verifyCheerleaderProfileTable());
-        StartCoroutine(LoadGameData());
+        if (loadRoutine != null)
+        {
+            StopCoroutine(loadRoutine);
+        }
+
+        loadRoutine = StartCoroutine(LoadAllDataCoroutine());
     }
 
-    IEnumerator verifyCharacterProfileTable()
+    private IEnumerator LoadAllDataCoroutine()
     {
-        yield return new WaitUntil(IsDatabaseReady);
+        ResetLoadState();
+        float deadline = Time.realtimeSinceStartup + DatabaseReadyTimeoutSeconds;
+        while (!IsDatabaseReady() && Time.realtimeSinceStartup < deadline)
+        {
+            yield return null;
+        }
 
-        // if CharacterProfile table does exist
-        if (DBConnector.instance.tableExists("CharacterProfile")
-            && !DBHelper.instance.isTableEmpty("CharacterProfile"))
+        bool databaseReady = IsDatabaseReady();
+        if (!databaseReady)
         {
-            CharacterProfileTableExists = true;
+            Debug.LogWarning("The local database was not ready in time. Loading default catalogs.");
         }
-        // if CharacterProfile table doesnt exist, create table
-        else
+        try
         {
-            // drop table just in case of error
-            StartCoroutine(DBConnector.instance.dropDatabaseTable("CharacterProfile"));
-            //create table
-            StartCoroutine(DBConnector.instance.CreateTableCharacterProfile());
-            CharacterProfileTableCreated = true;
+            if (databaseReady)
+            {
+                bool characterTableExists = DBConnector.instance.tableExists("CharacterProfile");
+                if (characterTableExists)
+                {
+                    databaseReady = DBHelper.instance.EnsureCharacterProfilesForAccount(
+                        CharacterProgressAccountId.GetCurrent());
+                }
+
+                CharacterProfileTableExists = databaseReady
+                    && characterTableExists
+                    && DBHelper.instance.HasCharacterProfilesForAccount(CharacterProgressAccountId.GetCurrent());
+                CheerleaderProfileTableExists = DBConnector.instance.tableExists("CheerleaderProfile")
+                    && !DBHelper.instance.isTableEmpty("CheerleaderProfile");
+
+                if (databaseReady)
+                {
+                    new ProgressionService().RepairPendingJsonProjections();
+                }
+            }
+
+            playerSelectedData = CharacterProfileTableExists
+                ? loadPlayerSelectDataList()
+                : loadDefaultPlayerShooterProfiles();
+            cheerleaderSelectedData = CheerleaderProfileTableExists
+                ? loadCheerleaderSelectDataList()
+                : loadDefaultCheerleaderProfiles();
+            cpuPlayerSelectedData = loadCpuSelectDataList();
+            levelSelectedData = loadLevelSelectDataList();
+            levelCatalog = LevelCatalog.FromLevelSelected(levelSelectedData);
+            modeSelectedData = loadModeSelectDataList();
         }
+        catch (Exception exception)
+        {
+            Debug.LogError("Catalog loading failed: " + exception);
+            TryLoadFallbackData(out _);
+        }
+
+        if (databaseReady && !CharacterProfileTableExists && playerSelectedData != null && playerSelectedData.Count > 0)
+        {
+            yield return SeedCharacterTable(playerSelectedData);
+        }
+        if (databaseReady && !CheerleaderProfileTableExists && cheerleaderSelectedData != null && cheerleaderSelectedData.Count > 0)
+        {
+            yield return SeedCheerleaderTable(cheerleaderSelectedData);
+        }
+
+        persistenceReady = true;
+        loadRoutine = null;
     }
 
-    IEnumerator verifyCheerleaderProfileTable()
+    private void ResetLoadState()
     {
-        yield return new WaitUntil(IsDatabaseReady);
-
-        if (DBConnector.instance.tableExists("CheerleaderProfile")
-            && !DBHelper.instance.isTableEmpty("CheerleaderProfile"))
-        {
-            CheerleaderProfileTableExists = true;
-        }
-        // if CharacterProfile table doesnt exist, create table
-        else
-        {
-            // drop table just in case of error
-            StartCoroutine(DBConnector.instance.dropDatabaseTable("CheerleaderProfile"));
-            //create table
-            StartCoroutine( DBConnector.instance.CreateTableCheerleaderProfile());
-            CheerleaderProfileTableCreated = true;
-        }
-
+        playerDataLoaded = false;
+        cpuPlayerDataLoaded = false;
+        cheerleaderDataLoaded = false;
+        levelDataLoaded = false;
+        modeDataLoaded = false;
+        persistenceReady = false;
+        CharacterProfileTableExists = false;
+        CheerleaderProfileTableExists = false;
     }
 
-
-    IEnumerator LoadGameData()
+    public bool TryLoadFallbackData(out string error)
     {
-        yield return new WaitUntil(IsDatabaseReady);
-
-        // insert default player profiles + table did not already exits
-        if (CharacterProfileTableCreated && !CharacterProfileTableExists)
+        try
         {
             playerSelectedData = loadDefaultPlayerShooterProfiles();
-            StartCoroutine(DBHelper.instance.InsertCharacterProfile(playerSelectedData));
-        }
-        //table already exists + does NOT require default records
-        if (!CharacterProfileTableCreated && CharacterProfileTableExists)
-        {
-            playerSelectedData = loadPlayerSelectDataList();
-        }
-        // =============================================================================
-        // insert default cheerleader profiles + table did not already exits
-        if (CheerleaderProfileTableCreated && !CheerleaderProfileTableExists)
-        {
-            // load default data from prefabs
+            cpuPlayerSelectedData = loadCpuSelectDataList();
             cheerleaderSelectedData = loadDefaultCheerleaderProfiles();
-            // insert default into DB
-            StartCoroutine(DBHelper.instance.InsertCheerleaderProfile(cheerleaderSelectedData));
-        }
+            levelSelectedData = loadLevelSelectDataList();
+            levelCatalog = LevelCatalog.FromLevelSelected(levelSelectedData);
+            modeSelectedData = loadModeSelectDataList();
 
-        //table already exists + does NOT require default records
-        if (!CheerleaderProfileTableCreated && CheerleaderProfileTableExists)
+            bool complete = playerDataLoaded
+                && cpuPlayerDataLoaded
+                && cheerleaderDataLoaded
+                && levelDataLoaded
+                && modeDataLoaded;
+            error = complete ? string.Empty : "One or more required default catalogs were empty.";
+            return complete;
+        }
+        catch (Exception exception)
         {
-            cheerleaderSelectedData = loadCheerleaderSelectDataList();
+            error = exception.Message;
+            Debug.LogError("Default catalog loading failed: " + exception);
+            return false;
         }
-        //cheerleaderSelectedData = loadDefaultCheerleaderProfiles();
-        cpuPlayerSelectedData = loadCpuSelectDataList();
-        levelSelectedData = loadLevelSelectDataList();
-        levelCatalog = LevelCatalog.FromLevelSelected(levelSelectedData);
-        modeSelectedData = loadModeSelectDataList();
     }
 
-    IEnumerator InsertNewCharacterToDB(CharacterProfile character)
+    private IEnumerator SeedCharacterTable(List<CharacterProfile> defaults)
     {
-        yield return new WaitUntil(IsDatabaseUnlocked);
-        DBHelper.instance.InsertCharacterProfile(character);
+        yield return DBConnector.instance.CreateTableCharacterProfile();
+        yield return DBHelper.instance.InsertCharacterProfile(defaults);
     }
 
-    IEnumerator InsertNewCheerleaderToDB(CheerleaderProfile cheerleader)
+    private IEnumerator SeedCheerleaderTable(List<CheerleaderProfile> defaults)
     {
-        yield return new WaitUntil(IsDatabaseUnlocked);
-        DBHelper.instance.InsertCheerleaderProfile(cheerleader);
-
-        Debug.Log("cheerleader record inserted");
+        yield return DBConnector.instance.CreateTableCheerleaderProfile();
+        yield return DBHelper.instance.InsertCheerleaderProfile(defaults);
     }
 
     private static bool IsDatabaseReady()
@@ -190,14 +263,10 @@ public class LoadManager : MonoBehaviour
             && DBConnector.instance.DatabaseCreated;
     }
 
-    private static bool IsDatabaseUnlocked()
-    {
-        return DBHelper.instance != null && !DBHelper.instance.DatabaseLocked;
-    }
-
     private List<CharacterProfile> loadPlayerSelectDataList()
     {
-        List<CharacterProfileRecord> dbShootStatsList = DBHelper.instance.getCharacterProfileStats(GameOptions.userid);
+        List<CharacterProfileRecord> dbShootStatsList = DBHelper.instance.getCharacterProfileStats(GameOptions.userid)
+            ?? new List<CharacterProfileRecord>();
         CharacterProgressParityLogger.LogMismatchWarnings(characterPresetCatalog, dbShootStatsList);
         List<CharacterProfile> shooterList = new List<CharacterProfile>();
 
@@ -210,7 +279,11 @@ public class LoadManager : MonoBehaviour
              * if prefab is not in DB, insert
              * ex. create new character, need to auto insert into db
              */
-            CharacterProfile temp = obj.GetComponent<CharacterProfile>();
+            if (obj == null || !obj.TryGetComponent(out CharacterProfile temp))
+            {
+                Debug.LogError("A player selection prefab is missing CharacterProfile.");
+                continue;
+            }
 
             // if character not in database, but prefab exists -- insert into DB and add to list
             if (!dbShootStatsList.Any(item => item.PlayerId == temp.PlayerId))
@@ -218,14 +291,29 @@ public class LoadManager : MonoBehaviour
                 //isLocked = true;
                 // get default profile for chracter to be inserted
                 string defaultPath = "Prefabs/menu_start/default_shooter_profiles/player_selected_" + temp.PlayerObjectName;
-                CharacterProfile defaultTemp = Resources.Load<GameObject>(defaultPath).GetComponent<CharacterProfile>();
-                // insert to DB
-                StartCoroutine(InsertNewCharacterToDB(defaultTemp));
+                GameObject defaultObject = Resources.Load<GameObject>(defaultPath);
+                CharacterProfile defaultTemp = defaultObject != null
+                    ? defaultObject.GetComponent<CharacterProfile>()
+                    : null;
+                if (defaultTemp != null)
+                {
+                    DBHelper.instance.InsertCharacterProfile(defaultTemp);
+                }
+                else
+                {
+                    Debug.LogWarning("No default progression prefab exists for player " + temp.PlayerId + ".");
+                }
                 // add to current list to be loaded
                 dbShootStatsList.Add(CharacterProfileRecord.FromProfile(temp));
             }
 
             CharacterProfileRecord dbStats = dbShootStatsList.Find(x => x.PlayerId == temp.PlayerId);
+            if (dbStats == null)
+            {
+                Debug.LogWarning("No progression record exists for player " + temp.PlayerId + ". Using prefab defaults.");
+                shooterList.Add(temp);
+                continue;
+            }
 
             // load stats from DB, but load portrait from prefab
             temp.Accuracy2Pt = dbStats.Accuracy2Pt;
@@ -253,10 +341,7 @@ public class LoadManager : MonoBehaviour
         // sort list by  character id
         shooterList.Sort(sortByPlayerId);
 
-        if (shooterList.Count == objects.Length)
-        {
-            playerDataLoaded = true;
-        }
+        playerDataLoaded = shooterList.Count > 0;
         return shooterList;
     }
 
@@ -290,7 +375,11 @@ public class LoadManager : MonoBehaviour
         GameObject[] objects = Resources.LoadAll<GameObject>(path) as GameObject[];
         foreach (GameObject obj in objects)
         {
-            CharacterProfile temp = obj.GetComponent<CharacterProfile>();
+            if (obj == null || !obj.TryGetComponent(out CharacterProfile temp))
+            {
+                Debug.LogError("A CPU selection prefab is missing CharacterProfile.");
+                continue;
+            }
             if (temp.isCpu)
             {
                 temp.intializeCpuShooterStats();
@@ -300,10 +389,7 @@ public class LoadManager : MonoBehaviour
         // sort list by  character id
         shooterList.Sort(sortByPlayerId);
 
-        if (shooterList.Count == objects.Length)
-        {
-            cpuPlayerDataLoaded = true;
-        }
+        cpuPlayerDataLoaded = shooterList.Count > 0;
 
         return shooterList;
     }
@@ -318,18 +404,21 @@ public class LoadManager : MonoBehaviour
 
         foreach (GameObject obj in objects)
         {
-            CheerleaderProfile temp = obj.GetComponent<CheerleaderProfile>();
-            cheerList.Add(temp);
+            if (obj != null && obj.TryGetComponent(out CheerleaderProfile temp))
+            {
+                cheerList.Add(temp);
+            }
+            else
+            {
+                Debug.LogError("A default cheerleader prefab is missing CheerleaderProfile.");
+            }
         }
         // sort list by  character id
         cheerList.Sort(sortByCheerleaderId);
 
         //Debug.Log("***************************  cheerList.Count : " + cheerList.Count + "   objects.Length : " + objects.Length);
 
-        if (cheerList.Count == objects.Length)
-        {
-            cheerleaderDataLoaded = true;
-        }
+        cheerleaderDataLoaded = cheerList.Count > 0;
         return cheerList;
     }
 
@@ -342,16 +431,19 @@ public class LoadManager : MonoBehaviour
 
         foreach (GameObject obj in objects)
         {
-            CharacterProfile temp = obj.GetComponent<CharacterProfile>();
-            shooterList.Add(temp);
+            if (obj != null && obj.TryGetComponent(out CharacterProfile temp))
+            {
+                shooterList.Add(temp);
+            }
+            else
+            {
+                Debug.LogError("A default player prefab is missing CharacterProfile.");
+            }
         }
         // sort list by  character id
         shooterList.Sort(sortByPlayerId);
 
-        if (shooterList.Count == objects.Length)
-        {
-            playerDataLoaded = true;
-        }
+        playerDataLoaded = shooterList.Count > 0;
 
         return shooterList;
     }
@@ -366,7 +458,11 @@ public class LoadManager : MonoBehaviour
 
         foreach (GameObject obj in objects)
         {
-            CheerleaderProfile temp = obj.GetComponent<CheerleaderProfile>();
+            if (obj == null || !obj.TryGetComponent(out CheerleaderProfile temp))
+            {
+                Debug.LogError("A cheerleader selection prefab is missing CheerleaderProfile.");
+                continue;
+            }
             cheerList.Add(temp);
             // need to create a copy to keep prefab from changing
 
@@ -408,10 +504,7 @@ public class LoadManager : MonoBehaviour
         // sort list by  character id
         cheerList.Sort(sortByCheerleaderId);
 
-        if (cheerList.Count == objects.Length)
-        {
-            cheerleaderDataLoaded = true;
-        }
+        cheerleaderDataLoaded = cheerList.Count > 0;
 
         return cheerList;
     }
@@ -425,7 +518,11 @@ public class LoadManager : MonoBehaviour
         int counter = 0;
         foreach (GameObject obj in objects)
         {
-            LevelSelected temp = obj.GetComponent<LevelSelected>();
+            if (obj == null || !obj.TryGetComponent(out LevelSelected temp))
+            {
+                Debug.LogError("A level selection prefab is missing LevelSelected.");
+                continue;
+            }
             if(temp.IsSelectable)
             {
                 levelList.Add((LevelSelected)temp);
@@ -436,10 +533,7 @@ public class LoadManager : MonoBehaviour
         // sort list by  level id
         levelList.Sort(sortByLevelId);
 
-        if (levelList.Count == counter)
-        {
-            levelDataLoaded = true;
-        }
+        levelDataLoaded = levelList.Count > 0 && levelList.Count == counter;
 
         return levelList;
     }
@@ -453,16 +547,19 @@ public class LoadManager : MonoBehaviour
 
         foreach (GameObject obj in objects)
         {
-            StartScreenModeSelected temp = obj.GetComponent<StartScreenModeSelected>();
-            modeList.Add(temp);
+            if (obj != null && obj.TryGetComponent(out StartScreenModeSelected temp))
+            {
+                modeList.Add(temp);
+            }
+            else
+            {
+                Debug.LogError("A mode selection prefab is missing StartScreenModeSelected.");
+            }
         }
         // sort list by  mode id
         modeList.Sort(sortByModeId);
 
-        if (modeList.Count == objects.Length)
-        {
-            modeDataLoaded = true;
-        }
+        modeDataLoaded = modeList.Count > 0;
 
         return modeList;
     }
@@ -491,8 +588,11 @@ public class LoadManager : MonoBehaviour
     public IEnumerator turnOffMessageLogDisplayAfterSeconds(float seconds)
     {
         yield return new WaitForSecondsRealtime(seconds);
-        Text messageText = GameObject.Find("messageDisplay").GetComponent<Text>();
-        messageText.text = "";
+        GameObject messageObject = GameObject.Find("messageDisplay");
+        if (messageObject != null && messageObject.TryGetComponent(out Text messageText))
+        {
+            messageText.text = "";
+        }
     }
 }
 

@@ -35,7 +35,7 @@ public class PlatformCheck : MonoBehaviour
 #endif
 
 #if UNITY_STANDALONE || UNITY_EDITOR
-        QualitySettings.vSyncCount = 0;
+        QualitySettings.vSyncCount = 1;
         Application.targetFrameRate = -1;
 
         SetUiModuleState(useStandaloneInputModule: false);
