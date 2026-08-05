@@ -82,6 +82,44 @@ public class Level5CoreTests
     }
 
     [Test]
+    public void MatchSessionRotatesResultIdForEachGameplayLoad()
+    {
+        string previous = GameOptions.matchResultId;
+        try
+        {
+            string first = MatchSession.BeginNewMatch();
+            string second = MatchSession.BeginNewMatch();
+
+            Assert.That(first, Is.Not.EqualTo(second));
+            Assert.That(MatchSession.EnsureCurrentMatch(), Is.EqualTo(second));
+        }
+        finally
+        {
+            GameOptions.matchResultId = previous;
+        }
+    }
+
+    [TestCase(false, false, false, 2, CampaignNextAction.Advance)]
+    [TestCase(true, false, false, 2, CampaignNextAction.Complete)]
+    [TestCase(true, true, false, 1, CampaignNextAction.Retry)]
+    [TestCase(true, true, false, 0, CampaignNextAction.EndRun)]
+    [TestCase(false, true, false, 1, CampaignNextAction.Retry)]
+    [TestCase(false, true, false, 0, CampaignNextAction.EndRun)]
+    [TestCase(false, false, true, 0, CampaignNextAction.Retry)]
+    [TestCase(true, true, true, 0, CampaignNextAction.Retry)]
+    public void CampaignDecisionUsesOutcomeBeforeFinalLevel(
+        bool finalLevel,
+        bool winnerIsCpu,
+        bool tie,
+        int continuesRemaining,
+        CampaignNextAction expected)
+    {
+        Assert.That(
+            CampaignRoundDecision.Decide(finalLevel, winnerIsCpu, tie, continuesRemaining),
+            Is.EqualTo(expected));
+    }
+
+    [Test]
     public void AtomicFilePreservesPreviousVersionAsBackup()
     {
         string directory = Path.Combine(Path.GetTempPath(), "level5-tests-" + Guid.NewGuid().ToString("N"));

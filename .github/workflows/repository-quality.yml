@@ -28,7 +28,9 @@ jobs:
     steps:
       - name: Report missing Unity license
         if: ${{ env.UNITY_LICENSE == '' || env.UNITY_EMAIL == '' || env.UNITY_PASSWORD == '' }}
-        run: echo "::warning::Unity EditMode tests require UNITY_LICENSE, UNITY_EMAIL, and UNITY_PASSWORD repository secrets."
+        run: |
+          echo "::error::Unity tests require UNITY_LICENSE, UNITY_EMAIL, and UNITY_PASSWORD repository secrets."
+          exit 1
 
       - uses: actions/checkout@v4
         if: ${{ env.UNITY_LICENSE != '' && env.UNITY_EMAIL != '' && env.UNITY_PASSWORD != '' }}
@@ -54,9 +56,26 @@ jobs:
           githubToken: ${{ secrets.GITHUB_TOKEN }}
           checkName: Unity EditMode test results
 
+      - name: Run Unity PlayMode tests
+        if: ${{ env.UNITY_LICENSE != '' && env.UNITY_EMAIL != '' && env.UNITY_PASSWORD != '' }}
+        id: unity-playmode-tests
+        uses: game-ci/unity-test-runner@v4
+        with:
+          testMode: playmode
+          artifactsPath: playmode-artifacts
+          githubToken: ${{ secrets.GITHUB_TOKEN }}
+          checkName: Unity PlayMode test results
+
       - name: Upload Unity test results
         if: ${{ always() && env.UNITY_LICENSE != '' && env.UNITY_EMAIL != '' && env.UNITY_PASSWORD != '' }}
         uses: actions/upload-artifact@v4
         with:
           name: Unity EditMode test results
           path: ${{ steps.unity-tests.outputs.artifactsPath }}
+
+      - name: Upload Unity PlayMode test results
+        if: ${{ always() && env.UNITY_LICENSE != '' && env.UNITY_EMAIL != '' && env.UNITY_PASSWORD != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: Unity PlayMode test results
+          path: ${{ steps.unity-playmode-tests.outputs.artifactsPath }}

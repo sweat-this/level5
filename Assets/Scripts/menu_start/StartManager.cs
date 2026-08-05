@@ -1742,7 +1742,7 @@ public class StartManager : MonoBehaviour
     // this is necessary for setting Game Rules on game manager
     private void setGameOptions()
     {
-        GameOptions.matchResultId = null;
+        MatchSession.BeginNewMatch();
         GameOptions.characterId = playerSelectedData[playerSelectedIndex].PlayerId;
         GameOptions.characterDisplayName = playerSelectedData[playerSelectedIndex].PlayerDisplayName;
         // if Wizard of Boat selected, randomly choose which one to spawn
@@ -1851,7 +1851,7 @@ public class StartManager : MonoBehaviour
         GameOptions.gameModeAllowsCpuShooters = modeSelectedData[modeSelectedIndex].GameModeAllowsCpuShooters;
 
         GameOptions.characterObjectNames = new List<string>();
-        GameOptions.characterObjectNames.Add(playerSelectedData[playerSelectedIndex].PlayerObjectName);
+        GameOptions.characterObjectNames.Add(GameOptions.characterObjectName);
         if (GameOptions.cpu1SelectedIndex != 0 && modeSelectedData[modeSelectedIndex].ModeId != Modes.Lockdown) 
         { 
             GameOptions.characterObjectNames.Add(cpuPlayerSelectedData[GameOptions.cpu1SelectedIndex].PlayerObjectName); 
@@ -1882,16 +1882,13 @@ public class StartManager : MonoBehaviour
         // zero continues left, silently.
         EndRoundData.numberOfContinues = hardcoreEnabled ? 0 : EndRoundData.DefaultContinues;
 
-        GameOptions.friendBonus3Accuracy += friendSelectedData[friendSelectedIndex].bonus3Accuracy;
-        GameOptions.friendBonus4Accuracy += friendSelectedData[friendSelectedIndex].bonus4Accuracy;
-        GameOptions.friendBonus7Accuracy += friendSelectedData[friendSelectedIndex].bonus7Accuracy;
-        GameOptions.friendBonusRelease += friendSelectedData[friendSelectedIndex].bonusRelease;
-        GameOptions.friendBonusRange += friendSelectedData[friendSelectedIndex].bonusRange;
-        GameOptions.friendBonusLuck += friendSelectedData[friendSelectedIndex].bonusLuck;
-        GameOptions.friendBonusClutch += friendSelectedData[friendSelectedIndex].bonusClutch;
-
-        //set bonus stats for friend
-        setPlayerFriendBonusStats();
+        GameOptions.friendBonus3Accuracy = friendSelectedData[friendSelectedIndex].bonus3Accuracy;
+        GameOptions.friendBonus4Accuracy = friendSelectedData[friendSelectedIndex].bonus4Accuracy;
+        GameOptions.friendBonus7Accuracy = friendSelectedData[friendSelectedIndex].bonus7Accuracy;
+        GameOptions.friendBonusRelease = friendSelectedData[friendSelectedIndex].bonusRelease;
+        GameOptions.friendBonusRange = friendSelectedData[friendSelectedIndex].bonusRange;
+        GameOptions.friendBonusLuck = friendSelectedData[friendSelectedIndex].bonusLuck;
+        GameOptions.friendBonusClutch = friendSelectedData[friendSelectedIndex].bonusClutch;
 
         // load hardcore mode highscores (for ui display) for game mode if hardcore mode enabled
         //Debug.Log("hardcore enabled : "+ GameOptions.hardcoreModeEnabled);
@@ -2255,16 +2252,6 @@ public class StartManager : MonoBehaviour
         initializeNumPlayersDisplay();
     }
 
-    private void setPlayerFriendBonusStats()
-    {
-        playerSelectedData[playerSelectedIndex].Accuracy3Pt += GameOptions.friendBonus3Accuracy;
-        playerSelectedData[playerSelectedIndex].Accuracy4Pt += GameOptions.friendBonus4Accuracy;
-        playerSelectedData[playerSelectedIndex].Accuracy7Pt += GameOptions.friendBonus7Accuracy;
-        playerSelectedData[playerSelectedIndex].Release += GameOptions.friendBonusRelease;
-        playerSelectedData[playerSelectedIndex].Range += GameOptions.friendBonusRange;
-        playerSelectedData[playerSelectedIndex].Luck += GameOptions.friendBonusLuck;
-        playerSelectedData[playerSelectedIndex].Clutch += GameOptions.friendBonusClutch;
-    }
     // ============================  public var references  ==============================
     // dont think some of these are used, keep an eye on this on refactor
     // button names

@@ -145,22 +145,22 @@ public class GameStats : MonoBehaviour
 
         if (GameOptions.trafficEnabled)
         {
-            experience *= (int)1.15f;
+            experience = Mathf.RoundToInt(experience * 1.15f);
         }
         if (GameOptions.enemiesEnabled || GameOptions.EnemiesOnlyEnabled)
         {
             experience += (MinionsKilled * 50);
             experience += (BossKilled * 150);
 
-            experience *= (int)1.25f;
+            experience = Mathf.RoundToInt(experience * 1.25f);
         }
         if (GameOptions.hardcoreModeEnabled)
         {
-            experience *= (int)1.5f;
+            experience = Mathf.RoundToInt(experience * 1.5f);
         }
         if (GameOptions.sniperEnabled)
         {
-            experience *= (int)1.25f;
+            experience = Mathf.RoundToInt(experience * 1.25f);
         }
 
         ExperienceGained = experience;
@@ -175,7 +175,7 @@ public class GameStats : MonoBehaviour
         }
         if (GameOptions.difficultySelected == 2)
         {
-            ExperienceGained *= Mathf.FloorToInt(ExperienceGained * 1.5f);
+            ExperienceGained = Mathf.RoundToInt(ExperienceGained * 1.5f);
         }
         return ExperienceGained;
     }

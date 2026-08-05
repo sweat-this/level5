@@ -18,13 +18,20 @@ public class EnemyHealth : MonoBehaviour, IDamageable
     public event Action OnHealthChanged;
     public event Action OnDied;
 
-    private void Start()
+    private void Awake()
     {
-        // if enemy controller exists
-        if (gameObject.transform.root.GetComponent<EnemyController>() != null)
+        enemyController = gameObject.transform.root.GetComponent<EnemyController>();
+    }
+
+    private void OnEnable()
+    {
+        ResetForSpawn();
+    }
+
+    public void ResetForSpawn()
+    {
+        if (enemyController != null)
         {
-            enemyController = gameObject.transform.root.GetComponent<EnemyController>();
-            // default
             if (enemyController.IsMinion)
             {
                 maxEnemyHealth = 50;
@@ -41,7 +48,10 @@ public class EnemyHealth : MonoBehaviour, IDamageable
             {
                 maxEnemyHealth += (maxEnemyHealth / 4);
             }
-            Health = maxEnemyHealth;
+
+            isDead = false;
+            health = maxEnemyHealth;
+            OnHealthChanged?.Invoke();
         }
     }
 

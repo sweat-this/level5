@@ -17,10 +17,20 @@ public class EnemyDetection : MonoBehaviour
     public int AttackPositionId { get => attackPositionId; set => attackPositionId = value; }
     public bool Attacking { get => attacking; set => attacking = value; }
 
-    private void Start()
+    private void Awake()
     {
         enemyController = GetComponent<EnemyController>();
-        playerAttackQueue = GameLevelManager.instance.PlayerController1.PlayerAttackQueue;
+    }
+
+    private void OnEnable()
+    {
+        playerSighted = false;
+        attacking = false;
+        attackPositionId = -1;
+        enemyDetectionEnabled = true;
+        playerAttackQueue = GameLevelManager.instance != null && GameLevelManager.instance.PlayerController1 != null
+            ? GameLevelManager.instance.PlayerController1.PlayerAttackQueue
+            : null;
         // if only enemies, make increase enemy sight
         if (GameOptions.EnemiesOnlyEnabled || GameOptions.enemiesEnabled)
         {
@@ -34,8 +44,21 @@ public class EnemyDetection : MonoBehaviour
         InvokeRepeating("CheckReturnToPatrolStatus", 0, 3f);
     }
 
+    private void OnDisable()
+    {
+        CancelInvoke();
+        StopAllCoroutines();
+        playerSighted = false;
+        attacking = false;
+    }
+
     void CheckPlayerDistance()
     {
+        if (playerAttackQueue == null)
+        {
+            return;
+        }
+
         // if player within enemy sight distance
         if (enemyController.DistanceFromPlayer < enemySightDistance
             && enemyDetectionEnabled)

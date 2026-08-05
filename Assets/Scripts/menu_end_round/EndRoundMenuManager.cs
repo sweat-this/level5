@@ -18,11 +18,12 @@ public class EndRoundMenuManager : MonoBehaviour
     bool currentLoserisCpu;
     bool tieGame = false;
     string nextLevelName;
+    int completedLevelIndex;
+    int targetLevelIndex;
     List<LevelSelected> levelsList = new List<LevelSelected>();
-    [SerializeField]
-    GameStats gameStats = new GameStats();
     bool isGameSaved = false;
-    bool finalLevel = false;
+    bool campaignEnded;
+    CampaignNextAction nextAction;
 
     public static EndRoundMenuManager instance;
 
@@ -36,56 +37,62 @@ public class EndRoundMenuManager : MonoBehaviour
         PlayerControlsProvider.DisableMenuMaps();
     }
 
+    private void OnDestroy()
+    {
+        if (instance == this)
+        {
+            instance = null;
+        }
+    }
+
     private void Awake()
     {
         instance = this;
     }
     void Start()
     {
-        if (EndRoundData.currentLevelIndex == GameOptions.levelsList.Count-1)
+        levelsList = GameOptions.levelsList ?? new List<LevelSelected>();
+        if (levelsList.Count == 0 || PlayerData.instance == null || PlayerData.instance.CampaignGameStats == null)
         {
-            finalLevel = true;
-            UiSelectionAdapter.TrySelect(EndRoundUIObjects.instance.startMenuButton.gameObject);
-            EndRoundUIObjects.instance.nextInfoObject.SetActive(false);
-            EndRoundUIObjects.instance.endMessageObject.SetActive(true);
-            EndRoundUIObjects.instance.endMessageText.text = "You beat all the Computahs. Sick.";
-            saveGame();
+            Debug.LogError("EndRoundMenuManager cannot display campaign results because campaign state is unavailable.");
+            SceneManager.LoadScene(Constants.SCENE_NAME_level_00_start);
+            return;
         }
+
         currentWinnerScore = EndRoundData.currentRoundWinnerScore;
         currentLoserScore = EndRoundData.currentRoundLoserScore;        
         currentWinnerisCpu = EndRoundData.currentRoundWinnerIsCpu;
         currentLoserisCpu = EndRoundData.currentRoundLoserIsCpu;
-
-        // test trip tie
-        //currentWinnerScore = currentLoserScore;
+        tieGame = currentWinnerScore == currentLoserScore;
+        completedLevelIndex = Mathf.Clamp(EndRoundData.currentLevelIndex, 0, levelsList.Count - 1);
+        bool completedFinalLevel = completedLevelIndex == levelsList.Count - 1;
+        nextAction = CampaignRoundDecision.Decide(
+            completedFinalLevel,
+            currentWinnerisCpu,
+            tieGame,
+            EndRoundData.numberOfContinues);
+        campaignEnded = nextAction == CampaignNextAction.Complete || nextAction == CampaignNextAction.EndRun;
         
         PlayerData.instance.CampaignGameStats.campaignGamesPlayed++;
-        if (currentWinnerScore == currentLoserScore)
+        if (tieGame)
         {
-            tieGame = true;
             PlayerData.instance.CampaignGameStats.campaignTies++;
         }
-        if (currentWinnerisCpu && !tieGame)
+        else if (currentWinnerisCpu)
         {
             PlayerData.instance.CampaignGameStats.campaignLosses++;
         }
-        if (!currentWinnerisCpu && !tieGame)
+        else
         {
             PlayerData.instance.CampaignGameStats.campaignWins++;
         }
 
-        // game over
-        if (EndRoundData.numberOfContinues <= 0 && currentWinnerisCpu && !tieGame && !finalLevel)
+        LoadData();
+        ConfigureOutcomeUi();
+        if (campaignEnded)
         {
-            //PlayerData.instance.CampaignGameStats.campaignLosses++;
-            //EndRoundUIObjects.instance.continueOptionObject.SetActive(false);
-            UiSelectionAdapter.TrySelect(EndRoundUIObjects.instance.startMenuButton.gameObject);
-            EndRoundUIObjects.instance.nextInfoObject.SetActive(false);
-            EndRoundUIObjects.instance.endMessageObject.SetActive(true);
-            EndRoundUIObjects.instance.endMessageText.text = "You suck. go sit on the tire.";
             saveGame();
         }
-        LoadData();
         UiSelectionAdapter.EnsureInputSystemUiModule();
         RegisterMenuButtonCallbacks();
         UiSelectionAdapter.EnsureSelected(GetDefaultSelectedButton());
@@ -161,7 +168,7 @@ public class EndRoundMenuManager : MonoBehaviour
             return null;
         }
 
-        if (finalLevel || (EndRoundData.numberOfContinues <= 0 && currentWinnerisCpu && !tieGame))
+        if (campaignEnded)
         {
             return uiObjects.startMenuButton != null ? uiObjects.startMenuButton.gameObject : null;
         }
@@ -171,36 +178,42 @@ public class EndRoundMenuManager : MonoBehaviour
 
     public void saveGame()
     {
-        isGameSaved = true;
+        if (isGameSaved || PlayerData.instance == null || PlayerData.instance.CampaignGameStats == null)
+        {
+            return;
+        }
+
         HighScoreModel dBHighScoreModel = new();
         HighScoreModel user = dBHighScoreModel.convertCampaignBasketBallStatsToModel(PlayerData.instance.CampaignGameStats);
-
-        if (GameObject.FindGameObjectWithTag("database") != null)//&& basketBallStats.TimePlayed > 60)
+        bool savedLocally = DBConnector.instance != null && DBConnector.instance.savePlayerGameStats(user);
+        isGameSaved = savedLocally || PendingMatchPersistenceStore.QueueScore(user);
+        if (!isGameSaved)
         {
-            DBConnector.instance.savePlayerGameStats(user);
-            // if username is logged in
-            if (!string.IsNullOrEmpty(GameOptions.userName) && GameOptions.userid != 0)
-            {
-                StartCoroutine(APIHelper.PostHighscore(user));
-            }
-            // if user not logged in, set submitted score to false
-            else
-            {
-                DBHelper.instance.setGameScoreSubmitted(user.Scoreid, false);
-            }
+            Debug.LogError("Campaign results could not be saved or queued.");
+            return;
         }
+
+        if (savedLocally && !string.IsNullOrEmpty(GameOptions.userName) && GameOptions.userid != 0)
+        {
+            StartCoroutine(APIHelper.PostHighscore(user));
+        }
+        else if (savedLocally && DBHelper.instance != null)
+        {
+            DBHelper.instance.setGameScoreSubmitted(user.Scoreid, false);
+        }
+
         Destroy(PlayerData.instance.GetComponent<GameStats>());
         PlayerData.instance.CampaignGameStats = PlayerData.instance.gameObject.AddComponent<GameStats>();
     }
 
      void LoadData()
-    {
-        EndRoundData.levelsList = GameOptions.levelsList;
-        EndRoundData.currentLevelIndex = GameOptions.levelSelectedIndex;
+     {
+        EndRoundData.levelsList = levelsList;
+        LevelSelected completedLevel = levelsList[completedLevelIndex];
         // cpu wins
         if (currentWinnerisCpu)
         {
-            EndRoundUIObjects.instance.currentRoundWinnerImage.sprite = EndRoundData.levelsList[EndRoundData.currentLevelIndex - 1].CpuPlayerWinImage;
+            EndRoundUIObjects.instance.currentRoundWinnerImage.sprite = completedLevel.CpuPlayerWinImage;
             EndRoundUIObjects.instance.currentRoundLoserImage.sprite = EndRoundData.currentRoundPlayerLoserImage;
             EndRoundUIObjects.instance.currentRoundWinnerIsCpu.text = "CPU";
             EndRoundUIObjects.instance.currentRoundLoserIsCpu.text = "Player 1";
@@ -209,82 +222,107 @@ public class EndRoundMenuManager : MonoBehaviour
         if (!currentWinnerisCpu || tieGame)
         {
             EndRoundUIObjects.instance.currentRoundWinnerImage.sprite = EndRoundData.currentRoundPlayerWinnerImage;
-            EndRoundUIObjects.instance.currentRoundLoserImage.sprite = EndRoundData.levelsList[EndRoundData.currentLevelIndex - 1].CpuPlayerLoseImage;
+            EndRoundUIObjects.instance.currentRoundLoserImage.sprite = completedLevel.CpuPlayerLoseImage;
             EndRoundUIObjects.instance.currentRoundWinnerIsCpu.text = "Player 1";
             EndRoundUIObjects.instance.currentRoundLoserIsCpu.text = "CPU";
         }
-        // tie | text
-        if(tieGame)
+        if (tieGame)
         {
-            GameOptions.levelSelectedIndex--;
             EndRoundUIObjects.instance.winnerText.text = "tie";
             EndRoundUIObjects.instance.loserText.text = "tie";
-            EndRoundUIObjects.instance.nextRoundLevel.text = EndRoundData.levelsList[EndRoundData.currentLevelIndex - 1].LevelDisplayName;
-            EndRoundUIObjects.instance.nextRoundOpponent.text = EndRoundData.levelsList[EndRoundData.currentLevelIndex - 1].CpuPlayer.GetComponent<CharacterProfile>().PlayerDisplayName;
-            nextLevelName =
-            EndRoundData.levelsList[EndRoundData.currentLevelIndex - 1].LevelObjectName + "_" + EndRoundData.levelsList[EndRoundData.currentLevelIndex - 1].LevelDescription;
+        }
 
-        }
-        // cpu win | no continues | no tie
-        if (currentWinnerisCpu && !tieGame && EndRoundData.numberOfContinues > 0)
+        targetLevelIndex = nextAction == CampaignNextAction.Advance
+            ? Mathf.Clamp(EndRoundData.nextLevelIndex, 0, levelsList.Count - 1)
+            : completedLevelIndex;
+
+        if (!campaignEnded)
         {
-            GameOptions.levelSelectedIndex--;
-            EndRoundUIObjects.instance.nextRoundText.text = !tieGame ? "Try Again" : "Tie Game";
-            EndRoundUIObjects.instance.nextRoundLevel.text = EndRoundData.levelsList[EndRoundData.currentLevelIndex - 1].LevelDisplayName;
-            EndRoundUIObjects.instance.nextRoundOpponent.text = EndRoundData.levelsList[EndRoundData.currentLevelIndex - 1].CpuPlayer.GetComponent<CharacterProfile>().PlayerDisplayName;
-            EndRoundUIObjects.instance.continueNumber.text = EndRoundData.numberOfContinues.ToString();
-            nextLevelName =
-            EndRoundData.levelsList[EndRoundData.currentLevelIndex - 1].LevelObjectName + "_" + EndRoundData.levelsList[EndRoundData.currentLevelIndex - 1].LevelDescription;
-        }
-        // player win | no tie
-        if (!currentWinnerisCpu && !tieGame)
-        {
-            EndRoundUIObjects.instance.nextRoundText.text = !tieGame ? "Start" : "Tie Game";
-            EndRoundUIObjects.instance.nextRoundLevel.text = EndRoundData.levelsList[EndRoundData.currentLevelIndex].LevelDisplayName;
-            EndRoundUIObjects.instance.nextRoundOpponent.text = EndRoundData.levelsList[EndRoundData.currentLevelIndex].CpuPlayer.GetComponent<CharacterProfile>().PlayerDisplayName;
-            nextLevelName = EndRoundData.levelsList[EndRoundData.currentLevelIndex].LevelObjectName + "_" + EndRoundData.levelsList[EndRoundData.currentLevelIndex].LevelDescription;
+            LevelSelected targetLevel = levelsList[targetLevelIndex];
+            CharacterProfile targetCpu = targetLevel.CpuPlayer != null
+                ? targetLevel.CpuPlayer.GetComponent<CharacterProfile>()
+                : null;
+            EndRoundUIObjects.instance.nextRoundText.text = nextAction == CampaignNextAction.Advance
+                ? "Start"
+                : tieGame ? "Tie Game" : "Try Again";
+            EndRoundUIObjects.instance.nextRoundLevel.text = targetLevel.LevelDisplayName;
+            EndRoundUIObjects.instance.nextRoundOpponent.text = targetCpu != null
+                ? targetCpu.PlayerDisplayName
+                : string.Empty;
+            nextLevelName = targetLevel.LevelObjectName + "_" + targetLevel.LevelDescription;
         }
 
         EndRoundUIObjects.instance.continueNumber.text = EndRoundData.numberOfContinues.ToString();
         EndRoundUIObjects.instance.currentRoundWinnerScore.text = EndRoundData.currentRoundWinnerScore.ToString();
         EndRoundUIObjects.instance.currentRoundLoserScore.text = EndRoundData.currentRoundLoserScore.ToString();
 
-        //Debug.Log("games : " + PlayerData.instance.CampaignGameStats.campaignGamesPlayed);
-        //Debug.Log("standings : " + PlayerData.instance.CampaignGameStats.campaignWins + " - "+ PlayerData.instance.CampaignGameStats.campaignLosses+ " - "+ PlayerData.instance.CampaignGameStats.campaignTies);
+     }
+
+    private void ConfigureOutcomeUi()
+    {
+        EndRoundUIObjects ui = EndRoundUIObjects.instance;
+        ui.nextInfoObject.SetActive(!campaignEnded);
+        ui.endMessageObject.SetActive(campaignEnded);
+        if (!campaignEnded)
+        {
+            return;
+        }
+
+        ui.endMessageText.text = nextAction == CampaignNextAction.Complete
+            ? "You beat all the Computahs. Sick."
+            : "You suck. go sit on the tire.";
+        UiSelectionAdapter.TrySelect(ui.startMenuButton.gameObject);
     }
 
     public void pressNext()
     {
-
-        if (finalLevel)
+        if (campaignEnded)
         {
             if (!isGameSaved) { saveGame(); }
+            if (!isGameSaved)
+            {
+                return;
+            }
             SceneManager.LoadScene(Constants.SCENE_NAME_level_00_start);
+            return;
         }
-        if (tieGame)
+
+        if (nextAction == CampaignNextAction.Retry && currentWinnerisCpu && !tieGame)
         {
-            string currentlevelName = EndRoundData.levelsList[EndRoundData.currentLevelIndex - 1].LevelObjectName + "_" + EndRoundData.levelsList[EndRoundData.currentLevelIndex - 1].LevelDescription;
-            SceneManager.LoadScene(currentlevelName);
+            EndRoundData.numberOfContinues--;
         }
-        if (EndRoundData.numberOfContinues > 0 && currentWinnerisCpu && !tieGame)
-        {
-            if (!tieGame) { EndRoundData.numberOfContinues--;}
-            SceneManager.LoadScene(nextLevelName);
-        }
-        if (!currentWinnerisCpu)
-        {
-            SceneManager.LoadScene(nextLevelName);
-        }
+
+        ApplyLevelSelection(targetLevelIndex);
+        MatchSession.BeginNewMatch();
+        SceneManager.LoadScene(nextLevelName);
+    }
+
+    private void ApplyLevelSelection(int levelIndex)
+    {
+        LevelSelected level = levelsList[levelIndex];
+        GameOptions.levelSelectedIndex = levelIndex;
+        GameOptions.levelHasSevenPointers = level.LevelHasSevenPointers;
+        GameOptions.levelId = level.LevelId;
+        GameOptions.levelSelected = level.LevelObjectName;
+        GameOptions.levelDisplayName = level.LevelDisplayName;
     }
 
     public void pressStartMenu()
     {
         if(!isGameSaved) { saveGame(); }
+        if (!isGameSaved)
+        {
+            return;
+        }
         SceneManager.LoadScene(Constants.SCENE_NAME_level_00_start);
     }
     public void pressQuit()
     {
         if (!isGameSaved) { saveGame(); }
+        if (!isGameSaved)
+        {
+            return;
+        }
         Application.Quit();
     }
 }

@@ -97,6 +97,14 @@ public class GameLevelManager : MonoBehaviour
         PlayerControlsProvider.DisableOther();
     }
 
+    private void OnDestroy()
+    {
+        if (instance == this)
+        {
+            instance = null;
+        }
+    }
+
     private void Awake()
     {
         if (instance != null && instance != this)
@@ -112,10 +120,7 @@ public class GameLevelManager : MonoBehaviour
         //GameOptions.numPlayers = 4;
         numPlayers = Mathf.Max(1, GameOptions.numPlayers);
         GameOptions.numPlayers = numPlayers;
-        if (string.IsNullOrEmpty(GameOptions.matchResultId))
-        {
-            GameOptions.matchResultId = ProgressionService.CreateResultId("match");
-        }
+        MatchSession.EnsureCurrentMatch();
         EnsureCharacterObjectNames();
         if (players == null)
         {
@@ -276,7 +281,6 @@ public class GameLevelManager : MonoBehaviour
             _autoPlayer = GameObject.FindWithTag("autoPlayer");
 
             _autoPlayerController = _autoPlayer.GetComponent<PlayerIdentifier>().isDefensivePlayer ? null : _autoPlayer.GetComponent<AutoPlayerController>();
-            _playerHealth = _autoPlayer.GetComponentInChildren<PlayerHealth>();
             if (!_autoPlayer.GetComponent<PlayerIdentifier>().isDefensivePlayer)
             {
                 _autoPlayerController.isCPU = true;
@@ -537,6 +541,7 @@ public class GameLevelManager : MonoBehaviour
         }
         GameObject go1 = Instantiate(_playerClone1, _playerSpawnLocation1.transform.position, Quaternion.identity);
         _player1 = go1.GetComponent<PlayerIdentifier>();
+        _playerHealth = go1.GetComponentInChildren<PlayerHealth>();
         _player1.setIds(pid, pid, pid, false);
         _player1.player = go1;
         _player1.setPlayer(_player1.player);

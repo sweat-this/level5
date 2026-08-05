@@ -32,18 +32,33 @@ public class VehicleController : MonoBehaviour
     public float relativePositioning;
 
 
-    // Start is called before the first frame update
-    void Start()
+    private void Awake()
     {
         navMeshAgent = GetComponent<NavMeshAgent>();
         navMeshAgent.autoBraking = true;
         navMeshAgent.updateRotation = false;
         navMeshAgent.speed = vehicleSpeed;
+        animator = GetComponentInChildren<Animator>();
+    }
+
+    private void OnEnable()
+    {
+        ConfigureRoute();
+    }
+
+    private void Start()
+    {
+        ConfigureRoute();
+    }
+
+    private void ConfigureRoute()
+    {
+        if (GameLevelManager.instance == null || navMeshAgent == null)
+        {
+            return;
+        }
 
         bballRimVector = GameLevelManager.instance.BasketballRimVector;
-
-        animator = GetComponentInChildren<Animator>();
-        //rigidbody = GetComponent<Rigidbody>();
 
         // where is vehicle spawned in relation to rim
         relativePositioning = bballRimVector.x - gameObject.transform.position.x;
@@ -69,9 +84,10 @@ public class VehicleController : MonoBehaviour
             Flip();
         }
 
-        //Debug.Log("vehicle : " + gameObject.name);
-
-        navMeshAgent.destination = CurrentTarget;
+        if (navMeshAgent.isOnNavMesh)
+        {
+            navMeshAgent.destination = CurrentTarget;
+        }
     }
 
     // Update is called once per frame
@@ -81,13 +97,12 @@ public class VehicleController : MonoBehaviour
         //set animator speed to transition to move animation
         animator.SetFloat("speed", navMeshAgent.speed);
 
-        // if reached destination, destroy
+        // Schedule the replacement before returning this instance to its pool.
         if (!navMeshAgent.pathPending && navMeshAgent.remainingDistance < 0.1f)
         {
             // call traffic manager coroutine to respawn a new instance
             TrafficManager.instance.spawnVehicle(VehicleId, Direction, timeToRespawn);
-            resetVehicleDefaults();
-            Destroy(gameObject);
+            RuntimeObjectPool.Release(gameObject);
         }
     }
 
@@ -99,13 +114,10 @@ public class VehicleController : MonoBehaviour
         transform.localScale = thisScale;
     }
 
-    void resetVehicleDefaults()
+    public void Configure(string travelDirection, Vector3 target)
     {
-        Direction = "";
-        if (!facingRight)
-        {
-            Flip();
-        }
+        Direction = travelDirection;
+        CurrentTarget = target;
     }
 
     public int VehicleId { get => vehicleId; set => vehicleId = value; }

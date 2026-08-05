@@ -151,7 +151,7 @@ public class AutoPlayerController : MonoBehaviour
         characterProfile = GetComponent<CharacterProfile>();
         rigidBody = GetComponent<Rigidbody>();
         Shotmeter = GetComponentInChildren<ShotMeter>();
-        PlayerHealth = GameLevelManager.instance.PlayerHealth;
+        PlayerHealth = GetComponentInChildren<PlayerHealth>();
         spriteObject = transform.GetComponentInChildren<SpriteRenderer>().gameObject;
         // bball rim vector, used for relative positioning
         bballRimVector = GameLevelManager.instance.BasketballRimVector;

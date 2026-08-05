@@ -19,28 +19,44 @@ public class ProgressionService
             return result;
         }
 
+        string accountId = CharacterProgressAccountId.GetCurrent();
         if (DBConnector.instance == null)
         {
-            result.Message = "Progression could not be saved because the local database is unavailable.";
+            result.Applied = PendingProgressionStore.Queue(
+                accountId,
+                result.ResultId,
+                result.CharacterId,
+                result.ExperienceGained);
+            result.Message = result.Applied
+                ? "Progression is queued until the local database is available."
+                : "Progression could not be saved or queued.";
             Debug.LogWarning(result.Message);
             return result;
         }
 
-        string accountId = CharacterProgressAccountId.GetCurrent();
+        RepairPendingResults(accountId);
         ProgressionApplyStatus status = DBConnector.instance.ApplyProgressionResult(
             result.ResultId,
             accountId,
             result.ExperienceGained,
             result.CharacterId,
-            out ProgressionSnapshot snapshot);
+            out _);
 
         if (status == ProgressionApplyStatus.Failed)
         {
-            result.Message = "Progression could not be saved. It can be retried with the same result ID.";
+            result.Applied = PendingProgressionStore.Queue(
+                accountId,
+                result.ResultId,
+                result.CharacterId,
+                result.ExperienceGained);
+            result.Message = result.Applied
+                ? "Progression is queued for local repair."
+                : "Progression could not be saved or queued.";
             Debug.LogWarning(result.Message);
             return result;
         }
 
+        PendingProgressionStore.Remove(accountId, result.ResultId);
         result.Applied = true;
         result.Duplicate = status == ProgressionApplyStatus.Duplicate;
         bool projectionComplete = RepairPendingJsonProjections(accountId);
@@ -54,7 +70,47 @@ public class ProgressionService
 
     public bool RepairPendingJsonProjections()
     {
-        return RepairPendingJsonProjections(CharacterProgressAccountId.GetCurrent());
+        string accountId = CharacterProgressAccountId.GetCurrent();
+        bool pendingResultsRepaired = RepairPendingResults(accountId);
+        bool projectionsRepaired = RepairPendingJsonProjections(accountId);
+        return pendingResultsRepaired && projectionsRepaired;
+    }
+
+    private static bool RepairPendingResults(string accountId)
+    {
+        if (DBConnector.instance == null)
+        {
+            return false;
+        }
+
+        bool allApplied = true;
+        List<PendingProgressionResult> pendingResults;
+        try
+        {
+            pendingResults = PendingProgressionStore.GetPending(accountId);
+        }
+        catch (Exception exception)
+        {
+            Debug.LogError("Could not load pending progression results: " + exception);
+            return false;
+        }
+
+        foreach (PendingProgressionResult pending in pendingResults)
+        {
+            ProgressionApplyStatus status = DBConnector.instance.ApplyProgressionResult(
+                pending.resultId,
+                accountId,
+                pending.experienceGained,
+                pending.characterId,
+                out _);
+            if (status == ProgressionApplyStatus.Failed
+                || !PendingProgressionStore.Remove(accountId, pending.resultId))
+            {
+                allApplied = false;
+            }
+        }
+
+        return allApplied;
     }
 
     private static bool RepairPendingJsonProjections(string accountId)

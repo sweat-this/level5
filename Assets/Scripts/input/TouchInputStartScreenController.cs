@@ -124,7 +124,10 @@ public class TouchInputStartScreenController : MonoBehaviour
                 }
             }
             // on double tap, perform actions
-            if (touch.tapCount == 2 && touch.phase == TouchPhase.Began && !buttonPressed)
+            if (touch.tapCount == 2
+                && touch.phase == TouchPhase.Began
+                && !UiSelectionAdapter.InputSystemUiActive
+                && !buttonPressed)
             {
                 activateDoubleTappedButton();
             }

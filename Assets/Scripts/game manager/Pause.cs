@@ -61,11 +61,7 @@ public class Pause : MonoBehaviour
     {
         instance = this;
         progressionService = new ProgressionService();
-        if (string.IsNullOrEmpty(GameOptions.matchResultId))
-        {
-            GameOptions.matchResultId = ProgressionService.CreateResultId("match");
-        }
-        freePlayProgressionResultId = GameOptions.matchResultId;
+        freePlayProgressionResultId = MatchSession.EnsureCurrentMatch();
 #if !UNITY_ANDROID
         if (!GameOptions.battleRoyalEnabled && !GameOptions.cageMatchEnabled)
         {
@@ -286,6 +282,7 @@ public class Pause : MonoBehaviour
                 return;
             }
         }
+        MatchSession.BeginNewMatch();
         SceneManager.LoadScene(SceneManager.GetActiveScene().name);
     }
 
@@ -299,9 +296,17 @@ public class Pause : MonoBehaviour
         HighScoreModel dBHighScoreModelTemp = new HighScoreModel();
         dBHighScoreModelTemp = dBHighScoreModel.convertBasketBallStatsToModel(GameLevelManager.instance.players);
 
-        DBConnector.instance.savePlayerGameStats(dBHighScoreModelTemp);
+        bool scoreSaved = DBConnector.instance.savePlayerGameStats(dBHighScoreModelTemp);
+        if (!scoreSaved)
+        {
+            PendingMatchPersistenceStore.QueueScore(dBHighScoreModelTemp);
+        }
         // update all time stats
-        DBConnector.instance.savePlayerAllTimeStats(BasketBall.instance.GameStats);
+        bool allTimeSaved = DBConnector.instance.savePlayerAllTimeStats(BasketBall.instance.GameStats);
+        if (!allTimeSaved)
+        {
+            PendingMatchPersistenceStore.QueueAllTime(freePlayProgressionResultId, BasketBall.instance.GameStats);
+        }
         if (progressionService == null)
         {
             progressionService = new ProgressionService();

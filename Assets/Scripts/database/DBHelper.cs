@@ -216,7 +216,7 @@ public class DBHelper : MonoBehaviour
     }
 
     // insert current game's stats and score
-    public void InsertGameScore(HighScoreModel stats)
+    public bool InsertGameScore(HighScoreModel stats)
     {
         databaseLocked = true;
         try
@@ -226,6 +226,15 @@ public class DBHelper : MonoBehaviour
                 dbconn.Open(); //Open connection to the database.
                 using (IDbCommand dbcmd = dbconn.CreateCommand())
                 {
+                    dbcmd.CommandText = "SELECT COUNT(1) FROM HighScores WHERE scoreidUnique = @existingScoreId";
+                    dbcmd.Parameters.Add(new SqliteParameter("@existingScoreId", stats.Scoreid));
+                    if (Convert.ToInt32(dbcmd.ExecuteScalar()) > 0)
+                    {
+                        databaseLocked = false;
+                        return true;
+                    }
+                    dbcmd.Parameters.Clear();
+
                     // todo : add p1-p4 toal points/1ST-4TH PLACE/winnIsCpu to query and insert, then into create database
                     string sqlQuery1 =
                        "INSERT INTO HighScores( scoreidUnique, modeid, characterid, character, levelid, level, os, version ,date, time, " +
@@ -305,12 +314,13 @@ public class DBHelper : MonoBehaviour
             }
 
             databaseLocked = false;
+            return true;
         }
         catch (Exception e)
         {
             DatabaseLocked = false;
             Debug.Log("ERROR : " + e);
-            return;
+            return false;
         }
     }
 
@@ -1252,20 +1262,46 @@ public class DBHelper : MonoBehaviour
 
     // update all time stats. deltas from the current session are added atomically in SQL so
     // concurrent/overlapping calls can't lose an update the way a read-modify-write in C# could.
-    internal void UpdateAllTimeStats(GameStats stats)
+    internal bool UpdateAllTimeStats(AllTimeStatsSnapshot stats)
     {
+        if (stats == null || string.IsNullOrEmpty(stats.resultId))
+        {
+            return false;
+        }
+
         try
         {
             databaseLocked = true;
 
             using (IDbConnection dbconn = new SqliteConnection(connection))
             {
-                dbconn.Open(); //Open connection to the database.
+                dbconn.Open();
+                using (IDbTransaction transaction = dbconn.BeginTransaction())
                 using (IDbCommand dbcmd = dbconn.CreateCommand())
                 {
+                    dbcmd.Transaction = transaction;
+                    dbcmd.CommandText =
+                        "CREATE TABLE IF NOT EXISTS MatchPersistenceLedger (" +
+                        "resultId TEXT PRIMARY KEY NOT NULL, allTimeApplied INTEGER NOT NULL DEFAULT 0)";
+                    dbcmd.ExecuteNonQuery();
+
+                    dbcmd.CommandText =
+                        "SELECT COUNT(1) FROM MatchPersistenceLedger " +
+                        "WHERE resultId = @resultId AND allTimeApplied = 1";
+                    dbcmd.Parameters.Add(new SqliteParameter("@resultId", stats.resultId));
+                    if (Convert.ToInt32(dbcmd.ExecuteScalar()) > 0)
+                    {
+                        transaction.Commit();
+                        DatabaseLocked = false;
+                        return true;
+                    }
+
+                    dbcmd.Parameters.Clear();
+                    dbcmd.CommandText = "SELECT COUNT(1) FROM " + Constants.LOCAL_DATABASE_tableName_allTimeStats;
+                    bool allTimeStatsEmpty = Convert.ToInt32(dbcmd.ExecuteScalar()) == 0;
                     string sqlQuery;
 
-                    if (isTableEmpty(Constants.LOCAL_DATABASE_tableName_allTimeStats))
+                    if (allTimeStatsEmpty)
                     {
                         sqlQuery =
                        "Insert INTO " + Constants.LOCAL_DATABASE_tableName_allTimeStats + " ( twoMade, twoAtt, threeMade, threeAtt, fourMade, FourAtt, sevenMade, " +
@@ -1274,23 +1310,23 @@ public class DBHelper : MonoBehaviour
                        "@moneyBallMade, @moneyBallAtt, @totalDistance, @timePlayed, @longestShot, @enemiesKilled, @sniperHits, @sniperShots)";
 
                         dbcmd.CommandText = sqlQuery;
-                        dbcmd.Parameters.Add(new SqliteParameter("@twoMade", stats.TwoPointerMade));
-                        dbcmd.Parameters.Add(new SqliteParameter("@twoAtt", stats.TwoPointerAttempts));
-                        dbcmd.Parameters.Add(new SqliteParameter("@threeMade", stats.ThreePointerMade));
-                        dbcmd.Parameters.Add(new SqliteParameter("@threeAtt", stats.ThreePointerAttempts));
-                        dbcmd.Parameters.Add(new SqliteParameter("@fourMade", stats.FourPointerMade));
-                        dbcmd.Parameters.Add(new SqliteParameter("@fourAtt", stats.FourPointerAttempts));
-                        dbcmd.Parameters.Add(new SqliteParameter("@sevenMade", stats.SevenPointerMade));
-                        dbcmd.Parameters.Add(new SqliteParameter("@sevenAtt", stats.SevenPointerAttempts));
-                        dbcmd.Parameters.Add(new SqliteParameter("@totalPoints", stats.TotalPoints));
-                        dbcmd.Parameters.Add(new SqliteParameter("@moneyBallMade", stats.MoneyBallMade));
-                        dbcmd.Parameters.Add(new SqliteParameter("@moneyBallAtt", stats.MoneyBallAttempts));
-                        dbcmd.Parameters.Add(new SqliteParameter("@totalDistance", stats.TotalDistance));
-                        dbcmd.Parameters.Add(new SqliteParameter("@timePlayed", stats.TimePlayed));
-                        dbcmd.Parameters.Add(new SqliteParameter("@longestShot", stats.LongestShotMade));
-                        dbcmd.Parameters.Add(new SqliteParameter("@enemiesKilled", stats.EnemiesKilled));
-                        dbcmd.Parameters.Add(new SqliteParameter("@sniperHits", stats.SniperHits));
-                        dbcmd.Parameters.Add(new SqliteParameter("@sniperShots", stats.SniperShots));
+                        dbcmd.Parameters.Add(new SqliteParameter("@twoMade", stats.twoMade));
+                        dbcmd.Parameters.Add(new SqliteParameter("@twoAtt", stats.twoAtt));
+                        dbcmd.Parameters.Add(new SqliteParameter("@threeMade", stats.threeMade));
+                        dbcmd.Parameters.Add(new SqliteParameter("@threeAtt", stats.threeAtt));
+                        dbcmd.Parameters.Add(new SqliteParameter("@fourMade", stats.fourMade));
+                        dbcmd.Parameters.Add(new SqliteParameter("@fourAtt", stats.fourAtt));
+                        dbcmd.Parameters.Add(new SqliteParameter("@sevenMade", stats.sevenMade));
+                        dbcmd.Parameters.Add(new SqliteParameter("@sevenAtt", stats.sevenAtt));
+                        dbcmd.Parameters.Add(new SqliteParameter("@totalPoints", stats.totalPoints));
+                        dbcmd.Parameters.Add(new SqliteParameter("@moneyBallMade", stats.moneyBallMade));
+                        dbcmd.Parameters.Add(new SqliteParameter("@moneyBallAtt", stats.moneyBallAtt));
+                        dbcmd.Parameters.Add(new SqliteParameter("@totalDistance", stats.totalDistance));
+                        dbcmd.Parameters.Add(new SqliteParameter("@timePlayed", stats.timePlayed));
+                        dbcmd.Parameters.Add(new SqliteParameter("@longestShot", stats.longestShot));
+                        dbcmd.Parameters.Add(new SqliteParameter("@enemiesKilled", stats.enemiesKilled));
+                        dbcmd.Parameters.Add(new SqliteParameter("@sniperHits", stats.sniperHits));
+                        dbcmd.Parameters.Add(new SqliteParameter("@sniperShots", stats.sniperShots));
                     }
                     else
                     {
@@ -1319,36 +1355,44 @@ public class DBHelper : MonoBehaviour
                        " WHERE ROWID = 1 ";
 
                         dbcmd.CommandText = sqlQuery;
-                        dbcmd.Parameters.Add(new SqliteParameter("@twoMade", stats.TwoPointerMade));
-                        dbcmd.Parameters.Add(new SqliteParameter("@twoAtt", stats.TwoPointerAttempts));
-                        dbcmd.Parameters.Add(new SqliteParameter("@threeMade", stats.ThreePointerMade));
-                        dbcmd.Parameters.Add(new SqliteParameter("@threeAtt", stats.ThreePointerAttempts));
-                        dbcmd.Parameters.Add(new SqliteParameter("@fourMade", stats.FourPointerMade));
-                        dbcmd.Parameters.Add(new SqliteParameter("@fourAtt", stats.FourPointerAttempts));
-                        dbcmd.Parameters.Add(new SqliteParameter("@sevenMade", stats.SevenPointerMade));
-                        dbcmd.Parameters.Add(new SqliteParameter("@sevenAtt", stats.SevenPointerAttempts));
-                        dbcmd.Parameters.Add(new SqliteParameter("@moneyBallMade", stats.MoneyBallMade));
-                        dbcmd.Parameters.Add(new SqliteParameter("@moneyBallAtt", stats.MoneyBallAttempts));
-                        dbcmd.Parameters.Add(new SqliteParameter("@totalPoints", stats.TotalPoints));
-                        dbcmd.Parameters.Add(new SqliteParameter("@totalDistance", stats.TotalDistance));
-                        dbcmd.Parameters.Add(new SqliteParameter("@timePlayed", stats.TimePlayed));
-                        dbcmd.Parameters.Add(new SqliteParameter("@longestShot", stats.LongestShotMade));
-                        dbcmd.Parameters.Add(new SqliteParameter("@enemiesKilled", stats.EnemiesKilled));
-                        dbcmd.Parameters.Add(new SqliteParameter("@sniperHits", stats.SniperHits));
-                        dbcmd.Parameters.Add(new SqliteParameter("@sniperShots", stats.SniperShots));
+                        dbcmd.Parameters.Add(new SqliteParameter("@twoMade", stats.twoMade));
+                        dbcmd.Parameters.Add(new SqliteParameter("@twoAtt", stats.twoAtt));
+                        dbcmd.Parameters.Add(new SqliteParameter("@threeMade", stats.threeMade));
+                        dbcmd.Parameters.Add(new SqliteParameter("@threeAtt", stats.threeAtt));
+                        dbcmd.Parameters.Add(new SqliteParameter("@fourMade", stats.fourMade));
+                        dbcmd.Parameters.Add(new SqliteParameter("@fourAtt", stats.fourAtt));
+                        dbcmd.Parameters.Add(new SqliteParameter("@sevenMade", stats.sevenMade));
+                        dbcmd.Parameters.Add(new SqliteParameter("@sevenAtt", stats.sevenAtt));
+                        dbcmd.Parameters.Add(new SqliteParameter("@moneyBallMade", stats.moneyBallMade));
+                        dbcmd.Parameters.Add(new SqliteParameter("@moneyBallAtt", stats.moneyBallAtt));
+                        dbcmd.Parameters.Add(new SqliteParameter("@totalPoints", stats.totalPoints));
+                        dbcmd.Parameters.Add(new SqliteParameter("@totalDistance", stats.totalDistance));
+                        dbcmd.Parameters.Add(new SqliteParameter("@timePlayed", stats.timePlayed));
+                        dbcmd.Parameters.Add(new SqliteParameter("@longestShot", stats.longestShot));
+                        dbcmd.Parameters.Add(new SqliteParameter("@enemiesKilled", stats.enemiesKilled));
+                        dbcmd.Parameters.Add(new SqliteParameter("@sniperHits", stats.sniperHits));
+                        dbcmd.Parameters.Add(new SqliteParameter("@sniperShots", stats.sniperShots));
                     }
 
                     dbcmd.ExecuteNonQuery();
+                    dbcmd.Parameters.Clear();
+                    dbcmd.CommandText =
+                        "INSERT OR REPLACE INTO MatchPersistenceLedger(resultId, allTimeApplied) " +
+                        "VALUES(@resultId, 1)";
+                    dbcmd.Parameters.Add(new SqliteParameter("@resultId", stats.resultId));
+                    dbcmd.ExecuteNonQuery();
+                    transaction.Commit();
                 }
             }
 
             DatabaseLocked = false;
+            return true;
         }
         catch (Exception e)
         {
             DatabaseLocked = false;
             Debug.Log("ERROR : " + e);
-            return;
+            return false;
         }
     }
 

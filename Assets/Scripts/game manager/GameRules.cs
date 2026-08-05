@@ -125,9 +125,7 @@ public class GameRules : MonoBehaviour
 
         instance = this;
         progressionService = new ProgressionService();
-        matchProgressionResultId = string.IsNullOrEmpty(GameOptions.matchResultId)
-            ? ProgressionService.CreateResultId("match")
-            : GameOptions.matchResultId;
+        matchProgressionResultId = MatchSession.EnsureCurrentMatch();
         timePlayedStart = Time.time;
         inThePocketActivateValue = 0;
     }
@@ -448,11 +446,6 @@ public class GameRules : MonoBehaviour
 
     private bool SaveMatchResults(HighScoreModel user, GameStats primaryGameStats)
     {
-        if (DBConnector.instance == null)
-        {
-            return true;
-        }
-
         // dont save free play game score
         if (!matchScoreSaveCompleted && gameModeId != Modes.FreePlay && gameModeId != Modes.BeatThaComputahs)
         {
@@ -463,18 +456,19 @@ public class GameRules : MonoBehaviour
             }
             else
             {
-                DBConnector.instance.savePlayerGameStats(user);
-                matchScoreSaveCompleted = true;
+                bool savedLocally = DBConnector.instance != null
+                    && DBConnector.instance.savePlayerGameStats(user);
+                matchScoreSaveCompleted = savedLocally || PendingMatchPersistenceStore.QueueScore(user);
 
                 // if username is logged in
                 try
                 {
-                    if (!string.IsNullOrEmpty(GameOptions.userName) && GameOptions.userid != 0) //&& GameOptions.gameModeSelectedId != (int)Enums.ModeId.BeatThaComputahs))
+                    if (savedLocally && !string.IsNullOrEmpty(GameOptions.userName) && GameOptions.userid != 0)
                     {
                         StartCoroutine(APIHelper.PostHighscore(user));
                     }
                     // if user not logged in, set submitted score to false
-                    else if (DBHelper.instance != null)
+                    else if (savedLocally && DBHelper.instance != null)
                     {
                         DBHelper.instance.setGameScoreSubmitted(user.Scoreid, false);
                     }
@@ -500,8 +494,10 @@ public class GameRules : MonoBehaviour
 
         if (!matchAllTimeStatsSaved)
         {
-            DBConnector.instance.savePlayerAllTimeStats(primaryGameStats);
-            matchAllTimeStatsSaved = true;
+            bool savedLocally = DBConnector.instance != null
+                && DBConnector.instance.savePlayerAllTimeStats(primaryGameStats);
+            matchAllTimeStatsSaved = savedLocally
+                || PendingMatchPersistenceStore.QueueAllTime(matchProgressionResultId, primaryGameStats);
         }
 
         return matchScoreSaveCompleted && matchAllTimeStatsSaved;
@@ -608,14 +604,6 @@ public class GameRules : MonoBehaviour
         if (completedLevelIndex < GameOptions.levelsList.Count - 1)
         {
             int nextLevelIndex = completedLevelIndex + 1;
-            LevelSelected nextLevel = GameOptions.levelsList[nextLevelIndex];
-
-            GameOptions.levelHasSevenPointers = nextLevel.LevelHasSevenPointers;
-            GameOptions.levelId = nextLevel.LevelId;
-            GameOptions.levelSelected = nextLevel.LevelObjectName;
-            GameOptions.levelDisplayName = nextLevel.LevelDisplayName;
-            GameOptions.levelSelectedIndex = nextLevelIndex;
-
             EndRoundData.nextLevelIndex = nextLevelIndex;
         }
 

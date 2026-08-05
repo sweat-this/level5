@@ -91,7 +91,8 @@ public class TouchInputLinksScreenController : MonoBehaviour
             swipeDistance = endTouchPosition.y - startTouchPosition.y;
 
             // on double tap, perform actions
-            if (touch.tapCount == 2 && touch.phase == TouchPhase.Began 
+            if (touch.tapCount == 2 && touch.phase == TouchPhase.Began
+                && !UiSelectionAdapter.InputSystemUiActive
                 && !buttonPressed)
             {
                 buttonPressed = true;

@@ -6,6 +6,13 @@ using UnityEngine;
 
 public class EnemyController : MonoBehaviour, ICombatAgent
 {
+    private static readonly HashSet<EnemyController> ActiveEnemySet = new();
+
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+    private static void ResetActiveEnemies()
+    {
+        ActiveEnemySet.Clear();
+    }
     private Animator anim;
     private Rigidbody rigidBody;
     private EnemyDetection enemyDetection;
@@ -54,15 +61,13 @@ public class EnemyController : MonoBehaviour, ICombatAgent
     bool isBoss;
 
     private AnimatorStateInfo currentStateInfo;
-    [SerializeField]
-    static int currentState;
-    [SerializeField]
-    static int AnimatorState_Attack = Animator.StringToHash("base.attack");
-    static int AnimatorState_Walk = Animator.StringToHash("base.walk");
-    static int AnimatorState_Idle = Animator.StringToHash("base.idle");
-    static int AnimatorState_Knockdown = Animator.StringToHash("base.knockdown");
-    static int AnimatorState_Lightning = Animator.StringToHash("base.lightning");
-    static int AnimatorState_Disintegrated = Animator.StringToHash("base.disintegrated");
+    private int currentState;
+    private static readonly int AnimatorState_Attack = Animator.StringToHash("base.attack");
+    private static readonly int AnimatorState_Walk = Animator.StringToHash("base.walk");
+    private static readonly int AnimatorState_Idle = Animator.StringToHash("base.idle");
+    private static readonly int AnimatorState_Knockdown = Animator.StringToHash("base.knockdown");
+    private static readonly int AnimatorState_Lightning = Animator.StringToHash("base.lightning");
+    private static readonly int AnimatorState_Disintegrated = Animator.StringToHash("base.disintegrated");
 
     public bool stateWalk = false;
     public bool stateIdle = false;
@@ -87,24 +92,23 @@ public class EnemyController : MonoBehaviour, ICombatAgent
     [SerializeField]
     private GameObject spriteObject;
 
-    // Use this for initialization
-    void Start()
-    {
-        facingRight = true;
-        canAttack = true;
+    private Vector3 initialScale;
 
-        spriteObject = transform.GetComponentInChildren<SpriteRenderer>().gameObject;
+    private void Awake()
+    {
+        SpriteRenderer childSprite = transform.GetComponentInChildren<SpriteRenderer>();
+        spriteObject = childSprite != null ? childSprite.gameObject : null;
         rigidBody = GetComponent<Rigidbody>();
         anim = GetComponentInChildren<Animator>();
-        spriteRenderer = GetComponentInChildren<SpriteRenderer>();
+        spriteRenderer = childSprite;
 
         enemyDetection = gameObject.GetComponent<EnemyDetection>();
         enemyHealthBar = gameObject.GetComponentInChildren<EnemyHealthBar>();
         enemyHealth = gameObject.GetComponentInChildren<EnemyHealth>();
-        damageDisplayObject = transform.FindDeepChild("enemy_damage_display_text").gameObject;
+        Transform damageDisplay = transform.FindDeepChild("enemy_damage_display_text");
+        damageDisplayObject = damageDisplay != null ? damageDisplay.gameObject : null;
         playerSwapAttack = GetComponent<PlayerSwapAttack>();
-
-        originalPosition = transform.position;
+        initialScale = transform.localScale;
         //if (attackCooldown == 0) { attackCooldown = 0.75f; }
         //if (knockDownTime == 0) { knockDownTime = 2f; }
         if (lineOfSightVariance == 0) { lineOfSightVariance = 0.4f; }
@@ -134,25 +138,66 @@ public class EnemyController : MonoBehaviour, ICombatAgent
             attackCooldown *= 0.5f;
         }
         // for enemy damagae display over head
-        if (damageDisplayObject.GetComponent<Canvas>() != null)
+        if (damageDisplayObject != null && damageDisplayObject.GetComponent<Canvas>() != null)
         {
             damageDisplayObject.transform.parent.GetComponent<Canvas>().worldCamera = Camera.main;
         }
         // if level has custom level specific camera
         if (GameOptions.customCamera)
         {
-            spriteObject.transform.rotation = Quaternion.Euler(0, 0, 0);
-            enemyHealthBar.gameObject.transform.rotation = Quaternion.Euler(0, 0, 0);
+            if (spriteObject != null)
+            {
+                spriteObject.transform.rotation = Quaternion.Euler(0, 0, 0);
+            }
+            if (enemyHealthBar != null)
+            {
+                enemyHealthBar.gameObject.transform.rotation = Quaternion.Euler(0, 0, 0);
+            }
         }
-        // put enemy on the ground. some are spawning up pretty high
-        //gameObject.transform.position = new Vector3(gameObject.transform.position.x, GameLevelManager.instance.TerrainHeight, gameObject.transform.position.z);
+    }
 
-        InvokeRepeating("UpdateDistanceFromPlayer", 0, 0.1f);
+    private void OnEnable()
+    {
+        ActiveEnemySet.Add(this);
+        ResetForSpawn();
+        InvokeRepeating(nameof(UpdateDistanceFromPlayer), 0, 0.1f);
     }
 
     private void OnDisable()
     {
+        ActiveEnemySet.Remove(this);
+        CancelInvoke();
+        StopAllCoroutines();
         ReleaseAttackReservation();
+    }
+
+    public void ResetForSpawn()
+    {
+        facingRight = true;
+        canAttack = true;
+        inAttackQueue = false;
+        longRangeAttack = false;
+        stateWalk = false;
+        stateIdle = false;
+        stateAttack = false;
+        statePatrol = false;
+        stateKnockDown = false;
+        transform.localScale = initialScale;
+        originalPosition = transform.position;
+
+        if (rigidBody != null)
+        {
+            rigidBody.linearVelocity = Vector3.zero;
+            rigidBody.angularVelocity = Vector3.zero;
+        }
+
+        if (anim != null)
+        {
+            anim.Rebind();
+            anim.Update(0f);
+        }
+
+        enemyHealth?.ResetForSpawn();
     }
 
     private void FixedUpdate()
@@ -433,7 +478,7 @@ public class EnemyController : MonoBehaviour, ICombatAgent
             int attackPositionId = enemyDetection.AttackPositionId;
             ReleaseAttackReservation(attackPositionId);
         }
-        Destroy(gameObject);
+        RuntimeObjectPool.Release(gameObject);
     }
 
     public IEnumerator takeDamage()
@@ -466,7 +511,7 @@ public class EnemyController : MonoBehaviour, ICombatAgent
         playAnimation("disintegrated");
         //yield return new WaitUntil(() => currentState == AnimatorState_Disintegrated);
         yield return new WaitForSeconds(1.5f);
-        Destroy(gameObject);
+        RuntimeObjectPool.Release(gameObject);
         stateKnockDown = false;
     }
 
@@ -616,4 +661,5 @@ public class EnemyController : MonoBehaviour, ICombatAgent
     public GameObject CombatObject => gameObject;
     public Transform CombatTransform => transform;
     public bool CanAct => isActiveAndEnabled && (enemyHealth == null || !enemyHealth.IsDead);
+    public static IReadOnlyCollection<EnemyController> ActiveEnemies => ActiveEnemySet;
 }

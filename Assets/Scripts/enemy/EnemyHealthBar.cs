@@ -38,6 +38,15 @@ public class EnemyHealthBar : MonoBehaviour
         enemyHealth.OnHealthChanged -= setHealthSliderValue;
     }
 
+    private void OnDisable()
+    {
+        StopAllCoroutines();
+        if (heathBarMessageDisplayText != null)
+        {
+            heathBarMessageDisplayText.text = string.Empty;
+        }
+    }
+
     // Update is called once per frame
     public void setHealthSliderValue()
     {

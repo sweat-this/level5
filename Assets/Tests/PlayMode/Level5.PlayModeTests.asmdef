@@ -1,0 +1,10 @@
+{
+  "name": "Level5.PlayModeTests",
+  "references": [
+    "Level5.Core"
+  ],
+  "optionalUnityReferences": [
+    "TestAssemblies"
+  ],
+  "autoReferenced": false
+}

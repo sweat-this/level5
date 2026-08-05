@@ -36,12 +36,52 @@ public sealed class Level5ProjectValidator : IPreprocessBuildWithReport
     public static void ValidateOrThrow()
     {
         List<string> errors = new List<string>();
+        ValidateSerializationPolicy(errors);
         ValidateBuildScenes(errors);
+        ValidateSelectableLevels(errors);
         ValidateInputActions(errors);
 
         if (errors.Count > 0)
         {
             throw new BuildFailedException("Level5 project validation failed:\n- " + string.Join("\n- ", errors));
+        }
+    }
+
+    [MenuItem("Level5/Reserialize Project Assets")]
+    public static void ReserializeProjectAssets()
+    {
+        ConfigureSourceControlPolicy();
+        List<string> paths = new List<string>();
+        foreach (string path in AssetDatabase.GetAllAssetPaths())
+        {
+            string extension = Path.GetExtension(path);
+            if (path.StartsWith("Assets/", StringComparison.Ordinal)
+                && (extension == ".unity"
+                    || extension == ".prefab"
+                    || extension == ".asset"
+                    || extension == ".mat"
+                    || extension == ".anim"
+                    || extension == ".controller"))
+            {
+                paths.Add(path);
+            }
+        }
+
+        AssetDatabase.ForceReserializeAssets(paths, ForceReserializeAssetsOptions.ReserializeAssets);
+        AssetDatabase.SaveAssets();
+        Debug.Log("Reserialized " + paths.Count + " Unity assets for source control.");
+    }
+
+    private static void ValidateSerializationPolicy(List<string> errors)
+    {
+        if (EditorSettings.serializationMode != SerializationMode.ForceText)
+        {
+            errors.Add("Asset serialization mode must be Force Text.");
+        }
+
+        if (!string.Equals(VersionControlSettings.mode, "Visible Meta Files", StringComparison.Ordinal))
+        {
+            errors.Add("Version control mode must use Visible Meta Files.");
         }
     }
 
@@ -71,17 +111,68 @@ public sealed class Level5ProjectValidator : IPreprocessBuildWithReport
         }
     }
 
+    private static void ValidateSelectableLevels(List<string> errors)
+    {
+        HashSet<string> enabledSceneNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (EditorBuildSettingsScene scene in EditorBuildSettings.scenes)
+        {
+            if (scene.enabled && !string.IsNullOrWhiteSpace(scene.path))
+            {
+                enabledSceneNames.Add(Path.GetFileNameWithoutExtension(scene.path));
+            }
+        }
+
+        foreach (string guid in AssetDatabase.FindAssets("t:Prefab"))
+        {
+            string path = AssetDatabase.GUIDToAssetPath(guid);
+            GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(path);
+            LevelSelected level = prefab != null ? prefab.GetComponent<LevelSelected>() : null;
+            if (level == null || !level.IsSelectable)
+            {
+                continue;
+            }
+
+            string sceneName = level.LevelObjectName + "_" + level.LevelDescription;
+            if (!enabledSceneNames.Contains(sceneName))
+            {
+                errors.Add("Selectable level prefab " + path + " maps to missing build scene " + sceneName + ".");
+            }
+        }
+    }
+
     private static void ValidateInputActions(List<string> errors)
     {
         InputActionAsset actions = AssetDatabase.LoadAssetAtPath<InputActionAsset>(InputActionsPath);
-        InputAction movement = actions != null ? actions.FindAction("Player/movement") : null;
-        if (movement == null)
+        if (actions == null)
         {
-            errors.Add("Player/movement is missing from PlayerControls.inputactions.");
+            errors.Add("PlayerControls.inputactions could not be loaded.");
+            return;
         }
-        else if (!string.Equals(movement.expectedControlType, "Vector2", StringComparison.Ordinal))
+
+        ValidateAction(actions, "Player/movement", "Vector2", errors);
+        ValidateAction(actions, "Player/attack", "Button", errors);
+        ValidateAction(actions, "Player/block", "Button", errors);
+        ValidateAction(actions, "Player/special", "Button", errors);
+        ValidateAction(actions, "Player/submit", "Button", errors);
+        ValidateAction(actions, "Player/cancel", "Button", errors);
+        ValidateAction(actions, "UINavigation/Submit", "Button", errors);
+        ValidateAction(actions, "UINavigation/Cancel", "Button", errors);
+    }
+
+    private static void ValidateAction(
+        InputActionAsset actions,
+        string actionPath,
+        string expectedControlType,
+        List<string> errors)
+    {
+        InputAction action = actions.FindAction(actionPath);
+        if (action == null)
         {
-            errors.Add("Player/movement must use the Vector2 expected control type.");
+            errors.Add(actionPath + " is missing from PlayerControls.inputactions.");
+        }
+        else if (!string.Equals(action.expectedControlType, expectedControlType, StringComparison.Ordinal))
+        {
+            errors.Add(actionPath + " must use the " + expectedControlType + " expected control type.");
         }
     }
 }

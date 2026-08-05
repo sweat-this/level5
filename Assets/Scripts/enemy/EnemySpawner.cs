@@ -139,7 +139,7 @@ public class EnemySpawner : MonoBehaviour
             {
                 int randomIndex = Random.Range(0, enemyMinionPrefabs.Count);
                 int spawnIndex = i % spawnPositions.Count;
-                Instantiate(enemyMinionPrefabs[randomIndex], spawnPositions[spawnIndex].transform.position, Quaternion.identity);
+                Spawn(enemyMinionPrefabs[randomIndex], spawnPositions[spawnIndex].transform.position);
             }
         }
     }
@@ -153,7 +153,7 @@ public class EnemySpawner : MonoBehaviour
             {
                 int randomIndex = Random.Range(0, enemyBossPrefabs.Count);
                 int spawnIndex = i % spawnPositions.Count;
-                Instantiate(enemyBossPrefabs[randomIndex], spawnPositions[spawnIndex].transform.position, Quaternion.identity);
+                Spawn(enemyBossPrefabs[randomIndex], spawnPositions[spawnIndex].transform.position);
             }
         }
     }
@@ -162,14 +162,14 @@ public class EnemySpawner : MonoBehaviour
     {
         int randomIndex = Random.Range(0, enemyMinionPrefabs.Count);
         int spawnIndex = Random.Range(0, spawnPositions.Count);
-        Instantiate(enemyMinionPrefabs[randomIndex], spawnPositions[spawnIndex].transform.position, Quaternion.identity);
+        Spawn(enemyMinionPrefabs[randomIndex], spawnPositions[spawnIndex].transform.position);
     }
 
     void spawnBoss()
     {
         int randomIndex = Random.Range(0, enemyBossPrefabs.Count);
         int spawnIndex = Random.Range(0, spawnPositions.Count);
-        Instantiate(enemyBossPrefabs[randomIndex], spawnPositions[spawnIndex].transform.position, Quaternion.identity);
+        Spawn(enemyBossPrefabs[randomIndex], spawnPositions[spawnIndex].transform.position);
         numberOfBoss++;
     }
 
@@ -220,18 +220,18 @@ public class EnemySpawner : MonoBehaviour
             if(getNumberOfBoss() == 0)
             {
                 randomIndex = Random.Range(0, enemyBossPrefabs.Count);
-                Instantiate(enemyBossPrefabs[randomIndex], battleRoyalSpawnPosition.transform.position, Quaternion.identity);
+                Spawn(enemyBossPrefabs[randomIndex], battleRoyalSpawnPosition.transform.position);
             }
             else
             {
                 randomIndex = Random.Range(0, enemyMinionPrefabs.Count);
-                Instantiate(enemyMinionPrefabs[randomIndex], battleRoyalSpawnPosition.transform.position, Quaternion.identity);
+                Spawn(enemyMinionPrefabs[randomIndex], battleRoyalSpawnPosition.transform.position);
             }
         }
         if (GameOptions.battleRoyalEnabled && GameOptions.hardcoreModeEnabled)
         {
             randomIndex = Random.Range(0, enemyBossPrefabs.Count);
-            Instantiate(enemyBossPrefabs[randomIndex], battleRoyalSpawnPosition.transform.position, Quaternion.identity);
+            Spawn(enemyBossPrefabs[randomIndex], battleRoyalSpawnPosition.transform.position);
         }
     }
 
@@ -239,8 +239,7 @@ public class EnemySpawner : MonoBehaviour
     {
         numberOfBoss = 0;
         numberOfMinions = 0;
-        EnemyController[] enemies = UnityEngine.Object.FindObjectsByType<EnemyController>();
-        foreach (EnemyController enemy in enemies)
+        foreach (EnemyController enemy in EnemyController.ActiveEnemies)
         {
             if (enemy != null && enemy.IsBoss)
             {
@@ -251,6 +250,11 @@ public class EnemySpawner : MonoBehaviour
                 numberOfMinions++;
             }
         }
+    }
+
+    private static void Spawn(GameObject prefab, Vector3 position)
+    {
+        RuntimeObjectPool.Spawn(prefab, position, Quaternion.identity);
     }
 
     private bool HasSpawnConfiguration()

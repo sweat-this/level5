@@ -84,6 +84,7 @@ namespace Assets.Scripts.Utility
             }
 
             sceneLoadPending = true;
+            MatchSession.BeginNewMatch();
 
             string sceneName;
             sceneName = Constants.SCENE_NAME_level_23_dev;

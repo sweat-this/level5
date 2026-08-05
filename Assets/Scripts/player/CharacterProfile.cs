@@ -92,9 +92,17 @@ public class CharacterProfile : MonoBehaviour
 
     public void intializeShooterStatsFromProfile()
     {
-        //Debug.Log("intializeShooterStatsFromProfile : " + playerDisplayName);
-        CharacterProfile temp = new();
-        temp = LoadedData.instance.getSelectedCharacterProfile(GameOptions.characterId);
+        CharacterProfile temp = LoadedData.instance != null
+            ? LoadedData.instance.getSelectedCharacterProfile(GameOptions.characterId)
+            : null;
+        if (temp == null)
+        {
+            Debug.LogError("CharacterProfile could not resolve the selected player profile.");
+            return;
+        }
+
+        experience = temp.Experience;
+        level = temp.Experience / 3000;
         fadeaway = level;
         InAirSpeed = fadeaway / 10;
         playerObjectName = temp.playerObjectName != null ? temp.playerObjectName : "";
@@ -109,16 +117,14 @@ public class CharacterProfile : MonoBehaviour
         shootAngle = temp.shootAngle;
 
         Accuracy2Pt = temp.accuracy2pt;
-        Accuracy3Pt = temp.accuracy3pt;
-        Accuracy4Pt = temp.accuracy4pt;
-        Accuracy7Pt = temp.accuracy7pt;
+        Accuracy3Pt = temp.accuracy3pt + GameOptions.friendBonus3Accuracy;
+        Accuracy4Pt = temp.accuracy4pt + GameOptions.friendBonus4Accuracy;
+        Accuracy7Pt = temp.accuracy7pt + GameOptions.friendBonus7Accuracy;
 
-        Range = temp.range;
-        Release = temp.release;
+        Range = temp.range + GameOptions.friendBonusRange;
+        Release = temp.release + GameOptions.friendBonusRelease;
 
-        experience = temp.Experience;
-        level = temp.Experience/3000;
-        clutch = temp.level;
+        clutch = temp.clutch + GameOptions.friendBonusClutch;
 
         pointsAvailable = temp.PointsAvailable;
         pointsUsed = temp.PointsUsed;
@@ -134,20 +140,7 @@ public class CharacterProfile : MonoBehaviour
         }
         else
         {
-            Luck = temp.Luck;
-        }
-        // destroy loaded data after updating stats 
-        if (LoadedData.instance != null)
-        {
-            try
-            {
-                Destroy(LoadedData.instance.gameObject);
-            }
-            catch (Exception e)
-            {
-                Debug.Log("ERROR : " + e);
-                return;
-            }
+            Luck = temp.Luck + GameOptions.friendBonusLuck;
         }
     }
     public void intializeCpuShooterStats()

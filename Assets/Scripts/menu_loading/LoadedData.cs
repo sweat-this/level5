@@ -147,12 +147,7 @@ public class LoadedData : MonoBehaviour
 
     public CharacterProfile getSelectedCharacterProfile(int charid)
     {
-        CharacterProfile temp = new CharacterProfile();
-        //CharacterProfile temp = gameObject.AddComponent<CharacterProfile>();
-
-        temp = playerSelectedData.Find(x => x.PlayerId == charid);
-
-        return temp;
+        return playerSelectedData?.Find(x => x.PlayerId == charid);
     }
 
     public List<CharacterProfile> PlayerSelectedData { get => playerSelectedData; }

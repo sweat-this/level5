@@ -136,6 +136,11 @@ public class TrafficManager : MonoBehaviour
             //NOTE : if more than one with same id, error called
             //
             VehicleController vehiclePrefab = VehiclesList.Find(x => x.VehicleId == vehicleId);
+            if (vehiclePrefab == null)
+            {
+                Debug.LogError("TrafficManager could not find vehicle prefab id " + vehicleId + ".");
+                return;
+            }
 
             // call coroutine
             StartCoroutine(spawnVehicleCoRoutine(vehiclePrefab, direction, waitTimeToRespawn));
@@ -144,24 +149,15 @@ public class TrafficManager : MonoBehaviour
 
     private IEnumerator spawnVehicleCoRoutine(VehicleController vehicle, string direction, float waitTimeToRespawn)
     {
-        // Instantiate first, then set Direction/CurrentTarget on the clone - not on `vehicle`
-        // (the shared prefab-list entry) before instantiating. Setting fields on the shared
-        // reference before a delay let two respawns of the same vehicle race: whichever
-        // WaitForSeconds resolved second would silently overwrite the first's pending values on
-        // the same object.
         if (direction == "left")
         {
             yield return new WaitForSeconds(waitTimeToRespawn);
-            VehicleController clone = Instantiate(vehicle, _vehicleSpawnLeftPosition.transform.position, Quaternion.identity);
-            clone.Direction = "right";
-            clone.CurrentTarget = eastBoundRightTarget.position;
+            SpawnVehicle(vehicle, _vehicleSpawnLeftPosition.transform.position, "right", eastBoundRightTarget.position);
         }
         if (direction == "right")
         {
             yield return new WaitForSeconds(waitTimeToRespawn);
-            VehicleController clone = Instantiate(vehicle, _vehicleSpawnRightPosition.transform.position, Quaternion.identity);
-            clone.Direction = "left";
-            clone.CurrentTarget = westBoundLeftTarget.position;
+            SpawnVehicle(vehicle, _vehicleSpawnRightPosition.transform.position, "left", westBoundLeftTarget.position);
         }
     }
 
@@ -176,31 +172,17 @@ public class TrafficManager : MonoBehaviour
         // to prevent vehicles spawning on top of each other
         Vector3 VectorToAddToSpawn = new Vector3();
 
-        // Instantiate first, then set Direction/FacingRight/CurrentTarget on the clone - not on
-        // `v` (the shared prefab-list entry) before instantiating. `v` is reused across every
-        // iteration of this loop and by spawnVehicleCoRoutine's respawns, so mutating it directly
-        // was writing shared state that a concurrent respawn coroutine could stomp on.
         foreach (VehicleController v in VehiclesList)
         {
             if (vehicleIndex % 2 == 0)
             {
                 VectorToAddToSpawn += new Vector3((-5 * vehicleIndex), 0, 0);
-                VehicleController clone = Instantiate(v, (_vehicleSpawnLeftPosition.transform.position + VectorToAddToSpawn), Quaternion.identity);
-                //direction to move vehicle towards
-                clone.Direction = "right";
-                clone.FacingRight = true;
-                // set target to correct vector3
-                clone.CurrentTarget = eastBoundRightTarget.position;
+                SpawnVehicle(v, _vehicleSpawnLeftPosition.transform.position + VectorToAddToSpawn, "right", eastBoundRightTarget.position);
             }
             else
             {
                 VectorToAddToSpawn += new Vector3((5 * vehicleIndex), 0, 0);
-                VehicleController clone = Instantiate(v, (_vehicleSpawnRightPosition.transform.position + VectorToAddToSpawn), Quaternion.identity);
-                //direction to move vehicle towards
-                clone.Direction = "left";
-                clone.FacingRight = false;
-                // set target to vector3
-                clone.CurrentTarget = westBoundLeftTarget.position;
+                SpawnVehicle(v, _vehicleSpawnRightPosition.transform.position + VectorToAddToSpawn, "left", westBoundLeftTarget.position);
             }
             vehicleIndex++;
         }
@@ -217,30 +199,17 @@ public class TrafficManager : MonoBehaviour
         // to prevent vehicles spawning on top of each other
         Vector3 VectorToAddToSpawn = new Vector3();
 
-        // Instantiate first, then set Direction/FacingRight/CurrentTarget on the clone - see
-        // spawnVehiclePrefabs for why mutating the shared `v` reference before instantiate is
-        // unsafe.
         foreach (VehicleController v in VehiclesList)
         {
             if (vehicleIndex % 2 == 0)
             {
                 VectorToAddToSpawn += new Vector3((-7 * vehicleIndex), 0, 0);
-                VehicleController clone = Instantiate(v, (_vehicleSpawnLeftPosition.transform.position + VectorToAddToSpawn), Quaternion.identity);
-                //direction to move vehicle towards
-                clone.Direction = "right";
-                clone.FacingRight = true;
-                // set target to correct vector3
-                clone.CurrentTarget = eastBoundRightTarget.position;
+                SpawnVehicle(v, _vehicleSpawnLeftPosition.transform.position + VectorToAddToSpawn, "right", eastBoundRightTarget.position);
             }
             else
             {
                 VectorToAddToSpawn += new Vector3((7 * vehicleIndex), 0, 0);
-                VehicleController clone = Instantiate(v, (_vehicleSpawnRightPosition.transform.position + VectorToAddToSpawn), Quaternion.identity);
-                //direction to move vehicle towards
-                clone.Direction = "left";
-                clone.FacingRight = false;
-                // set target to vector3
-                clone.CurrentTarget = westBoundLeftTarget.position;
+                SpawnVehicle(v, _vehicleSpawnRightPosition.transform.position + VectorToAddToSpawn, "left", westBoundLeftTarget.position);
             }
             vehicleIndex++;
         }
@@ -249,6 +218,28 @@ public class TrafficManager : MonoBehaviour
     static int sortByVehicleId(VehicleController m1, VehicleController m2)
     {
         return m1.VehicleId.CompareTo(m2.VehicleId);
+    }
+
+    private static void SpawnVehicle(VehicleController prefab, Vector3 position, string direction, Vector3 target)
+    {
+        if (prefab == null)
+        {
+            return;
+        }
+
+        RuntimeObjectPool.Spawn(prefab.gameObject, position, Quaternion.identity, instance =>
+        {
+            VehicleController vehicle = instance.GetComponent<VehicleController>();
+            vehicle.Configure(direction, target);
+        });
+    }
+
+    private void OnDestroy()
+    {
+        if (instance == this)
+        {
+            instance = null;
+        }
     }
 
     private bool trafficManagerExists()

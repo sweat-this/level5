@@ -343,9 +343,9 @@ public class DBConnector : MonoBehaviour
     //}
 
     // ============================ Save stats ===============================
-    public void savePlayerGameStats(HighScoreModel dbHighScoreModel)
+    public bool savePlayerGameStats(HighScoreModel dbHighScoreModel)
     {
-        dbHelper.InsertGameScore(dbHighScoreModel);
+        return dbHelper != null && dbHelper.InsertGameScore(dbHighScoreModel);
     }
 
     public bool savePlayerProfileProgression(float expGained)
@@ -388,9 +388,14 @@ public class DBConnector : MonoBehaviour
         return dbHelper != null && dbHelper.MarkProgressionProjectionApplied(resultId);
     }
 
-    public void savePlayerAllTimeStats(GameStats stats)
+    public bool savePlayerAllTimeStats(GameStats stats)
     {
-        dbHelper.UpdateAllTimeStats(stats);
+        return stats != null && savePlayerAllTimeStats(AllTimeStatsSnapshot.From(MatchSession.EnsureCurrentMatch(), stats));
+    }
+
+    public bool savePlayerAllTimeStats(AllTimeStatsSnapshot stats)
+    {
+        return dbHelper != null && stats != null && dbHelper.UpdateAllTimeStats(stats);
     }
 
     // =========================================================================

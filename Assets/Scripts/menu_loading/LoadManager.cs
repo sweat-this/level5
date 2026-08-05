@@ -172,6 +172,7 @@ public class LoadManager : MonoBehaviour
                 if (databaseReady)
                 {
                     new ProgressionService().RepairPendingJsonProjections();
+                    PendingMatchPersistenceStore.Repair();
                 }
             }
 

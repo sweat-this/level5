@@ -222,7 +222,7 @@ public class PlayerController : MonoBehaviour
         characterProfile = GetComponent<CharacterProfile>();
         rigidBody = GetComponent<Rigidbody>();
         Shotmeter = GetComponentInChildren<ShotMeter>();
-        PlayerHealth = GameLevelManager.instance.PlayerHealth;
+        PlayerHealth = GetComponentInChildren<PlayerHealth>();
         // bball rim vector, used for relative positioning
         bballRimVector = GameLevelManager.instance.BasketballRimVector;
 
