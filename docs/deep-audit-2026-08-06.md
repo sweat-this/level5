@@ -38,11 +38,15 @@ batch landed, which re-reviewed the changes and opened the files the first pass 
 | AUD-037 | Randomness/UI | Low | Fixed | `getCriticalPercentage` guards `CriticalRolled` but divides by `ShotAttempt`. |
 | AUD-038 | Input lifecycle | Low | Fixed | Queued touch inputs are not cleared on scene exit, so a tap can carry into the next scene. |
 | AUD-039 | Spawn contract | Low | Fixed | `EnemyHealth.ResetForSpawn` silently skips everything when no `EnemyController` is found, leaving the enemy invincible. |
+| AUD-040 | Stats paging | Medium | Open | The stats page count is queried with a different filter set than the rows, so it is too small with no filters and too large with them. |
+| AUD-041 | Stats paging | Low | Open | Paging left with zero results sets the page number to -1 and displays "page 0 / 0". |
+| AUD-042 | Stats paging | Low | Open | `ResultsPerPage` is declared but the page arithmetic hardcodes 10 in eight places. |
+| AUD-043 | Dead parameter | Low | Open | `getNumberOfResults` accepts a `pageNumber` it never uses. |
 
 AUD-022 to AUD-033 came from the first pass; AUD-034 to AUD-037 from the
 [second pass](#second-pass---2026-08-06-post-fix) run after those fixes landed. All sixteen are now
 fixed in code and pending Unity compile/playtest verification. A third pass added AUD-038 and
-AUD-039, also fixed. All eighteen await Unity verification.
+AUD-039, also fixed. A fourth added AUD-040 to AUD-043, which are open.
 
 ## Verification Status
 
@@ -740,6 +744,104 @@ Two things surfaced while fixing it that the finding had not:
 `ProgressionManager` (976) have been sampled but not read end to end - together roughly 5,400 lines,
 the largest remaining gap. `AutoPlayerController` and `RacingVehicleController` (807 each) are
 untouched. A fourth pass should start there rather than re-sweeping what three passes have covered.
+
+## Fourth Pass - 2026-08-06 (menus and unread controllers)
+
+Aimed at the gap the third pass named: the large files no earlier pass had read end to end.
+`StatsManager`, `ProgressionManager`, `StartManager`, `PlayerController`, `AutoPlayerController`,
+`RacingVehicleController`.
+
+Four findings, all in the stats browser, all open.
+
+### AUD-040: the stats page count is computed from a different filter set than the rows (Medium)
+
+`Assets/Scripts/database/DBHelper.cs:1694-1717` (`getNumberOfResults`) against
+`BuildSqlQueryForGetHighScoreRows` at `:1642` and `StatsManager.cs:834-845`
+
+The stats screen runs two queries per refresh: one for the rows on the current page, one for the
+total used to compute the page count. They do not filter the same way.
+
+| | rows query | count query |
+| --- | --- | --- |
+| no filters selected | `WHERE modeid` | `WHERE modeid AND hardcoreEnabled = 0` |
+| any filter selected | `WHERE modeid` + hardcore + traffic + enemies + sniper | `WHERE modeid AND hardcoreEnabled = 0/1` |
+
+So the count is wrong in **both** directions depending on filter state:
+
+- **No filters.** Rows include hardcore and non-hardcore entries; the count only counts
+  non-hardcore. The page count comes out too small, so real result pages are unreachable - the
+  player cannot page to scores that exist.
+- **Traffic, enemies, or sniper filter on.** Rows are narrowed by three more conditions the count
+  ignores, so the count comes out too large and the extra pages render empty.
+
+Both are user-visible in the normal stats flow, and neither produces an error - just a page counter
+that disagrees with the data. Fix is to build both queries from one filter clause, which is most of
+the way to merging them into a single method that returns rows plus total.
+
+### AUD-041: paging left with no results produces a negative page number (Low)
+
+`Assets/Scripts/menu_stats/StatsManager.cs:1058-1080`
+
+```csharp
+if ((localResultsPageNumber - 1) >= 0) { localResultsPageNumber--; }
+else { localResultsPageNumber = numPages - 1; }   // numPages is 0 when there are no results
+```
+
+With no local scores for the selected mode, `numLocalResults` is 0, so `numPages` is 0 and the
+wrap-around lands on `-1`. The display then reads `page 0 / 0`, and the query runs with
+`OFFSET -10`.
+
+It does not crash: SQLite treats a negative OFFSET as 0, and the next press of "increase" resets to
+0 because `(-1 + 2) <= 0` is false. So this is a nonsense display and an invalid intermediate state
+rather than a data error. The wrap-around itself is correct for the non-empty case - only the empty
+list is unguarded.
+
+### AUD-042: `ResultsPerPage` exists but the paging math hardcodes 10 (Low)
+
+`StatsManager.cs:38` declares `const int ResultsPerPage = 10;`, and then the page arithmetic uses
+the literal `10` in six places (`:982`, `:984`, `:988`, `:1037`, `:1039`, `:1043`, and the online
+equivalents), as does `DBHelper.cs:1523` (`pageNumber * 10`) and the `LIMIT 10` inside
+`BuildSqlQueryForGetHighScoreRows`.
+
+Changing the page size means finding all of them, and a miss desynchronises the page count from the
+rows per page - the same failure AUD-040 already produces by a different route. Same shape as
+AUD-036, and the same fix: one constant, referenced everywhere, including as a bound parameter in
+the SQL rather than a literal.
+
+### AUD-043: `getNumberOfResults` takes a `pageNumber` it never uses (Low)
+
+`Assets/Scripts/database/DBHelper.cs:1694`
+
+The parameter is accepted and ignored - the count query has no `LIMIT`/`OFFSET`. `StatsManager.cs:845`
+dutifully passes `localResultsPageNumber`, which reads as though the count were page-scoped. Harmless
+today, but it is exactly the kind of signature that invites someone to "fix" the count by honouring
+it. Drop the parameter.
+
+(The same query also carries an `ORDER BY` on a `COUNT(*)`, which does nothing.)
+
+### Checked and found sound in this pass
+
+- **`StartManager` selection indices.** All four are bounds-checked against their list counts before
+  use (`:701-716`), and the wrap-around decrements handle 0 correctly - unlike AUD-041.
+- **`PlayerController`.** `currentState` is per-instance (already confirmed in pass three). The
+  special-attack gate compares `PlayerHealth.Special == PlayerHealth.MaxSpecial`, a float against an
+  int, which is fragile in principle - but `special` only ever changes by whole units and is clamped
+  to an integral `maxSpecial`, so the value is exactly representable and the comparison holds. Noted
+  rather than filed.
+- **`RequireSqlIdentifier`.** The two places that interpolate a column name into SQL
+  (`getNumberOfResults`, `BuildSqlQueryForGetHighScoreRows`) both sanitise it first; every value is
+  a bound parameter. No injection path found in the stats queries.
+
+### Still not read end to end
+
+`ProgressionManager` carries 20 unchecked `GameObject.Find(...).GetComponent<T>()` chains - the same
+pattern AUD-028 fixed in `GameRules` and `Pause`, and the same fix would apply, including adding its
+object names to `Level5ProjectValidator`. It is a known, bounded piece of work rather than an
+unknown, so it is recorded here rather than filed as a separate finding.
+
+`AutoPlayerController` and `RacingVehicleController` were sampled for the patterns this audit has
+been tracking (shared statics, unguarded lookups, roll helpers) and came back clean, but neither has
+been read line by line.
 
 ## What To Do Next
 
