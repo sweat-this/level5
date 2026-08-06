@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
+using Assets.Scripts.Utility;
 using Random = UnityEngine.Random;
 
 public class BasketBallAuto : MonoBehaviour
@@ -539,10 +540,11 @@ public class BasketBallAuto : MonoBehaviour
     }
 
     // ========================== shot accuracy functions ==========================================
+    // all three roll a plain percentage chance through the shared helper, so a 0 stat
+    // never succeeds and a 100 stat always does.
     bool rollForCriticalShotChance(float maxPercent)
     {
-        float percent = Random.Range(1, 100);
-        if (percent <= maxPercent)
+        if (UtilityFunctions.RollPercent(maxPercent))
         {
             GameStats.CriticalRolled++;
             return true;
@@ -552,23 +554,11 @@ public class BasketBallAuto : MonoBehaviour
     }
     bool rollForCriticalRangeChance(float maxPercent)
     {
-        float percent = Random.Range(1, 100);
-
-        if (percent <= maxPercent)
-        {
-            return true;
-        }
-        return false;
+        return UtilityFunctions.RollPercent(maxPercent);
     }
     bool rollForCriticalReleaseChance(float maxPercent)
     {
-        float percent = Random.Range(1, 100);
-
-        if (percent <= maxPercent)
-        {
-            return true;
-        }
-        return false;
+        return UtilityFunctions.RollPercent(maxPercent);
     }
     public float  rollForAutoPlayerSliderValue()
     {
@@ -580,34 +570,30 @@ public class BasketBallAuto : MonoBehaviour
         //default if none assigned
         if(shootPercent == 0) { shootPercent = 90; }
         // get base value
-        float percent = Random.Range(1, 100);
-        if (percent <= shootPercent)
+        if (UtilityFunctions.RollPercent(shootPercent))
         {
-            //Debug.Log("percent : " + percent + " shootPercent : "+ shootPercent);
             shootPercent = 95;
         }
         else
         {
-            //Debug.Log("percent : " + percent + " shootPercent : " + shootPercent);
             shootPercent =  90;
         }
-        // accuracy variation. random -5, 5 range
-        float accuracyVariationValue = Random.Range(-5, 5);
+        // accuracy variation. random -5, 5 range.
+        // float overload so the range is symmetric - the int overload was max-exclusive,
+        // which biased this 0.5 low and could never reach +5.
+        float accuracyVariationValue = Random.Range(-5f, 5f);
         shootPercent += accuracyVariationValue;
 
-        // percent to calculate clutch bonus
-        float accuracyVariationPercent = Random.Range(1, 100);
-
         // clutch bonus
-        float clutchBonus = Random.Range(1, 10);
-        // variation % + consecutive shots (increase percent). shot streak ups percent
+        float clutchBonus = Random.Range(1f, 10f);
+        // consecutive shots (increase percent). shot streak ups percent
         // consecutive shots bonus capped at 10
         int consecShotsModifier = gameStats.ConsecutiveShotsMade;
         if (consecShotsModifier > 10)
         {
             consecShotsModifier = 10;
         }
-        if (accuracyVariationPercent <= (characterProfile.Clutch/2) + consecShotsModifier)
+        if (UtilityFunctions.RollPercent((characterProfile.Clutch / 2f) + consecShotsModifier))
         {
             shootPercent += clutchBonus;
         }
@@ -678,8 +664,8 @@ public class BasketBallAuto : MonoBehaviour
 
         accuracyModifier = (100 - characterProfile.Release) * 0.01f;
 
-        // get random chance for removing release modifier
-        // ex if release = 85, 15% chance to remove modifiers
+        // the release stat IS the chance to shoot clean.
+        // ex if release = 85, 85% chance to remove the modifier entirely.
         if (rollForCriticalReleaseChance(characterProfile.Release))
         {
             return 0;

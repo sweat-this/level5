@@ -619,27 +619,24 @@ public class EnemyController : MonoBehaviour, ICombatAgent
     {
         enemyHealth.IsDead = true;
 
-        if (GameLevelManager.instance.PlayerHealth.Health < GameLevelManager.instance.PlayerHealth.MaxHealth)
+        PlayerHealth playerHealth = GameLevelManager.instance != null
+            ? GameLevelManager.instance.PlayerHealth
+            : null;
+        if (playerHealth != null && playerHealth.Health < playerHealth.MaxHealth)
         {
             if (IsBoss)
             {
-                GameLevelManager.instance.PlayerHealth.Heal(7);
+                playerHealth.Heal(7);
             }
             if (IsMinion)
             {
-                GameLevelManager.instance.PlayerHealth.Heal(3);
+                playerHealth.Heal(3);
             }
         }
-        BasketBall.instance.GameStats.EnemiesKilled++;
-        if (IsBoss)
-        {
 
-            BasketBall.instance.GameStats.BossKilled++;
-        }
-        else
-        {
-            BasketBall.instance.GameStats.MinionsKilled++;
-        }
+        // no attacker is known on this path, so it credits the primary player
+        CombatCredit.CreditEnemyKill(null, IsBoss);
+
         if (BehaviorNpcCritical.instance != null)
         {
             BehaviorNpcCritical.instance.playAnimationCriticalSuccesful();

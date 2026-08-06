@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
+using Assets.Scripts.Utility;
 using Random = UnityEngine.Random;
 
 public class BasketBall : MonoBehaviour
@@ -42,7 +43,14 @@ public class BasketBall : MonoBehaviour
     // Use this for initialization
     void Start()
     {
-        instance = this;
+        // player 1's ball owns the static. every consumer of BasketBall.instance means
+        // "the local player's ball" - camera follow, the free-play stat save, the ui-stats
+        // toggle - not "whichever ball happened to run Start() last".
+        if (instance == null || IsPrimaryBasketball())
+        {
+            instance = this;
+        }
+
         playerIdentifier = GetComponent<PlayerIdentifier>();
         player = playerIdentifier.player;
         playerController = player.GetComponent<PlayerController>();
@@ -503,10 +511,11 @@ public class BasketBall : MonoBehaviour
     }
 
     // ========================== shot accuracy functions ==========================================
+    // all three roll a plain percentage chance through the shared helper, so a 0 stat
+    // never succeeds and a 100 stat always does.
     bool rollForCriticalShotChance(float maxPercent)
     {
-        float percent = Random.Range(1, 100);
-        if (percent <= maxPercent)
+        if (UtilityFunctions.RollPercent(maxPercent))
         {
             GameStats.CriticalRolled++;
             return true;
@@ -515,23 +524,11 @@ public class BasketBall : MonoBehaviour
     }
     bool rollForCriticalRangeChance(float maxPercent)
     {
-        float percent = Random.Range(1, 100);
-
-        if (percent <= maxPercent)
-        {
-            return true;
-        }
-        return false;
+        return UtilityFunctions.RollPercent(maxPercent);
     }
     bool rollForCriticalReleaseChance(float maxPercent)
     {
-        float percent = Random.Range(1, 100);
-
-        if (percent <= maxPercent)
-        {
-            return true;
-        }
-        return false;
+        return UtilityFunctions.RollPercent(maxPercent);
     }
     private float getAccuracyModifier()
     {
@@ -594,8 +591,8 @@ public class BasketBall : MonoBehaviour
 
         accuracyModifier = (100 - characterProfile.Release) * 0.01f;
 
-        // get random chance for removing release modifier
-        // ex if release = 85, 15% chance to remove modifiers
+        // the release stat IS the chance to shoot clean.
+        // ex if release = 85, 85% chance to remove the modifier entirely.
         if (rollForCriticalReleaseChance(characterProfile.Release))
         {
             return 0;
@@ -615,7 +612,18 @@ public class BasketBall : MonoBehaviour
 
     public bool displayUiStats()
     {
-        //Debug.Log("displayUiStats() -- UiStatsEnabled : "+ UiStatsEnabled);
+        // the overlay is one shared Text object in the scene, so every ball writing to it
+        // would just fight over it. only the primary ball drives it.
+        if (instance != this)
+        {
+            return false;
+        }
+
+        if (scoreText == null || shootProfileText == null || uiStatsBackground == null)
+        {
+            return false;
+        }
+
         if (UiStatsEnabled)
         {
             updateScoreText();
@@ -649,9 +657,22 @@ public class BasketBall : MonoBehaviour
         messageText.text = "";
     }
 
+    // true when this ball belongs to players[0].
+    private bool IsPrimaryBasketball()
+    {
+        return GameLevelManager.instance != null
+            && GameLevelManager.instance.players != null
+            && GameLevelManager.instance.players.Count > 0
+            && GameLevelManager.instance.players[0] != null
+            && GameLevelManager.instance.players[0].basketball == gameObject;
+    }
+
     public void updateScoreText()
     {
-        gameStats = GameLevelManager.instance.players[0].gameStats;
+        // reads this ball's own gameStats. it used to reassign the field to players[0]'s stats
+        // here, which also redirected every shot counter that writes through the same field -
+        // a second human player's attempts were recorded onto player 1. the overlay is a single
+        // shared Text object, so only the primary ball writes to it (see displayUiStats).
         scoreText.text = "shots  : " + gameStats.ShotMade + " / " + gameStats.ShotAttempt + "  " +
                          getTotalPointAccuracy().ToString("0.00") + "\n"
                          + "points : " + gameStats.TotalPoints + "\n"

@@ -1,5 +1,6 @@
 ﻿using System.Collections;
 using UnityEngine;
+using Assets.Scripts.Utility;
 
 public class BehaviorNpcCritical : MonoBehaviour
 {
@@ -60,13 +61,7 @@ public class BehaviorNpcCritical : MonoBehaviour
 
     public bool rollForPhotoChance(float maxPercent)
     {
-        float percent = Random.Range(1, 100);
-        if (percent <= maxPercent)
-        {
-            //Debug.Log(" jessica takes a photo");
-            return true;
-        }
-        return false;
+        return UtilityFunctions.RollPercent(maxPercent);
     }
     private void playAnimationCameraFlash()
     {

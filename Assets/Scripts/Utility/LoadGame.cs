@@ -88,7 +88,7 @@ namespace Assets.Scripts.Utility
 
             string sceneName;
             sceneName = Constants.SCENE_NAME_level_23_dev;
-            SceneManager.LoadScene(sceneName);
+            SceneTransition.LoadScene(sceneName);
         }
 
         //internal static void LoadDevLevelVersus()

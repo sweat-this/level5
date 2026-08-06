@@ -49,13 +49,18 @@ public class BodyGuardController : MonoBehaviour, ICombatAgent
     //const string lightningAnimName = "lightning";
 
     private AnimatorStateInfo currentStateInfo;
-    static int currentState;
-    static int AnimatorState_Attack = Animator.StringToHash("base.attack");
-    static int AnimatorState_Walk = Animator.StringToHash("base.walk");
-    static int AnimatorState_Idle = Animator.StringToHash("base.idle");
-    static int AnimatorState_Knockdown = Animator.StringToHash("base.knockdown");
-    static int AnimatorState_Lightning = Animator.StringToHash("base.lightning");
-    static int AnimatorState_Disintegrated = Animator.StringToHash("base.disintegrated");
+    // per-instance: this is THIS bodyguard's animator state. it was static, so every
+    // bodyguard read whichever one updated last - knockdown/attack gating and the
+    // WaitUntil in struckByLighning could all be driven by a different bodyguard.
+    int currentState;
+
+    // the hashes are genuinely shared constants
+    static readonly int AnimatorState_Attack = Animator.StringToHash("base.attack");
+    static readonly int AnimatorState_Walk = Animator.StringToHash("base.walk");
+    static readonly int AnimatorState_Idle = Animator.StringToHash("base.idle");
+    static readonly int AnimatorState_Knockdown = Animator.StringToHash("base.knockdown");
+    static readonly int AnimatorState_Lightning = Animator.StringToHash("base.lightning");
+    static readonly int AnimatorState_Disintegrated = Animator.StringToHash("base.disintegrated");
 
     public bool stateWalk = false;
     public bool stateIdle = false;

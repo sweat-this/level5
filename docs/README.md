@@ -6,6 +6,7 @@ This folder is the baseline documentation home for the Level5 Unity project. It 
 
 - [Systems and Architecture Baseline](systems-architecture-baseline.md) - current system inventory, runtime flows, architectural gaps, and recommended target direction.
 - [Architecture Audit](architecture-audit.md) - running audit register for main problems, risks, recommended solutions, and remediation status.
+- [Deep Audit 2026-08-06](deep-audit-2026-08-06.md) - full runtime pass covering progression/XP math, stat ownership, AI instance state, and lifecycle hygiene. AUD-022 to AUD-033, all fixed, pending Unity compile/playtest verification.
 - [Architecture Remediation Plan](architecture-remediation-plan.md) - staged implementation plan for clean architecture, Unity best practices, performance, and risk control.
 - [Player Input Architecture](player-input-architecture.md) - current input ownership, modernization target, migration plan, and first input-reader slice.
 - [UI Input Architecture](ui-input-architecture.md) - menu input baseline, UI module target, EndRound pilot, and mobile/desktop smoke checks.

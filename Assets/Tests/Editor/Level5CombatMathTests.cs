@@ -1,0 +1,210 @@
+using System.Collections.Generic;
+using NUnit.Framework;
+
+/// <summary>
+/// Regression cover for the progression and randomness bugs found in the 2026-08-06 deep audit
+/// (AUD-022, AUD-026). Both were pure functions that no test exercised.
+/// </summary>
+public class Level5CombatMathTests
+{
+    // MatchExperienceInput defaults DifficultySelected to 0, which is "easy" and halves the
+    // award. Tests asserting exact totals opt into normal difficulty explicitly.
+    private const int NormalDifficulty = 1;
+
+    // ---------- AUD-026: percentage rolls ----------
+
+    [Test]
+    public void ZeroChanceNeverSucceeds()
+    {
+        // the old form was Random.Range(0, 100) <= chance, so a 0 chance fired on a roll of 0
+        Assert.That(PercentChance.Succeeds(0f, 0f), Is.False);
+        Assert.That(PercentChance.Succeeds(0f, 0.5f), Is.False);
+        Assert.That(PercentChance.Succeeds(0f, 1f), Is.False);
+    }
+
+    [Test]
+    public void FullChanceAlwaysSucceeds()
+    {
+        Assert.That(PercentChance.Succeeds(100f, 0f), Is.True);
+        Assert.That(PercentChance.Succeeds(100f, 0.999f), Is.True);
+        Assert.That(PercentChance.Succeeds(100f, 1f), Is.True);
+    }
+
+    [Test]
+    public void NinetyNinePercentIsNotCertain()
+    {
+        // Random.Range(1, 100) is max-exclusive, so the old form made 99 a guaranteed success
+        Assert.That(PercentChance.Succeeds(99f, 0.995f), Is.False);
+        Assert.That(PercentChance.Succeeds(99f, 0.98f), Is.True);
+    }
+
+    [Test]
+    public void RollIsComparedAgainstItsOwnPercentage()
+    {
+        Assert.That(PercentChance.Succeeds(25f, 0.24f), Is.True);
+        Assert.That(PercentChance.Succeeds(25f, 0.25f), Is.False);
+        Assert.That(PercentChance.Succeeds(25f, 0.26f), Is.False);
+    }
+
+    [Test]
+    public void ChanceOutsideZeroToOneHundredIsClampedByTheEndpoints()
+    {
+        Assert.That(PercentChance.Succeeds(-10f, 0f), Is.False);
+        Assert.That(PercentChance.Succeeds(150f, 1f), Is.True);
+    }
+
+    // ---------- AUD-022: sniper evasion bonus ----------
+
+    [Test]
+    public void NoSniperFireAwardsNoEvasionBonus()
+    {
+        // this was the bug: getPercentageFloat returns 0-100, and 1 - 0 = 1 handed every
+        // match the full bonus even in modes with no sniper at all
+        Assert.That(MatchExperience.SniperEvasionBonus(0, 0), Is.EqualTo(0));
+    }
+
+    [Test]
+    public void PerfectEvasionAwardsTheFullBonus()
+    {
+        Assert.That(
+            MatchExperience.SniperEvasionBonus(0, 12),
+            Is.EqualTo(MatchExperience.MaxSniperEvasionBonus));
+    }
+
+    [Test]
+    public void BeingHitByEverySniperShotAwardsNothing()
+    {
+        Assert.That(MatchExperience.SniperEvasionBonus(12, 12), Is.EqualTo(0));
+    }
+
+    [Test]
+    public void EvasionBonusScalesWithTheShareOfShotsDodged()
+    {
+        // the old code could only ever pay 500 or 0 - never anything between
+        Assert.That(MatchExperience.SniperEvasionBonus(3, 10), Is.EqualTo(350));
+        Assert.That(MatchExperience.SniperEvasionBonus(5, 10), Is.EqualTo(250));
+        Assert.That(MatchExperience.SniperEvasionBonus(7, 10), Is.EqualTo(150));
+    }
+
+    [Test]
+    public void MoreHitsThanShotsIsClampedRatherThanGoingNegative()
+    {
+        Assert.That(MatchExperience.SniperEvasionBonus(20, 10), Is.EqualTo(0));
+    }
+
+    // ---------- AUD-022: the whole award ----------
+
+    [Test]
+    public void AMatchWithNoSniperGetsNoHiddenBonus()
+    {
+        MatchExperienceInput input = new MatchExperienceInput
+        {
+            ShotAttempts = 10,
+            ThreePointerMade = 4,
+            TotalPoints = 12,
+            DifficultySelected = NormalDifficulty
+        };
+
+        // 10 attempts * 10 + 4 threes * 30 + 12 points, and nothing else
+        Assert.That(MatchExperience.Calculate(input), Is.EqualTo(100 + 120 + 12));
+    }
+
+    [Test]
+    public void ArcadeModeAwardsNothingRegardlessOfPerformance()
+    {
+        MatchExperienceInput input = new MatchExperienceInput
+        {
+            ShotAttempts = 50,
+            SevenPointerMade = 10,
+            TotalPoints = 400,
+            ArcadeMode = true
+        };
+
+        Assert.That(MatchExperience.Calculate(input), Is.EqualTo(0));
+    }
+
+    [Test]
+    public void EasyDifficultyHalvesTheAwardAndHardRaisesIt()
+    {
+        MatchExperienceInput input = new MatchExperienceInput
+        {
+            ShotAttempts = 10,
+            DifficultySelected = NormalDifficulty
+        };
+
+        int normal = MatchExperience.Calculate(input);
+
+        input.DifficultySelected = 0;
+        Assert.That(MatchExperience.Calculate(input), Is.EqualTo(normal / 2));
+
+        input.DifficultySelected = 2;
+        Assert.That(MatchExperience.Calculate(input), Is.GreaterThan(normal));
+    }
+
+    [Test]
+    public void EnemyKillsOnlyCountWhenEnemiesAreEnabled()
+    {
+        MatchExperienceInput input = new MatchExperienceInput
+        {
+            ShotAttempts = 10,
+            MinionsKilled = 3,
+            BossKilled = 1,
+            DifficultySelected = NormalDifficulty
+        };
+
+        int withoutEnemies = MatchExperience.Calculate(input);
+
+        input.EnemiesEnabled = true;
+        Assert.That(MatchExperience.Calculate(input), Is.GreaterThan(withoutEnemies));
+    }
+
+    [Test]
+    public void ModeMultipliersCompound()
+    {
+        MatchExperienceInput baseline = new MatchExperienceInput
+        {
+            ShotAttempts = 100,
+            DifficultySelected = NormalDifficulty
+        };
+        MatchExperienceInput hardcore = new MatchExperienceInput
+        {
+            ShotAttempts = 100,
+            HardcoreEnabled = true,
+            DifficultySelected = NormalDifficulty
+        };
+        MatchExperienceInput everything = new MatchExperienceInput
+        {
+            ShotAttempts = 100,
+            HardcoreEnabled = true,
+            TrafficEnabled = true,
+            SniperEnabled = true,
+            DifficultySelected = NormalDifficulty
+        };
+
+        int plain = MatchExperience.Calculate(baseline);
+        Assert.That(MatchExperience.Calculate(hardcore), Is.GreaterThan(plain));
+        Assert.That(MatchExperience.Calculate(everything), Is.GreaterThan(MatchExperience.Calculate(hardcore)));
+    }
+
+    // ---------- AUD-028: scene contracts are named in one place ----------
+
+    [Test]
+    public void RequiredSceneObjectNamesAreNonEmptyAndUnique()
+    {
+        AssertNamesAreUsable(GameRules.RequiredHudObjectNames, "GameRules.RequiredHudObjectNames");
+        AssertNamesAreUsable(Pause.RequiredPauseObjectNames, "Pause.RequiredPauseObjectNames");
+    }
+
+    private static void AssertNamesAreUsable(string[] names, string label)
+    {
+        Assert.That(names, Is.Not.Null, label + " must be declared.");
+        Assert.That(names.Length, Is.GreaterThan(0), label + " must not be empty.");
+
+        HashSet<string> seen = new HashSet<string>();
+        foreach (string name in names)
+        {
+            Assert.That(string.IsNullOrWhiteSpace(name), Is.False, label + " contains a blank name.");
+            Assert.That(seen.Add(name), Is.True, label + " lists '" + name + "' more than once.");
+        }
+    }
+}

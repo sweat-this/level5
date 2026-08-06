@@ -10,8 +10,6 @@ public class BodyGuardHealthBar : MonoBehaviour
 
     public Slider Slider => healthSlider;
 
-    public static PlayerHealthBar instance;
-
     // Start is called before the first frame update
     void Start()
     {

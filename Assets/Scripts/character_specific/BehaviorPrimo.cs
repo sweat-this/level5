@@ -27,11 +27,14 @@ public class BehaviorPrimo : MonoBehaviour
     Animator anim;
     AnimatorStateInfo currentStateInfo;
 
-    static int currentState;
-    static int idleState = Animator.StringToHash("base.idle");
-    static int idleState2 = Animator.StringToHash("base.idle2");
-    static int walkState = Animator.StringToHash("base.walk");
-    static int runState = Animator.StringToHash("base.run");
+    // per-instance: this NPC's own animator state, not a value shared by every instance
+    int currentState;
+
+    // the hashes are genuinely shared constants
+    static readonly int idleState = Animator.StringToHash("base.idle");
+    static readonly int idleState2 = Animator.StringToHash("base.idle2");
+    static readonly int walkState = Animator.StringToHash("base.walk");
+    static readonly int runState = Animator.StringToHash("base.run");
 
     Vector3 playerRelativePosition;
     //bool waiting;

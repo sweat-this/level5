@@ -27,12 +27,15 @@ public class BehaviorNpcAutonomous : MonoBehaviour
     Animator anim;
     AnimatorStateInfo currentStateInfo;
 
-    static int currentState;
-    static int idleState = Animator.StringToHash("base.idle");
-    static int idleState2 = Animator.StringToHash("base.idle2");
-    static int walkState = Animator.StringToHash("base.walk");
-    static int runState = Animator.StringToHash("base.run");
-    static int attackState = Animator.StringToHash("base.attack");
+    // per-instance: this NPC's own animator state, not a value shared by every NPC
+    int currentState;
+
+    // the hashes are genuinely shared constants
+    static readonly int idleState = Animator.StringToHash("base.idle");
+    static readonly int idleState2 = Animator.StringToHash("base.idle2");
+    static readonly int walkState = Animator.StringToHash("base.walk");
+    static readonly int runState = Animator.StringToHash("base.run");
+    static readonly int attackState = Animator.StringToHash("base.attack");
     //static int attackState = Animator.StringToHash("base.attack");
 
     [SerializeField]

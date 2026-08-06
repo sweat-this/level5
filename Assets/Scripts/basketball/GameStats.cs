@@ -113,71 +113,38 @@ public class GameStats : MonoBehaviour
     }
     public int getExperienceGainedFromSession()
     {
-        int experience = 0;
-
-        // get 1 - sniper accuracy. ex. if sniper accuracy = 30%, return 70%
-        // player will receive that percentage of xp bonus. higher % for lower snipe accuracy
-
-        float inverseSniperAccuracy = (1 - UtilityFunctions.getPercentageFloat(SniperHits, SniperShots));
-        if (inverseSniperAccuracy > 0)
-        {
-            experience += Mathf.RoundToInt(500 * inverseSniperAccuracy);
-        }
-
-        // +15 for getting hit
-        experience += (SniperHits * 15);
-
-        experience += (ShotAttempt * 10);
-
-        experience += (TwoPointerMade * 20);
-
-        experience += (ThreePointerMade * 30);
-
-        experience += (FourPointerMade * 40);
-
-        experience += (SevenPointerMade * 70);
-
-        experience += Mathf.RoundToInt(TotalDistance * 0.5f);
-
-        experience += (MostConsecutiveShots * 25);
-
-        experience += TotalPoints;
-
-        if (GameOptions.trafficEnabled)
-        {
-            experience = Mathf.RoundToInt(experience * 1.15f);
-        }
-        if (GameOptions.enemiesEnabled || GameOptions.EnemiesOnlyEnabled)
-        {
-            experience += (MinionsKilled * 50);
-            experience += (BossKilled * 150);
-
-            experience = Mathf.RoundToInt(experience * 1.25f);
-        }
-        if (GameOptions.hardcoreModeEnabled)
-        {
-            experience = Mathf.RoundToInt(experience * 1.5f);
-        }
-        if (GameOptions.sniperEnabled)
-        {
-            experience = Mathf.RoundToInt(experience * 1.25f);
-        }
-
-        ExperienceGained = experience;
-        // if arcade mode, 0 out experience
-        if (GameOptions.arcadeModeEnabled)
-        {
-            ExperienceGained = 0;
-        }
-        if(GameOptions.difficultySelected == 0)
-        {
-            ExperienceGained = ExperienceGained /2;
-        }
-        if (GameOptions.difficultySelected == 2)
-        {
-            ExperienceGained = Mathf.RoundToInt(ExperienceGained * 1.5f);
-        }
+        ExperienceGained = MatchExperience.Calculate(BuildExperienceInput());
         return ExperienceGained;
+    }
+
+    // the award itself lives in Level5.Core so it can be unit tested without a scene.
+    // this method's only job is reading the session's stats and mode flags into plain data.
+    public MatchExperienceInput BuildExperienceInput()
+    {
+        return new MatchExperienceInput
+        {
+            ShotAttempts = ShotAttempt,
+            TwoPointerMade = TwoPointerMade,
+            ThreePointerMade = ThreePointerMade,
+            FourPointerMade = FourPointerMade,
+            SevenPointerMade = SevenPointerMade,
+            TotalDistance = TotalDistance,
+            MostConsecutiveShots = MostConsecutiveShots,
+            TotalPoints = TotalPoints,
+
+            SniperShots = SniperShots,
+            SniperHits = SniperHits,
+
+            MinionsKilled = MinionsKilled,
+            BossKilled = BossKilled,
+
+            TrafficEnabled = GameOptions.trafficEnabled,
+            EnemiesEnabled = GameOptions.enemiesEnabled || GameOptions.EnemiesOnlyEnabled,
+            HardcoreEnabled = GameOptions.hardcoreModeEnabled,
+            SniperEnabled = GameOptions.sniperEnabled,
+            ArcadeMode = GameOptions.arcadeModeEnabled,
+            DifficultySelected = GameOptions.difficultySelected
+        };
     }
 
     public float MakeThreePointersMoneyBallLowTime

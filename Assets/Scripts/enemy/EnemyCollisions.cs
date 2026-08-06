@@ -18,7 +18,19 @@ public class EnemyCollisions : MonoBehaviour
     {
         enemyController = gameObject.transform.root.GetComponent<EnemyController>();
         enemyHealth = GetComponent<EnemyHealth>();
-        enemyHealthBar = transform.parent.GetComponentInChildren<EnemyHealthBar>();
+        enemyHealthBar = transform.parent != null
+            ? transform.parent.GetComponentInChildren<EnemyHealthBar>()
+            : null;
+
+        if (enemyController == null)
+        {
+            Debug.LogError(
+                "EnemyCollisions on " + name + " found no EnemyController on its hierarchy root. Disabling.",
+                this);
+            enabled = false;
+            return;
+        }
+
         if (luck == 0)
         {
             if (enemyController.IsBoss) { luck = 10; };
@@ -167,28 +179,26 @@ public class EnemyCollisions : MonoBehaviour
         // killed by player attack box and NOT enemy friendly fire
         if (playerAttackBox != null && enemyHealth.IsDead)
         {
-            if (GameLevelManager.instance.PlayerHealth.Health < GameLevelManager.instance.PlayerHealth.MaxHealth)
+            PlayerHealth playerHealth = GameLevelManager.instance != null
+                ? GameLevelManager.instance.PlayerHealth
+                : null;
+            if (playerHealth != null && playerHealth.Health < playerHealth.MaxHealth)
             {
                 if (enemyController.IsBoss)
                 {
-                    GameLevelManager.instance.PlayerHealth.Heal(5);
+                    playerHealth.Heal(5);
                 }
                 if (enemyController.IsMinion)
                 {
-                    GameLevelManager.instance.PlayerHealth.Heal(2);
+                    playerHealth.Heal(2);
                     //Debug.Log("ADD HEALTH : 2");
                 }
             }
-            BasketBall.instance.GameStats.EnemiesKilled++;
-            if (enemyController.IsBoss)
-            {
 
-                BasketBall.instance.GameStats.BossKilled++;
-            }
-            else
-            {
-                BasketBall.instance.GameStats.MinionsKilled++;
-            }
+            // credit the player who actually landed the killing blow, not whichever
+            // basketball happens to own the BasketBall.instance static
+            CombatCredit.CreditEnemyKill(playerAttackBox.gameObject, enemyController.IsBoss);
+
             if (BehaviorNpcCritical.instance != null)
             {
                 BehaviorNpcCritical.instance.playAnimationCriticalSuccesful();
@@ -209,7 +219,14 @@ public class EnemyCollisions : MonoBehaviour
 
     void enemyStepOnRake(Collider other)
     {
-        other.transform.parent.GetComponentInChildren<Animator>().Play("attack");
+        Animator rakeAnimator = other.transform.parent != null
+            ? other.transform.parent.GetComponentInChildren<Animator>()
+            : null;
+        if (rakeAnimator != null)
+        {
+            rakeAnimator.Play("attack");
+        }
+
         StartCoroutine(enemyController.takeDamage());
     }
 
