@@ -38,15 +38,15 @@ batch landed, which re-reviewed the changes and opened the files the first pass 
 | AUD-037 | Randomness/UI | Low | Fixed | `getCriticalPercentage` guards `CriticalRolled` but divides by `ShotAttempt`. |
 | AUD-038 | Input lifecycle | Low | Fixed | Queued touch inputs are not cleared on scene exit, so a tap can carry into the next scene. |
 | AUD-039 | Spawn contract | Low | Fixed | `EnemyHealth.ResetForSpawn` silently skips everything when no `EnemyController` is found, leaving the enemy invincible. |
-| AUD-040 | Stats paging | Medium | Open | The stats page count is queried with a different filter set than the rows, so it is too small with no filters and too large with them. |
-| AUD-041 | Stats paging | Low | Open | Paging left with zero results sets the page number to -1 and displays "page 0 / 0". |
-| AUD-042 | Stats paging | Low | Open | `ResultsPerPage` is declared but the page arithmetic hardcodes 10 in eight places. |
-| AUD-043 | Dead parameter | Low | Open | `getNumberOfResults` accepts a `pageNumber` it never uses. |
+| AUD-040 | Stats paging | Medium | Fixed | The stats page count is queried with a different filter set than the rows, so it is too small with no filters and too large with them. |
+| AUD-041 | Stats paging | Low | Fixed | Paging left with zero results sets the page number to -1 and displays "page 0 / 0". |
+| AUD-042 | Stats paging | Low | Fixed | `ResultsPerPage` is declared but the page arithmetic hardcodes 10 in eight places. |
+| AUD-043 | Dead parameter | Low | Fixed | `getNumberOfResults` accepts a `pageNumber` it never uses. |
 
 AUD-022 to AUD-033 came from the first pass; AUD-034 to AUD-037 from the
 [second pass](#second-pass---2026-08-06-post-fix) run after those fixes landed. All sixteen are now
 fixed in code and pending Unity compile/playtest verification. A third pass added AUD-038 and
-AUD-039, also fixed. A fourth added AUD-040 to AUD-043, which are open.
+AUD-039, also fixed. A fourth added AUD-040 to AUD-043, also fixed. All twenty-two await Unity verification.
 
 ## Verification Status
 
@@ -751,7 +751,7 @@ Aimed at the gap the third pass named: the large files no earlier pass had read 
 `StatsManager`, `ProgressionManager`, `StartManager`, `PlayerController`, `AutoPlayerController`,
 `RacingVehicleController`.
 
-Four findings, all in the stats browser, all open.
+Four findings, all in the stats browser, all since fixed.
 
 ### AUD-040: the stats page count is computed from a different filter set than the rows (Medium)
 
@@ -778,6 +778,16 @@ Both are user-visible in the normal stats flow, and neither produces an error - 
 that disagrees with the data. Fix is to build both queries from one filter clause, which is most of
 the way to merging them into a single method that returns rows plus total.
 
+**Fix applied.** Both queries now build their `WHERE` from one `BuildHighScoreFilterClause`, so the
+count is filtered exactly like the rows by construction. `getNumberOfResults` takes all four filter
+flags and binds them; `StatsManager` passes the same four it passed to the rows query a few lines
+above. The mode-dependent sort direction moved to a named `HighScoreFieldIsAscending`, which
+collapsed the four near-identical SQL strings into one.
+
+The reader that walks the result columns branches on the same `HasHighScoreFilters` predicate the
+`SELECT` list is built from, so the column indices cannot drift away from the query shape - that
+coupling was implicit before and is the same failure mode one level down.
+
 ### AUD-041: paging left with no results produces a negative page number (Low)
 
 `Assets/Scripts/menu_stats/StatsManager.cs:1058-1080`
@@ -796,6 +806,12 @@ It does not crash: SQLite treats a negative OFFSET as 0, and the next press of "
 rather than a data error. The wrap-around itself is correct for the non-empty case - only the empty
 list is unguarded.
 
+**Fix applied.** Page arithmetic moved to `Assets/Level5/Core/StatsPaging.cs`. `PageCount` returns at
+least 1, so an empty table reads "page 1 / 1" and the wrap-around always has a valid page to land on;
+`NextPage`/`PreviousPage` clamp their input before wrapping, so an already-invalid page number is
+brought back into range rather than propagated; `OffsetFor` never returns a negative offset. Applied
+to the online paging as well, which had the same defect. Covered by six tests.
+
 ### AUD-042: `ResultsPerPage` exists but the paging math hardcodes 10 (Low)
 
 `StatsManager.cs:38` declares `const int ResultsPerPage = 10;`, and then the page arithmetic uses
@@ -808,6 +824,11 @@ rows per page - the same failure AUD-040 already produces by a different route. 
 AUD-036, and the same fix: one constant, referenced everywhere, including as a bound parameter in
 the SQL rather than a literal.
 
+**Fix applied.** `StatsPaging.ResultsPerPage` is the only definition. `StatsManager`'s local
+constant now derives from it, the SQL takes `LIMIT @limit` as a bound parameter rather than a
+literal, the offset comes from `StatsPaging.OffsetFor`, and the short-page padding uses it too. No
+bare `10` remains anywhere in the stats query path.
+
 ### AUD-043: `getNumberOfResults` takes a `pageNumber` it never uses (Low)
 
 `Assets/Scripts/database/DBHelper.cs:1694`
@@ -818,6 +839,10 @@ today, but it is exactly the kind of signature that invites someone to "fix" the
 it. Drop the parameter.
 
 (The same query also carries an `ORDER BY` on a `COUNT(*)`, which does nothing.)
+
+**Fix applied.** The parameter is gone and the `ORDER BY` is off the `COUNT`. `field` is still passed
+and still validated through `RequireSqlIdentifier` even though the count no longer interpolates it,
+so an invalid field is rejected by both queries identically rather than only by one of them.
 
 ### Checked and found sound in this pass
 
@@ -850,7 +875,7 @@ All sixteen findings are fixed in code. The remaining work is verification, in t
 1. **Open the project in Unity and let it compile.** New files under `Assets/Level5/Core`,
    `Assets/Scripts/Utility`, `Assets/Scripts/combat`, and `Assets/Tests/Editor` have hand-written
    `.meta` files with fresh GUIDs; Unity will accept them and import normally.
-2. **Run the edit-mode tests** (33 now). `Level5CombatMathTests` should pass outright.
+2. **Run the edit-mode tests** (39 now). `Level5CombatMathTests` should pass outright.
    `Level5SceneContractTests` may legitimately fail if a gameplay scene is missing a HUD or
    pause-menu object - read the names it reports before changing anything.
 3. **Run `Level5/Validate Project`.** The new contest-mode timer check may legitimately fail if a

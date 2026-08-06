@@ -292,6 +292,63 @@ public class Level5CombatMathTests
         PlayerTouchInputState.Clear();
     }
 
+    // ---------- AUD-041/042: stats paging ----------
+
+    [Test]
+    public void AnEmptyResultSetStillHasOnePage()
+    {
+        // PageCount(0) used to be 0, which made the wrap-around land on page -1
+        Assert.That(StatsPaging.PageCount(0), Is.EqualTo(1));
+        Assert.That(StatsPaging.PageCount(-5), Is.EqualTo(1));
+        Assert.That(StatsPaging.DisplayLabel(0, 0), Is.EqualTo("page 1 / 1"));
+    }
+
+    [Test]
+    public void PageCountRoundsUpAndDoesNotAddAnEmptyPageOnAnExactFit()
+    {
+        Assert.That(StatsPaging.PageCount(1), Is.EqualTo(1));
+        Assert.That(StatsPaging.PageCount(StatsPaging.ResultsPerPage), Is.EqualTo(1));
+        Assert.That(StatsPaging.PageCount(StatsPaging.ResultsPerPage + 1), Is.EqualTo(2));
+        Assert.That(StatsPaging.PageCount(StatsPaging.ResultsPerPage * 3), Is.EqualTo(3));
+    }
+
+    [Test]
+    public void PagingLeftWithNoResultsStaysOnAValidPage()
+    {
+        // the bug: numPages - 1 with numPages == 0 gave -1, and a negative SQL offset
+        Assert.That(StatsPaging.PreviousPage(0, 0), Is.EqualTo(0));
+        Assert.That(StatsPaging.NextPage(0, 0), Is.EqualTo(0));
+    }
+
+    [Test]
+    public void PagingWrapsAtBothEnds()
+    {
+        int total = StatsPaging.ResultsPerPage * 3;   // pages 0, 1, 2
+
+        Assert.That(StatsPaging.NextPage(0, total), Is.EqualTo(1));
+        Assert.That(StatsPaging.NextPage(2, total), Is.EqualTo(0));
+        Assert.That(StatsPaging.PreviousPage(2, total), Is.EqualTo(1));
+        Assert.That(StatsPaging.PreviousPage(0, total), Is.EqualTo(2));
+    }
+
+    [Test]
+    public void AnOutOfRangePageIsBroughtBackIntoRange()
+    {
+        int total = StatsPaging.ResultsPerPage * 2;   // pages 0, 1
+
+        Assert.That(StatsPaging.NextPage(99, total), Is.EqualTo(0));
+        Assert.That(StatsPaging.PreviousPage(-4, total), Is.EqualTo(1));
+        Assert.That(StatsPaging.DisplayLabel(99, total), Is.EqualTo("page 2 / 2"));
+    }
+
+    [Test]
+    public void OffsetIsNeverNegative()
+    {
+        Assert.That(StatsPaging.OffsetFor(0), Is.EqualTo(0));
+        Assert.That(StatsPaging.OffsetFor(3), Is.EqualTo(3 * StatsPaging.ResultsPerPage));
+        Assert.That(StatsPaging.OffsetFor(-1), Is.EqualTo(0));
+    }
+
     // ---------- AUD-028: scene contracts are named in one place ----------
 
     [Test]

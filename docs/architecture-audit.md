@@ -10,8 +10,8 @@ AUD-022 through AUD-033 came out of the 2026-08-06 deep audit and are tracked, w
 [Deep Audit 2026-08-06](deep-audit-2026-08-06.md) rather than duplicated into the table below. All
 twelve (AUD-022 to AUD-033) are fixed in code and pending Unity compile/playtest verification. A
 second pass added AUD-034 to AUD-037 and a third added AUD-038 to AUD-039, also fixed and awaiting
-Unity compile/playtest verification. A fourth pass added AUD-040 to AUD-043 (stats-screen paging),
-which are still open.
+Unity compile/playtest verification. A fourth pass added AUD-040 to AUD-043 (stats-screen paging), also fixed.
+All twenty-two await Unity compile/playtest verification.
 
 ## Audit Status Legend
 

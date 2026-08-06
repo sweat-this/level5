@@ -35,7 +35,9 @@ public class StatsManager : MonoBehaviour
 
     // tag find high score rows that are instantiated
     const string highScoreRowTag = "high_score_row";
-    const int ResultsPerPage = 10;
+    // page size lives in StatsPaging so the row count, the page arithmetic, and the SQL LIMIT
+    // cannot drift apart
+    const int ResultsPerPage = StatsPaging.ResultsPerPage;
     //const string mainMenuSceneName = "level_00_start";
 
     GameObject allTimeTableObject;
@@ -842,7 +844,15 @@ public class StatsManager : MonoBehaviour
                     localResultsPageNumber);
 
                 // get # of results for pageination display
-                numLocalResults = DBHelper.instance.getNumberOfResults(field, modesList[currentModeSelectedIndex].modeSelectedId, hardcoreEnabled, localResultsPageNumber);
+                // same four filters the rows query above used, so the page count describes the
+                // set actually being paged
+                numLocalResults = DBHelper.instance.getNumberOfResults(
+                    field,
+                    modesList[currentModeSelectedIndex].modeSelectedId,
+                    hardcoreEnabled,
+                    trafficEnabled,
+                    enemiesEnabled,
+                    sniperEnabled);
 
                 if (highScoreRowsDataList == null)
                 {
@@ -978,38 +988,13 @@ public class StatsManager : MonoBehaviour
 
     public void initializeLocalPageNumberDisplay()
     {
-        int numPages;
-        if ((numLocalResults % 10) == 0)
-        {
-            numPages = numLocalResults / 10;
-        }
-        else
-        {
-            numPages = (numLocalResults / 10) + 1;
-        }
-
-        pageNumberLocalSelectButtonText.text = "page " + (localResultsPageNumber + 1) + " / " + numPages;
+        pageNumberLocalSelectButtonText.text =
+            StatsPaging.DisplayLabel(localResultsPageNumber, numLocalResults);
     }
     public void initializeOnlinePageNumberDisplay()
     {
-        int numPages;
-        if ((numOnlineResults % 10) == 0)
-        {
-            numPages = numOnlineResults / 10;
-        }
-        else
-        {
-            numPages = (numOnlineResults / 10) + 1;
-        }
-
-        if (numPages > 0)
-        {
-            pageNumberOnlineSelectButtonText.text = "page " + (onlineResultsPageNumber + 1) + " / " + numPages;
-        }
-        else
-        {
-            pageNumberOnlineSelectButtonText.text = "page " + (onlineResultsPageNumber) + " / " + numPages;
-        }
+        pageNumberOnlineSelectButtonText.text =
+            StatsPaging.DisplayLabel(onlineResultsPageNumber, numOnlineResults);
     }
 
     public void changeSelectedTrafficOption()
@@ -1033,99 +1018,31 @@ public class StatsManager : MonoBehaviour
 
     public void increaseLocalResultsPageNumber()
     {
-        int numPages;
-        if ((numLocalResults % 10) == 0)
-        {
-            numPages = numLocalResults / 10;
-        }
-        else
-        {
-            numPages = (numLocalResults / 10) + 1;
-        }
-        // if can increase page number of results, do so
-        if ((localResultsPageNumber + 2) <= numPages)
-        {
-            localResultsPageNumber++;
-            initializeLocalPageNumberDisplay();
-        }
-        else
-        {
-            localResultsPageNumber = 0;
-            initializeLocalPageNumberDisplay();
-        }
+        localResultsPageNumber = StatsPaging.NextPage(localResultsPageNumber, numLocalResults);
+        initializeLocalPageNumberDisplay();
         changeHighScoreDataDisplay();
     }
     public void decreaseLocalResultsPageNumber()
     {
-        int numPages;
-        if ((numLocalResults % 10) == 0)
-        {
-            numPages = numLocalResults / 10;
-        }
-        else
-        {
-            numPages = (numLocalResults / 10) + 1;
-        }
-        // if can increase page number of results, do so
-        if ((localResultsPageNumber - 1) >= 0)
-        {
-            localResultsPageNumber--;
-            initializeLocalPageNumberDisplay();
-        }
-        else
-        {
-            localResultsPageNumber = numPages - 1;
-            initializeLocalPageNumberDisplay();
-        }
+        // wraps within a valid page range. this used to land on numPages - 1, which is -1 when
+        // there are no results at all.
+        localResultsPageNumber = StatsPaging.PreviousPage(localResultsPageNumber, numLocalResults);
+        initializeLocalPageNumberDisplay();
         changeHighScoreDataDisplay();
     }
 
     public void increaseOnlineResultsPageNumber()
     {
-        int numPages;
-        if ((numOnlineResults % 10) == 0)
-        {
-            numPages = numOnlineResults / 10;
-        }
-        else
-        {
-            numPages = (numOnlineResults / 10) + 1;
-        }
-        // if can increase page number of results, do so
-        if ((onlineResultsPageNumber + 2) <= numPages)
-        {
-            onlineResultsPageNumber++;
-            initializeOnlinePageNumberDisplay();
-        }
-        else
-        {
-            onlineResultsPageNumber = 0;
-            initializeOnlinePageNumberDisplay();
-        }
+        onlineResultsPageNumber = StatsPaging.NextPage(onlineResultsPageNumber, numOnlineResults);
+        initializeOnlinePageNumberDisplay();
         changeHighScoreDataDisplayOnline();
     }
     public void decreaseOnlineResultsPageNumber()
     {
-        int numPages;
-        if ((numOnlineResults % 10) == 0)
-        {
-            numPages = numOnlineResults / 10;
-        }
-        else
-        {
-            numPages = (numOnlineResults / 10) + 1;
-        }
-        // if can increase page number of results, do so
-        if ((onlineResultsPageNumber - 1) >= 0)
-        {
-            onlineResultsPageNumber--;
-            initializeOnlinePageNumberDisplay();
-        }
-        else
-        {
-            onlineResultsPageNumber = numPages - 1;
-            initializeOnlinePageNumberDisplay();
-        }
+        // wraps within a valid page range. this used to land on numPages - 1, which is -1 when
+        // there are no results at all.
+        onlineResultsPageNumber = StatsPaging.PreviousPage(onlineResultsPageNumber, numOnlineResults);
+        initializeOnlinePageNumberDisplay();
         changeHighScoreDataDisplayOnline();
     }
 
