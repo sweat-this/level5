@@ -36,10 +36,13 @@ batch landed, which re-reviewed the changes and opened the files the first pass 
 | AUD-035 | Null safety | Low | Fixed | `BodyGuardCollisions` retains the three unguarded dereferences that AUD-031 fixed in its `EnemyCollisions` twin. |
 | AUD-036 | Progression | Low | Fixed | Experience-per-level (`3000`) is hardcoded in eight places plus a ninth derivation. |
 | AUD-037 | Randomness/UI | Low | Fixed | `getCriticalPercentage` guards `CriticalRolled` but divides by `ShotAttempt`. |
+| AUD-038 | Input lifecycle | Low | Open | Queued touch inputs are not cleared on scene exit, so a tap can carry into the next scene. |
+| AUD-039 | Spawn contract | Low | Open | `EnemyHealth.ResetForSpawn` silently skips everything when no `EnemyController` is found, leaving the enemy invincible. |
 
 AUD-022 to AUD-033 came from the first pass; AUD-034 to AUD-037 from the
 [second pass](#second-pass---2026-08-06-post-fix) run after those fixes landed. All sixteen are now
-fixed in code and pending Unity compile/playtest verification.
+fixed in code and pending Unity compile/playtest verification. A third pass added AUD-038 and
+AUD-039, which are open.
 
 ## Verification Status
 
@@ -649,6 +652,73 @@ neighbouring accuracy getters (which do guard correctly) are right there for com
   misread it is gated on `!modeRequiresCounter`.
 - **Accuracy getters.** All eight per-shot-type accuracy getters in both basketball scripts guard
   their divisor correctly. Only `getCriticalPercentage` (AUD-037) does not.
+
+## Third Pass - 2026-08-06 (post-fix, second round)
+
+Run after AUD-034..037 landed. Re-verified the second batch, re-checked whether AUD-023's scope was
+complete, and opened `PlayerController`, `StartManager`, `StatsManager`, `ProgressionManager`, and
+the touch input layer.
+
+Two findings, both Low, both open.
+
+### AUD-038: queued touch inputs survive a scene change (Low)
+
+`Assets/Scripts/input/PlayerTouchInputState.cs` and `Assets/Scripts/input/TouchInputController.cs:71-80`
+
+`PlayerTouchInputState` holds four pieces of static input state. `TouchInputController.OnDisable`
+clears exactly one of them:
+
+```csharp
+private void OnDisable()
+{
+    hold1Detected = false;
+    PlayerTouchInputState.BlockHeld = false;   // cleared
+    // jumpOrShootQueued, attackQueued, specialQueued are not
+    ...
+}
+```
+
+The reset that does cover all four is `[RuntimeInitializeOnLoadMethod(SubsystemRegistration)]`, which
+runs once per application launch - not per scene load. So an attack, special, or jump/shoot queued on
+the last frame before a scene change stays queued, and the next scene's freshly spawned player
+consumes it as a phantom input on its first frame.
+
+Narrow - it needs a tap on the frame the scene tears down, before `PlayerController.Update` consumes
+it. But the asymmetry is the tell: whoever added the `BlockHeld` line understood the hazard and
+covered only the state whose stuck value would be most visible. Fix is three more lines in the same
+`OnDisable`, or better, a single `PlayerTouchInputState.Clear()` that `OnDisable` calls.
+
+### AUD-039: `EnemyHealth.ResetForSpawn` silently does nothing without a controller (Low)
+
+`Assets/Scripts/enemy/EnemyHealth.cs:30-54`
+
+The whole body is wrapped in `if (enemyController != null)`, so when the lookup in `Awake`
+(`transform.root.GetComponent<EnemyController>()`) finds nothing, spawn reset is skipped entirely -
+no log, no error. `maxEnemyHealth` stays 0, which makes the `Health` setter clamp every write to
+`Mathf.Clamp(value, 0, 0)`, so the enemy cannot take damage and cannot die.
+
+`ResetForSpawn` is called from `OnEnable`, which is the pooling reuse path, so this is the same
+prefab-contract class as AUD-031/035: currently masked by correct prefab data, silent when that data
+is wrong, and the symptom (an invincible enemy) points nowhere near the cause. Should log an error
+and leave the component disabled rather than returning quietly.
+
+### Confirmed complete
+
+- **AUD-023 scope.** Re-scanned every mutable static in the runtime tree. `PlayerController` and
+  `EnemyController` keep `currentState` as instance fields, and the only other occurrence is
+  commented out in `AutoPlayerControllerTest`. The four controllers fixed were all of them.
+- **Second-batch fixes.** No bare `3000` remains outside a comment; all nine call sites resolve to
+  `CharacterLevel`; `MatchClock`/`CharacterLevel` take no dependency on `GameOptions`,
+  `GameLevelManager`, or `PlayerData`, so `Level5.Core` stays independent of `Assembly-CSharp`.
+- **Menu index safety.** `StartManager` validates all four selection indices against their list
+  counts before use (`StartManager.cs:701-716`); the wrap-around decrements handle the 0 case.
+
+### Not yet covered by any pass
+
+`PlayerController` (1050 lines), `StartManager` (2261), `StatsManager` (1151), and
+`ProgressionManager` (976) have been sampled but not read end to end - together roughly 5,400 lines,
+the largest remaining gap. `AutoPlayerController` and `RacingVehicleController` (807 each) are
+untouched. A fourth pass should start there rather than re-sweeping what three passes have covered.
 
 ## What To Do Next
 
