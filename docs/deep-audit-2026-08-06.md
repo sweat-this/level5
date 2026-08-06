@@ -9,9 +9,12 @@ Every finding below was traced to specific lines and cross-checked against its c
 duplicates an existing AUD entry, though several sharpen a previously generic one (noted per finding).
 IDs continue the main register's sequence.
 
-**All findings below were fixed on 2026-08-06.** Code changes are described per finding under
+**AUD-022 to AUD-033 were fixed on 2026-08-06.** Code changes are described per finding under
 "Fix applied". The fixes have not been compiled or playtested in Unity - see
 [Verification Status](#verification-status).
+
+**AUD-034 to AUD-037 are open.** They came out of a second pass run after those fixes landed, which
+re-reviewed the changes and opened the files the first pass never got to.
 
 ## Summary
 
@@ -29,6 +32,13 @@ IDs continue the main register's sequence.
 | AUD-031 | Null safety | Low | Fixed | `EnemyCollisions` dereferences `enemyController`, `transform.parent`, and `BasketBall.instance` without null checks. |
 | AUD-032 | Build/test | Low | Fixed | 8 automated tests total for ~42k lines; all of the math bugs above are pure functions that unit tests would have caught. |
 | AUD-033 | Legacy separation | Low | Fixed | `StartManager_original.cs` (1683 lines) still compiles into the shipping assembly. |
+| AUD-034 | Match timing | Medium | Open | `Timer` and `GameRules` both initialize `timeStart` with different formulas, in an undefined `Start()` order. |
+| AUD-035 | Null safety | Low | Open | `BodyGuardCollisions` retains the three unguarded dereferences that AUD-031 fixed in its `EnemyCollisions` twin. |
+| AUD-036 | Progression | Low | Open | Experience-per-level (`3000`) is hardcoded in eight places plus a ninth derivation. |
+| AUD-037 | Randomness/UI | Low | Open | `getCriticalPercentage` guards `CriticalRolled` but divides by `ShotAttempt`. |
+
+AUD-022 to AUD-033 came from the first pass and are fixed. AUD-034 to AUD-037 came from the
+[second pass](#second-pass---2026-08-06-post-fix) run after those fixes landed, and are **not** fixed.
 
 ## Verification Status
 
@@ -485,6 +495,131 @@ confirmed against `Level5Backend`:
   (`APIHelper.cs:105-107`), and the score values themselves come from local `GameStats`. The server
   must derive identity from the bearer token and never trust the posted `Userid`. Client-side score
   integrity is not achievable and should not be attempted here.
+
+## Second Pass - 2026-08-06 (post-fix)
+
+A second sweep run after the AUD-022..033 fixes landed. Two goals: re-review the changes above, and
+open the files the first pass never got to - `DBHelper`, `DBConnector`, `PlayerAttackQueue`,
+`BodyGuardCollisions`, `Timer`, and the progression/level math.
+
+### Re-review of the first-pass fixes
+
+No defects found. All eight roll call sites resolve to the shared helper, no orphaned locals or
+unused `Random` aliases remain, every file using the new `Assets.Scripts.Utility` types imports the
+namespace, and `players[0].setBasketball` runs before any `BasketBall.Start`, so
+`IsPrimaryBasketball()` cannot read a half-built roster.
+
+### AUD-034: `Timer` and `GameRules` both initialize the match clock, with different formulas (Medium)
+
+`Assets/Scripts/game manager/Timer.cs:63-73` and `Assets/Scripts/game manager/GameRules.cs:200-207`
+
+Both `Start()` methods write the same field - `Timer.timeStart` - and they do not agree:
+
+```csharp
+// Timer.Start()
+if (gameModeThreePointContest || gameModeFourPointContest || gameModeSevenPointContest
+    || gameModeAllPointContest || GameOptions.customTimer > 0)
+{
+    timeStart = GameOptions.customTimer;      // 0 if a contest mode has no custom timer
+}
+else { timeStart = 180; }
+
+// GameRules.Start()
+if (GameOptions.customTimer > 0) { setTimer(GameOptions.customTimer); }
+else { setTimer(180); }
+```
+
+`Timer`'s condition mixes "is a contest mode" with "has a custom timer", but the assignment only
+makes sense for the second. A contest mode whose prefab leaves `CustomTimer` at 0 gets
+`timeStart = 0` from `Timer` and `180` from `GameRules`. With `timeStart = 0`, `timeRemaining` goes
+negative on the first frame and the match ends instantly.
+
+Which one wins is undefined. Unity does not order `Start()` between two components, and this project
+sets no execution order at all - `ProjectSettings/MonoManager.asset` has no `m_ExecutionOrder`
+entries and no script carries `[DefaultExecutionOrder]` (both verified).
+
+Today the divergence needs a contest-mode prefab with `CustomTimer` unset to bite, so it may not be
+reachable with current data - `GameOptions.customTimer` is fed from each mode prefab's `CustomTimer`
+field (`StartManager.cs:1777-1785`) and nothing validates that contest modes set it. But two owners
+computing one value by different rules in an undefined order is a defect regardless of whether the
+data currently hides it.
+
+Recommended: give `timeStart` a single owner. `GameRules` already resolves the `Timer` and calls
+`setTimer`, so `Timer.Start()` should stop computing it. If contest modes are meant to require a
+custom timer, assert that in `Level5ProjectValidator` alongside the other mode-prefab checks.
+
+### AUD-035: `BodyGuardCollisions` still has the null-safety defects fixed in `EnemyCollisions` (Low)
+
+`Assets/Scripts/bodyguard/BodyGuardCollisions.cs:18-23` and its `enemyStepOnRake`
+
+This one is a scoping miss in AUD-031 rather than a new discovery. `BodyGuardCollisions` is a
+near-copy of `EnemyCollisions` and carries the same three unguarded dereferences:
+
+- `Start()`: `transform.parent.GetComponentInChildren<BodyGuardHealthBar>()` with no parent check.
+- `Start()`: `gameObject.transform.root.GetComponent<BodyGuardController>()`, then the controller is
+  used without a null check.
+- `enemyStepOnRake`: `other.transform.parent.GetComponentInChildren<Animator>().Play("attack")` -
+  the identical three-deep chain that was fixed on the enemy side.
+
+AUD-031 was written against `EnemyCollisions` specifically and the fix followed that scope, so the
+bodyguard copy was left behind. Worth applying the same guards, and worth noting as an argument for
+collapsing the two collision handlers rather than continuing to patch them in parallel.
+
+### AUD-036: experience-per-level is hardcoded in eight places (Low)
+
+The literal `3000` appears as the XP-per-level divisor in:
+
+- `Assets/Scripts/database/DBHelper.cs:385`, `:386`, `:526`
+- `Assets/Scripts/menu_loading/LoadManager.cs:330`
+- `Assets/Scripts/menu_start/StartManager.cs:1650`, `:1651`
+- `Assets/Scripts/player/CharacterProfile.cs:105`
+- `Assets/Scripts/player/CharacterProgressMigration.cs:43`
+- `Assets/Scripts/player/CharacterProgressParityLogger.cs:76`
+
+`StartManager` also derives "XP to next level" as `(level + 1) * 3000 - experience`, which silently
+assumes the same constant a second way. Changing the progression curve means finding all nine sites,
+and a missed one produces a level shown in the menu that disagrees with the level written to the
+database.
+
+This is the same shape as AUD-018 (mode dispatch duplicated with inconsistent constants), and it now
+has an obvious home: `MatchExperience` in `Level5.Core` already owns the earn side of progression. A
+`CharacterLevel.FromExperience(int)` / `ExperienceToNextLevel(int)` pair beside it would give the
+spend side one owner too, and both are pure functions that the existing edit-mode suite can cover.
+
+### AUD-037: `getCriticalPercentage` guards on the wrong variable (Low)
+
+`Assets/Scripts/basketball/BasketBall.cs:700-711` and `BasketBallAuto.cs:753-764`
+
+```csharp
+if (gameStats.CriticalRolled > 0)
+{
+    float accuracy = (float)gameStats.CriticalRolled / gameStats.ShotAttempt;
+```
+
+The guard tests `CriticalRolled` but the divisor is `ShotAttempt`, so it does not actually protect
+the division. Float division by zero yields Infinity rather than throwing, so the overlay would
+render `Infinity%` instead of crashing.
+
+Currently unreachable: `shootBasketBall` increments `ShotAttempt` before `Launch` runs the critical
+roll, so `CriticalRolled > 0` implies `ShotAttempt > 0`. It is a latent wrong-guard that any
+reordering of the shot pipeline would expose - worth correcting to `ShotAttempt > 0` while the
+neighbouring accuracy getters (which do guard correctly) are right there for comparison.
+
+### Checked and found sound in this pass
+
+- **`DBConnector` / `DBHelper` locking.** I twice suspected a leaked `databaseLocked` flag and was
+  wrong both times, so recording it: all seven `DBConnector` acquire/release pairs are matched, and
+  every one of the 30 `DBHelper` methods that takes the lock releases it on both the success and the
+  exception path. The newer methods use `try/finally`; the older ones release before each `return`
+  and again in `catch`. The first false alarm came from grepping the `DatabaseLocked` property while
+  several methods release via the lowercase `databaseLocked` backing field.
+- **`PlayerAttackQueue`.** Reservation, release, and stale-entry cleanup are consistent; entries are
+  keyed both by attacker and in a parallel list that is kept in sync. One observation, not a defect:
+  `RefreshBodyGuards()` only runs in `Start()`, so a bodyguard spawned mid-match is not tracked.
+- **`Timer` counter modes.** `timeRemaining` stays 0 in counter modes, but every branch that could
+  misread it is gated on `!modeRequiresCounter`.
+- **Accuracy getters.** All eight per-shot-type accuracy getters in both basketball scripts guard
+  their divisor correctly. Only `getCriticalPercentage` (AUD-037) does not.
 
 ## What To Do Next
 

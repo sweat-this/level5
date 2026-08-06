@@ -8,7 +8,8 @@ Use this document for problems and decisions. Use [Systems and Architecture Base
 
 AUD-022 through AUD-033 came out of the 2026-08-06 deep audit and are tracked, with their fixes, in
 [Deep Audit 2026-08-06](deep-audit-2026-08-06.md) rather than duplicated into the table below. All
-twelve are fixed in code and pending Unity compile/playtest verification.
+twelve (AUD-022 to AUD-033) are fixed in code and pending Unity compile/playtest verification. A
+second pass added AUD-034 to AUD-037, which are still open.
 
 ## Audit Status Legend
 
