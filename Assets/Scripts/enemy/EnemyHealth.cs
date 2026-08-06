@@ -18,9 +18,15 @@ public class EnemyHealth : MonoBehaviour, IDamageable
     public event Action OnHealthChanged;
     public event Action OnDied;
 
+    // the inspector-configured max, captured before any spawn reset rewrites it. ResetForSpawn
+    // runs on every OnEnable (so on every pool reuse), and the hardcore bonus below is applied
+    // each time - it has to scale a stable base or it compounds across respawns.
+    int configuredMaxEnemyHealth;
+
     private void Awake()
     {
         enemyController = gameObject.transform.root.GetComponent<EnemyController>();
+        configuredMaxEnemyHealth = maxEnemyHealth;
     }
 
     private void OnEnable()
@@ -28,31 +34,43 @@ public class EnemyHealth : MonoBehaviour, IDamageable
         ResetForSpawn();
     }
 
+    const int DefaultSpawnHealth = 50;
+    const int BossSpawnHealth = 150;
+
     public void ResetForSpawn()
     {
-        if (enemyController != null)
+        // this whole body used to be wrapped in `if (enemyController != null)`, so a missing
+        // controller skipped the reset silently. With no controller AND no inspector-set health,
+        // maxEnemyHealth stayed 0 - and the Health setter then clamps every write to zero,
+        // producing an enemy that can neither take damage nor die.
+        if (enemyController == null)
         {
-            if (enemyController.IsMinion)
-            {
-                maxEnemyHealth = 50;
-            }
-            else if (enemyController.IsBoss)
-            {
-                maxEnemyHealth = 150;
-            }
-            else
-            {
-                maxEnemyHealth = 50;
-            }
-            if (GameOptions.hardcoreModeEnabled)
-            {
-                maxEnemyHealth += (maxEnemyHealth / 4);
-            }
+            Debug.LogError(
+                "EnemyHealth on " + name + " found no EnemyController on its hierarchy root, so it "
+                + "cannot tell a boss from a minion. Falling back to its configured max health.",
+                this);
 
-            isDead = false;
-            health = maxEnemyHealth;
-            OnHealthChanged?.Invoke();
+            // respect a health value configured on the prefab; only the zero case is the bug
+            maxEnemyHealth = configuredMaxEnemyHealth > 0
+                ? configuredMaxEnemyHealth
+                : DefaultSpawnHealth;
         }
+        else
+        {
+            // minion is checked before boss, matching the original precedence for an actor
+            // that somehow carries both flags
+            bool isBossSpawn = !enemyController.IsMinion && enemyController.IsBoss;
+            maxEnemyHealth = isBossSpawn ? BossSpawnHealth : DefaultSpawnHealth;
+        }
+
+        if (GameOptions.hardcoreModeEnabled)
+        {
+            maxEnemyHealth += (maxEnemyHealth / 4);
+        }
+
+        isDead = false;
+        health = maxEnemyHealth;
+        OnHealthChanged?.Invoke();
     }
 
     public bool TakeDamage(float damage)

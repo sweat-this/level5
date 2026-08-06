@@ -71,7 +71,9 @@ public class TouchInputController : MonoBehaviour
     private void OnDisable()
     {
         hold1Detected = false;
-        PlayerTouchInputState.BlockHeld = false;
+        // clears the queued jump/attack/special as well as BlockHeld. clearing only BlockHeld
+        // let a tap on the frame a scene tore down survive into the next scene.
+        PlayerTouchInputState.Clear();
 
         if (instance == this)
         {

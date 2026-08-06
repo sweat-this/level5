@@ -59,13 +59,25 @@ public static class PlayerTouchInputState
         return true;
     }
 
-    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
-    private static void ResetState()
+    /// <summary>
+    /// Drops every queued and held input.
+    ///
+    /// Call this whenever the touch controller goes away - a queued tap that outlives its scene is
+    /// consumed by the next scene's freshly spawned player as a phantom input. `ResetState` below
+    /// covers the same fields but only runs once per application launch, not per scene load.
+    /// </summary>
+    public static void Clear()
     {
         jumpOrShootQueued = false;
         jumpOrShootPosition = Vector2.zero;
         attackQueued = false;
         specialQueued = false;
         BlockHeld = false;
+    }
+
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+    private static void ResetState()
+    {
+        Clear();
     }
 }

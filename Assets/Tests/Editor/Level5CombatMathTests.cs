@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using NUnit.Framework;
+using UnityEngine;
 
 /// <summary>
 /// Regression cover for the progression and randomness bugs found in the 2026-08-06 deep audit
@@ -255,6 +256,40 @@ public class Level5CombatMathTests
         {
             Assert.That(MatchClock.StartSeconds(customTimer), Is.GreaterThan(0f));
         }
+    }
+
+    // ---------- AUD-038: queued touch input does not outlive its scene ----------
+
+    [Test]
+    public void ClearDropsEveryQueuedAndHeldTouchInput()
+    {
+        PlayerTouchInputState.QueueJumpOrShoot(new Vector2(12f, 34f));
+        PlayerTouchInputState.QueueAttack();
+        PlayerTouchInputState.QueueSpecial();
+        PlayerTouchInputState.BlockHeld = true;
+
+        PlayerTouchInputState.Clear();
+
+        Assert.That(PlayerTouchInputState.ConsumeJumpOrShoot(out _), Is.False);
+        Assert.That(PlayerTouchInputState.ConsumeAttack(), Is.False);
+        Assert.That(PlayerTouchInputState.ConsumeSpecial(), Is.False);
+        Assert.That(PlayerTouchInputState.BlockHeld, Is.False);
+    }
+
+    [Test]
+    public void AQueuedTouchInputIsConsumedExactlyOnce()
+    {
+        PlayerTouchInputState.Clear();
+        PlayerTouchInputState.QueueAttack();
+
+        Assert.That(PlayerTouchInputState.ConsumeAttack(), Is.True);
+        Assert.That(PlayerTouchInputState.ConsumeAttack(), Is.False);
+    }
+
+    [TearDown]
+    public void ClearTouchInputState()
+    {
+        PlayerTouchInputState.Clear();
     }
 
     // ---------- AUD-028: scene contracts are named in one place ----------

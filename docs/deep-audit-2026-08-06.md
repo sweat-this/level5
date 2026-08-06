@@ -36,13 +36,13 @@ batch landed, which re-reviewed the changes and opened the files the first pass 
 | AUD-035 | Null safety | Low | Fixed | `BodyGuardCollisions` retains the three unguarded dereferences that AUD-031 fixed in its `EnemyCollisions` twin. |
 | AUD-036 | Progression | Low | Fixed | Experience-per-level (`3000`) is hardcoded in eight places plus a ninth derivation. |
 | AUD-037 | Randomness/UI | Low | Fixed | `getCriticalPercentage` guards `CriticalRolled` but divides by `ShotAttempt`. |
-| AUD-038 | Input lifecycle | Low | Open | Queued touch inputs are not cleared on scene exit, so a tap can carry into the next scene. |
-| AUD-039 | Spawn contract | Low | Open | `EnemyHealth.ResetForSpawn` silently skips everything when no `EnemyController` is found, leaving the enemy invincible. |
+| AUD-038 | Input lifecycle | Low | Fixed | Queued touch inputs are not cleared on scene exit, so a tap can carry into the next scene. |
+| AUD-039 | Spawn contract | Low | Fixed | `EnemyHealth.ResetForSpawn` silently skips everything when no `EnemyController` is found, leaving the enemy invincible. |
 
 AUD-022 to AUD-033 came from the first pass; AUD-034 to AUD-037 from the
 [second pass](#second-pass---2026-08-06-post-fix) run after those fixes landed. All sixteen are now
 fixed in code and pending Unity compile/playtest verification. A third pass added AUD-038 and
-AUD-039, which are open.
+AUD-039, also fixed. All eighteen await Unity verification.
 
 ## Verification Status
 
@@ -659,7 +659,7 @@ Run after AUD-034..037 landed. Re-verified the second batch, re-checked whether 
 complete, and opened `PlayerController`, `StartManager`, `StatsManager`, `ProgressionManager`, and
 the touch input layer.
 
-Two findings, both Low, both open.
+Two findings, both Low, both since fixed.
 
 ### AUD-038: queued touch inputs survive a scene change (Low)
 
@@ -688,6 +688,11 @@ it. But the asymmetry is the tell: whoever added the `BlockHeld` line understood
 covered only the state whose stuck value would be most visible. Fix is three more lines in the same
 `OnDisable`, or better, a single `PlayerTouchInputState.Clear()` that `OnDisable` calls.
 
+**Fix applied.** `PlayerTouchInputState.Clear()` drops all four fields, and
+`TouchInputController.OnDisable` calls it instead of clearing `BlockHeld` alone. The
+`SubsystemRegistration` reset now delegates to the same method, so there is one definition of
+"drop all touch input" rather than two lists that can drift. Covered by two tests.
+
 ### AUD-039: `EnemyHealth.ResetForSpawn` silently does nothing without a controller (Low)
 
 `Assets/Scripts/enemy/EnemyHealth.cs:30-54`
@@ -701,6 +706,22 @@ no log, no error. `maxEnemyHealth` stays 0, which makes the `Health` setter clam
 prefab-contract class as AUD-031/035: currently masked by correct prefab data, silent when that data
 is wrong, and the symptom (an invincible enemy) points nowhere near the cause. Should log an error
 and leave the component disabled rather than returning quietly.
+
+**Fix applied.** `ResetForSpawn` no longer wraps its body in the null check. A missing controller
+now logs an error naming the object and falls back to the health configured on the prefab, using
+the default only when that is also unset - so the zero case, which is the actual bug, cannot occur.
+
+Two things surfaced while fixing it that the finding had not:
+
+- The original preserved any inspector-set `maxEnemyHealth` when the controller was missing, so the
+  "invincible enemy" outcome needed *both* no controller and no configured health. The finding
+  overstated it as following from the missing controller alone. The fix keeps that inspector value
+  rather than overwriting it with a default.
+- `ResetForSpawn` runs on every `OnEnable`, which is every pool reuse, and applies the hardcore +25%
+  bonus each time. Scaling a value that the previous spawn had already scaled would compound it
+  across respawns. `Awake` now captures the configured base into `configuredMaxEnemyHealth` so each
+  reset scales from a stable number. The controller path already avoided this by reassigning from a
+  constant; only the new fallback path needed it.
 
 ### Confirmed complete
 
@@ -727,7 +748,7 @@ All sixteen findings are fixed in code. The remaining work is verification, in t
 1. **Open the project in Unity and let it compile.** New files under `Assets/Level5/Core`,
    `Assets/Scripts/Utility`, `Assets/Scripts/combat`, and `Assets/Tests/Editor` have hand-written
    `.meta` files with fresh GUIDs; Unity will accept them and import normally.
-2. **Run the edit-mode tests** (28 now). `Level5CombatMathTests` should pass outright.
+2. **Run the edit-mode tests** (33 now). `Level5CombatMathTests` should pass outright.
    `Level5SceneContractTests` may legitimately fail if a gameplay scene is missing a HUD or
    pause-menu object - read the names it reports before changing anything.
 3. **Run `Level5/Validate Project`.** The new contest-mode timer check may legitimately fail if a
