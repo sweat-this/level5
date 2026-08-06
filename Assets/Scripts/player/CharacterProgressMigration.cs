@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -40,7 +40,7 @@ public static class CharacterProgressMigration
 
             progress.unlocked = !legacyRecord.IsLocked;
             progress.experience = legacyRecord.Experience;
-            progress.level = legacyRecord.Level > 0 ? legacyRecord.Level : legacyRecord.Experience / 3000;
+            progress.level = legacyRecord.Level > 0 ? legacyRecord.Level : CharacterLevel.FromExperience(legacyRecord.Experience);
             progress.lastModifiedUtc = DateTime.UtcNow.ToString("o");
 
             if (preset != null && preset.UpgradesEnabled)

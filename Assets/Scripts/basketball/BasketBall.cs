@@ -699,7 +699,9 @@ public class BasketBall : MonoBehaviour
     //  this format will not work for some reason -- (float)(num1 / num2 to work);
     public float getCriticalPercentage()
     {
-        if (gameStats.CriticalRolled > 0)
+        // guards the divisor, not the numerator - testing CriticalRolled here left the
+        // ShotAttempt division unprotected
+        if (gameStats.ShotAttempt > 0)
         {
             float accuracy = (float)gameStats.CriticalRolled / gameStats.ShotAttempt;
             return (accuracy * 100);

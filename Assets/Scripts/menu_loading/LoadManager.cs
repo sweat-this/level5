@@ -327,7 +327,7 @@ public class LoadManager : MonoBehaviour
             temp.Luck = dbStats.Luck;
             temp.ShootAngle = dbStats.ShootAngle;
             temp.Experience = dbStats.Experience;
-            temp.Level = temp.Experience / 3000;
+            temp.Level = CharacterLevel.FromExperience(temp.Experience);
             //temp.PointsUsed = (int)(temp.Accuracy3Pt - 70) + (int)(temp.Accuracy4Pt - 70) + (int)(temp.Accuracy7Pt - 70);
             temp.Range = dbStats.Range;
             temp.Release = dbStats.Release;

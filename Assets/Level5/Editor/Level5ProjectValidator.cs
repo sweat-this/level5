@@ -42,6 +42,7 @@ public sealed class Level5ProjectValidator : IPreprocessBuildWithReport
         ValidateBuildScenes(errors);
         ValidateSelectableLevels(errors);
         ValidateInputActions(errors);
+        ValidateContestModeTimers(errors);
 
         if (errors.Count > 0)
         {
@@ -138,6 +139,36 @@ public sealed class Level5ProjectValidator : IPreprocessBuildWithReport
             if (!enabledSceneNames.Contains(sceneName))
             {
                 errors.Add("Selectable level prefab " + path + " maps to missing build scene " + sceneName + ".");
+            }
+        }
+    }
+
+    /// <summary>
+    /// A contest mode is timed by definition, so its prefab must set CustomTimer. Leaving it at 0
+    /// used to hand Timer a zero-length clock (AUD-034); GameRules now falls back to the default
+    /// match length instead, but a contest mode silently running at the default rather than its
+    /// intended length is still a data bug worth failing the build over.
+    /// </summary>
+    private static void ValidateContestModeTimers(List<string> errors)
+    {
+        foreach (string guid in AssetDatabase.FindAssets("t:Prefab"))
+        {
+            string path = AssetDatabase.GUIDToAssetPath(guid);
+            GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(path);
+            StartScreenModeSelected mode = prefab != null ? prefab.GetComponent<StartScreenModeSelected>() : null;
+            if (mode == null)
+            {
+                continue;
+            }
+
+            bool isContestMode = mode.GameModeThreePointContest
+                || mode.GameModeFourPointContest
+                || mode.GameModeSevenPointContest
+                || mode.GameModeAllPointContest;
+
+            if (isContestMode && mode.CustomTimer <= 0f)
+            {
+                errors.Add("Contest mode prefab " + path + " leaves CustomTimer at 0; it must set its match length.");
             }
         }
     }

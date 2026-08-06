@@ -197,15 +197,8 @@ public class GameRules : MonoBehaviour
         gameModeFourPointContest = GameOptions.gameModeFourPointContest;
         gameModeSevenPointContest = GameOptions.gameModeSevenPointContest;
         gameModeAllPointContest = GameOptions.gameModeAllPointContest;
-        // custom timer
-        if (GameOptions.customTimer > 0)
-        {
-            setTimer(GameOptions.customTimer);
-        }
-        else
-        {
-            setTimer(180);
-        }
+        // GameRules is the single owner of the match clock; Timer no longer computes it
+        setTimer(MatchClock.StartSeconds(GameOptions.customTimer));
 
         GameModeRequiresConsecutiveShots = GameOptions.gameModeRequiresConsecutiveShot;
 

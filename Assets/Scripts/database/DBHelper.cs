@@ -1,4 +1,4 @@
-using Assets.Scripts.database;
+﻿using Assets.Scripts.database;
 using Mono.Data.Sqlite;
 using System;
 using System.Collections;
@@ -382,8 +382,8 @@ public class DBHelper : MonoBehaviour
         try
         {
             string accountId = CurrentAccountId();
-            int prevLevel = PlayerData.instance.CurrentExperience / 3000;
-            int currentLevel = ((int)((PlayerData.instance.CurrentExperience + expGained) / 3000));
+            int prevLevel = CharacterLevel.FromExperience(PlayerData.instance.CurrentExperience);
+            int currentLevel = CharacterLevel.FromExperience(PlayerData.instance.CurrentExperience + expGained);
 
             int updatePointsAvailable = PlayerData.instance.UpdatePointsAvailable;
             int updatePointsUsed = PlayerData.instance.UpdatePointsUsed;
@@ -523,7 +523,7 @@ public class DBHelper : MonoBehaviour
                     }
 
                     int experienceAfter = Math.Max(0, currentExperience + Mathf.RoundToInt(experienceGained));
-                    int levelAfter = experienceAfter / 3000;
+                    int levelAfter = CharacterLevel.FromExperience(experienceAfter);
                     int clampedPointsUsed = Math.Min(Math.Max(0, pointsUsed), levelAfter);
                     int pointsAvailable = Math.Max(0, levelAfter - clampedPointsUsed);
 

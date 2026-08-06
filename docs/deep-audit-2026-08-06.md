@@ -13,8 +13,8 @@ IDs continue the main register's sequence.
 "Fix applied". The fixes have not been compiled or playtested in Unity - see
 [Verification Status](#verification-status).
 
-**AUD-034 to AUD-037 are open.** They came out of a second pass run after those fixes landed, which
-re-reviewed the changes and opened the files the first pass never got to.
+**AUD-034 to AUD-037 were fixed the same day.** They came out of a second pass run after the first
+batch landed, which re-reviewed the changes and opened the files the first pass never got to.
 
 ## Summary
 
@@ -32,13 +32,14 @@ re-reviewed the changes and opened the files the first pass never got to.
 | AUD-031 | Null safety | Low | Fixed | `EnemyCollisions` dereferences `enemyController`, `transform.parent`, and `BasketBall.instance` without null checks. |
 | AUD-032 | Build/test | Low | Fixed | 8 automated tests total for ~42k lines; all of the math bugs above are pure functions that unit tests would have caught. |
 | AUD-033 | Legacy separation | Low | Fixed | `StartManager_original.cs` (1683 lines) still compiles into the shipping assembly. |
-| AUD-034 | Match timing | Medium | Open | `Timer` and `GameRules` both initialize `timeStart` with different formulas, in an undefined `Start()` order. |
-| AUD-035 | Null safety | Low | Open | `BodyGuardCollisions` retains the three unguarded dereferences that AUD-031 fixed in its `EnemyCollisions` twin. |
-| AUD-036 | Progression | Low | Open | Experience-per-level (`3000`) is hardcoded in eight places plus a ninth derivation. |
-| AUD-037 | Randomness/UI | Low | Open | `getCriticalPercentage` guards `CriticalRolled` but divides by `ShotAttempt`. |
+| AUD-034 | Match timing | Medium | Fixed | `Timer` and `GameRules` both initialize `timeStart` with different formulas, in an undefined `Start()` order. |
+| AUD-035 | Null safety | Low | Fixed | `BodyGuardCollisions` retains the three unguarded dereferences that AUD-031 fixed in its `EnemyCollisions` twin. |
+| AUD-036 | Progression | Low | Fixed | Experience-per-level (`3000`) is hardcoded in eight places plus a ninth derivation. |
+| AUD-037 | Randomness/UI | Low | Fixed | `getCriticalPercentage` guards `CriticalRolled` but divides by `ShotAttempt`. |
 
-AUD-022 to AUD-033 came from the first pass and are fixed. AUD-034 to AUD-037 came from the
-[second pass](#second-pass---2026-08-06-post-fix) run after those fixes landed, and are **not** fixed.
+AUD-022 to AUD-033 came from the first pass; AUD-034 to AUD-037 from the
+[second pass](#second-pass---2026-08-06-post-fix) run after those fixes landed. All sixteen are now
+fixed in code and pending Unity compile/playtest verification.
 
 ## Verification Status
 
@@ -548,6 +549,17 @@ Recommended: give `timeStart` a single owner. `GameRules` already resolves the `
 `setTimer`, so `Timer.Start()` should stop computing it. If contest modes are meant to require a
 custom timer, assert that in `Level5ProjectValidator` alongside the other mode-prefab checks.
 
+**Fix applied.** `GameRules` is now the only writer of `timeStart`. `Timer.Start()` no longer computes
+it and instead falls back to `MatchClock.DefaultMatchSeconds` only if nothing has set it - which makes
+the outcome identical in either `Start()` order, since `GameRules.setTimer` overwrites the fallback
+whenever it runs. The rule itself moved to `Assets/Level5/Core/MatchClock.cs`, whose
+`StartSeconds(customTimer)` deliberately does **not** treat "is a contest mode" as a reason to use
+`customTimer` - that conflation was the bug.
+
+`Level5ProjectValidator.ValidateContestModeTimers` now fails the build on any contest-mode prefab
+that leaves `CustomTimer` at 0. The runtime no longer breaks on that data, but a contest silently
+running at the default length instead of its intended one is still wrong, and this catches it.
+
 ### AUD-035: `BodyGuardCollisions` still has the null-safety defects fixed in `EnemyCollisions` (Low)
 
 `Assets/Scripts/bodyguard/BodyGuardCollisions.cs:18-23` and its `enemyStepOnRake`
@@ -564,6 +576,12 @@ near-copy of `EnemyCollisions` and carries the same three unguarded dereferences
 AUD-031 was written against `EnemyCollisions` specifically and the fix followed that scope, so the
 bodyguard copy was left behind. Worth applying the same guards, and worth noting as an argument for
 collapsing the two collision handlers rather than continuing to patch them in parallel.
+
+**Fix applied.** The same three guards from the `EnemyCollisions` fix, applied to its bodyguard twin:
+`transform.parent` is checked before the health-bar lookup, a missing `BodyGuardController` on the
+root logs a named error and disables the component, and `enemyStepOnRake` null-checks both the parent
+and the animator. Collapsing the two near-identical collision handlers is still the real fix and is
+listed under Follow-Up.
 
 ### AUD-036: experience-per-level is hardcoded in eight places (Low)
 
@@ -586,6 +604,15 @@ has an obvious home: `MatchExperience` in `Level5.Core` already owns the earn si
 `CharacterLevel.FromExperience(int)` / `ExperienceToNextLevel(int)` pair beside it would give the
 spend side one owner too, and both are pure functions that the existing edit-mode suite can cover.
 
+**Fix applied.** `Assets/Level5/Core/CharacterLevel.cs` owns the curve:
+`ExperiencePerLevel`, `FromExperience(int)`, `FromExperience(float)` (DBHelper accumulates in float
+when applying an award, the menus use int), and `ExperienceToNextLevel`. All nine sites now call it -
+`DBHelper` x3, `LoadManager`, `StartManager` x2, `CharacterProfile`, `CharacterProgressMigration`,
+`CharacterProgressParityLogger` - and no bare `3000` remains in the runtime tree. Negative
+experience clamps to level 0 rather than going negative, and a player sitting exactly on a level
+boundary is shown a full level remaining rather than 0. Covered by four tests including one that
+asserts the int and float curves agree across the range.
+
 ### AUD-037: `getCriticalPercentage` guards on the wrong variable (Low)
 
 `Assets/Scripts/basketball/BasketBall.cs:700-711` and `BasketBallAuto.cs:753-764`
@@ -605,6 +632,8 @@ roll, so `CriticalRolled > 0` implies `ShotAttempt > 0`. It is a latent wrong-gu
 reordering of the shot pipeline would expose - worth correcting to `ShotAttempt > 0` while the
 neighbouring accuracy getters (which do guard correctly) are right there for comparison.
 
+**Fix applied.** Both copies now guard `ShotAttempt > 0` - the divisor - instead of `CriticalRolled`.
+
 ### Checked and found sound in this pass
 
 - **`DBConnector` / `DBHelper` locking.** I twice suspected a leaked `databaseLocked` flag and was
@@ -623,19 +652,23 @@ neighbouring accuracy getters (which do guard correctly) are right there for com
 
 ## What To Do Next
 
-All twelve findings are fixed in code. The remaining work is verification, in this order:
+All sixteen findings are fixed in code. The remaining work is verification, in this order:
 
 1. **Open the project in Unity and let it compile.** New files under `Assets/Level5/Core`,
    `Assets/Scripts/Utility`, `Assets/Scripts/combat`, and `Assets/Tests/Editor` have hand-written
    `.meta` files with fresh GUIDs; Unity will accept them and import normally.
-2. **Run the edit-mode tests.** `Level5CombatMathTests` should pass outright.
+2. **Run the edit-mode tests** (28 now). `Level5CombatMathTests` should pass outright.
    `Level5SceneContractTests` may legitimately fail if a gameplay scene is missing a HUD or
    pause-menu object - read the names it reports before changing anything.
-3. **Playtest a scene with two or more bodyguards** (AUD-023). The shared-state fix is a keyword
+3. **Run `Level5/Validate Project`.** The new contest-mode timer check may legitimately fail if a
+   contest prefab never set `CustomTimer`; that is real data to fix, not a broken check.
+4. **Playtest a scene with two or more bodyguards** (AUD-023). The shared-state fix is a keyword
    change, but behaviour may have been tuned around the old value.
-4. **Playtest local multiplayer with the UI-stats overlay toggled on** (AUD-024). Confirm each
+5. **Playtest local multiplayer with the UI-stats overlay toggled on** (AUD-024). Confirm each
    player's shot counts stay on their own stat line.
-5. **Decide whether the progression curve needs rebalancing** now that the phantom +500 XP per
+6. **Check a contest mode's clock** (AUD-034). It should run at its prefab's `CustomTimer`, and a
+   mode with none should run at 180s regardless of component start order.
+7. **Decide whether the progression curve needs rebalancing** now that the phantom +500 XP per
    match is gone (see Behaviour changes above). This is a design call, not a code fix.
 
 ## Follow-Up Worth Considering
@@ -646,5 +679,12 @@ Not defects, and not done here:
   helpers across both files delegate to one implementation. The rest of the duplication -
   `shootBasketBall`, `Launch`, modifier math, score-text formatting - is still copy-pasted and still
   wants its own focused slice.
-- `Assets/Scripts` remains one 245-script default assembly with no `.asmdef`. Splitting it would cut
+- `Assets/Scripts` remains one 244-script default assembly with no `.asmdef`. Splitting it would cut
   iteration time and let the Runtime/Editor/Dev boundary be enforced rather than described.
+- `EnemyCollisions` and `BodyGuardCollisions` are near-identical copies that have now been patched in
+  parallel twice (AUD-031, AUD-035). Collapsing them behind the existing `IDamageable`/`ICombatAgent`
+  contracts would stop the next fix needing to be applied twice, and feeds AUD-004.
+- `Level5.Core` now holds four pure modules (`CampaignRoundDecision`, `PercentChance`,
+  `MatchExperience`, `CharacterLevel`, `MatchClock`). It is proving to be a good home for rules that
+  were previously duplicated across MonoBehaviours - worth continuing to pull into as AUD-010 and
+  AUD-017 get addressed.

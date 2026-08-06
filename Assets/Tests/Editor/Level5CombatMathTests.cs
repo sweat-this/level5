@@ -186,6 +186,77 @@ public class Level5CombatMathTests
         Assert.That(MatchExperience.Calculate(everything), Is.GreaterThan(MatchExperience.Calculate(hardcore)));
     }
 
+    // ---------- AUD-036: experience-to-level curve ----------
+
+    [Test]
+    public void LevelIsExperienceDividedByTheCurveConstant()
+    {
+        Assert.That(CharacterLevel.FromExperience(0), Is.EqualTo(0));
+        Assert.That(CharacterLevel.FromExperience(CharacterLevel.ExperiencePerLevel - 1), Is.EqualTo(0));
+        Assert.That(CharacterLevel.FromExperience(CharacterLevel.ExperiencePerLevel), Is.EqualTo(1));
+        Assert.That(CharacterLevel.FromExperience(CharacterLevel.ExperiencePerLevel * 7), Is.EqualTo(7));
+    }
+
+    [Test]
+    public void NegativeExperienceNeverProducesANegativeLevel()
+    {
+        Assert.That(CharacterLevel.FromExperience(-1), Is.EqualTo(0));
+        Assert.That(CharacterLevel.FromExperience(-5000f), Is.EqualTo(0));
+    }
+
+    [Test]
+    public void FloatAndIntCurvesAgree()
+    {
+        // DBHelper accumulates in float when applying a match award; the menus use int
+        for (int experience = 0; experience < CharacterLevel.ExperiencePerLevel * 4; experience += 617)
+        {
+            Assert.That(
+                CharacterLevel.FromExperience((float)experience),
+                Is.EqualTo(CharacterLevel.FromExperience(experience)),
+                "curves disagree at " + experience);
+        }
+    }
+
+    [Test]
+    public void ExperienceToNextLevelCountsDownAndNeverReadsZero()
+    {
+        Assert.That(
+            CharacterLevel.ExperienceToNextLevel(0),
+            Is.EqualTo(CharacterLevel.ExperiencePerLevel));
+        Assert.That(CharacterLevel.ExperienceToNextLevel(2999), Is.EqualTo(1));
+
+        // exactly on a boundary shows a full level remaining, not 0
+        Assert.That(
+            CharacterLevel.ExperienceToNextLevel(CharacterLevel.ExperiencePerLevel),
+            Is.EqualTo(CharacterLevel.ExperiencePerLevel));
+    }
+
+    // ---------- AUD-034: match clock ----------
+
+    [Test]
+    public void ModesWithoutACustomTimerUseTheDefaultMatchLength()
+    {
+        Assert.That(MatchClock.StartSeconds(0f), Is.EqualTo(MatchClock.DefaultMatchSeconds));
+        Assert.That(MatchClock.StartSeconds(-30f), Is.EqualTo(MatchClock.DefaultMatchSeconds));
+    }
+
+    [Test]
+    public void ACustomTimerWinsWhenTheModeSetsOne()
+    {
+        Assert.That(MatchClock.StartSeconds(60f), Is.EqualTo(60f));
+    }
+
+    [Test]
+    public void TheMatchClockNeverStartsAtZero()
+    {
+        // a zero-length clock ends the match on the first frame, which is what the old
+        // contest-mode branch in Timer.Start could produce
+        foreach (float customTimer in new[] { -1f, 0f, 1f, 45f, 180f, 999f })
+        {
+            Assert.That(MatchClock.StartSeconds(customTimer), Is.GreaterThan(0f));
+        }
+    }
+
     // ---------- AUD-028: scene contracts are named in one place ----------
 
     [Test]

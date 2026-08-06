@@ -1647,8 +1647,8 @@ public class StartManager : MonoBehaviour
             playerSelectOptionImage.sprite = playerSelectedData[playerSelectedIndex].PlayerPortrait;
 
             playerSelectedData[playerSelectedIndex].Level =
-                (playerSelectedData[playerSelectedIndex].Experience / 3000);
-            int nextlvl = (((playerSelectedData[playerSelectedIndex].Level + 1) * 3000) - playerSelectedData[playerSelectedIndex].Experience);
+                CharacterLevel.FromExperience(playerSelectedData[playerSelectedIndex].Experience);
+            int nextlvl = CharacterLevel.ExperienceToNextLevel(playerSelectedData[playerSelectedIndex].Experience);
 
             playerSelectedData[playerSelectedIndex].Clutch = playerSelectedData[playerSelectedIndex].Level > 100 ? 100 : playerSelectedData[playerSelectedIndex].Level;
 
