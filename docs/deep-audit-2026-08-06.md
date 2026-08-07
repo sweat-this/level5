@@ -65,6 +65,46 @@ Unity compile/playtest verification.
 
 ## Verification Status
 
+### VERIFIED 2026-08-07 - the suite compiles and passes
+
+Run from the command line against the project's own editor version:
+
+```
+Unity.exe -batchmode -nographics -projectPath . -runTests -testPlatform EditMode
+```
+
+Unity 6000.5.6f1 (matching `ProjectSettings/ProjectVersion.txt` exactly).
+
+| Fixture | Tests | Result |
+| --- | --- | --- |
+| `Level5ActorHealthTests` | 10 | Passed |
+| `Level5CombatMathTests` | 32 | Passed |
+| `Level5CoreTests` | 17 | Passed |
+| `Level5SceneContractTests` | 2 | Passed |
+| `Level5ShotModifierTests` | 13 | Passed |
+| **Total** | **74** | **74 passed, 0 failed** |
+
+`Assembly-CSharp.dll` and `Assembly-CSharp-Editor.dll` both built with **zero `error CS` diagnostics**.
+That covers every change from all seven audit passes plus the architecture-register work
+(AUD-001, 004, 005, 009, 011, 012, and the first AUD-017 slice).
+
+Three caveats carried through this document are now closed by that run:
+
+- **AUD-047's progression object names are correct.** They gate the build via
+  `Level5SceneContractTests`, and could not be checked statically because
+  `progressionScreen.prefab` was still binary. The test passes, so every one of the 19 names
+  resolves in the scene.
+- **The `Level5SceneContractTests` gameplay check passes**, confirming the static analysis that
+  retired the old "expect a first-run failure" warning.
+- **The AUD-012 Dev-isolation lint passes** - no production file reaches into
+  `Assets/Scripts/Dev` without a build guard.
+
+Still **not** verified: nothing has been *playtested*. Every behaviour change listed under
+"Behaviour changes to be aware of" still needs a human at the controls - passing tests say the code
+is consistent, not that the game feels right.
+
+### Original status (pre-verification)
+
 What was and was not checked:
 
 - **Verified**: `scripts/validate-repository.ps1` passes (including a deliberately planted
@@ -84,12 +124,10 @@ What was and was not checked:
   checked directly: all 17 `GameRules.RequiredHudObjectNames` / `Pause.RequiredPauseObjectNames`
   entries are present in all three scenes that carry a `GameRules`. The gameplay half of that test
   should pass outright. A failure now means something real.
-- **`ProgressionManager.RequiredProgressionObjectNames` (AUD-047) is still unverified.** Its objects
-  live in `Assets/Resources/Prefabs/menu_progression/progressionScreen.prefab`, which is one of the
-  ~39 prefabs Unity has not yet reserialized, so it cannot be read from outside the editor. The
-  names were taken verbatim from the strings the runtime already passes to `GameObject.Find`, so
-  they are as correct as the shipping code - but run `Level5/Reserialize Project Assets` and re-run
-  the suite before trusting that.
+- **`ProgressionManager.RequiredProgressionObjectNames` (AUD-047)** could not be checked statically,
+  because its objects live in `progressionScreen.prefab`, one of the ~39 prefabs still serialized as
+  binary. **Resolved 2026-08-07**: `Level5SceneContractTests` passes in the editor, so all 19 names
+  resolve. See the verification section at the top.
 
 ### Pre-existing Unity console issues (recorded 2026-08-07)
 
