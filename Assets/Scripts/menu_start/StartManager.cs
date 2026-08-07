@@ -256,11 +256,18 @@ public class StartManager : MonoBehaviour
     // Start is called before the first frame update
     void Start()
     {
+        StartCoroutine(InitializeStartMenu());
+    }
+
+    private IEnumerator InitializeStartMenu()
+    {
         //UtilityFunctions.GetCurrentDeviceHour();
+        yield return WaitForCondition(() => EventSystem.current != null);
         if (EventSystem.current == null)
         {
+            Debug.LogError("StartManager could not find an EventSystem for the start menu.");
             enabled = false;
-            return;
+            yield break;
         }
 
         UiSelectionAdapter.EnsureInputSystemUiModule();
@@ -574,13 +581,30 @@ public class StartManager : MonoBehaviour
 
     private Button ResolveButton(Button button, string buttonName)
     {
-        if (button != null)
+        if (button != null && button.gameObject.scene.IsValid())
         {
             return button;
         }
 
         GameObject buttonObject = GameObject.Find(buttonName);
-        return buttonObject != null ? buttonObject.GetComponent<Button>() : null;
+        Button activeButton = buttonObject != null ? buttonObject.GetComponent<Button>() : null;
+        if (activeButton != null)
+        {
+            return activeButton;
+        }
+
+        Button[] buttons = Resources.FindObjectsOfTypeAll<Button>();
+        foreach (Button candidate in buttons)
+        {
+            if (candidate != null
+                && candidate.gameObject.name == buttonName
+                && candidate.gameObject.scene.IsValid())
+            {
+                return candidate;
+            }
+        }
+
+        return null;
     }
 
     private Button GetButton(GameObject buttonObject)
@@ -788,6 +812,8 @@ public class StartManager : MonoBehaviour
         {
             if (!HasLoadedGameSetup())
             {
+                Debug.LogWarning("StartManager cannot start a game until start menu data is loaded. Returning to loading scene.");
+                ReturnToLoadingScene();
                 return;
             }
 
@@ -1236,7 +1262,9 @@ public class StartManager : MonoBehaviour
         latestVersionText = StartMenuUiObjects.instance.header_latestVersion;
         userNameText = StartMenuUiObjects.instance.header_username;
 
+        ResolveCommandButtonReferences();
         RegisterButtonCallbacks();
+        UiSelectionAdapter.EnsureSelected(GetDefaultSelectedButton());
     }
 
     private void setInitialGameOptions()
@@ -1704,16 +1732,22 @@ public class StartManager : MonoBehaviour
         lastLoadGameFrame = Time.frameCount;
         // tells character profile to load profile from LoadedData.instance
         GameOptions.gameModeHasBeenSelected = true; 
-        
+
+        LevelSelected selectedLevel = levelSelectedData[levelSelectedIndex];
         string sceneName;
         if (modeSelectedData[modeSelectedIndex].ModeId == Modes.BeatThaComputahs)
         {
             sceneName = Constants.SCENE_NAME_level_01_scrapyard;
-            levelSelectedIndex = levelSelectedData.FindIndex(x => x.LevelId == 1);
+            int scrapyardLevelIndex = levelSelectedData.FindIndex(x => x.LevelId == 1);
+            if (scrapyardLevelIndex >= 0)
+            {
+                levelSelectedIndex = scrapyardLevelIndex;
+                selectedLevel = levelSelectedData[levelSelectedIndex];
+            }
         }
         else
         {
-            sceneName = GameOptions.levelSelected + "_" + levelSelectedData[levelSelectedIndex].LevelDescription;
+            sceneName = selectedLevel.LevelObjectName + "_" + selectedLevel.LevelDescription;
         }
 
         // update game options for game mode

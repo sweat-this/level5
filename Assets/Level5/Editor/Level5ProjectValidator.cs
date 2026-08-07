@@ -19,8 +19,15 @@ public sealed class Level5ProjectValidator : IPreprocessBuildWithReport
     [InitializeOnLoadMethod]
     private static void ConfigureSourceControlPolicy()
     {
-        EditorSettings.serializationMode = SerializationMode.ForceText;
-        VersionControlSettings.mode = "Visible Meta Files";
+        if (EditorSettings.serializationMode != SerializationMode.ForceText)
+        {
+            EditorSettings.serializationMode = SerializationMode.ForceText;
+        }
+
+        if (!string.Equals(VersionControlSettings.mode, "Visible Meta Files", StringComparison.Ordinal))
+        {
+            VersionControlSettings.mode = "Visible Meta Files";
+        }
     }
 
     [MenuItem("Level5/Validate Project")]
