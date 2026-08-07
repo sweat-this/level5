@@ -79,9 +79,17 @@ What was and was not checked:
   greppable and script GUIDs do not appear in any text asset. Every finding that turns on a
   serialized value (AUD-046 most directly, and the `AutoPlayerController` dead-initialization note
   under Follow-Up) is stated as a conditional for that reason, not hedged out of caution.
-- **Expect `Level5SceneContractTests` to fail on the first run** if any gameplay scene is genuinely
-  missing a HUD or pause-menu object. That is the test doing its job, not a broken test - the
-  failure message names the scene and the object.
+- **Retired 2026-08-07**: this section used to warn that `Level5SceneContractTests` should be
+  expected to fail on its first run. Once Unity converted the scenes to text, the contract could be
+  checked directly: all 17 `GameRules.RequiredHudObjectNames` / `Pause.RequiredPauseObjectNames`
+  entries are present in all three scenes that carry a `GameRules`. The gameplay half of that test
+  should pass outright. A failure now means something real.
+- **`ProgressionManager.RequiredProgressionObjectNames` (AUD-047) is still unverified.** Its objects
+  live in `Assets/Resources/Prefabs/menu_progression/progressionScreen.prefab`, which is one of the
+  ~39 prefabs Unity has not yet reserialized, so it cannot be read from outside the editor. The
+  names were taken verbatim from the strings the runtime already passes to `GameObject.Find`, so
+  they are as correct as the shipping code - but run `Level5/Reserialize Project Assets` and re-run
+  the suite before trusting that.
 
 ### Behaviour changes to be aware of
 

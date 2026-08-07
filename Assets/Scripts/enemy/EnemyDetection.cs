@@ -1,7 +1,7 @@
 ﻿using System.Collections;
 using UnityEngine;
 
-public class EnemyDetection : MonoBehaviour
+public class EnemyDetection : MonoBehaviour, ICombatDetection
 {
     EnemyController enemyController;
     PlayerAttackQueue playerAttackQueue;
@@ -14,6 +14,9 @@ public class EnemyDetection : MonoBehaviour
     bool attacking;
 
     public bool PlayerSighted { get => playerSighted; set => playerSighted = value; }
+
+    // AUD-005: the queue's name for the same flag - an enemy hunts the player
+    public bool TargetSighted { get => PlayerSighted; set => PlayerSighted = value; }
     public int AttackPositionId { get => attackPositionId; set => attackPositionId = value; }
     public bool Attacking { get => attacking; set => attacking = value; }
 

@@ -1,7 +1,7 @@
 ﻿using System.Collections;
 using UnityEngine;
 
-public class BodyGuardDetection : MonoBehaviour
+public class BodyGuardDetection : MonoBehaviour, ICombatDetection
 {
     BodyGuardController bodyGuardController;
     PlayerAttackQueue playerAttackQueue;
@@ -14,6 +14,9 @@ public class BodyGuardDetection : MonoBehaviour
     bool attacking;
 
     public bool EnemySighted { get => enemySighted; set => enemySighted = value; }
+
+    // AUD-005: the queue's name for the same flag - a bodyguard hunts enemies
+    public bool TargetSighted { get => EnemySighted; set => EnemySighted = value; }
     public int AttackPositionId { get => attackPositionId; set => attackPositionId = value; }
     public bool Attacking { get => attacking; set => attacking = value; }
 
