@@ -49,6 +49,16 @@ namespace Assets.Scripts.restapi
         public static string BearerToken => bearerToken;
         public static bool ApiLocked => activeRequestOwner != null;
 
+        /// <summary>
+        /// True only when a token has actually been obtained from the server.
+        ///
+        /// This is the test for "may we call an authenticated endpoint". `GameOptions.userid` is
+        /// NOT that test - it is a local identity that gets set when a user picks an account, and
+        /// when an offline guest falls back, neither of which proves a session. Gating uploads on
+        /// the id meant posting scores with no Authorization header at all.
+        /// </summary>
+        public static bool HasSession => !string.IsNullOrEmpty(bearerToken);
+
         public static void ClearSession()
         {
             bearerToken = null;
@@ -62,6 +72,20 @@ namespace Assets.Scripts.restapi
             if (score == null)
             {
                 completed?.Invoke(ApiResult<bool>.Fail("No score was provided."));
+                yield break;
+            }
+
+            // enforced here as well as at the call sites, so a future caller cannot post a score
+            // with no Authorization header. treated exactly like a failed submission: the row stays
+            // marked unsubmitted and is retried once a session exists.
+            if (!HasSession)
+            {
+                if (DBHelper.instance != null)
+                {
+                    yield return SetScoreSubmittedWhenAvailable(score.Scoreid, false);
+                }
+
+                completed?.Invoke(ApiResult<bool>.Fail("Sign in to submit scores."));
                 yield break;
             }
 
@@ -97,6 +121,13 @@ namespace Assets.Scripts.restapi
             if (highscores == null || highscores.Count == 0)
             {
                 completed?.Invoke(ApiResult<int>.Ok(0, 204));
+                yield break;
+            }
+
+            // the stamping below claims an identity, so it must not happen without a session
+            if (!HasSession)
+            {
+                completed?.Invoke(ApiResult<int>.Fail("Sign in to submit scores."));
                 yield break;
             }
 

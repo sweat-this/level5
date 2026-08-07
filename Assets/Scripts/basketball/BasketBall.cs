@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
+using Assets.Scripts.Utility;
 using Random = UnityEngine.Random;
 
 public class BasketBall : MonoBehaviour
@@ -42,7 +43,14 @@ public class BasketBall : MonoBehaviour
     // Use this for initialization
     void Start()
     {
-        instance = this;
+        // player 1's ball owns the static. every consumer of BasketBall.instance means
+        // "the local player's ball" - camera follow, the free-play stat save, the ui-stats
+        // toggle - not "whichever ball happened to run Start() last".
+        if (instance == null || IsPrimaryBasketball())
+        {
+            instance = this;
+        }
+
         playerIdentifier = GetComponent<PlayerIdentifier>();
         player = playerIdentifier.player;
         playerController = player.GetComponent<PlayerController>();
@@ -117,7 +125,11 @@ public class BasketBall : MonoBehaviour
                 rigidbody.linearVelocity = rigidbody.linearVelocity.normalized * maxBasketballSpeed;
             }
             // drop shadow lock to bball transform on the ground
-            dropShadow.transform.position = new Vector3(transform.root.position.x, Terrain.activeTerrain.SampleHeight(transform.position) + 0.02f, transform.root.position.z);
+            // AUD-052: guarded like PlayerController - no active Terrain otherwise NREs per frame
+            float shadowHeight = Terrain.activeTerrain != null
+                ? Terrain.activeTerrain.SampleHeight(transform.position) + 0.02f
+                : GameLevelManager.instance.TerrainHeight + 0.02f;
+            dropShadow.transform.position = new Vector3(transform.root.position.x, shadowHeight, transform.root.position.z);
 
             // change this to reduce opacity
             if (!playerController.hasBasketball)
@@ -503,10 +515,11 @@ public class BasketBall : MonoBehaviour
     }
 
     // ========================== shot accuracy functions ==========================================
+    // all three roll a plain percentage chance through the shared helper, so a 0 stat
+    // never succeeds and a 100 stat always does.
     bool rollForCriticalShotChance(float maxPercent)
     {
-        float percent = Random.Range(1, 100);
-        if (percent <= maxPercent)
+        if (UtilityFunctions.RollPercent(maxPercent))
         {
             GameStats.CriticalRolled++;
             return true;
@@ -515,95 +528,75 @@ public class BasketBall : MonoBehaviour
     }
     bool rollForCriticalRangeChance(float maxPercent)
     {
-        float percent = Random.Range(1, 100);
-
-        if (percent <= maxPercent)
-        {
-            return true;
-        }
-        return false;
+        return UtilityFunctions.RollPercent(maxPercent);
     }
     bool rollForCriticalReleaseChance(float maxPercent)
     {
-        float percent = Random.Range(1, 100);
-
-        if (percent <= maxPercent)
-        {
-            return true;
-        }
-        return false;
+        return UtilityFunctions.RollPercent(maxPercent);
     }
+    // AUD-017: the arithmetic moved to ShotModifiers in Level5.Core, which BasketBallAuto also
+    // calls - these three were byte-identical between the two files apart from which controller
+    // supplied the slider. Covered by Level5ShotModifierTests.
     private float getAccuracyModifier()
     {
+        // drawn first, as the original did
         int direction = getRandomPositiveOrNegative();
-        int slider = Mathf.CeilToInt(playerController.Shotmeter.SliderValueOnButtonPress);
+        ResolveShotAccuracy(out float shotTypeAccuracy, out bool threePoints);
 
-        float sliderModifer = (100 - slider) * 0.025f;
-        float accuracyModifier = 0;
+        return ShotModifiers.AccuracyModifier(
+            playerController.Shotmeter.SliderValueOnButtonPress,
+            shotTypeAccuracy,
+            threePoints,
+            direction);
+    }
 
-        if (basketBallState.TwoPoints)
-        {
-            accuracyModifier = (100 - characterProfile.Accuracy2Pt) * 0.01f;
-        }
+    /// <summary>
+    /// Picks the accuracy stat for the shot being taken, preserving the original's precedence.
+    ///
+    /// The original was four independent (not else-if) assignments in the order two, three, four,
+    /// seven, so when more than one flag was set the *last* one won. That order is reversed here to
+    /// get the same answer with a single branch. When no flag is set the original left the accuracy
+    /// term at 0, which an accuracy of 100 reproduces exactly.
+    /// </summary>
+    private void ResolveShotAccuracy(out float shotTypeAccuracy, out bool threePoints)
+    {
+        threePoints = false;
 
-        if (basketBallState.ThreePoints)
-        {
-            accuracyModifier = (100 - characterProfile.Accuracy3Pt) * 0.02f;
-        }
-
-        if (basketBallState.FourPoints)
-        {
-            accuracyModifier = (100 - characterProfile.Accuracy4Pt) * 0.01f;
-        }
-
-        if (basketBallState.SevenPoints)
-        {
-            accuracyModifier = (100 - characterProfile.Accuracy7Pt) * 0.01f;
-        }
-
-        return ((sliderModifer + (accuracyModifier * sliderModifer)) * direction);
+        if (basketBallState.SevenPoints) { shotTypeAccuracy = characterProfile.Accuracy7Pt; }
+        else if (basketBallState.FourPoints) { shotTypeAccuracy = characterProfile.Accuracy4Pt; }
+        else if (basketBallState.ThreePoints) { shotTypeAccuracy = characterProfile.Accuracy3Pt; threePoints = true; }
+        else if (basketBallState.TwoPoints) { shotTypeAccuracy = characterProfile.Accuracy2Pt; }
+        else { shotTypeAccuracy = 100f; }
     }
 
     private float getRangeModifier()
     {
-        int direction = 1;
         // range divided by distance to get %
-        // ex. range 50 ft / shot distance 100 = 50% change of reaching rim
-        float rangeAccuracy = (float)(characterProfile.Range / (lastShotDistance * 6));
-        float modifier = (rangeAccuracy * direction);
-
-        // send max percent change
-        // should 1/2 of modifer
-        float maxChance = modifier * 100;
-
-
-        if (modifier >= 1 || rollForCriticalRangeChance(maxChance))
+        // ex. range 50 ft / shot distance 100 = 50% chance of reaching rim
+        // the in-range check comes first and returns without rolling - the original's `||`
+        // short-circuited, so an in-range shot must not consume a random value
+        if (ShotModifiers.ReachesRim(characterProfile.Range, lastShotDistance))
         {
-            return 0;
+            return 0f;
         }
-        else
-        {
-            return modifier;
-        }
+
+        bool rolledClean = rollForCriticalRangeChance(
+            ShotModifiers.MaxCleanChance(characterProfile.Range, lastShotDistance));
+
+        return ShotModifiers.RangeModifier(characterProfile.Range, lastShotDistance, rolledClean);
     }
 
     private float getReleaseModifier()
     {
+        // direction is drawn before the roll, matching the original's order - swapping them would
+        // shift every subsequent random value
         int direction = getRandomPositiveOrNegative();
-        float accuracyModifier = 0;
 
-        accuracyModifier = (100 - characterProfile.Release) * 0.01f;
+        // the release stat IS the chance to shoot clean.
+        // ex if release = 85, 85% chance to remove the modifier entirely.
+        bool rolledClean = rollForCriticalReleaseChance(characterProfile.Release);
 
-        // get random chance for removing release modifier
-        // ex if release = 85, 15% chance to remove modifiers
-        if (rollForCriticalReleaseChance(characterProfile.Release))
-        {
-            return 0;
-        }
-        else
-        {
-            return ((accuracyModifier * 0.75f)) * direction;
-        }
+        return ShotModifiers.ReleaseModifier(characterProfile.Release, direction, rolledClean);
     }
 
     private int getRandomPositiveOrNegative()
@@ -615,7 +608,18 @@ public class BasketBall : MonoBehaviour
 
     public bool displayUiStats()
     {
-        //Debug.Log("displayUiStats() -- UiStatsEnabled : "+ UiStatsEnabled);
+        // the overlay is one shared Text object in the scene, so every ball writing to it
+        // would just fight over it. only the primary ball drives it.
+        if (instance != this)
+        {
+            return false;
+        }
+
+        if (scoreText == null || shootProfileText == null || uiStatsBackground == null)
+        {
+            return false;
+        }
+
         if (UiStatsEnabled)
         {
             updateScoreText();
@@ -649,9 +653,22 @@ public class BasketBall : MonoBehaviour
         messageText.text = "";
     }
 
+    // true when this ball belongs to players[0].
+    private bool IsPrimaryBasketball()
+    {
+        return GameLevelManager.instance != null
+            && GameLevelManager.instance.players != null
+            && GameLevelManager.instance.players.Count > 0
+            && GameLevelManager.instance.players[0] != null
+            && GameLevelManager.instance.players[0].basketball == gameObject;
+    }
+
     public void updateScoreText()
     {
-        gameStats = GameLevelManager.instance.players[0].gameStats;
+        // reads this ball's own gameStats. it used to reassign the field to players[0]'s stats
+        // here, which also redirected every shot counter that writes through the same field -
+        // a second human player's attempts were recorded onto player 1. the overlay is a single
+        // shared Text object, so only the primary ball writes to it (see displayUiStats).
         scoreText.text = "shots  : " + gameStats.ShotMade + " / " + gameStats.ShotAttempt + "  " +
                          getTotalPointAccuracy().ToString("0.00") + "\n"
                          + "points : " + gameStats.TotalPoints + "\n"
@@ -678,7 +695,9 @@ public class BasketBall : MonoBehaviour
     //  this format will not work for some reason -- (float)(num1 / num2 to work);
     public float getCriticalPercentage()
     {
-        if (gameStats.CriticalRolled > 0)
+        // guards the divisor, not the numerator - testing CriticalRolled here left the
+        // ShotAttempt division unprotected
+        if (gameStats.ShotAttempt > 0)
         {
             float accuracy = (float)gameStats.CriticalRolled / gameStats.ShotAttempt;
             return (accuracy * 100);

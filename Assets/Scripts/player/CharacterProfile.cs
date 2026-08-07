@@ -102,7 +102,7 @@ public class CharacterProfile : MonoBehaviour
         }
 
         experience = temp.Experience;
-        level = temp.Experience / 3000;
+        level = CharacterLevel.FromExperience(temp.Experience);
         fadeaway = level;
         InAirSpeed = fadeaway / 10;
         playerObjectName = temp.playerObjectName != null ? temp.playerObjectName : "";

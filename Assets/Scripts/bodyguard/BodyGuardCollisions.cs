@@ -19,7 +19,19 @@ public class BodyGuardCollisions : MonoBehaviour
     {
         bodyGuardController = gameObject.transform.root.GetComponent<BodyGuardController>();
         bodyGuardHealth = GetComponent<BodyGuardHealth>();
-        bodyGuardHealthBar = transform.parent.GetComponentInChildren<BodyGuardHealthBar>();
+        bodyGuardHealthBar = transform.parent != null
+            ? transform.parent.GetComponentInChildren<BodyGuardHealthBar>()
+            : null;
+
+        if (bodyGuardController == null)
+        {
+            Debug.LogError(
+                "BodyGuardCollisions on " + name + " found no BodyGuardController on its hierarchy root. Disabling.",
+                this);
+            enabled = false;
+            return;
+        }
+
         if(luck == 0) { luck = 10; }
     }
 
@@ -142,7 +154,14 @@ public class BodyGuardCollisions : MonoBehaviour
 
     void enemyStepOnRake(Collider other)
     {
-        other.transform.parent.GetComponentInChildren<Animator>().Play("attack");
+        Animator rakeAnimator = other.transform.parent != null
+            ? other.transform.parent.GetComponentInChildren<Animator>()
+            : null;
+        if (rakeAnimator != null)
+        {
+            rakeAnimator.Play("attack");
+        }
+
         StartCoroutine(bodyGuardController.takeDamage());
     }
 

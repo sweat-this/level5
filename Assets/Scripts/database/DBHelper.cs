@@ -1,4 +1,4 @@
-using Assets.Scripts.database;
+﻿using Assets.Scripts.database;
 using Mono.Data.Sqlite;
 using System;
 using System.Collections;
@@ -382,8 +382,8 @@ public class DBHelper : MonoBehaviour
         try
         {
             string accountId = CurrentAccountId();
-            int prevLevel = PlayerData.instance.CurrentExperience / 3000;
-            int currentLevel = ((int)((PlayerData.instance.CurrentExperience + expGained) / 3000));
+            int prevLevel = CharacterLevel.FromExperience(PlayerData.instance.CurrentExperience);
+            int currentLevel = CharacterLevel.FromExperience(PlayerData.instance.CurrentExperience + expGained);
 
             int updatePointsAvailable = PlayerData.instance.UpdatePointsAvailable;
             int updatePointsUsed = PlayerData.instance.UpdatePointsUsed;
@@ -523,7 +523,7 @@ public class DBHelper : MonoBehaviour
                     }
 
                     int experienceAfter = Math.Max(0, currentExperience + Mathf.RoundToInt(experienceGained));
-                    int levelAfter = experienceAfter / 3000;
+                    int levelAfter = CharacterLevel.FromExperience(experienceAfter);
                     int clampedPointsUsed = Math.Min(Math.Max(0, pointsUsed), levelAfter);
                     int pointsAvailable = Math.Max(0, levelAfter - clampedPointsUsed);
 
@@ -1520,7 +1520,7 @@ public class DBHelper : MonoBehaviour
         int enemiesEnabled = 0;
         int sniperEnabled = 0;
 
-        int pageNumberOffset = pageNumber * 10;
+        int pageNumberOffset = StatsPaging.OffsetFor(pageNumber);
 
         try
         {
@@ -1558,8 +1558,9 @@ public class DBHelper : MonoBehaviour
                             level = reader.GetString(2);
                             date = reader.GetString(3);
                             time = reader.GetFloat(4);
-                            // if filters selected
-                            if (hardcoreValue || trafficValue || enemiesValue || sniperValue)
+                            // same predicate the SELECT column list was built from, so the
+                            // column indices below cannot drift away from the query shape
+                            if (HasHighScoreFilters(hardcoreValue, trafficValue, enemiesValue, sniperValue))
                             {
                                 // null check
                                 if (reader.IsDBNull(5))
@@ -1615,10 +1616,10 @@ public class DBHelper : MonoBehaviour
                 }
             }
 
-            // if less than 10 values in list, add empty values
-            if (listOfValues.Count < 10)
+            // pad a short final page out to a full page of rows
+            if (listOfValues.Count < StatsPaging.ResultsPerPage)
             {
-                int numToAdd = 10 - listOfValues.Count;
+                int numToAdd = StatsPaging.ResultsPerPage - listOfValues.Count;
                 for (int i = 0; i < numToAdd; i++)
                 {
                     StatsTableHighScoreRow row = gameObject.AddComponent<StatsTableHighScoreRow>();
@@ -1639,65 +1640,84 @@ public class DBHelper : MonoBehaviour
         }
     }
 
+    // True when any filter is active. With none selected the stats screen shows every entry for
+    // the mode, so no filter columns are constrained.
+    private static bool HasHighScoreFilters(bool hardcoreValue, bool trafficValue, bool enemiesValue, bool sniperValue)
+    {
+        return hardcoreValue || trafficValue || enemiesValue || sniperValue;
+    }
+
+    // The single WHERE tail shared by the rows query and the count query. These used to be built
+    // separately and disagreed: the count always constrained hardcoreEnabled and never constrained
+    // traffic/enemies/sniper, so the page count came out too small with no filters selected and too
+    // large with them. Both now derive the clause from here.
+    private static string BuildHighScoreFilterClause(bool hardcoreValue, bool trafficValue, bool enemiesValue, bool sniperValue)
+    {
+        string clause = " WHERE modeid = @modeid";
+        if (!HasHighScoreFilters(hardcoreValue, trafficValue, enemiesValue, sniperValue))
+        {
+            return clause;
+        }
+
+        return clause
+            + " AND hardcoreEnabled = @hardcoreEnabled"
+            + " AND trafficEnabled = @trafficEnabled"
+            + " AND enemiesEnabled = @enemiesEnabled"
+            + " AND sniperEnabled = @sniperEnabled";
+    }
+
+    // Modes whose high score is a time, where a LOWER value ranks better.
+    private static bool HighScoreFieldIsAscending(int modeid)
+    {
+        return ((modeid > 4 && modeid < 14) || modeid == 25) && modeid != 6 && modeid != 99;
+    }
+
     private static string BuildSqlQueryForGetHighScoreRows(string field, int modeid, bool hardcoreValue, bool trafficValue, bool enemiesValue, bool sniperValue)
     {
         field = RequireSqlIdentifier(field, nameof(field));
-        string sqlQuery;
-        // if no filter selected, return all
-        if (!hardcoreValue && !trafficValue && !enemiesValue && !sniperValue)
-        {
-            // game modes that require float values/ low time as high score
-            if (((modeid > 4 && modeid < 14) || modeid == 25) && modeid != 6 && modeid != 99)
-            {
-                sqlQuery = "SELECT  " + field + ", character, level, date, time, userName FROM HighScores  WHERE modeid = @modeid"
-                    + " ORDER BY "
-                    + field + " ASC,time ASC LIMIT 10 OFFSET @offset";
-            }
-            else
-            {
-                sqlQuery = "SELECT  " + field + ", character, level, date, time, userName FROM HighScores  WHERE modeid = @modeid"
-                    + " ORDER BY "
-                    + field + " DESC, time ASC LIMIT 10 OFFSET @offset";
-            }
-        }
-        // filters selected, filter results
-        else
-        {
-            // game modes that require float values/ low time as high score
-            if (((modeid > 4 && modeid < 14) || modeid == 25) && modeid != 6 && modeid != 99)
-            {
-                sqlQuery = "SELECT  " + field + ", character, level, date, time, hardcoreEnabled, " +
-                    "trafficEnabled, enemiesEnabled, sniperEnabled, userName FROM HighScores  WHERE modeid = @modeid"
-                    + " AND hardcoreEnabled = @hardcoreEnabled"
-                    + " AND trafficEnabled = @trafficEnabled"
-                    + " AND enemiesEnabled = @enemiesEnabled"
-                    + " AND sniperEnabled = @sniperEnabled"
-                    + " ORDER BY "
-                    + field + " ASC,time ASC LIMIT 10 OFFSET @offset";
 
-            }
-            else
-            {
-                sqlQuery = "SELECT  " + field + ", character, level, date, time, hardcoreEnabled," +
-                    "trafficEnabled, enemiesEnabled, sniperEnabled, userName FROM HighScores  WHERE modeid = @modeid"
-                    + " AND hardcoreEnabled = @hardcoreEnabled"
-                    + " AND trafficEnabled = @trafficEnabled"
-                    + " AND enemiesEnabled = @enemiesEnabled"
-                    + " AND sniperEnabled = @sniperEnabled"
-                    + " ORDER BY "
-                    + field + " DESC, time ASC LIMIT 10 OFFSET @offset";
-            }
-        }
-        return sqlQuery;
+        // the filtered view also renders the filter columns, so it selects more of them
+        string columns = HasHighScoreFilters(hardcoreValue, trafficValue, enemiesValue, sniperValue)
+            ? field + ", character, level, date, time, hardcoreEnabled, trafficEnabled, enemiesEnabled, sniperEnabled, userName"
+            : field + ", character, level, date, time, userName";
+
+        string sortDirection = HighScoreFieldIsAscending(modeid) ? " ASC" : " DESC";
+
+        // ResultsPerPage is a compile-time int constant, so concatenating it carries no injection
+        // risk and still has a single definition. Bound parameters are used for every value that
+        // is not one. (@offset has long-standing precedent here; a bound LIMIT does not, and this
+        // is not something I can verify against the driver without running it.)
+        return "SELECT  " + columns + " FROM HighScores "
+            + BuildHighScoreFilterClause(hardcoreValue, trafficValue, enemiesValue, sniperValue)
+            + " ORDER BY " + field + sortDirection + ", time ASC"
+            + " LIMIT " + StatsPaging.ResultsPerPage + " OFFSET @offset";
     }
 
-    public int getNumberOfResults(string field, int modeid, bool hardcoreValue, int pageNumber)
+    /// <summary>
+    /// Total rows the stats table would show for this mode and filter set - the denominator behind
+    /// the "page N / M" display.
+    ///
+    /// It must be filtered identically to getListOfHighScoreRowsFromTableByModeIdAndField, which is
+    /// why both go through BuildHighScoreFilterClause. Previously this always constrained
+    /// hardcoreEnabled and never constrained traffic/enemies/sniper, so it counted a different set
+    /// than the one being paged: too few rows with no filters selected (hiding real pages) and too
+    /// many with them (showing empty ones).
+    /// </summary>
+    public int getNumberOfResults(
+        string field,
+        int modeid,
+        bool hardcoreValue,
+        bool trafficValue,
+        bool enemiesValue,
+        bool sniperValue)
     {
         int rowCount = 0;
 
         try
         {
-            field = RequireSqlIdentifier(field, nameof(field));
+            // not interpolated into the count query, but still validated so an invalid field is
+            // rejected here exactly as it would be by the rows query
+            RequireSqlIdentifier(field, nameof(field));
             databaseLocked = true;
 
             using (IDbConnection dbconn = new SqliteConnection(connection))
@@ -1705,20 +1725,15 @@ public class DBHelper : MonoBehaviour
                 dbconn.Open(); //Open connection to the database.
                 using (IDbCommand dbcmd = dbconn.CreateCommand())
                 {
-                    string sqlQuery;
-                    if (hardcoreValue)
-                    {
-                        sqlQuery = "SELECT Count(*) FROM HighScores  WHERE modeid = @modeid"
-                                + " AND hardcoreEnabled = 1 ORDER BY " + field;
-                    }
-                    else
-                    {
-                        sqlQuery = "SELECT Count(*) FROM HighScores  WHERE modeid = @modeid"
-                                + " AND hardcoreEnabled = 0 ORDER BY " + field;
-                    }
+                    // no ORDER BY: it cannot change the result of a COUNT
+                    dbcmd.CommandText = "SELECT Count(*) FROM HighScores "
+                        + BuildHighScoreFilterClause(hardcoreValue, trafficValue, enemiesValue, sniperValue);
 
-                    dbcmd.CommandText = sqlQuery;
                     dbcmd.Parameters.Add(new SqliteParameter("@modeid", modeid));
+                    dbcmd.Parameters.Add(new SqliteParameter("@hardcoreEnabled", Convert.ToInt32(hardcoreValue)));
+                    dbcmd.Parameters.Add(new SqliteParameter("@trafficEnabled", Convert.ToInt32(trafficValue)));
+                    dbcmd.Parameters.Add(new SqliteParameter("@enemiesEnabled", Convert.ToInt32(enemiesValue)));
+                    dbcmd.Parameters.Add(new SqliteParameter("@sniperEnabled", Convert.ToInt32(sniperValue)));
 
                     using (IDataReader reader = dbcmd.ExecuteReader())
                     {

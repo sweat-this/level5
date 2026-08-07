@@ -215,8 +215,10 @@ public class PlayerController : MonoBehaviour
         callBallToPlayer = GetComponent<CallBallToPlayer>();
         playerAttackQueue = GetComponent<PlayerAttackQueue>();
         spriteObject = transform.GetComponentInChildren<SpriteRenderer>().gameObject;
-        damageDisplayObject = GameObject.Find(damageDisplayValueName);
-        damageDisplayValueText = damageDisplayObject.GetComponent<Text>();
+        damageDisplayObject = SceneObjects.Find(damageDisplayValueName, this);
+        damageDisplayValueText = damageDisplayObject != null
+            ? damageDisplayObject.GetComponent<Text>()
+            : null;
         anim = GetComponentInChildren<Animator>();
         basketball = GetComponent<PlayerIdentifier>().basketball.GetComponent<BasketBall>();
         characterProfile = GetComponent<CharacterProfile>();
@@ -244,7 +246,10 @@ public class PlayerController : MonoBehaviour
         if (GameOptions.customCamera)
         {
             spriteObject.transform.rotation = Quaternion.Euler(0, 0, 0);
-            damageDisplayObject.transform.rotation = Quaternion.Euler(0, 0, 0);
+            if (damageDisplayObject != null)
+            {
+                damageDisplayObject.transform.rotation = Quaternion.Euler(0, 0, 0);
+            }
         }
         //GameOptions.sniperEnabled = true; // test flag;
         if (GameOptions.enemiesEnabled || GameOptions.EnemiesOnlyEnabled || GameOptions.sniperEnabled)
@@ -253,12 +258,12 @@ public class PlayerController : MonoBehaviour
             {
                 playerSwapAttack = GetComponent<PlayerSwapAttack>();
             }
-            if (damageDisplayObject.GetComponent<Canvas>() != null)
+            if (damageDisplayObject != null && damageDisplayObject.GetComponent<Canvas>() != null)
             {
                 damageDisplayObject.GetComponent<Canvas>().worldCamera = Camera.main;
             }
         }
-        else
+        else if (damageDisplayObject != null)
         {
             damageDisplayObject.SetActive(false);
         }
@@ -401,7 +406,10 @@ public class PlayerController : MonoBehaviour
         }
         // ----- control speed based on commands----------
         // idle, walk, walk with ball state
-        if (currentState == idleState || currentState == walkState || currentState == bIdle
+        // AUD-049: the parentheses are load-bearing. `&&` binds tighter than `||`, so without them
+        // the !InAir/!KnockedDown guard applied only to the bIdle branch and idle/walk reset to
+        // ground speed regardless of state.
+        if ((currentState == idleState || currentState == walkState || currentState == bIdle)
             && !InAir
             && !KnockedDown)
         {
@@ -613,8 +621,11 @@ public class PlayerController : MonoBehaviour
         attackState = Animator.StringToHash("base.attack.attack");
         blockState = Animator.StringToHash("base.attack.block");
         inAirDunkState = Animator.StringToHash("base.inair.inair_dunk");
-        inAirHasBasketballFrontState = Animator.StringToHash("inair.inair_hasBasketball_front");
-        inAirHasBasketballSideState = Animator.StringToHash("inair.inair_hasBasketball_side");
+        // AUD-051: these two were the only hashes here without the "base." prefix, so they could
+        // never match a fullPathHash. AutoPlayerController papered over it by re-assigning the
+        // prefixed value in Start; the fix belongs here.
+        inAirHasBasketballFrontState = Animator.StringToHash("base.inair.inair_hasBasketball_front");
+        inAirHasBasketballSideState = Animator.StringToHash("base.inair.inair_hasBasketball_side");
         inAirShootState = Animator.StringToHash("base.inair.basketball_shoot");
         inAirShootFrontState = Animator.StringToHash("base.inair.basketball_shoot_front");
         jumpState = Animator.StringToHash("base.inair.jump");
@@ -724,9 +735,12 @@ public class PlayerController : MonoBehaviour
 
     public void PlayerJump()
     {
-        rigidBody.linearVelocity = Vector3.up * characterProfile.JumpForce; //+ (Vector3.forward * rigidBody.velocity.x)) 
+        rigidBody.linearVelocity = Vector3.up * characterProfile.JumpForce; //+ (Vector3.forward * rigidBody.velocity.x))
         //jumpStartTime = Time.time;
-        if (!GameOptions.battleRoyalEnabled || !GameOptions.EnemiesOnlyEnabled)
+        // AUD-048: this was `!battleRoyal || !enemiesOnly`, which is only false when BOTH are on -
+        // so the shot meter still started in a plain battle royal and in a plain enemies-only run,
+        // the two modes it exists to exclude. The other shooting gates in Update use `&&`.
+        if (!GameOptions.battleRoyalEnabled && !GameOptions.EnemiesOnlyEnabled)
         {
             Shotmeter.MeterStarted = true;
             Shotmeter.MeterStartTime = Time.time;
@@ -786,7 +800,8 @@ public class PlayerController : MonoBehaviour
         thisScale.x *= -1;
         transform.localScale = thisScale;
 
-        if (GameOptions.enemiesEnabled || GameOptions.EnemiesOnlyEnabled || GameOptions.sniperEnabled)
+        if (damageDisplayObject != null
+            && (GameOptions.enemiesEnabled || GameOptions.EnemiesOnlyEnabled || GameOptions.sniperEnabled))
         {
             Vector3 damageScale = damageDisplayObject.transform.localScale;
             damageScale.x *= -1;
@@ -894,18 +909,30 @@ public class PlayerController : MonoBehaviour
         rigidBody.constraints = RigidbodyConstraints.FreezeRotation;
         //Vector3 newScale = new Vector3(transform.localScale.x/2,transform.localScale.y/2,transform.localScale.z/2);
         Vector3 originalScale = transform.localScale;
-        bool originalFacingRight = FacingRight;
         Vector3 newScale = transform.localScale/2;
 
-        float camFOV = CameraManager.instance.Cameras[0].GetComponent<Camera>().fieldOfView;
+        // AUD-054: the restore below used the literal 50 rather than the value captured here, so a
+        // camera at any other FOV was permanently retuned by shrinking once.
+        Camera shrinkCamera = CameraManager.instance != null && CameraManager.instance.Cameras != null
+            && CameraManager.instance.Cameras.Length > 0 && CameraManager.instance.Cameras[0] != null
+            ? CameraManager.instance.Cameras[0].GetComponent<Camera>()
+            : null;
+        float camFOV = shrinkCamera != null ? shrinkCamera.fieldOfView : 0f;
+
         gameObject.transform.localScale = newScale;
-        CameraManager.instance.Cameras[0].GetComponent<Camera>().fieldOfView = camFOV/2;
+        if (shrinkCamera != null)
+        {
+            shrinkCamera.fieldOfView = camFOV / 2;
+        }
 
         yield return new WaitForSeconds(10);
 
         gameObject.transform.localScale = originalScale;
         FacingRight = transform.localScale.x > 0 ? true : false;
-        CameraManager.instance.Cameras[0].GetComponent<Camera>().fieldOfView = 50;
+        if (shrinkCamera != null)
+        {
+            shrinkCamera.fieldOfView = camFOV;
+        }
         isShrunk = false;
     }
 
@@ -957,7 +984,12 @@ public class PlayerController : MonoBehaviour
     public void ToggleRun()
     {
         runningToggle = !runningToggle;
-        Text messageText = GameObject.Find("messageDisplay").GetComponent<Text>();
+        Text messageText = SceneObjects.Find<Text>("messageDisplay", this);
+        if (messageText == null)
+        {
+            return;
+        }
+
         messageText.text = "running toggle = " + runningToggle;
 
         // turn off text display after 5 seconds

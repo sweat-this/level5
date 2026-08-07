@@ -71,7 +71,9 @@ public class TouchInputController : MonoBehaviour
     private void OnDisable()
     {
         hold1Detected = false;
-        PlayerTouchInputState.BlockHeld = false;
+        // clears the queued jump/attack/special as well as BlockHeld. clearing only BlockHeld
+        // let a tap on the frame a scene tore down survive into the next scene.
+        PlayerTouchInputState.Clear();
 
         if (instance == this)
         {
@@ -297,11 +299,18 @@ public class TouchInputController : MonoBehaviour
         //    buttonPressed = true;
         //}
         // toggle fps
+        // AUD-012: DevFunctions lives in Assets/Scripts/Dev and must not be reachable from a
+        // release build. Guarding the call - rather than the button - keeps the pause menu layout
+        // identical in every configuration; the button simply does nothing when shipped.
         if (selectedButtonName.Equals(Pause.ToggleFpsName)
             && !buttonPressed)
         {
-            //Debug.Log("toggle fps");
-            DevFunctions.instance.ToggleFpsCounter();
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            if (DevFunctions.instance != null)
+            {
+                DevFunctions.instance.ToggleFpsCounter();
+            }
+#endif
             buttonPressed = true;
         }
         //// set max stats

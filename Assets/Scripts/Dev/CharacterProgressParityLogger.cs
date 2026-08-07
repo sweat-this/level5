@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using UnityEngine;
 
 public static class CharacterProgressParityLogger
@@ -73,7 +73,7 @@ public static class CharacterProgressParityLogger
         PlayerCharacterProgress progress,
         List<string> mismatches)
     {
-        int legacyLevel = legacyRecord.Level > 0 ? legacyRecord.Level : legacyRecord.Experience / 3000;
+        int legacyLevel = legacyRecord.Level > 0 ? legacyRecord.Level : CharacterLevel.FromExperience(legacyRecord.Experience);
         if (legacyRecord.Experience != progress.experience)
         {
             mismatches.Add("experience sqlite=" + legacyRecord.Experience + " json=" + progress.experience);

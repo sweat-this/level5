@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Assets.Scripts.Utility;
+using System;
 using System.Collections;
 using UnityEngine;
 using UnityEngine.UI;
@@ -114,16 +115,22 @@ public class RacingVehicleController : MonoBehaviour
         screenXRange = Screen.width / 10;
         screenYRange = Screen.height / 10;
 
-        damageDisplayObject = GameObject.Find(damageDisplayValueName);
-        damageDisplayValueText = damageDisplayObject.GetComponent<Text>();
+        // AUD-053: the same guards PlayerController carries. This twin was left unguarded.
+        damageDisplayObject = SceneObjects.Find(damageDisplayValueName, this);
+        damageDisplayValueText = damageDisplayObject != null
+            ? damageDisplayObject.GetComponent<Text>()
+            : null;
 
         //GameOptions.sniperEnabled = true; // test flag;
         if (GameOptions.enemiesEnabled || GameOptions.EnemiesOnlyEnabled || GameOptions.sniperEnabled)
         {
             //playerSwapAttack = GetComponent<PlayerSwapAttack>();
-            damageDisplayObject.GetComponent<Canvas>().worldCamera = Camera.main;
+            if (damageDisplayObject != null && damageDisplayObject.GetComponent<Canvas>() != null)
+            {
+                damageDisplayObject.GetComponent<Canvas>().worldCamera = Camera.main;
+            }
         }
-        else
+        else if (damageDisplayObject != null)
         {
             damageDisplayObject.SetActive(false);
         }
@@ -731,7 +738,12 @@ public class RacingVehicleController : MonoBehaviour
     public void ToggleRun()
     {
         runningToggle = !runningToggle;
-        Text messageText = GameObject.Find("messageDisplay").GetComponent<Text>();
+        Text messageText = SceneObjects.Find<Text>("messageDisplay", this);
+        if (messageText == null)
+        {
+            return;
+        }
+
         messageText.text = "running toggle = " + runningToggle;
 
         // turn off text display after 5 seconds

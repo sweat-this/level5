@@ -17,9 +17,13 @@ try {
         $errors.Add("Generated or machine-local file is tracked: $path")
     }
 
+    # Unity ignores any path segment ending in '~' (and hidden files), so it never generates
+    # .meta files for them. Requiring one here would fail on folders that are deliberately
+    # excluded from the asset database, such as Assets/Scripts/menu_start/Legacy~.
     $missingMeta = Get-ChildItem Assets -Recurse -File | Where-Object {
         $_.Extension -ne '.meta' -and
         -not $_.Name.StartsWith('.') -and
+        (($_.FullName -replace '\\', '/') -notmatch '/[^/]*~/') -and
         -not (Test-Path ($_.FullName + '.meta'))
     }
     foreach ($asset in $missingMeta) {

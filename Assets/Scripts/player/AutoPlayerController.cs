@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Assets.Scripts.Utility;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
@@ -144,8 +145,8 @@ public class AutoPlayerController : MonoBehaviour
         playerIdentifier = GetComponent<PlayerIdentifier>();
         basketball = playerIdentifier.isDefensivePlayer ? null : playerIdentifier.autoBasketball.GetComponent<BasketBallAuto>();
         gameStats = playerIdentifier.isDefensivePlayer ? null : playerIdentifier.autoBasketball.GetComponent<GameStats>();
-        inAirHasBasketballFrontState = Animator.StringToHash("base.inair.inair_hasBasketball_front");
-        inAirHasBasketballSideState = Animator.StringToHash("base.inair.inair_hasBasketball_side");
+        // (the two hash re-assignments that used to sit here are gone - getAnimatorStateHashes
+        // above now produces the prefixed values directly. AUD-051)
         callBallToPlayer = GetComponent<CallBallToPlayer>();
         anim = playerIdentifier.autoPlayer.GetComponentInChildren<Animator>();
         characterProfile = GetComponent<CharacterProfile>();
@@ -166,23 +167,32 @@ public class AutoPlayerController : MonoBehaviour
         if (blockSpeed == 0) { blockSpeed = 0.2f; }
         //if (attackSpeed == 0) { attackSpeed = 0f; }
 
-        damageDisplayObject = GameObject.Find(damageDisplayValueName);
-        damageDisplayValueText = damageDisplayObject.GetComponent<Text>();
+        // AUD-053: the same guards PlayerController carries. This twin was left unguarded.
+        damageDisplayObject = SceneObjects.Find(damageDisplayValueName, this);
+        damageDisplayValueText = damageDisplayObject != null
+            ? damageDisplayObject.GetComponent<Text>()
+            : null;
 
         //GameOptions.sniperEnabled = true; // test flag;
         if (GameOptions.enemiesEnabled || GameOptions.EnemiesOnlyEnabled || GameOptions.sniperEnabled)
         {
             playerSwapAttack = GetComponent<PlayerSwapAttack>();
-            damageDisplayObject.GetComponent<Canvas>().worldCamera = Camera.main;
+            if (damageDisplayObject != null && damageDisplayObject.GetComponent<Canvas>() != null)
+            {
+                damageDisplayObject.GetComponent<Canvas>().worldCamera = Camera.main;
+            }
         }
-        else
+        else if (damageDisplayObject != null)
         {
             damageDisplayObject.SetActive(false);
         }
         if (GameOptions.customCamera)
         {
             spriteObject.transform.rotation = Quaternion.Euler(0, 0, 0);
-            damageDisplayObject.transform.rotation = Quaternion.Euler(0, 0, 0);
+            if (damageDisplayObject != null)
+            {
+                damageDisplayObject.transform.rotation = Quaternion.Euler(0, 0, 0);
+            }
         }
         // custom knockdown time for sniper mode
         if (GameOptions.sniperEnabled)
@@ -201,9 +211,13 @@ public class AutoPlayerController : MonoBehaviour
     // not affected by framerate
     void FixedUpdate()
     {
-        movementHorizontal = movement.x;
-        movementVertical = movement.y;
-        movement = new Vector3(movementHorizontal, 0, movementVertical) * (movementSpeed * Time.fixedDeltaTime);
+        // AUD-050: this block used to re-derive movement from itself before moveToPosition had a
+        // chance to set it - reading `movement.y` (the height component) as the depth component,
+        // then writing it back as z and rescaling the whole vector by speed*dt a second time.
+        // moveToPosition is the only thing that should author `movement`; this just clears it when
+        // no step is taken, so IsWalking sees a genuine "not moving" instead of a decaying echo of
+        // the last step.
+        bool steppedThisFrame = false;
 
         if (Grounded
             && !InAir
@@ -216,12 +230,22 @@ public class AutoPlayerController : MonoBehaviour
             if (distanceToTarget > 0.05f)
             {
                 moveToPosition(targetPosition);
+                steppedThisFrame = true;
             }
             if (distanceToTarget <= 0.05f)
             {
                 arrivedAtTarget = true;
             }
         }
+
+        if (!steppedThisFrame)
+        {
+            movement = Vector3.zero;
+        }
+
+        movementHorizontal = movement.x;
+        movementVertical = movement.z;
+
         if (currentState != specialState)
         {
             IsWalking(movementHorizontal, movementVertical);
@@ -284,7 +308,11 @@ public class AutoPlayerController : MonoBehaviour
         }
         if (!Grounded) // player in air
         {
-            terrainYHeight = Terrain.activeTerrain.SampleHeight(transform.position) + 0.02f;
+            // AUD-052: same guard PlayerController already carries. A scene with no active Terrain
+            // otherwise NREs here every frame the CPU is airborne.
+            terrainYHeight = Terrain.activeTerrain != null
+                ? Terrain.activeTerrain.SampleHeight(transform.position) + 0.02f
+                : GameLevelManager.instance.TerrainHeight + 0.02f;
             dropShadow.transform.position = new Vector3(transform.root.position.x, terrainYHeight,
             transform.root.position.z);
         }
@@ -318,7 +346,8 @@ public class AutoPlayerController : MonoBehaviour
 
         // ----- control speed based on commands----------
         // idle, walk, walk with ball state
-        if (currentState == idleState || currentState == walkState || currentState == bIdle
+        // AUD-049: parenthesised - `&&` binds tighter than `||`, so the guard applied only to bIdle
+        if ((currentState == idleState || currentState == walkState || currentState == bIdle)
             && !InAir
             && !KnockedDown)
         {
@@ -458,6 +487,14 @@ public class AutoPlayerController : MonoBehaviour
     }
     private bool cpuShootSevenpointers(){
         bool returnValue = false;
+        // AUD-055: an unset Accuracy7Pt made this Infinity, which passed the > 70 test below and
+        // turned every CPU into a seven-point specialist. A character with no seven-point accuracy
+        // should never take the shot.
+        if (characterProfile.Accuracy7Pt <= 0)
+        {
+            return false;
+        }
+
         float rangePercent = ((float)characterProfile.Range / characterProfile.Accuracy7Pt) * 100;
         //Debug.Log("name : " + characterProfile.PlayerDisplayName);
         //Debug.Log("rangePercent : " + rangePercent);
@@ -496,8 +533,11 @@ public class AutoPlayerController : MonoBehaviour
         attackState = Animator.StringToHash("base.attack.attack");
         blockState = Animator.StringToHash("base.attack.block");
         inAirDunkState = Animator.StringToHash("base.inair.inair_dunk");
-        inAirHasBasketballFrontState = Animator.StringToHash("inair.inair_hasBasketball_front");
-        inAirHasBasketballSideState = Animator.StringToHash("inair.inair_hasBasketball_side");
+        // AUD-051: "base." prefix, matching every other hash here. Start used to re-assign these
+        // two immediately afterwards with the prefixed strings, which is what kept this class
+        // working while the same helper in PlayerController and AutoPlayerDefense stayed wrong.
+        inAirHasBasketballFrontState = Animator.StringToHash("base.inair.inair_hasBasketball_front");
+        inAirHasBasketballSideState = Animator.StringToHash("base.inair.inair_hasBasketball_side");
         inAirShootState = Animator.StringToHash("base.inair.basketball_shoot");
         inAirShootFrontState = Animator.StringToHash("base.inair.basketball_shoot_front");
         jumpState = Animator.StringToHash("base.inair.jump");
@@ -512,11 +552,20 @@ public class AutoPlayerController : MonoBehaviour
         yield return new WaitForSeconds(1.5f);
         callBallToPlayer.Locked = false;
     }
+    /// <summary>
+    /// Steps toward <paramref name="target"/>.
+    ///
+    /// AUD-050: this used to assign the normalized *direction* back into the `targetPosition`
+    /// field it had just been handed, so between this call and the next Update (which recomputes
+    /// the marker) the field held a unit vector rather than a world position. FixedUpdate can run
+    /// more than once per Update, and the second run then steered toward a point near the origin.
+    /// The direction is a local now; the field is only written by getClosestPositionMarker.
+    /// </summary>
     public void moveToPosition(Vector3 target)
     {
-        targetPosition = (target-transform.position).normalized;
-        movement = targetPosition * (movementSpeed * Time.deltaTime);
-        rigidBody.MovePosition(transform.position +  movement);
+        Vector3 directionToTarget = (target - transform.position).normalized;
+        movement = directionToTarget * (movementSpeed * Time.deltaTime);
+        rigidBody.MovePosition(transform.position + movement);
     }
 
     //public void PlayerAttack()
@@ -624,7 +673,8 @@ public class AutoPlayerController : MonoBehaviour
         thisScale.x *= -1;
         transform.localScale = thisScale;
 
-        if (GameOptions.enemiesEnabled || GameOptions.EnemiesOnlyEnabled || GameOptions.sniperEnabled)
+        if (damageDisplayObject != null
+            && (GameOptions.enemiesEnabled || GameOptions.EnemiesOnlyEnabled || GameOptions.sniperEnabled))
         {
             Vector3 damageScale = damageDisplayObject.transform.localScale;
             damageScale.x *= -1;

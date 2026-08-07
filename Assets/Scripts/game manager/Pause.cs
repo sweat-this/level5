@@ -1,7 +1,9 @@
 ﻿
 using Assets.Scripts.database;
+using Assets.Scripts.Utility;
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.SceneManagement;
@@ -37,6 +39,29 @@ public class Pause : MonoBehaviour
     const string toggleUiStatsName = "toggle_stats";
     const string toggleMaxStatsName = "toggle_max_stats";
     const string toggleFpsName = "toggle_fps";
+    const string footerName = "footer";
+    const string fadeTextureName = "fade_texture";
+    const string loadSceneName = "load_scene";
+    const string loadStartName = "load_start";
+    const string cancelMenuName = "cancel_menu";
+    const string quitGameName = "quit_game";
+
+    /// <summary>
+    /// Pause-menu objects every gameplay scene must provide. Level5ProjectValidator asserts
+    /// these exist at build time so a rename fails the build instead of the play session.
+    /// </summary>
+    public static readonly string[] RequiredPauseObjectNames =
+    {
+        footerName,
+        fadeTextureName,
+        loadSceneName,
+        loadStartName,
+        cancelMenuName,
+        quitGameName,
+        toggleUiStatsName,
+        toggleMaxStatsName,
+        toggleFpsName
+    };
 
     //ui buttons
     private Button loadSceneButton;
@@ -73,25 +98,42 @@ public class Pause : MonoBehaviour
 #endif
         //startOnPause = false;
         paused = startOnPause;
-        footer = GameObject.Find("footer");
+        // the footer is only shown/hidden, so a missing one is logged but not fatal
+        footer = SceneObjects.Find(footerName, this);
 
-        fadeTexture = GameObject.Find("fade_texture").GetComponent<Image>();
+        // resolved one at a time and collected, so a missing pause-menu object is reported by
+        // name instead of throwing partway through Awake and leaving Update to NRE every frame
+        List<string> missing = new List<string>();
+        fadeTexture = SceneObjects.Find<Image>(fadeTextureName, missing, this);
         //text
-        loadSceneText = GameObject.Find("load_scene").GetComponent<Text>();
-        cancelMenuText = GameObject.Find("cancel_menu").GetComponent<Text>();
-        loadStartScreenText = GameObject.Find("load_start").GetComponent<Text>();
-        quitGameText = GameObject.Find("quit_game").GetComponent<Text>();
+        loadSceneText = SceneObjects.Find<Text>(loadSceneName, missing, this);
+        cancelMenuText = SceneObjects.Find<Text>(cancelMenuName, missing, this);
+        loadStartScreenText = SceneObjects.Find<Text>(loadStartName, missing, this);
+        quitGameText = SceneObjects.Find<Text>(quitGameName, missing, this);
         //buttons
-        loadSceneButton = GameObject.Find("load_scene").GetComponent<Button>();
-        loadStartScreenButton = GameObject.Find("load_start").GetComponent<Button>();
-        cancelMenuButton = GameObject.Find("cancel_menu").GetComponent<Button>();
-        quitGameButton = GameObject.Find("quit_game").GetComponent<Button>();
+        loadSceneButton = SceneObjects.Find<Button>(loadSceneName, missing, this);
+        loadStartScreenButton = SceneObjects.Find<Button>(loadStartName, missing, this);
+        cancelMenuButton = SceneObjects.Find<Button>(cancelMenuName, missing, this);
+        quitGameButton = SceneObjects.Find<Button>(quitGameName, missing, this);
 
         //toggleCameraText = GameObject.Find(toggleCameraName).GetComponent<Text>();
-        toggleUiStatsText = GameObject.Find(toggleUiStatsName).GetComponent<Text>();
-        toggleMaxStatsText = GameObject.Find(toggleMaxStatsName).GetComponent<Text>();
+        toggleUiStatsText = SceneObjects.Find<Text>(toggleUiStatsName, missing, this);
+        toggleMaxStatsText = SceneObjects.Find<Text>(toggleMaxStatsName, missing, this);
 
-        toggleFpsText = GameObject.Find(toggleFpsName).GetComponent<Text>();
+        toggleFpsText = SceneObjects.Find<Text>(toggleFpsName, missing, this);
+
+        if (missing.Count > 0)
+        {
+            // a half-wired pause menu cannot be driven safely, and Update would throw on
+            // every frame trying. fail loudly once, with the names, and stay out of the way.
+            Debug.LogError(
+                "Pause is disabled because this scene is missing required pause-menu objects: "
+                + string.Join(", ", missing.ToArray()),
+                this);
+            SceneTransition.RestoreTimeScale();
+            enabled = false;
+            return;
+        }
 
 //#if UNITY_ANDROID && !UNITY_EDITOR
 //            controlsDesktopObject.SetActive(false);
@@ -120,9 +162,9 @@ public class Pause : MonoBehaviour
             setBackgroundFade(false);
             setPauseScreen(false);
         }
-        if (startOnPause)
+        if (startOnPause && footer != null)
         {
-            GameObject.Find("footer").SetActive(false);
+            footer.SetActive(false);
         }
     }
 
@@ -205,16 +247,24 @@ public class Pause : MonoBehaviour
     {
         startOnPause = false;
         GameObject go = GameObject.Find("paused_start");
-        go.SetActive(false);
+        if (go != null)
+        {
+            go.SetActive(false);
+        }
         paused = TogglePause();
     }
 
     public void disableMobileOnlyPauseOptions()
     {
         // mobile buttons
-        maxStatsObject = GameObject.Find(toggleMaxStatsName).gameObject;
-        toggleFpsObject = GameObject.Find(toggleFpsName).gameObject;
-        toggleUiStatsObject = GameObject.Find(toggleUiStatsName).gameObject;
+        maxStatsObject = SceneObjects.Find(toggleMaxStatsName, this);
+        toggleFpsObject = SceneObjects.Find(toggleFpsName, this);
+        toggleUiStatsObject = SceneObjects.Find(toggleUiStatsName, this);
+
+        if (maxStatsObject == null || toggleFpsObject == null || toggleUiStatsObject == null)
+        {
+            return;
+        }
 
         maxStatsObject.SetActive(false);
         toggleFpsObject.SetActive(false);
@@ -245,12 +295,12 @@ public class Pause : MonoBehaviour
         {
             yield return WaitForDatabaseUnlock();
             // load screen should be first scene in build
-            SceneManager.LoadScene(Constants.SCENE_NAME_level_00_loading);
+            SceneTransition.LoadScene(Constants.SCENE_NAME_level_00_loading);
         }
         else
         {
             // load screen should be first scene in build
-            SceneManager.LoadScene(Constants.SCENE_NAME_level_00_loading);
+            SceneTransition.LoadScene(Constants.SCENE_NAME_level_00_loading);
         }
     }
 
@@ -283,7 +333,7 @@ public class Pause : MonoBehaviour
             }
         }
         MatchSession.BeginNewMatch();
-        SceneManager.LoadScene(SceneManager.GetActiveScene().name);
+        SceneTransition.LoadScene(SceneManager.GetActiveScene().name);
     }
 
     private void updateFreePlayStats()
@@ -365,7 +415,10 @@ public class Pause : MonoBehaviour
         if (Time.timeScale == 0f)
         {
             //gameManager.instance.backgroundFade.SetActive(false);
-            footer.SetActive(true);
+            if (footer != null)
+            {
+                footer.SetActive(true);
+            }
             paused = false;
             Time.timeScale = 1f;
             setBackgroundFade(false);
@@ -397,9 +450,11 @@ public class Pause : MonoBehaviour
         }
     }
 
+    // kept because scene UnityEvents may be wired to it; the scene-exit paths
+    // restore time scale through SceneTransition rather than calling this.
     public void setTimeScaleToActive()
     {
-        Time.timeScale = 1f;
+        SceneTransition.RestoreTimeScale();
     }
 
     public void setBackgroundFade(bool value)
@@ -455,6 +510,8 @@ public class Pause : MonoBehaviour
 
     private void QuitApplication()
     {
+        // the editor keeps running after a play-mode stop, so leave time flowing behind us
+        SceneTransition.RestoreTimeScale();
         Application.Quit();
     }
 

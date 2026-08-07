@@ -55,16 +55,18 @@ namespace Assets.Scripts.Utility
                 return 0;
             }
         }
+        /// <summary>
+        /// Rolls a percentage chance. 0 never succeeds, 100 always does.
+        /// This is the single roll helper for the project - see PercentChance for the rules.
+        /// </summary>
+        public static bool RollPercent(float chancePercent)
+        {
+            return PercentChance.Succeeds(chancePercent, Random.value);
+        }
+
         public static bool rollForCriticalInt(int max)
         {
-            int percent = Random.Range(0, 100);
-            //float percent = randNum.Next(1, 100);
-            if (percent <= max)
-            {
-                //Debug.Log("roll for critical : " + percent + "  max chance : " + max);
-                return true;
-            }
-            return false;
+            return RollPercent(max);
         }
 
         public static Transform FindDeepChild(this Transform aParent, string aName)

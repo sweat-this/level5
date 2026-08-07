@@ -58,7 +58,24 @@ public class PlayerAnimationEvents : MonoBehaviour
         }
         capsuleCollider = transform.root.GetComponent<CapsuleCollider>();
 
-        playerController = GameLevelManager.instance.players[0].playerController;
+        // resolve the actor this component is actually attached to, the way EnemyAnimationEvents
+        // and BodyGuardAnimationEvents do. reading players[0] meant every player's animation
+        // events gated on player 1's animator state and applied lunge force to player 1's
+        // rigidbody - invisible in single player, wrong for anyone but player 1.
+        playerController = GetComponentInParent<PlayerController>();
+        if (playerController == null)
+        {
+            playerController = transform.root.GetComponentInChildren<PlayerController>();
+        }
+
+        if (playerController == null)
+        {
+            Debug.LogError(
+                "PlayerAnimationEvents on " + name + " found no PlayerController on its hierarchy; "
+                + "attack boxes and lunge events will not run.",
+                this);
+        }
+
         audioSource = GetComponent<AudioSource>();
 
         Transform attackBoxTransform = transform.Find(attackBoxText);
@@ -194,8 +211,20 @@ public class PlayerAnimationEvents : MonoBehaviour
     }
 
 
+    // animation events fire from the Animator, so they can arrive before Start has resolved the
+    // controller or after the actor has been torn down
+    private bool CanApplyForce()
+    {
+        return playerController != null && playerController.RigidBody != null;
+    }
+
     public void applyForceToDirectionFacingXAndY(float force)
     {
+        if (!CanApplyForce())
+        {
+            return;
+        }
+
         // get direction facing
         if (playerController.FacingRight)
         {
@@ -212,6 +241,11 @@ public class PlayerAnimationEvents : MonoBehaviour
 
     public void applyForceToDirectionFacingProjectile(float force)
     {
+        if (!CanApplyForce())
+        {
+            return;
+        }
+
         if (playerController.FacingRight)
         {
             playerController.RigidBody.AddForce(force, 0, 0, ForceMode.VelocityChange);
@@ -224,6 +258,11 @@ public class PlayerAnimationEvents : MonoBehaviour
 
     public void applyForceToDirectionFacing()
     {
+        if (!CanApplyForce())
+        {
+            return;
+        }
+
         // get direction facing
         if (playerController.FacingRight)
         {
@@ -236,6 +275,11 @@ public class PlayerAnimationEvents : MonoBehaviour
     }
     public void applyForceToXDirectionFacing(float Xforce)
     {
+        if (!CanApplyForce())
+        {
+            return;
+        }
+
         // get direction facing
         if (playerController.FacingRight)
         {

@@ -242,16 +242,15 @@ public class PlayerAttackQueue : MonoBehaviour
 
     private bool CanReserve(GameObject attacker)
     {
-        if (attacker.TryGetComponent(out EnemyDetection enemyDetection))
+        // AUD-005: an actor that already holds a slot cannot reserve another. This used to ask the
+        // two concrete detection components in turn; ICombatDetection answers for any of them.
+        ICombatDetection detection = attacker.GetComponent<ICombatDetection>();
+        if (detection != null)
         {
-            return !enemyDetection.Attacking;
+            return !detection.Attacking;
         }
 
-        if (attacker.TryGetComponent(out BodyGuardDetection bodyGuardDetection))
-        {
-            return !bodyGuardDetection.Attacking;
-        }
-
+        // an actor with no detection component at all can still queue if it is a combat agent
         return attacker.GetComponent<ICombatAgent>() != null;
     }
 
@@ -337,48 +336,43 @@ public class PlayerAttackQueue : MonoBehaviour
         }
     }
 
+    // AUD-005: these two used to name EnemyDetection and BodyGuardDetection explicitly, in four
+    // near-identical blocks. Everything about them was the same except which component held the
+    // "I can see my target" flag and what it was called. Going through ICombatDetection means a
+    // new melee actor type joins by implementing the interface, not by editing the queue.
     private void ApplyReservationState(GameObject attacker, PlayerAttackPosition slot)
     {
-        if (attacker == null || slot == null)
+        if (slot == null)
         {
             return;
         }
 
-        if (attacker.TryGetComponent(out EnemyDetection enemyDetection))
-        {
-            enemyDetection.Attacking = true;
-            enemyDetection.AttackPositionId = slot.attackPositionId;
-            enemyDetection.PlayerSighted = true;
-        }
-
-        if (attacker.TryGetComponent(out BodyGuardDetection bodyGuardDetection))
-        {
-            bodyGuardDetection.Attacking = true;
-            bodyGuardDetection.AttackPositionId = slot.attackPositionId;
-            bodyGuardDetection.EnemySighted = true;
-        }
+        SetAttackerDetection(attacker, true, slot.attackPositionId);
     }
 
     private void ClearAttackerDetection(GameObject attacker)
+    {
+        SetAttackerDetection(attacker, false, -1);
+    }
+
+    private void SetAttackerDetection(GameObject attacker, bool attacking, int attackPositionId)
     {
         if (attacker == null)
         {
             return;
         }
 
-        if (attacker.TryGetComponent(out EnemyDetection enemyDetection))
+        // GetComponent, not TryGetComponent - this resolves an interface, which is the same
+        // pattern CanReserve already uses for ICombatAgent
+        ICombatDetection detection = attacker.GetComponent<ICombatDetection>();
+        if (detection == null)
         {
-            enemyDetection.Attacking = false;
-            enemyDetection.AttackPositionId = -1;
-            enemyDetection.PlayerSighted = false;
+            return;
         }
 
-        if (attacker.TryGetComponent(out BodyGuardDetection bodyGuardDetection))
-        {
-            bodyGuardDetection.Attacking = false;
-            bodyGuardDetection.AttackPositionId = -1;
-            bodyGuardDetection.EnemySighted = false;
-        }
+        detection.Attacking = attacking;
+        detection.AttackPositionId = attackPositionId;
+        detection.TargetSighted = attacking;
     }
 
     private void CleanupStaleEntries()

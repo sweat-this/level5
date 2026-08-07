@@ -50,6 +50,22 @@ public class GameRules : MonoBehaviour
     private const string displayMoneyObjectName = "money_display";
     private const string displayMoneyBallObjectName = "money_ball_enabled";
     private const string displayOtherMessageName = "other_message";
+    private const string timerObjectName = "timer";
+
+    /// <summary>
+    /// HUD objects every gameplay scene must provide. Level5ProjectValidator asserts these
+    /// exist at build time so a rename fails the build instead of the play session.
+    /// </summary>
+    public static readonly string[] RequiredHudObjectNames =
+    {
+        displayScoreObjectName,
+        displayCurrentScoreObjectName,
+        displayHighScoreObjectName,
+        displayMoneyObjectName,
+        displayMoneyBallObjectName,
+        displayOtherMessageName,
+        timerObjectName
+    };
 
     // text objects
     private Text displayScoreText;
@@ -151,13 +167,15 @@ public class GameRules : MonoBehaviour
         {
             GameLevelManager.instance.PlayerHealth.OnDied += OnPlayerDied;
         }
-        displayScoreText = GameObject.Find(displayScoreObjectName).GetComponent<Text>();
-        displayCurrentScoreText = GameObject.Find(displayCurrentScoreObjectName).GetComponent<Text>();
-        displayHighScoreText = GameObject.Find(displayHighScoreObjectName).GetComponent<Text>();
-        displayMoneyText = GameObject.Find(displayMoneyObjectName).GetComponent<Text>();
-        displayMoneyBallText = GameObject.Find(displayMoneyBallObjectName).GetComponent<Text>();
-        displayOtherMessageText = GameObject.Find(displayOtherMessageName).GetComponent<Text>();
-        timer = GameObject.Find("timer").GetComponent<Timer>();
+        // resolved individually so a missing HUD object is reported by name instead of
+        // throwing partway through Start and leaving the rest of this method unrun
+        displayScoreText = SceneObjects.Find<Text>(displayScoreObjectName, this);
+        displayCurrentScoreText = SceneObjects.Find<Text>(displayCurrentScoreObjectName, this);
+        displayHighScoreText = SceneObjects.Find<Text>(displayHighScoreObjectName, this);
+        displayMoneyText = SceneObjects.Find<Text>(displayMoneyObjectName, this);
+        displayMoneyBallText = SceneObjects.Find<Text>(displayMoneyBallObjectName, this);
+        displayOtherMessageText = SceneObjects.Find<Text>(displayOtherMessageName, this);
+        timer = SceneObjects.Find<Timer>(timerObjectName, this);
 
         player1DisplayName = GameLevelManager.instance.Player1 != null ? GameLevelManager.instance.players[0].characterProfile.PlayerDisplayName : "player1";
         player2DisplayName = GameLevelManager.instance.Player2 != null ? GameLevelManager.instance.players[1].characterProfile.PlayerDisplayName : "player2";
@@ -179,32 +197,35 @@ public class GameRules : MonoBehaviour
         gameModeFourPointContest = GameOptions.gameModeFourPointContest;
         gameModeSevenPointContest = GameOptions.gameModeSevenPointContest;
         gameModeAllPointContest = GameOptions.gameModeAllPointContest;
-        // custom timer
-        if (GameOptions.customTimer > 0)
-        {
-            setTimer(GameOptions.customTimer);
-        }
-        else
-        {
-            setTimer(180);
-        }
+        // GameRules is the single owner of the match clock; Timer no longer computes it
+        setTimer(MatchClock.StartSeconds(GameOptions.customTimer));
 
         GameModeRequiresConsecutiveShots = GameOptions.gameModeRequiresConsecutiveShot;
 
         // init text
-        displayScoreText.text = "";
-        displayCurrentScoreText.text = "";
-        displayHighScoreText.text = "";
-        displayMoneyText.text = "";
-        displayMoneyBallText.text = "";
-        displayOtherMessageText.text = "";
-        displayP1ScoreText.text = "";
-        displayP2ScoreText.text = "";
-        displayP3ScoreText.text = "";
-        displayP4ScoreText.text = "";
+        ClearText(displayScoreText);
+        ClearText(displayCurrentScoreText);
+        ClearText(displayHighScoreText);
+        ClearText(displayMoneyText);
+        ClearText(displayMoneyBallText);
+        ClearText(displayOtherMessageText);
+        ClearText(displayP1ScoreText);
+        ClearText(displayP2ScoreText);
+        ClearText(displayP3ScoreText);
+        ClearText(displayP4ScoreText);
 
         // init markers
-        gameRulesEnabled = true;
+        // the per-frame score display writes to every one of these. rather than NRE once a
+        // frame on an incomplete HUD, turn the display off and say which object is missing -
+        // the durable match-end work below is null-guarded and still runs.
+        gameRulesEnabled = HasCompleteScoreHud();
+        if (!gameRulesEnabled)
+        {
+            Debug.LogError(
+                "GameRules disabled its score display because this scene is missing required HUD objects. "
+                + "Match results are still saved. See the errors above for the missing names.",
+                this);
+        }
 
         // enable/disable necessary shot markers for game mode
         if (gameModeRequiresShotMarkers3s || gameModeRequiresShotMarkers4s || gameModeRequiresShotMarkers7s)
@@ -219,6 +240,28 @@ public class GameRules : MonoBehaviour
                 GameLevelManager.instance.BasketballRimVector.z);
             Instantiate(_rakesClone, vector, Quaternion.identity);
         }
+    }
+
+    private static void ClearText(Text text)
+    {
+        if (text != null)
+        {
+            text.text = "";
+        }
+    }
+
+    private bool HasCompleteScoreHud()
+    {
+        return displayScoreText != null
+            && displayCurrentScoreText != null
+            && displayHighScoreText != null
+            && displayMoneyText != null
+            && displayMoneyBallText != null
+            && displayOtherMessageText != null
+            && displayP1ScoreText != null
+            && displayP2ScoreText != null
+            && displayP3ScoreText != null
+            && displayP4ScoreText != null;
     }
 
     private void OnDestroy()
@@ -460,10 +503,12 @@ public class GameRules : MonoBehaviour
                     && DBConnector.instance.savePlayerGameStats(user);
                 matchScoreSaveCompleted = savedLocally || PendingMatchPersistenceStore.QueueScore(user);
 
-                // if username is logged in
+                // only upload when we actually hold a session. gating on GameOptions.userid meant
+                // uploading for a user picked from the local list but never authenticated, and for
+                // an offline guest fallback - both with no Authorization header on the request.
                 try
                 {
-                    if (savedLocally && !string.IsNullOrEmpty(GameOptions.userName) && GameOptions.userid != 0)
+                    if (savedLocally && APIHelper.HasSession && !string.IsNullOrEmpty(GameOptions.userName))
                     {
                         StartCoroutine(APIHelper.PostHighscore(user));
                     }
@@ -585,14 +630,14 @@ public class GameRules : MonoBehaviour
         if (players == null || players.Count < 2)
         {
             Debug.LogError("GameRules cannot advance campaign because fewer than two players were found.");
-            SceneManager.LoadScene(Constants.SCENE_NAME_level_00_start);
+            SceneTransition.LoadScene(Constants.SCENE_NAME_level_00_start);
             yield break;
         }
 
         if (GameOptions.levelsList == null || GameOptions.levelsList.Count == 0)
         {
             Debug.LogError("GameRules cannot advance campaign because no campaign levels are loaded.");
-            SceneManager.LoadScene(Constants.SCENE_NAME_level_00_start);
+            SceneTransition.LoadScene(Constants.SCENE_NAME_level_00_start);
             yield break;
         }
 
@@ -629,7 +674,7 @@ public class GameRules : MonoBehaviour
         //Debug.Log(EndRoundData.currentRoundLoserIsCpu);
 
         //string sceneName = GameOptions.levelsList[GameOptions.levelSelectedIndex].LevelObjectName + "_" + GameOptions.levelsList[GameOptions.levelSelectedIndex].LevelDescription;
-        SceneManager.LoadScene(Constants.SCENE_NAME_level_00_end_round_screen);
+        SceneTransition.LoadScene(Constants.SCENE_NAME_level_00_end_round_screen);
     }
 
     public void setTimePlayed()
@@ -1314,6 +1359,11 @@ public class GameRules : MonoBehaviour
 
     private void setTimer(float seconds)
     {
+        if (timer == null)
+        {
+            return;
+        }
+
         timer.TimeStart = seconds;
     }
 

@@ -29,12 +29,43 @@ public static class RuntimeObjectPool
 
         ObjectPool<GameObject> pool = GetPool(prefab);
         GameObject instance = pool.Get();
+        if (instance == null)
+        {
+            return null;
+        }
+
+        // CreateInstance always adds this, but Release tolerates its absence, so Spawn should too
         PooledRuntimeObject pooledObject = instance.GetComponent<PooledRuntimeObject>();
-        pooledObject.Prepare(pool);
+        if (pooledObject != null)
+        {
+            pooledObject.Prepare(pool);
+        }
+
         instance.transform.SetPositionAndRotation(position, rotation);
+
+        // AUD-009: the order here is the contract. Reset clears the previous life while the object
+        // is still inactive, then configure applies this life's values, then activation lets
+        // OnEnable see both. Resetting after configure would silently discard per-spawn setup -
+        // currently latent (no pooled type resets a field its caller configures) but the kind of
+        // coupling that only shows up once someone adds one.
+        ResetForSpawn(instance);
         configure?.Invoke(instance);
         instance.SetActive(true);
         return instance;
+    }
+
+    private static readonly List<IPooledSpawnReset> ResetBuffer = new();
+
+    private static void ResetForSpawn(GameObject instance)
+    {
+        // non-allocating overload - Spawn can run several times a second in traffic-heavy scenes
+        instance.GetComponentsInChildren(true, ResetBuffer);
+        for (int i = 0; i < ResetBuffer.Count; i++)
+        {
+            ResetBuffer[i].ResetForSpawn();
+        }
+
+        ResetBuffer.Clear();
     }
 
     public static void Release(GameObject instance)

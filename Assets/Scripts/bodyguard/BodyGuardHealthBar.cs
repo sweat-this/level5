@@ -10,15 +10,13 @@ public class BodyGuardHealthBar : MonoBehaviour
 
     public Slider Slider => healthSlider;
 
-    public static PlayerHealthBar instance;
-
     // Start is called before the first frame update
     void Start()
     {
 
         bodyGuardHealth = transform.parent.GetComponentInChildren<BodyGuardHealth>();
         healthSlider = GetComponentInChildren<Slider>();
-        healthSlider.maxValue = bodyGuardHealth.MaxEnemyHealth;
+        healthSlider.maxValue = bodyGuardHealth.MaxHealth;
         bodyGuardHealth.OnHealthChanged += setHealthSliderValue;
         setHealthSliderValue();
     }
@@ -36,7 +34,7 @@ public class BodyGuardHealthBar : MonoBehaviour
     // Update is called once per frame
     public void setHealthSliderValue()
     {
-        healthSlider.maxValue = bodyGuardHealth.MaxEnemyHealth;
+        healthSlider.maxValue = bodyGuardHealth.MaxHealth;
         healthSlider.value = bodyGuardHealth.Health;
         //healthSliderValueText.text = healthSlider.value.ToString("0") + "%";
         //Debug.Log("slider.value : " + slider.value.ToString());

@@ -101,7 +101,11 @@ public class AutoPlayerDefense : MonoBehaviour
         currentState = currentStateInfo.fullPathHash;
 
         // drop shadow lock to bball transform on the ground
-        dropShadow.transform.position = new Vector3(transform.root.position.x, Terrain.activeTerrain.SampleHeight(transform.position) + 0.02f, transform.root.position.z);
+        // AUD-052: guarded like PlayerController - no active Terrain otherwise NREs every frame
+        float shadowHeight = Terrain.activeTerrain != null
+            ? Terrain.activeTerrain.SampleHeight(transform.position) + 0.02f
+            : GameLevelManager.instance.TerrainHeight + 0.02f;
+        dropShadow.transform.position = new Vector3(transform.root.position.x, shadowHeight, transform.root.position.z);
         distanceToTarget = Vector3.Distance(transform.position, targetPosition);
         playerDistanceToGoal = Vector3.Distance(playerPosition, GameLevelManager.instance.BasketballRimVector);
 
@@ -223,8 +227,9 @@ public class AutoPlayerDefense : MonoBehaviour
         attackState = Animator.StringToHash("base.attack.attack");
         blockState = Animator.StringToHash("base.attack.block");
         inAirDunkState = Animator.StringToHash("base.inair.inair_dunk");
-        inAirHasBasketballFrontState = Animator.StringToHash("inair.inair_hasBasketball_front");
-        inAirHasBasketballSideState = Animator.StringToHash("inair.inair_hasBasketball_side");
+        // AUD-051: "base." prefix, matching every other hash here and the animator's full path
+        inAirHasBasketballFrontState = Animator.StringToHash("base.inair.inair_hasBasketball_front");
+        inAirHasBasketballSideState = Animator.StringToHash("base.inair.inair_hasBasketball_side");
         inAirShootState = Animator.StringToHash("base.inair.basketball_shoot");
         inAirShootFrontState = Animator.StringToHash("base.inair.basketball_shoot_front");
         jumpState = Animator.StringToHash("base.inair.jump");

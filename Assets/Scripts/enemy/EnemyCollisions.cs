@@ -10,7 +10,6 @@ public class EnemyCollisions : MonoBehaviour
 
     [SerializeField]
     EnemyHealth enemyHealth;
-    int maxEnemyHealth;
     [SerializeField]
     int luck;
 
@@ -18,7 +17,19 @@ public class EnemyCollisions : MonoBehaviour
     {
         enemyController = gameObject.transform.root.GetComponent<EnemyController>();
         enemyHealth = GetComponent<EnemyHealth>();
-        enemyHealthBar = transform.parent.GetComponentInChildren<EnemyHealthBar>();
+        enemyHealthBar = transform.parent != null
+            ? transform.parent.GetComponentInChildren<EnemyHealthBar>()
+            : null;
+
+        if (enemyController == null)
+        {
+            Debug.LogError(
+                "EnemyCollisions on " + name + " found no EnemyController on its hierarchy root. Disabling.",
+                this);
+            enabled = false;
+            return;
+        }
+
         if (luck == 0)
         {
             if (enemyController.IsBoss) { luck = 10; };
@@ -161,40 +172,18 @@ public class EnemyCollisions : MonoBehaviour
             new DamageInfo(amount, source.transform.root.gameObject, source.transform.position, Vector3.zero, damageType));
     }
 
+    // AUD-001: this method used to own a second, slightly different copy of the enemy-death side
+    // effects (heal, kill credit, critical flourish, death coroutine). EnemyController.HandleDeath
+    // is the single owner now; this only supplies the attacker so the kill is credited to whoever
+    // landed the blow rather than to whichever basketball owns the BasketBall.instance static.
     private void enemyIsDead(PlayerAttackBox playerAttackBox)
     {
-        enemyHealth.IsDead = true;
-        // killed by player attack box and NOT enemy friendly fire
-        if (playerAttackBox != null && enemyHealth.IsDead)
-        {
-            if (GameLevelManager.instance.PlayerHealth.Health < GameLevelManager.instance.PlayerHealth.MaxHealth)
-            {
-                if (enemyController.IsBoss)
-                {
-                    GameLevelManager.instance.PlayerHealth.Heal(5);
-                }
-                if (enemyController.IsMinion)
-                {
-                    GameLevelManager.instance.PlayerHealth.Heal(2);
-                    //Debug.Log("ADD HEALTH : 2");
-                }
-            }
-            BasketBall.instance.GameStats.EnemiesKilled++;
-            if (enemyController.IsBoss)
-            {
-
-                BasketBall.instance.GameStats.BossKilled++;
-            }
-            else
-            {
-                BasketBall.instance.GameStats.MinionsKilled++;
-            }
-            if (BehaviorNpcCritical.instance != null)
-            {
-                BehaviorNpcCritical.instance.playAnimationCriticalSuccesful();
-            }
-        }
-        StartCoroutine(enemyController.killEnemy());
+        // no player attack box means this was friendly fire from another enemy: the enemy still
+        // dies, but nobody is rewarded for it - the behaviour this path always had
+        bool killedByPlayer = playerAttackBox != null;
+        enemyController.HandleDeath(
+            killedByPlayer ? playerAttackBox.gameObject : null,
+            killedByPlayer);
     }
 
     private void enemyDisintegrated()
@@ -209,7 +198,14 @@ public class EnemyCollisions : MonoBehaviour
 
     void enemyStepOnRake(Collider other)
     {
-        other.transform.parent.GetComponentInChildren<Animator>().Play("attack");
+        Animator rakeAnimator = other.transform.parent != null
+            ? other.transform.parent.GetComponentInChildren<Animator>()
+            : null;
+        if (rakeAnimator != null)
+        {
+            rakeAnimator.Play("attack");
+        }
+
         StartCoroutine(enemyController.takeDamage());
     }
 

@@ -4,7 +4,7 @@ using System.Collections.Generic;
 using Unity.Mathematics;
 using UnityEngine;
 
-public class EnemyController : MonoBehaviour, ICombatAgent
+public class EnemyController : MonoBehaviour, ICombatAgent, IPooledSpawnReset
 {
     private static readonly HashSet<EnemyController> ActiveEnemySet = new();
 
@@ -422,7 +422,14 @@ public class EnemyController : MonoBehaviour, ICombatAgent
 
         stateKnockDown = true;
         FreezeEnemyPosition();
-        GameObject.Find("camera_flash").GetComponent<Animator>().Play("camera_flash");
+        // AUD-053: a scene without the camera_flash object otherwise threw here and abandoned the
+        // rest of the lightning coroutine, leaving the enemy frozen mid-knockdown
+        Animator cameraFlash = SceneObjects.Find<Animator>("camera_flash", this);
+        if (cameraFlash != null)
+        {
+            cameraFlash.Play("camera_flash");
+        }
+
         anim.Play("lightning");
         yield return new WaitUntil(() => currentState == AnimatorState_Lightning);
 
@@ -615,36 +622,72 @@ public class EnemyController : MonoBehaviour, ICombatAgent
         GameLevelManager.instance.PlayerController1.PlayerAttackQueue.ReleaseReservation(this);
     }
 
-    private void enemyIsDead()
+    // AUD-001: heal-on-kill amounts. These used to be written twice - 7/3 here and 5/2 in
+    // EnemyCollisions - so the same enemy death rewarded the player differently depending on which
+    // script noticed it. Melee kills go through EnemyCollisions and are the overwhelming majority,
+    // so its 5/2 is what the game has always actually felt like; the 7/3 pair only ever fired on
+    // the rarer non-attacker paths. Unified on 5/2 to preserve that. Worth a balance review.
+    private const int BossKillHealAmount = 5;
+    private const int MinionKillHealAmount = 2;
+
+    /// <summary>
+    /// The single owner of "this enemy died" - healing the player, crediting the kill, the critical
+    /// flourish, and the death coroutine.
+    ///
+    /// AUD-001: this existed twice, here and in <c>EnemyCollisions.enemyIsDead</c>, with everything
+    /// identical except the heal amounts. Both call sites now route here so a change to death
+    /// behaviour cannot apply to only one of them.
+    /// </summary>
+    /// <param name="attacker">
+    /// The attack box that landed the killing blow, or null when the killer is not identifiable
+    /// from a collider (lightning, scripted kills). A null attacker credits the primary player.
+    /// </param>
+    /// <param name="creditToPlayer">
+    /// Whether the player earns the kill - the heal, the stat credit, and the flourish. False for
+    /// friendly fire: an enemy killed by another enemy's attack box still dies and still runs
+    /// <c>killEnemy</c>, but rewards nobody. The two original copies of this method disagreed on
+    /// exactly this point, which is why it is now an explicit argument rather than inferred from
+    /// <paramref name="attacker"/> being null.
+    /// </param>
+    public void HandleDeath(GameObject attacker, bool creditToPlayer)
     {
+        // idempotent - ActorHealth ignores a repeat set, and the damage that got us here has
+        // usually already latched it
         enemyHealth.IsDead = true;
 
-        if (GameLevelManager.instance.PlayerHealth.Health < GameLevelManager.instance.PlayerHealth.MaxHealth)
+        if (creditToPlayer)
         {
-            if (IsBoss)
+            PlayerHealth playerHealth = GameLevelManager.instance != null
+                ? GameLevelManager.instance.PlayerHealth
+                : null;
+            if (playerHealth != null && playerHealth.Health < playerHealth.MaxHealth)
             {
-                GameLevelManager.instance.PlayerHealth.Heal(7);
+                if (IsBoss)
+                {
+                    playerHealth.Heal(BossKillHealAmount);
+                }
+                if (IsMinion)
+                {
+                    playerHealth.Heal(MinionKillHealAmount);
+                }
             }
-            if (IsMinion)
-            {
-                GameLevelManager.instance.PlayerHealth.Heal(3);
-            }
-        }
-        BasketBall.instance.GameStats.EnemiesKilled++;
-        if (IsBoss)
-        {
 
-            BasketBall.instance.GameStats.BossKilled++;
+            CombatCredit.CreditEnemyKill(attacker, IsBoss);
+
+            if (BehaviorNpcCritical.instance != null)
+            {
+                BehaviorNpcCritical.instance.playAnimationCriticalSuccesful();
+            }
         }
-        else
-        {
-            BasketBall.instance.GameStats.MinionsKilled++;
-        }
-        if (BehaviorNpcCritical.instance != null)
-        {
-            BehaviorNpcCritical.instance.playAnimationCriticalSuccesful();
-        }
+
         StartCoroutine(killEnemy());
+    }
+
+    private void enemyIsDead()
+    {
+        // no collider identifies the killer on this path (lightning), but the player caused it,
+        // so it credits the primary player - which is what this path always did
+        HandleDeath(null, true);
     }
 
     public bool StateWalk { get => stateWalk; set => stateWalk = value; }

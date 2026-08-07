@@ -59,20 +59,14 @@ public class Timer : MonoBehaviour
             scoreClockText.text = "";
         }
 
-        // if requires custom timer
-        if (GameOptions.gameModeThreePointContest
-            || GameOptions.gameModeFourPointContest
-            || GameOptions.gameModeSevenPointContest
-            || GameOptions.gameModeAllPointContest
-            || GameOptions.customTimer > 0)
+        // timeStart is owned by GameRules.Start (via setTimer) and deliberately NOT computed here.
+        // both used to write it with different rules - this one folded "is a contest mode" into
+        // the same condition as "has a custom timer", so a contest mode whose prefab left
+        // CustomTimer at 0 got timeStart = 0 here and 180 from GameRules. Unity does not order
+        // Start() between components, so which value survived was undefined.
+        if (timeStart <= 0)
         {
-            timeStart = GameOptions.customTimer;
-        }
-        //default 2 minute timer
-        else
-        {
-            // timer is 2 minutes
-            timeStart = 180;
+            timeStart = MatchClock.DefaultMatchSeconds;
         }
 
         modeRequiresCounter = GameOptions.gameModeRequiresCounter;

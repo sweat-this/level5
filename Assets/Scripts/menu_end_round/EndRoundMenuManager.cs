@@ -193,7 +193,8 @@ public class EndRoundMenuManager : MonoBehaviour
             return;
         }
 
-        if (savedLocally && !string.IsNullOrEmpty(GameOptions.userName) && GameOptions.userid != 0)
+        // only upload when we actually hold a session - see the same gate in GameRules
+        if (savedLocally && APIHelper.HasSession && !string.IsNullOrEmpty(GameOptions.userName))
         {
             StartCoroutine(APIHelper.PostHighscore(user));
         }
