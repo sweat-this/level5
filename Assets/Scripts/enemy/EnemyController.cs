@@ -4,7 +4,7 @@ using System.Collections.Generic;
 using Unity.Mathematics;
 using UnityEngine;
 
-public class EnemyController : MonoBehaviour, ICombatAgent
+public class EnemyController : MonoBehaviour, ICombatAgent, IPooledSpawnReset
 {
     private static readonly HashSet<EnemyController> ActiveEnemySet = new();
 

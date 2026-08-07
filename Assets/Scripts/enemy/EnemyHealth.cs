@@ -4,6 +4,9 @@ using UnityEngine;
 /// Enemy health. Everything except how max health is chosen lives in <see cref="ActorHealth"/>
 /// (AUD-004).
 /// </summary>
+// deliberately does NOT implement IPooledSpawnReset: EnemyController is the pooled root and its
+// ResetForSpawn already cascades here. Implementing it on both would reset health three times per
+// spawn and triple the missing-controller error below (AUD-009).
 public class EnemyHealth : ActorHealth
 {
     [SerializeField]
