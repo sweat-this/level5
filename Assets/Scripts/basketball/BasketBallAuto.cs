@@ -602,78 +602,70 @@ public class BasketBallAuto : MonoBehaviour
         return shootPercent;
     }
 
+    // AUD-017: the arithmetic moved to ShotModifiers in Level5.Core, which BasketBall also calls -
+    // these three were byte-identical between the two files apart from which controller supplied
+    // the slider. Covered by Level5ShotModifierTests.
     private float getAccuracyModifier()
     {
+        // drawn first, as the original did
         int direction = getRandomPositiveOrNegative();
-        int slider = Mathf.CeilToInt(autoPlayerController.Shotmeter.SliderValueOnButtonPress);
+        ResolveShotAccuracy(out float shotTypeAccuracy, out bool threePoints);
 
-        float sliderModifer = (100 - slider) * 0.025f;
-        float accuracyModifier = 0;
+        return ShotModifiers.AccuracyModifier(
+            autoPlayerController.Shotmeter.SliderValueOnButtonPress,
+            shotTypeAccuracy,
+            threePoints,
+            direction);
+    }
 
-        if (basketBallState.TwoPoints)
-        {
-            accuracyModifier = (100 - characterProfile.Accuracy2Pt) * 0.01f;
-        }
+    /// <summary>
+    /// Picks the accuracy stat for the shot being taken, preserving the original's precedence.
+    ///
+    /// The original was four independent (not else-if) assignments in the order two, three, four,
+    /// seven, so when more than one flag was set the *last* one won. That order is reversed here to
+    /// get the same answer with a single branch. When no flag is set the original left the accuracy
+    /// term at 0, which an accuracy of 100 reproduces exactly.
+    /// </summary>
+    private void ResolveShotAccuracy(out float shotTypeAccuracy, out bool threePoints)
+    {
+        threePoints = false;
 
-        if (basketBallState.ThreePoints)
-        {
-            accuracyModifier = (100 - characterProfile.Accuracy3Pt) * 0.02f;
-        }
-
-        if (basketBallState.FourPoints)
-        {
-            accuracyModifier = (100 - characterProfile.Accuracy4Pt) * 0.01f;
-        }
-
-        if (basketBallState.SevenPoints)
-        {
-            accuracyModifier = (100 - characterProfile.Accuracy7Pt) * 0.01f;
-        }
-
-        return ((sliderModifer + (accuracyModifier * sliderModifer)) * direction);
+        if (basketBallState.SevenPoints) { shotTypeAccuracy = characterProfile.Accuracy7Pt; }
+        else if (basketBallState.FourPoints) { shotTypeAccuracy = characterProfile.Accuracy4Pt; }
+        else if (basketBallState.ThreePoints) { shotTypeAccuracy = characterProfile.Accuracy3Pt; threePoints = true; }
+        else if (basketBallState.TwoPoints) { shotTypeAccuracy = characterProfile.Accuracy2Pt; }
+        else { shotTypeAccuracy = 100f; }
     }
 
 
     private float getRangeModifier()
     {
-        int direction = 1;
         // range divided by distance to get %
-        // ex. range 50 ft / shot distance 100 = 50% change of reaching rim
-        float rangeAccuracy = (float)(characterProfile.Range / (lastShotDistance * 6));
-        float modifier = (rangeAccuracy * direction);
-
-        // send max percent change
-        // should 1/2 of modifer
-        float maxChance = modifier * 100;
-
-
-        if (modifier >= 1 || rollForCriticalRangeChance(maxChance))
+        // ex. range 50 ft / shot distance 100 = 50% chance of reaching rim
+        // the in-range check comes first and returns without rolling - the original's `||`
+        // short-circuited, so an in-range shot must not consume a random value
+        if (ShotModifiers.ReachesRim(characterProfile.Range, lastShotDistance))
         {
-            return 0;
+            return 0f;
         }
-        else
-        {
-            return modifier;
-        }
+
+        bool rolledClean = rollForCriticalRangeChance(
+            ShotModifiers.MaxCleanChance(characterProfile.Range, lastShotDistance));
+
+        return ShotModifiers.RangeModifier(characterProfile.Range, lastShotDistance, rolledClean);
     }
 
     private float getReleaseModifier()
     {
+        // direction is drawn before the roll, matching the original's order - swapping them would
+        // shift every subsequent random value
         int direction = getRandomPositiveOrNegative();
-        float accuracyModifier = 0;
-
-        accuracyModifier = (100 - characterProfile.Release) * 0.01f;
 
         // the release stat IS the chance to shoot clean.
         // ex if release = 85, 85% chance to remove the modifier entirely.
-        if (rollForCriticalReleaseChance(characterProfile.Release))
-        {
-            return 0;
-        }
-        else
-        {
-            return ((accuracyModifier * 0.75f)) * direction;
-        }
+        bool rolledClean = rollForCriticalReleaseChance(characterProfile.Release);
+
+        return ShotModifiers.ReleaseModifier(characterProfile.Release, direction, rolledClean);
     }
 
     private int getRandomPositiveOrNegative()
