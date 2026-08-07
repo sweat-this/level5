@@ -10,7 +10,6 @@ public class EnemyCollisions : MonoBehaviour
 
     [SerializeField]
     EnemyHealth enemyHealth;
-    int maxEnemyHealth;
     [SerializeField]
     int luck;
 
@@ -173,38 +172,18 @@ public class EnemyCollisions : MonoBehaviour
             new DamageInfo(amount, source.transform.root.gameObject, source.transform.position, Vector3.zero, damageType));
     }
 
+    // AUD-001: this method used to own a second, slightly different copy of the enemy-death side
+    // effects (heal, kill credit, critical flourish, death coroutine). EnemyController.HandleDeath
+    // is the single owner now; this only supplies the attacker so the kill is credited to whoever
+    // landed the blow rather than to whichever basketball owns the BasketBall.instance static.
     private void enemyIsDead(PlayerAttackBox playerAttackBox)
     {
-        enemyHealth.IsDead = true;
-        // killed by player attack box and NOT enemy friendly fire
-        if (playerAttackBox != null && enemyHealth.IsDead)
-        {
-            PlayerHealth playerHealth = GameLevelManager.instance != null
-                ? GameLevelManager.instance.PlayerHealth
-                : null;
-            if (playerHealth != null && playerHealth.Health < playerHealth.MaxHealth)
-            {
-                if (enemyController.IsBoss)
-                {
-                    playerHealth.Heal(5);
-                }
-                if (enemyController.IsMinion)
-                {
-                    playerHealth.Heal(2);
-                    //Debug.Log("ADD HEALTH : 2");
-                }
-            }
-
-            // credit the player who actually landed the killing blow, not whichever
-            // basketball happens to own the BasketBall.instance static
-            CombatCredit.CreditEnemyKill(playerAttackBox.gameObject, enemyController.IsBoss);
-
-            if (BehaviorNpcCritical.instance != null)
-            {
-                BehaviorNpcCritical.instance.playAnimationCriticalSuccesful();
-            }
-        }
-        StartCoroutine(enemyController.killEnemy());
+        // no player attack box means this was friendly fire from another enemy: the enemy still
+        // dies, but nobody is rewarded for it - the behaviour this path always had
+        bool killedByPlayer = playerAttackBox != null;
+        enemyController.HandleDeath(
+            killedByPlayer ? playerAttackBox.gameObject : null,
+            killedByPlayer);
     }
 
     private void enemyDisintegrated()
