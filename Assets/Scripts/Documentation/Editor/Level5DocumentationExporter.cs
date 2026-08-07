@@ -9,33 +9,48 @@ using UnityEngine.SceneManagement;
 using Object = UnityEngine.Object;
 
 /// <summary>
-/// Exports the Unity-serialized authored data that Codex cannot reliably recover from binary
-/// prefab/scene files through repository text search alone.
+/// Exports Unity-serialized authored data that cannot be reliably recovered from binary prefab and
+/// scene files through repository text search alone.
 ///
-/// The exporter is intentionally read-only with respect to game assets. It writes one deterministic
-/// JSON document under docs/generated and restores the editor's original scene setup after scanning.
+/// The exporter is read-only with respect to game assets. It writes deterministic JSON under
+/// docs/generated and restores the editor's original scene setup after scene inspection.
 /// </summary>
 public static class Level5DocumentationExporter
 {
     public const int SchemaVersion = 1;
     public const string OutputRelativePath = "docs/generated/level5-authored-game-data.json";
 
-    private static readonly string CharacterSelectionRoot =
+    private const string CharacterSelectionRoot =
         "Assets/Resources/Prefabs/menu_start/player_selected_objects";
-    private static readonly string DefaultCharacterRoot =
+    private const string DefaultCharacterRoot =
         "Assets/Resources/Prefabs/menu_start/default_shooter_profiles";
-    private static readonly string LevelSelectionRoot =
+    private const string LevelSelectionRoot =
         "Assets/Resources/Prefabs/menu_start/level_selected_objects";
-    private static readonly string ModeSelectionRoot =
+    private const string ModeSelectionRoot =
         "Assets/Resources/Prefabs/menu_start/mode_selected_objects";
-    private static readonly string SupportSelectionRoot =
+    private const string SupportSelectionRoot =
         "Assets/Resources/Prefabs/menu_start/cheerleader_selected_object";
-    private static readonly string EnemyRoot = "Assets/Resources/Prefabs/enemies";
-    private static readonly string BodyGuardRoot = "Assets/Resources/Prefabs/bodyguards";
-    private static readonly string NavMeshVehicleRoot = "Assets/Resources/Prefabs/vehicles-navmesh";
-    private static readonly string NonNavMeshVehicleRoot = "Assets/Resources/Prefabs/vehicles-no-navmesh";
-    private static readonly string ResourcesPrefabRoot = "Assets/Resources/Prefabs";
-    private static readonly string SceneRoot = "Assets/Scenes";
+    private const string EnemyRoot = "Assets/Resources/Prefabs/enemies";
+    private const string BodyGuardRoot = "Assets/Resources/Prefabs/bodyguards";
+    private const string NavMeshVehicleRoot = "Assets/Resources/Prefabs/vehicles-navmesh";
+    private const string NonNavMeshVehicleRoot = "Assets/Resources/Prefabs/vehicles-no-navmesh";
+    private const string ResourcesPrefabRoot = "Assets/Resources/Prefabs";
+    private const string SceneRoot = "Assets/Scenes";
+
+    private static readonly string[] RequiredRoots =
+    {
+        CharacterSelectionRoot,
+        DefaultCharacterRoot,
+        LevelSelectionRoot,
+        ModeSelectionRoot,
+        SupportSelectionRoot,
+        EnemyRoot,
+        BodyGuardRoot,
+        NavMeshVehicleRoot,
+        NonNavMeshVehicleRoot,
+        ResourcesPrefabRoot,
+        SceneRoot
+    };
 
     [MenuItem("Level 5/Documentation/Export Authored Game Data")]
     public static void ExportFromMenu()
@@ -59,9 +74,7 @@ public static class Level5DocumentationExporter
         }
     }
 
-    /// <summary>
-    /// Entry point suitable for Unity -executeMethod automation.
-    /// </summary>
+    /// <summary>Entry point suitable for Unity -executeMethod automation.</summary>
     public static void ExportFromCommandLine()
     {
         try
@@ -82,9 +95,7 @@ public static class Level5DocumentationExporter
         }
     }
 
-    /// <summary>
-    /// Builds and writes the authored-data export. Returns the absolute output path.
-    /// </summary>
+    /// <summary>Builds and writes the authored-data export. Returns the absolute output path.</summary>
     public static string Export()
     {
         if (EditorApplication.isPlayingOrWillChangePlaymode)
@@ -100,37 +111,29 @@ public static class Level5DocumentationExporter
             schemaVersion = SchemaVersion,
             unityVersion = Application.unityVersion,
             outputContract = OutputRelativePath,
-            characterSelections = ExportPrefabs(
-                CharacterSelectionRoot,
-                typeof(CharacterProfile)),
-            defaultCharacterProfiles = ExportPrefabs(
-                DefaultCharacterRoot,
-                typeof(CharacterProfile)),
-            levelSelections = ExportPrefabs(
-                LevelSelectionRoot,
-                typeof(LevelSelected)),
-            modeSelections = ExportPrefabs(
-                ModeSelectionRoot,
-                typeof(StartScreenModeSelected)),
-            supportSelections = ExportPrefabs(
-                SupportSelectionRoot,
-                typeof(CheerleaderProfile)),
-            enemies = ExportPrefabs(
-                EnemyRoot,
-                typeof(EnemyController),
-                typeof(EnemyHealth)),
+            characterSelections = ExportPrefabs(CharacterSelectionRoot, typeof(CharacterProfile)),
+            defaultCharacterProfiles = ExportPrefabs(DefaultCharacterRoot, typeof(CharacterProfile)),
+            levelSelections = ExportPrefabs(LevelSelectionRoot, typeof(LevelSelected)),
+            modeSelections = ExportPrefabs(ModeSelectionRoot, typeof(StartScreenModeSelected)),
+            supportSelections = ExportPrefabs(SupportSelectionRoot, typeof(CheerleaderProfile)),
+            enemies = ExportPrefabs(EnemyRoot, typeof(EnemyController), typeof(EnemyHealth)),
             bodyGuards = ExportPrefabs(
                 BodyGuardRoot,
                 typeof(BodyGuardController),
                 typeof(BodyGuardHealth)),
-            navMeshVehicles = ExportPrefabs(
-                NavMeshVehicleRoot,
-                typeof(VehicleController)),
-            nonNavMeshVehicles = ExportPrefabs(
-                NonNavMeshVehicleRoot),
+            navMeshVehicles = ExportPrefabs(NavMeshVehicleRoot, typeof(VehicleController)),
+            nonNavMeshVehicles = ExportPrefabs(NonNavMeshVehicleRoot),
             racingProfiles = ExportRacingProfilePrefabs(),
             scenes = ExportScenes()
         };
+
+        foreach (string root in RequiredRoots)
+        {
+            if (!AssetDatabase.IsValidFolder(root))
+            {
+                export.findings.Add("Missing export root: " + root);
+            }
+        }
 
         export.findings.Sort(StringComparer.Ordinal);
 
@@ -150,8 +153,7 @@ public static class Level5DocumentationExporter
         }
 
         Directory.CreateDirectory(directory);
-        string json = JsonUtility.ToJson(export, true) + Environment.NewLine;
-        File.WriteAllText(absolutePath, json);
+        File.WriteAllText(absolutePath, JsonUtility.ToJson(export, true) + Environment.NewLine);
         return absolutePath;
     }
 
@@ -163,12 +165,13 @@ public static class Level5DocumentationExporter
             GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(path);
             if (prefab == null)
             {
-                records.Add(new AssetRecord
+                AssetRecord missing = new AssetRecord
                 {
                     sourcePath = path,
-                    assetName = Path.GetFileNameWithoutExtension(path),
-                    finding = "Prefab could not be loaded by AssetDatabase."
-                });
+                    assetName = Path.GetFileNameWithoutExtension(path)
+                };
+                missing.findings.Add("Prefab could not be loaded by AssetDatabase.");
+                records.Add(missing);
                 continue;
             }
 
@@ -195,8 +198,11 @@ public static class Level5DocumentationExporter
 
                     record.components.Add(ExportComponent(component));
                 }
+
+                record.components.Sort(CompareComponents);
             }
 
+            record.findings.Sort(StringComparer.Ordinal);
             records.Add(record);
         }
 
@@ -235,6 +241,7 @@ public static class Level5DocumentationExporter
                 record.components.Add(ExportComponent(controller));
             }
 
+            record.components.Sort(CompareComponents);
             records.Add(record);
         }
 
@@ -322,9 +329,7 @@ public static class Level5DocumentationExporter
         return records;
     }
 
-    private static int CompareSceneComponents(
-        SceneComponentRecord left,
-        SceneComponentRecord right)
+    private static int CompareSceneComponents(SceneComponentRecord left, SceneComponentRecord right)
     {
         int hierarchy = StringComparer.Ordinal.Compare(left.hierarchyPath, right.hierarchyPath);
         if (hierarchy != 0)
@@ -332,9 +337,33 @@ public static class Level5DocumentationExporter
             return hierarchy;
         }
 
-        return StringComparer.Ordinal.Compare(
-            left.component != null ? left.component.componentType : string.Empty,
-            right.component != null ? right.component.componentType : string.Empty);
+        return CompareComponents(left.component, right.component);
+    }
+
+    private static int CompareComponents(ComponentRecord left, ComponentRecord right)
+    {
+        if (ReferenceEquals(left, right))
+        {
+            return 0;
+        }
+
+        if (left == null)
+        {
+            return -1;
+        }
+
+        if (right == null)
+        {
+            return 1;
+        }
+
+        int hierarchy = StringComparer.Ordinal.Compare(left.hierarchyPath, right.hierarchyPath);
+        if (hierarchy != 0)
+        {
+            return hierarchy;
+        }
+
+        return StringComparer.Ordinal.Compare(left.componentType, right.componentType);
     }
 
     private static List<ComponentRecord> ExportAllMonoBehaviours(GameObject prefab)
@@ -349,8 +378,7 @@ public static class Level5DocumentationExporter
             }
         }
 
-        records.Sort((left, right) =>
-            StringComparer.Ordinal.Compare(left.componentType, right.componentType));
+        records.Sort(CompareComponents);
         return records;
     }
 
@@ -358,6 +386,7 @@ public static class Level5DocumentationExporter
     {
         ComponentRecord record = new ComponentRecord
         {
+            hierarchyPath = GetHierarchyPath(component.transform),
             componentType = component.GetType().FullName ?? component.GetType().Name
         };
 
@@ -417,6 +446,8 @@ public static class Level5DocumentationExporter
                 return FormatRect(property.rectValue);
             case SerializedPropertyType.Bounds:
                 return FormatBounds(property.boundsValue);
+            case SerializedPropertyType.Quaternion:
+                return FormatQuaternion(property.quaternionValue);
             case SerializedPropertyType.Vector2Int:
                 return FormatVector2Int(property.vector2IntValue);
             case SerializedPropertyType.Vector3Int:
@@ -437,7 +468,7 @@ public static class Level5DocumentationExporter
     private static string EnumValue(SerializedProperty property)
     {
         int index = property.enumValueIndex;
-        string[] names = property.enumDisplayNames;
+        string[] names = property.enumNames;
         if (names != null && index >= 0 && index < names.Length)
         {
             return names[index];
@@ -503,7 +534,8 @@ public static class Level5DocumentationExporter
         foreach (string guid in guids)
         {
             string path = AssetDatabase.GUIDToAssetPath(guid);
-            if (!string.IsNullOrEmpty(path) && path.EndsWith(".prefab", StringComparison.OrdinalIgnoreCase))
+            if (!string.IsNullOrEmpty(path)
+                && path.EndsWith(".prefab", StringComparison.OrdinalIgnoreCase))
             {
                 paths.Add(path);
             }
@@ -525,7 +557,8 @@ public static class Level5DocumentationExporter
         foreach (string guid in guids)
         {
             string path = AssetDatabase.GUIDToAssetPath(guid);
-            if (!string.IsNullOrEmpty(path) && path.EndsWith(".unity", StringComparison.OrdinalIgnoreCase))
+            if (!string.IsNullOrEmpty(path)
+                && path.EndsWith(".unity", StringComparison.OrdinalIgnoreCase))
             {
                 paths.Add(path);
             }
@@ -578,6 +611,14 @@ public static class Level5DocumentationExporter
         value.z,
         value.w);
 
+    private static string FormatQuaternion(Quaternion value) => string.Format(
+        CultureInfo.InvariantCulture,
+        "{0:R},{1:R},{2:R},{3:R}",
+        value.x,
+        value.y,
+        value.z,
+        value.w);
+
     private static string FormatRect(Rect value) => string.Format(
         CultureInfo.InvariantCulture,
         "{0:R},{1:R},{2:R},{3:R}",
@@ -586,11 +627,8 @@ public static class Level5DocumentationExporter
         value.width,
         value.height);
 
-    private static string FormatBounds(Bounds value) => string.Format(
-        CultureInfo.InvariantCulture,
-        "center={0};size={1}",
-        FormatVector3(value.center),
-        FormatVector3(value.size));
+    private static string FormatBounds(Bounds value) =>
+        "center=" + FormatVector3(value.center) + ";size=" + FormatVector3(value.size);
 
     private static string FormatVector2Int(Vector2Int value) =>
         value.x.ToString(CultureInfo.InvariantCulture)
@@ -613,10 +651,7 @@ public static class Level5DocumentationExporter
         value.height);
 
     private static string FormatBoundsInt(BoundsInt value) =>
-        "position="
-        + FormatVector3Int(value.position)
-        + ";size="
-        + FormatVector3Int(value.size);
+        "position=" + FormatVector3Int(value.position) + ";size=" + FormatVector3Int(value.size);
 
     [Serializable]
     public sealed class DocumentationExport
@@ -643,7 +678,6 @@ public static class Level5DocumentationExporter
     {
         public string sourcePath;
         public string assetName;
-        public string finding;
         public List<ComponentRecord> components = new List<ComponentRecord>();
         public List<string> findings = new List<string>();
     }
@@ -667,6 +701,7 @@ public static class Level5DocumentationExporter
     [Serializable]
     public sealed class ComponentRecord
     {
+        public string hierarchyPath;
         public string componentType;
         public List<SerializedFieldRecord> properties = new List<SerializedFieldRecord>();
     }
