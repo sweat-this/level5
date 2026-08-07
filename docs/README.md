@@ -8,6 +8,7 @@ This folder is the baseline documentation home for the Level5 Unity project. It 
 - [Architecture Audit](architecture-audit.md) - running audit register for main problems, risks, recommended solutions, and remediation status.
 - [Deep Audit 2026-08-06](deep-audit-2026-08-06.md) - five runtime passes covering progression/XP math, stat ownership, AI instance state, persistence locking, and lifecycle hygiene. AUD-022 to AUD-045 fixed, pending Unity compile/playtest verification.
 - [Architecture Remediation Plan](architecture-remediation-plan.md) - staged implementation plan for clean architecture, Unity best practices, performance, and risk control.
+- [Persistence and Account Identity](persistence-boundaries.md) - the three stores (SQLite, per-account JSON, server), which is authoritative, how identity differs from a session, retry/queue behaviour, and the client/server trust boundary.
 - [Player Input Architecture](player-input-architecture.md) - current input ownership, modernization target, migration plan, and first input-reader slice.
 - [UI Input Architecture](ui-input-architecture.md) - menu input baseline, UI module target, EndRound pilot, and mobile/desktop smoke checks.
 
@@ -19,6 +20,5 @@ This folder is the baseline documentation home for the Level5 Unity project. It 
 - AI architecture: enemy/bodyguard state machines, detection, target selection, and action execution.
 - Spawn and pooling: enemy, projectile, vehicle, and temporary effect lifecycle rules.
 - Scene composition: required managers, prefab contracts, serialized references, and scene bootstrap order.
-- Progression and persistence: account identity, local saves, server sync, migration behavior, and failure handling.
 - UI architecture: screen ownership, presenter/view boundaries, and gameplay event subscriptions.
 - Test strategy: edit-mode coverage, play-mode smoke tests, prefab validation, and combat regression scenarios.
