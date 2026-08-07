@@ -64,6 +64,10 @@ public class LocalAccount : MonoBehaviour
                 return;
             }
 
+            // this is a *selection*, not a session - the login screen below still has to
+            // authenticate. AccountManager reads these to prefill the username field, and
+            // CharacterProgressAccountId uses them to scope local progress. Nothing that talks to
+            // the server may treat them as proof of a session; use APIHelper.HasSession for that.
             GameOptions.userName = user.UserName;
             GameOptions.userid = user.Userid;
             SceneManager.LoadScene(Constants.SCENE_NAME_level_00_account_loginExisting);
@@ -92,6 +96,9 @@ public class LocalAccount : MonoBehaviour
         yield return APIHelper.PostToken(user, value => result = value, false);
         if (!result.Success)
         {
+            // offline guest: drop any stale session, then keep the guest identity locally so saves
+            // and character progress are scoped to "guest" rather than to nothing. Deliberately
+            // leaves no bearer token, so APIHelper.HasSession stays false and nothing uploads.
             APIHelper.ClearSession();
             GameOptions.userName = user.UserName;
             GameOptions.userid = user.Userid;

@@ -68,7 +68,12 @@ public class EnemySpawner : MonoBehaviour
             {
                 maxNumberOfEnemies = 6;
             }
-            else if (!GameOptions.battleRoyalEnabled || !GameOptions.gameModeHasBeenSelected || GameOptions.enemiesEnabled)
+            // AUD-056: this used to also test `|| GameOptions.enemiesEnabled`. StartManager forces
+            // enemiesEnabled = true for every battle royal (setGameOptions: "if enemies only mode,
+            // enable enemies whether it was selected or not"), so that disjunct was always true
+            // whenever battleRoyalEnabled was - which made the two branches below unreachable.
+            // A non-cage battle royal therefore spawned 4 enemies where the branch order says 2.
+            else if (!GameOptions.battleRoyalEnabled || !GameOptions.gameModeHasBeenSelected)
             {
                 maxNumberOfEnemies = 4;
             }

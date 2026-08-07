@@ -348,7 +348,14 @@ public class BodyGuardController : MonoBehaviour, ICombatAgent
     {
         stateKnockDown = true;
         FreezeEnemyPosition();
-        GameObject.Find("camera_flash").GetComponent<Animator>().Play("camera_flash");
+        // AUD-053: see the same guard in EnemyController - throwing here abandoned the coroutine
+        // and left the bodyguard frozen mid-knockdown
+        Animator cameraFlash = SceneObjects.Find<Animator>("camera_flash", this);
+        if (cameraFlash != null)
+        {
+            cameraFlash.Play("camera_flash");
+        }
+
         anim.Play("lightning");
         yield return new WaitUntil(() => currentState == AnimatorState_Lightning);
         //anim.SetBool("knockdown", true);

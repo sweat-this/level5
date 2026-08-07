@@ -42,11 +42,26 @@ batch landed, which re-reviewed the changes and opened the files the first pass 
 | AUD-041 | Stats paging | Low | Fixed | Paging left with zero results sets the page number to -1 and displays "page 0 / 0". |
 | AUD-042 | Stats paging | Low | Fixed | `ResultsPerPage` is declared but the page arithmetic hardcodes 10 in eight places. |
 | AUD-043 | Dead parameter | Low | Fixed | `getNumberOfResults` accepts a `pageNumber` it never uses. |
+| AUD-044 | Combat ownership | Medium | Fixed | `PlayerAnimationEvents` resolves its controller from `players[0]`, so every actor's attack box and lunge drive player 1. |
+| AUD-045 | Account identity | Medium | Fixed | `GameOptions.userid != 0` is the "authenticated" test but is set on paths that never authenticate. |
+| AUD-046 | Progression | Medium | Fixed | `ProgressionManager` divides by an uninitialized `[SerializeField]` XP-per-level field - the tenth AUD-036 site, and an integer divide-by-zero if the inspector value was never set. |
+| AUD-047 | Scene contracts | Medium | Fixed | `ProgressionManager.getUiObjectReferences` is 17 unchecked `Find(...).GetComponent<T>()` calls in `Awake`, plus three unguarded `confirmationDialogueBox` dereferences. |
+| AUD-048 | Mode gating | Medium | Fixed | `PlayerJump` gates the shot meter on `!battleRoyal \|\| !enemiesOnly`, which is only false when *both* are on - the inverse of the intent. |
+| AUD-049 | Operator precedence | Low | Fixed | `&&` binds tighter than `\|\|`, so the `!InAir && !KnockedDown` guard on the idle/walk speed rule applied only to the `bIdle` branch. |
+| AUD-050 | CPU movement | Medium | Fixed | `AutoPlayerController.moveToPosition` overwrites the `targetPosition` field with a normalized direction, and `FixedUpdate` reads `movement.y` as the depth axis. |
+| AUD-051 | Animator state | Low | Fixed | Two animator hashes omit the `base.` prefix in three files, so they can never match a `fullPathHash`; `AutoPlayerController` masked it with a re-assignment in `Start`. |
+| AUD-052 | Null safety | Low | Fixed | `Terrain.activeTerrain` is dereferenced unguarded in three files - the twins of the one place `PlayerController` already guards. |
+| AUD-053 | Null safety | Low | Fixed | The CPU, racing, enemy, bodyguard and NPC copies of the HUD/`camera_flash` lookups never got the guards their player-side twin has. |
+| AUD-054 | Camera state | Low | Fixed | `ShrinkPlayer` halves the camera FOV and restores it to a hardcoded `50` rather than the value it captured. |
+| AUD-055 | CPU shot selection | Low | Fixed | `cpuShootSevenpointers` divides by `Accuracy7Pt` unguarded; an unset stat yields `Infinity`, which passes the threshold and makes every CPU a seven-point specialist. |
+| AUD-056 | Mode gating | Medium | Fixed | `EnemySpawner`'s enemy-count chain tests `\|\| enemiesEnabled`, which `StartManager` forces true for every battle royal - making two branches dead and spawning 4 enemies where the branch order says 2. |
 
 AUD-022 to AUD-033 came from the first pass; AUD-034 to AUD-037 from the
-[second pass](#second-pass---2026-08-06-post-fix) run after those fixes landed. All sixteen are now
-fixed in code and pending Unity compile/playtest verification. A third pass added AUD-038 and
-AUD-039, also fixed. A fourth added AUD-040 to AUD-043, also fixed. All twenty-two await Unity verification.
+[second pass](#second-pass---2026-08-06-post-fix) run after those fixes landed. A third pass added
+AUD-038 and AUD-039. A fourth added AUD-040 to AUD-043. A fifth added AUD-044 and AUD-045. A
+[sixth pass](#sixth-pass---2026-08-06-the-unread-controllers) added AUD-046 to AUD-055, closing the
+gap the third and fourth passes had recorded as unread. All thirty-four are fixed in code and await
+Unity compile/playtest verification.
 
 ## Verification Status
 
@@ -59,6 +74,11 @@ What was and was not checked:
 - **Not verified**: nothing here has been compiled by Unity or playtested. The edit-mode tests are
   written but have not been run. Compile and run `Level5CombatMathTests` and
   `Level5SceneContractTests` before trusting any of it.
+- **Not verifiable from outside Unity**: this project serializes scenes and prefabs in binary
+  (`ForceBinary`), so no inspector value can be read from the repository - `.unity` files are not
+  greppable and script GUIDs do not appear in any text asset. Every finding that turns on a
+  serialized value (AUD-046 most directly, and the `AutoPlayerController` dead-initialization note
+  under Follow-Up) is stated as a conditional for that reason, not hedged out of caution.
 - **Expect `Level5SceneContractTests` to fail on the first run** if any gameplay scene is genuinely
   missing a HUD or pause-menu object. That is the test doing its job, not a broken test - the
   failure message names the scene and the object.
@@ -77,6 +97,17 @@ Three fixes change gameplay numbers rather than just preventing a crash:
    Enemies with `luck` unset no longer dodge at all.
 3. **CPU clutch threshold uses float division** (`Clutch / 2f` instead of `Clutch / 2`), so odd
    Clutch values no longer round down - a Clutch of 5 is now 2.5% rather than 2%.
+
+The sixth pass adds three more:
+
+4. **CPU movement, walk animation, and facing all change** (AUD-050). The navigation target is no
+   longer clobbered mid-frame and the animation vector reads the correct axis. This should look like
+   CPU players moving more smoothly, but it is a real behaviour change and wants a playtest.
+5. **The shot meter no longer starts on jump in a plain battle royal or a plain enemies-only run**
+   (AUD-048). It previously started in both, since the gate only suppressed when the two were
+   combined.
+6. **A CPU character with `Accuracy7Pt` of 0 stops attempting seven-pointers** (AUD-055). Previously
+   the division produced `Infinity` and classified exactly those characters as specialists.
 
 ## Finding Details
 
@@ -859,6 +890,11 @@ so an invalid field is rejected by both queries identically rather than only by 
 
 ### Still not read end to end
 
+*(Closed by the [sixth pass](#sixth-pass---2026-08-06-the-unread-controllers), which read all of
+these. The `ProgressionManager` lookups became AUD-047; `AutoPlayerController` turned out not to be
+clean - the sampling here missed AUD-050, AUD-051, and AUD-055, which is a fair warning about how
+much pattern-sampling a large file can survive.)*
+
 `ProgressionManager` carries 20 unchecked `GameObject.Find(...).GetComponent<T>()` chains - the same
 pattern AUD-028 fixed in `GameRules` and `Pause`, and the same fix would apply, including adding its
 object names to `Level5ProjectValidator`. It is a known, bounded piece of work rather than an
@@ -868,26 +904,521 @@ unknown, so it is recorded here rather than filed as a separate finding.
 been tracking (shared statics, unguarded lookups, roll helpers) and came back clean, but neither has
 been read line by line.
 
+## Fifth Pass - 2026-08-06 (combat ownership and account identity)
+
+Re-reviewed the stats-paging changes, then opened `PlayerAnimationEvents` and the account/identity
+layer (`LocalAccount`, `UserAccountManager`), none of which any earlier pass had read.
+
+### Self-review catch: parameterised SQL LIMIT
+
+The AUD-042 fix introduced `LIMIT @limit` as a bound parameter. SQLite accepts a parameter there, but
+this codebase has no precedent for it - `OFFSET @offset` is long-standing, a bound `LIMIT` is not -
+and it is not something I can verify without running the driver. Since `ResultsPerPage` is a
+compile-time `int` constant, concatenating it carries no injection risk and keeps the single
+definition, so the `LIMIT` is now inlined and the parameter dropped. Bound parameters still carry
+every value that is not a compile-time constant.
+
+Committed alongside the AUD-044/AUD-045 fixes.
+
+### AUD-044: `PlayerAnimationEvents` drives player 1 regardless of which actor it is on (Medium)
+
+`Assets/Scripts/player/PlayerAnimationEvents.cs:61`
+
+```csharp
+playerController = GameLevelManager.instance.players[0].playerController;
+```
+
+This is a per-actor component - it lives on the player's animated rig, resolves its own attack box
+with `transform.Find`, and reads `transform.root` for the capsule collider. But it resolves the
+controller it acts through from `players[0]`, so every instance drives player 1.
+
+For a second human player that means:
+
+- `enableAttackBox` / `disableAttackBox` gate on `playerController.CurrentState`, so **player 1's**
+  animator state decides whether player 2's attack box is live (`:117-129`).
+- The lunge events call `playerController.RigidBody.AddForce(...)` (`:200-232`), so player 2's attack
+  animation shoves **player 1's** rigidbody across the scene.
+- Direction comes from `playerController.FacingRight`, so player 1's facing picks the direction.
+
+The sibling scripts show what the intended pattern is: `EnemyAnimationEvents` and
+`BodyGuardAnimationEvents` both resolve through `transform.root`, not through a global. Only the
+player copy reaches for `players[0]`.
+
+Invisible in single-player, where `players[0]` is the only human - which is why it has survived. Same
+ownership class as AUD-024 and AUD-025, and this one is in the combat path.
+
+Fix: `GetComponentInParent<PlayerController>()` (or `transform.root.GetComponent`), matching the
+enemy and bodyguard scripts, with the `players[0]` lookup kept only as a fallback if that misses.
+
+**Fix applied.** `PlayerAnimationEvents` now resolves its controller with
+`GetComponentInParent<PlayerController>()`, falling back to a root search, matching what the enemy
+and bodyguard copies already did. A missing controller logs a named error instead of silently
+acting on the wrong actor.
+
+The four `applyForce*` animation events gained a shared `CanApplyForce()` guard. Animation events
+are invoked by the Animator, so they can fire before `Start` has resolved the controller or after
+the actor is torn down - previously that could not happen because the reference came from a global
+that was always populated, and removing the global reintroduces the window.
+
+### AUD-045: `userid != 0` is used as the "authenticated" test, and it is set before authentication (Medium)
+
+`Assets/Scripts/account/LocalAccount.cs:65-67` and `:88-98`, against
+`GameRules.cs:509` and `EndRoundMenuManager.cs:196`
+
+Both score-upload sites gate on the same expression:
+
+```csharp
+if (savedLocally && !string.IsNullOrEmpty(GameOptions.userName) && GameOptions.userid != 0)
+{
+    StartCoroutine(APIHelper.PostHighscore(user));
+}
+```
+
+That treats "we know a user id" as "we hold a session". Two paths set the identity without one:
+
+1. **`LocalAccount.LoginButton`** writes `GameOptions.userName` and `GameOptions.userid` from the
+   selected local account and *then* navigates to the login screen. Nothing has authenticated yet,
+   and backing out of that screen leaves both set.
+2. **`LocalAccount.LoginAsGuestCoroutine`** is more direct: on token failure it calls `ClearSession()`
+   - which zeroes both - and then immediately re-sets them to the guest values. A *failed* guest
+   login therefore ends with `userid = 74`, `userName = "guest"`, and no bearer token.
+
+The gate then passes and the client posts a score. `SendJson` only attaches the header
+`if (authenticated && !string.IsNullOrEmpty(bearerToken))`, so the request goes out with no
+`Authorization` at all.
+
+What that costs depends on the server, which I cannot check from here:
+
+- If the endpoint enforces auth (it should - the call passes `authenticated: true`), the post 401s,
+  `accepted` stays false, the row stays marked unsubmitted, and it retries forever. The user-visible
+  symptom is "my scores never upload", with no error surfaced.
+- If it does not enforce auth, this is score attribution to an account the client never proved it
+  owns.
+
+Client-side fix either way: gate on the session, not on the id. `APIHelper.BearerToken` already
+exists; a `HasSession` property over it is the honest test, and `GameOptions.userid` should stop
+doubling as an auth flag.
+
+Related, lower severity: `UserAccountManager` hardcodes `guestUserid = 74` and
+`guestPassword = "guest"` (`:20-22`). A shared guest credential in the shipped binary is readable by
+anyone, so that account should be assumed writable by anyone. Worth confirming the server treats it
+as untrusted rather than as a normal account.
+
+**Fix applied.** `APIHelper.HasSession` (a token actually exists) is now the test for "may we call
+an authenticated endpoint", replacing `GameOptions.userid != 0` at both score-upload sites.
+
+A **third** upload path turned up while fixing it, which the finding had missed: the manual
+"submit scores" button in `StatsManager.SubmitUnsubmittedScoresCoroutine` had no gate at all, and
+`PostUnsubmittedHighscores` stamps every queued score with `GameOptions.userid`/`userName` before
+sending. That is the path most likely to be hit in practice - a signed-out player pressing submit -
+and it now reports "sign in to submit" instead of firing off an unauthenticated batch.
+
+Rather than rely on three call sites staying correct, the guard is also enforced inside
+`PostHighscore` and `PostUnsubmittedHighscores` themselves. `PostHighscore` treats a missing session
+exactly like a failed submission - the row stays marked unsubmitted and retries once a session
+exists - so the outcome matches the old 401 path without the doomed request.
+
+Two things deliberately **not** changed:
+
+- `LocalAccount` still sets `GameOptions.userName`/`userid` when an account is picked and when the
+  offline guest falls back. Those are a local identity: `AccountManager` prefills the username from
+  them and `CharacterProgressAccountId` scopes local progress by them, so clearing them would send
+  offline progress to a nameless file. Both sites now carry a comment saying they are a selection,
+  not a session.
+- The hardcoded `guestPassword = "guest"` stands. A shared credential in a shipped binary cannot be
+  made secret by client changes; the useful fix is server-side, treating that account as untrusted.
+  Filing it as fixed here would be pretending.
+
+Covered by two tests asserting that a cleared session does not report as authenticated and that a
+guest identity with no token is not a session.
+
+### Checked and found sound in this pass
+
+- **`EnemyAnimationEvents`, `BodyGuardAnimationEvents`, `RacingAnimationEvents`** resolve their actor
+  through `transform.root` and do not reach for a global. AUD-044 is confined to the player copy.
+- **The other `players[0]` lookups** are correct: `TouchInputController`, `SniperManager`,
+  `BasketBallShotMarker`, `Timer`, and `RandomEvents` are scene-level and genuinely mean "the local
+  human player", not "whichever actor I am attached to".
+- **Stats-paging fix.** `getListOfHighScoreRowsFromTableByModeIdAndField` has two call sites and
+  neither passes the changed signature; only `getNumberOfResults` changed shape, and its single call
+  site was updated. The result reader and the `SELECT` column list now derive from one predicate.
+
+## Sixth Pass - 2026-08-06 (the unread controllers)
+
+Aimed squarely at what the third and fourth passes recorded as **not read end to end**:
+`ProgressionManager` (976 lines), `PlayerController` (1050), `AutoPlayerController` (807),
+`RacingVehicleController` (807), plus `AutoPlayerDefense`. Ten findings, all fixed.
+
+The theme is different from earlier passes. AUD-046 to AUD-048 are three separate cases of a rule
+being expressed twice and the two copies disagreeing; AUD-049 to AUD-055 are almost all the same
+"the twin file never got the fix" shape that AUD-035 first named - and it turns out to be the single
+most productive pattern in this codebase.
+
+### Re-review of the fifth-pass changes
+
+No defects found. `APIHelper.HasSession` is checked at all three upload call sites *and* inside
+`PostHighscore`/`PostUnsubmittedHighscores`; `PlayerAnimationEvents.CanApplyForce` covers all four
+`applyForce*` events; `UserAccountManager.GuestUserid`/`GuestUsername` are public accessors over the
+private consts, so the new tests compile against real API. The `LIMIT` inlining is correct -
+`StatsPaging.ResultsPerPage` is a `const int`, so the concatenation has one definition and no
+injection surface.
+
+### AUD-046: the progression menu divides by an uninitialized XP-per-level field (Medium)
+
+`Assets/Scripts/menu_progression/ProgressionManager.cs:89` and `:890-892` (pre-fix)
+
+```csharp
+[SerializeField] int experienceRequiredForNextLevel;   // no initializer
+...
+progressionState.Level = progressionState.Experience / experienceRequiredForNextLevel;
+int nextlvl = ((progressionState.Level + 1) * experienceRequiredForNextLevel) - progressionState.Experience;
+```
+
+This is a **tenth** site of the XP curve, and AUD-036 missed it - the earlier sweep grepped for the
+literal `3000`, and this file spells the constant as a serialized field instead. Two consequences:
+
+1. **`progressionState.Experience` is an `int`** (`ProgressionState.cs:137`), so this is *integer*
+   division. If the inspector value was never set, the field is 0 and this throws
+   `DivideByZeroException` - not the `Infinity` a float divide would give. It is inside
+   `initializePlayerDisplay`'s `try`, which does `Debug.Log("ERROR : " + e)` and returns, so the
+   symptom is the progression screen's level/XP panel silently never updating, plus
+   `GameOptions.characterObjectName` (assigned after the throw point) never being set.
+2. Even when set correctly, it is a second definition of a curve `CharacterLevel` already owns. The
+   start screen reads `CharacterLevel.FromExperience`; this screen read the inspector. They can
+   disagree, which is exactly the failure AUD-036 was filed to prevent.
+
+I could **not** determine the actual inspector value: this project serializes scenes in binary
+(`ForceBinary`), so `level_00_progression.unity` cannot be grepped and the `ProgressionManager`
+script GUID does not appear in any text-readable asset. So whether case 1 is live or latent is
+genuinely unknown from outside Unity - worth checking on the first run.
+
+**Fix applied.** The serialized field is gone. `ExperienceRequiredForNextLevel` is now a read-only
+property returning `CharacterLevel.ExperiencePerLevel`, and the two arithmetic sites call
+`CharacterLevel.FromExperience` / `CharacterLevel.ExperienceToNextLevel` - the same calls
+`StartManager` makes, so the two screens cannot drift. Nothing outside this class read the property,
+so dropping its setter breaks no caller. Covered by a new test asserting the two halves of the curve
+stay consistent across the range.
+
+### AUD-047: `ProgressionManager` initialization is an unchecked `GameObject.Find` chain (Medium)
+
+`Assets/Scripts/menu_progression/ProgressionManager.cs:730-759` (pre-fix)
+
+The fourth pass recorded this as "a known, bounded piece of work rather than an unknown" and did not
+file it. Reading the file end to end, it is worse than the note implied, so it is filed now.
+
+`getUiObjectReferences()` is 17 consecutive `GameObject.Find(name).GetComponent<T>()` calls, run from
+`Awake` - the identical shape AUD-028 fixed in `GameRules` and `Pause`. Three things make it sharper
+than the generic pattern:
+
+- It runs **after** `instance = this` and after `StartCoroutine(getLoadedData())`, so a throw leaves
+  a published static instance and a running coroutine attached to a half-built manager.
+- It runs **before** `playerSelectedIndex = GameOptions.playerSelectedIndex`, so a throw silently
+  resets the player selection to 0 as a side effect.
+- Nine of the 17 names are bare literals (`"3accuracy"`, `"range"`, `"luck"`, ...) rather than the
+  consts the rest of the file uses, so nothing could validate them.
+
+Two related gaps in the same file:
+
+- `saveChanges`, `cancelChanges`, and `ConfirmChangesInternal` all call
+  `confirmationDialogueBox.SetActive(...)` with no null check, while `Awake` explicitly null-checks
+  the same field. Because `RunProgressionAction` wraps the action in `try/catch`, a missing dialogue
+  turned "save" into a silent no-op rather than a visible error.
+- `InitializeDisplay` gates on `dataLoaded` alone and then indexes
+  `playerSelectedData[playerSelectedIndex]` directly, while every user-driven path goes through
+  `HasSelectedCharacterData()`. `playerSelectedIndex` comes from `GameOptions`, written by
+  `StartManager` against a possibly different roster, and was never bounds-checked here.
+
+**Fix applied.** The nine literals became consts; all 19 names now live in
+`ProgressionManager.RequiredProgressionObjectNames`. `getUiObjectReferences` resolves through
+`SceneObjects.Find<T>(name, missing, this)`, collects every missing name, reports them in one
+message, and returns false - and `Awake` then disables the component and returns *before* publishing
+work, rather than half-initializing. The dialogue toggles route through a null-guarded
+`SetConfirmationDialogueActive`; `disableButtonsNotUsedForTouchInput` null-checks its button;
+`InitializeDisplay` now gates on `HasSelectedCharacterData()`; and `playerSelectedIndex` is clamped
+once when the roster arrives.
+
+`Level5ProjectValidator.CollectGameplaySceneObjectErrors` now checks scenes containing a
+`ProgressionManager` against that name list, so a rename fails the edit-mode suite (and therefore
+CI) rather than the play session - the same gate `GameRules` and `Pause` already have.
+
+### AUD-048: the shot-meter mode gate is inverted (Medium)
+
+`Assets/Scripts/player/PlayerController.cs:729` (pre-fix)
+
+```csharp
+if (!GameOptions.battleRoyalEnabled || !GameOptions.EnemiesOnlyEnabled)
+{
+    Shotmeter.MeterStarted = true;
+    Shotmeter.MeterStartTime = Time.time;
+}
+```
+
+`!A || !B` is false only when **both** A and B are true. The intent - visible in every other
+shooting gate in the same file, which use `&&` (`:456`, `:486`) - is "not in a mode where shooting
+is disabled". So in a plain battle royal, or a plain enemies-only run, the condition is true and the
+shot meter starts anyway. It only correctly suppresses when the two modes are combined, which is the
+one case the author was least likely to be testing.
+
+The shot meter starting in a mode with no shooting means `MeterStarted`/`MeterStartTime` are live
+while `PlayerShoot` is unreachable, so the meter runs to its timeout every jump.
+
+**Fix applied.** `&&`, matching the other gates in the file. This is the De Morgan inverse, so the
+combined-mode case behaves as before and the two single-mode cases now suppress as intended.
+
+`EnemySpawner.cs:71` carries the same `!A || !B || C` shape when choosing `maxNumberOfEnemies`, and
+its effect is to make the `cageMatchEnabled` branch below it nearly unreachable. Deliberately **not**
+changed: unlike the shot meter, correcting it changes how many enemies spawn per mode, which is a
+tuning decision rather than a defect fix. Recorded under Follow-Up.
+
+### AUD-049: `&&` binds tighter than `||` in the movement-speed rule (Low)
+
+`Assets/Scripts/player/PlayerController.cs:404-406` and `AutoPlayerController.cs:321-323` (pre-fix)
+
+```csharp
+if (currentState == idleState || currentState == walkState || currentState == bIdle
+    && !InAir
+    && !KnockedDown)
+```
+
+The indentation says the two guards apply to all three states. C# says otherwise: this parses as
+`idle || walk || (bIdle && !InAir && !KnockedDown)`, so idle and walk reset `movementSpeed` to ground
+speed regardless of being airborne or knocked down.
+
+Currently masked by ordering rather than by correctness - the `if (InAir)` block ~20 lines later
+overwrites `movementSpeed` with the in-air value, and knockdown is gated out of the movement path in
+`FixedUpdate`. It is a guard that does nothing, in the exact form that will start mattering the
+moment those speed rules are reordered.
+
+**Fix applied.** Parenthesised in both files. Because the later `InAir` assignment already won, this
+is not expected to change felt movement - but it is a movement change in principle, so it belongs in
+the playtest list.
+
+### AUD-050: the CPU overwrites its own navigation target and reads the wrong movement axis (Medium)
+
+`Assets/Scripts/player/AutoPlayerController.cs:515-520` and `:204-206` (pre-fix)
+
+Two defects in one data path.
+
+```csharp
+public void moveToPosition(Vector3 target)
+{
+    targetPosition = (target-transform.position).normalized;   // field, not a local
+    movement = targetPosition * (movementSpeed * Time.deltaTime);
+    rigidBody.MovePosition(transform.position + movement);
+}
+```
+
+`targetPosition` is the serialized field holding the CPU's destination, and it is called as
+`moveToPosition(targetPosition)` - so the method overwrites the destination it was just handed with
+a **unit direction vector**. `Update` recomputes it from `getClosestPositionMarker()` each frame,
+which is why this mostly works. But `FixedUpdate` can run more than once between `Update` calls, and
+on the second run the field is a point near the origin: the CPU steers toward roughly world zero for
+that step. The bug is therefore frame-rate dependent and shows up as CPU players stuttering or
+drifting under load, which is close to the least debuggable symptom available.
+
+Directly above, in `FixedUpdate`:
+
+```csharp
+movementHorizontal = movement.x;
+movementVertical = movement.y;                              // y is height, not depth
+movement = new Vector3(movementHorizontal, 0, movementVertical) * (movementSpeed * Time.fixedDeltaTime);
+```
+
+`movement` is world-space, so its depth component is `z`. This reads the **height** component and
+writes it back as depth, and rescales the whole vector by `speed * dt` a second time on top of the
+scaling `moveToPosition` already applied. The pair feeds `IsWalking(horizontal, vertical)`, which
+picks the walk animation and calls `Flip()` - so CPU facing and animation were driven by a scrambled
+vector. The rim sits above the floor, so the direction `moveToPosition` computes has a real non-zero
+`y`; this is not a case where the wrong axis happens to be zero.
+
+**Fix applied.** `moveToPosition` uses a local for the direction and no longer writes the field, so
+`getClosestPositionMarker` is the only writer of `targetPosition`. `FixedUpdate` reads `movement.x`
+and `movement.z`, and the self-referential rescale is gone.
+
+One thing that surfaced while fixing it and is worth recording: that rescale, wrong as it was, also
+*decayed* `movement` toward zero on frames where no step was taken, which is what eventually made
+`IsWalking` report "not moving" and let the idle animation play. Simply deleting it would have left
+the last step's vector latched forever and kept the walk animation running while the CPU stood still.
+`FixedUpdate` now zeroes `movement` explicitly when no step is taken, which preserves that behaviour
+by intent instead of by accident.
+
+### AUD-051: two animator state hashes are missing the `base.` prefix (Low)
+
+- `Assets/Scripts/player/PlayerController.cs:616-617`
+- `Assets/Scripts/player/AutoPlayerDefense.cs:226-227`
+- `Assets/Scripts/player/AutoPlayerController.cs:499-500`
+
+All three files hash `"inair.inair_hasBasketball_front"` / `_side`, while every other hash in the
+same method carries the `base.` prefix (`"base.inair.basketball_shoot"`, and so on). Those hashes are
+compared against `currentStateInfo.fullPathHash`, which is the *full* path - so the unprefixed values
+can never match anything.
+
+The tell is `AutoPlayerController`, the only one of the three that actually uses these two fields:
+its `Start()` re-assigns both with the prefixed strings immediately after calling
+`getAnimatorStateHashes()`. Someone hit the bug, fixed it at the call site, and left the shared
+helper wrong. In `PlayerController` and `AutoPlayerDefense` the fields are assigned but never read,
+so the wrong value is currently inert - and would silently evaluate to "never" for anyone who
+started reading them.
+
+**Fix applied.** The prefix added in all three `getAnimatorStateHashes` methods, and the now-redundant
+re-assignment removed from `AutoPlayerController.Start`. `AutoPlayerController`'s behaviour is
+unchanged (it was already getting the prefixed value); the other two are corrected before use.
+
+### AUD-052: `Terrain.activeTerrain` dereferenced without the guard its twin has (Low)
+
+- `Assets/Scripts/player/AutoPlayerController.cs:287`
+- `Assets/Scripts/player/AutoPlayerDefense.cs:104`
+- `Assets/Scripts/basketball/BasketBall.cs:128`
+
+`PlayerController.cs:355` already does this correctly, falling back to
+`GameLevelManager.instance.TerrainHeight` when there is no active terrain. The other three call
+`Terrain.activeTerrain.SampleHeight(...)` directly, in `Update`, so a scene with no active Terrain
+throws once per frame per instance.
+
+**Fix applied.** The `PlayerController` guard and its `TerrainHeight` fallback, applied to all three.
+
+### AUD-053: the HUD and `camera_flash` lookups are guarded only on the player side (Low)
+
+The player-side copies of these lookups were hardened in earlier passes; their twins were not:
+
+| Site | Missing guard |
+| --- | --- |
+| `AutoPlayerController.cs:169-185` | `damageDisplayObject` and its `Canvas`, guarded in `PlayerController:256` |
+| `RacingVehicleController.cs:117-128` | the same pair |
+| `PlayerController.cs:218`, `:960` | `player_damage_display_text`, `messageDisplay` |
+| `RacingVehicleController.cs:734` | `messageDisplay` |
+| `EnemyController.cs:425`, `BodyGuardController.cs:351` | `camera_flash`, inside the lightning coroutine |
+| `BehaviorNpcCritical.cs:25` | `camera_flash` in `Start` |
+
+The two coroutine cases are the worst of them: a throw inside `struckByLighning` abandons the rest of
+the coroutine, which is what un-freezes the actor - so a missing `camera_flash` object leaves the
+enemy or bodyguard permanently frozen mid-knockdown rather than just skipping a visual effect.
+
+**Fix applied.** All of them route through `SceneObjects.Find`, which logs the name that failed and
+returns null, and each call site checks before use. `PlayerAnimationEvents` already resolved
+`camera_flash` this way - that was the model.
+
+### AUD-054: `ShrinkPlayer` restores the camera FOV to a literal (Low)
+
+`Assets/Scripts/player/PlayerController.cs:900-908` (pre-fix)
+
+```csharp
+float camFOV = CameraManager.instance.Cameras[0].GetComponent<Camera>().fieldOfView;
+...
+CameraManager.instance.Cameras[0].GetComponent<Camera>().fieldOfView = camFOV/2;
+yield return new WaitForSeconds(10);
+...
+CameraManager.instance.Cameras[0].GetComponent<Camera>().fieldOfView = 50;   // not camFOV
+```
+
+The captured value is used to halve and then discarded; the restore hardcodes `50`. Any camera not
+already at 50 is permanently retuned by shrinking once. The unused `originalFacingRight` local two
+lines up suggests this block was edited and not finished.
+
+**Fix applied.** Restores `camFOV`. The camera is resolved once into a local with a null check
+(`CameraManager.instance`, the array, and element 0 were all dereferenced unguarded across a 10
+second `yield`, during which a scene change can invalidate them), and the dead local is gone.
+
+### AUD-055: `cpuShootSevenpointers` divides by an unguarded stat (Low)
+
+`Assets/Scripts/player/AutoPlayerController.cs:461`
+
+```csharp
+float rangePercent = ((float)characterProfile.Range / characterProfile.Accuracy7Pt) * 100;
+if (GameOptions.levelHasSevenPointers && (rangePercent > 70)) { returnValue = true; }
+```
+
+Float division, so `Accuracy7Pt == 0` yields `Infinity` rather than throwing - and `Infinity > 70`
+is true. A character with no seven-point accuracy at all is therefore classified as a seven-point
+specialist and will preferentially take the shot it is worst at. Same class as AUD-037, and the same
+reason it is invisible: the wrong answer is a plausible-looking `true`.
+
+**Fix applied.** Returns false when `Accuracy7Pt <= 0`, before the division.
+
+### AUD-056: two enemy-count branches are dead, and battle royal spawns double (Medium)
+
+`Assets/Scripts/enemy/EnemySpawner.cs:71`
+
+Filed 2026-08-07, after building the branch table the sixth pass had deferred as "a tuning decision".
+The table showed it is not a tuning decision - it is dead code.
+
+```csharp
+else if (!GameOptions.battleRoyalEnabled || !GameOptions.gameModeHasBeenSelected || GameOptions.enemiesEnabled)
+{ maxNumberOfEnemies = 4; }
+else if (GameOptions.cageMatchEnabled) { maxNumberOfEnemies = 4; }
+else                                   { maxNumberOfEnemies = 2; }
+```
+
+`StartManager.setGameOptions` contains:
+
+```csharp
+// if enemies only mode, enable enemies whether it was selected or not
+if (GameOptions.EnemiesOnlyEnabled || GameOptions.battleRoyalEnabled)
+{
+    GameOptions.enemiesEnabled = true;
+}
+```
+
+So `battleRoyalEnabled` **implies** `enemiesEnabled` on every menu path, which makes the third
+disjunct always true whenever the first two are false. The two branches below it can never run.
+`GameLevelManager.cs:299` forces the same thing on the dev/direct-load path, so there is no route
+that reaches them.
+
+Effect: a non-cage battle royal spawns **4** enemies where the branch order says **2**. Cage match
+still gets 4, but via the wrong branch - so the `cageMatchEnabled` test has never once executed.
+
+**Fix applied.** The `|| GameOptions.enemiesEnabled` disjunct is gone. The `!battleRoyalEnabled ||
+!gameModeHasBeenSelected` test remains, so non-battle-royal modes and the unconfigured fallback are
+unchanged; cage match and battle royal now reach their own branches. This changes spawn counts for
+one mode and wants a playtest.
+
+### Checked and found sound in this pass
+
+- **`RunProgressionAction`.** The `buttonPressed` / `lastActionFrame` pair correctly prevents both
+  re-entrancy and double-firing when a button is driven by a click and a key in the same frame, and
+  `buttonPressed` is reset in a `finally`.
+- **`CharacterProgressionService.CommitDraft`.** Captures all eight profile fields before writing and
+  restores every one of them when `UpdateCharacterProfile` fails. A genuine transaction; no partial
+  commit path.
+- **`PlayerControlsProvider` acquire/release in `PlayerController`.** `OnEnable`/`OnDisable` are
+  balanced through `hasStarted`, and `inputPlayerId` is reset to -1 on release so a re-enable cannot
+  double-release.
+- **`AutoPlayerController` defensive-player null handling.** `basketball` and `gameStats` are
+  deliberately null for a defensive player, and every dereference of either is behind an
+  `isDefensivePlayer` check earlier in the same `&&` chain. Checked all of them.
+- **`getClosestPositionMarker` shot selection.** The three overlapping `if` blocks are order-dependent
+  rather than exclusive, but the final `targetPosition == Vector3.zero` fallback means no branch
+  combination leaves it unset. Awkward, not wrong.
+
 ## What To Do Next
 
-All sixteen findings are fixed in code. The remaining work is verification, in this order:
+All thirty-four findings are fixed in code. The remaining work is verification, in this order:
 
 1. **Open the project in Unity and let it compile.** New files under `Assets/Level5/Core`,
    `Assets/Scripts/Utility`, `Assets/Scripts/combat`, and `Assets/Tests/Editor` have hand-written
    `.meta` files with fresh GUIDs; Unity will accept them and import normally.
-2. **Run the edit-mode tests** (39 now). `Level5CombatMathTests` should pass outright.
-   `Level5SceneContractTests` may legitimately fail if a gameplay scene is missing a HUD or
-   pause-menu object - read the names it reports before changing anything.
-3. **Run `Level5/Validate Project`.** The new contest-mode timer check may legitimately fail if a
+2. **Run the edit-mode tests** (42 now). `Level5CombatMathTests` should pass outright.
+   `Level5SceneContractTests` may legitimately fail if a gameplay scene is missing a HUD,
+   pause-menu, or (new) progression-menu object - read the names it reports before changing
+   anything.
+3. **Run `Level5/Validate Project`.** The contest-mode timer check may legitimately fail if a
    contest prefab never set `CustomTimer`; that is real data to fix, not a broken check.
-4. **Playtest a scene with two or more bodyguards** (AUD-023). The shared-state fix is a keyword
+4. **Open the progression screen** (AUD-046). This is the highest-value single check in the sixth
+   pass: the level / XP / "to next level" panel should now populate. If it was blank or stale
+   before, the uninitialized divisor was live rather than latent, and the same run confirms the
+   level shown here matches the start screen's for the same character.
+5. **Playtest CPU players** (AUD-050). Their movement, walk animation, and facing all changed. Watch
+   for stutter or drift under load, which is what the frame-rate-dependent target clobber produced.
+6. **Playtest a battle royal and an enemies-only run separately** (AUD-048). The shot meter should
+   no longer start on jump in either.
+7. **Playtest a scene with two or more bodyguards** (AUD-023). The shared-state fix is a keyword
    change, but behaviour may have been tuned around the old value.
-5. **Playtest local multiplayer with the UI-stats overlay toggled on** (AUD-024). Confirm each
+8. **Playtest local multiplayer with the UI-stats overlay toggled on** (AUD-024). Confirm each
    player's shot counts stay on their own stat line.
-6. **Check a contest mode's clock** (AUD-034). It should run at its prefab's `CustomTimer`, and a
+9. **Check a contest mode's clock** (AUD-034). It should run at its prefab's `CustomTimer`, and a
    mode with none should run at 180s regardless of component start order.
-7. **Decide whether the progression curve needs rebalancing** now that the phantom +500 XP per
-   match is gone (see Behaviour changes above). This is a design call, not a code fix.
+10. **Decide whether the progression curve needs rebalancing** now that the phantom +500 XP per
+    match is gone (see Behaviour changes above). This is a design call, not a code fix.
 
 ## Follow-Up Worth Considering
 
@@ -902,7 +1433,26 @@ Not defects, and not done here:
 - `EnemyCollisions` and `BodyGuardCollisions` are near-identical copies that have now been patched in
   parallel twice (AUD-031, AUD-035). Collapsing them behind the existing `IDamageable`/`ICombatAgent`
   contracts would stop the next fix needing to be applied twice, and feeds AUD-004.
-- `Level5.Core` now holds four pure modules (`CampaignRoundDecision`, `PercentChance`,
-  `MatchExperience`, `CharacterLevel`, `MatchClock`). It is proving to be a good home for rules that
-  were previously duplicated across MonoBehaviours - worth continuing to pull into as AUD-010 and
-  AUD-017 get addressed.
+- `Level5.Core` now holds six pure modules (`CampaignRoundDecision`, `PercentChance`,
+  `MatchExperience`, `CharacterLevel`, `MatchClock`, `StatsPaging`). It is proving to be a good home
+  for rules that were previously duplicated across MonoBehaviours - worth continuing to pull into as
+  AUD-010 and AUD-017 get addressed.
+- **`EnemySpawner.cs:71`** decides `maxNumberOfEnemies` with
+  `!battleRoyalEnabled || !gameModeHasBeenSelected || enemiesEnabled`, which is true for almost every
+  mode and therefore makes the `cageMatchEnabled` branch below it nearly unreachable. It is the same
+  De Morgan shape as AUD-048 but, unlike the shot meter, fixing it changes spawn counts per mode -
+  a tuning decision that needs a design call and a playtest, not a quiet correction.
+- **`PlayerController`/`AutoPlayerController` are now the clearest duplication case in the tree.**
+  Four of the ten sixth-pass findings (AUD-049, AUD-051, AUD-052, AUD-053) existed only because a
+  fix landed in one copy and not the other, and AUD-035 was the same story for the collision
+  handlers. The `Update` speed rules, `IsWalking`, `Flip`, `CheckIsPlayerFacingGoal`, and all four
+  freeze/knockdown coroutines are near-identical across `PlayerController`, `AutoPlayerController`,
+  and `RacingVehicleController`. A shared base or component would stop the next fix needing to be
+  applied three times.
+- **`AutoPlayerController` dead initialization.** `Start` assigns `anim` twice (from
+  `playerIdentifier.autoPlayer`, then from `GetComponentInChildren`) and `movementSpeed` twice
+  (from `characterProfile.Speed`, then from the uninitialized `runMovementSpeed`); the second of each
+  wins. `attackSpeed`, `walkMovementSpeed`, `attackMovementSpeed`, `playerCanAttack`, and
+  `playerCanBlock` are declared and never read, and `PlayerJump()` is dead (`AutoPlayerJump()` is
+  what runs). Left alone here because untangling which assignment was intended needs the inspector
+  values, which binary scenes do not expose.

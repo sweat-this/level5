@@ -125,7 +125,11 @@ public class BasketBall : MonoBehaviour
                 rigidbody.linearVelocity = rigidbody.linearVelocity.normalized * maxBasketballSpeed;
             }
             // drop shadow lock to bball transform on the ground
-            dropShadow.transform.position = new Vector3(transform.root.position.x, Terrain.activeTerrain.SampleHeight(transform.position) + 0.02f, transform.root.position.z);
+            // AUD-052: guarded like PlayerController - no active Terrain otherwise NREs per frame
+            float shadowHeight = Terrain.activeTerrain != null
+                ? Terrain.activeTerrain.SampleHeight(transform.position) + 0.02f
+                : GameLevelManager.instance.TerrainHeight + 0.02f;
+            dropShadow.transform.position = new Vector3(transform.root.position.x, shadowHeight, transform.root.position.z);
 
             // change this to reduce opacity
             if (!playerController.hasBasketball)

@@ -356,6 +356,28 @@ public class Level5CombatMathTests
     {
         AssertNamesAreUsable(GameRules.RequiredHudObjectNames, "GameRules.RequiredHudObjectNames");
         AssertNamesAreUsable(Pause.RequiredPauseObjectNames, "Pause.RequiredPauseObjectNames");
+        AssertNamesAreUsable(
+            ProgressionManager.RequiredProgressionObjectNames,
+            "ProgressionManager.RequiredProgressionObjectNames");
+    }
+
+    // ---------- AUD-046: the progression menu shares the one XP curve ----------
+
+    [Test]
+    public void ExperienceToNextLevelNeverExceedsOneLevel()
+    {
+        for (int experience = 0; experience <= CharacterLevel.ExperiencePerLevel * 4; experience += 137)
+        {
+            int remaining = CharacterLevel.ExperienceToNextLevel(experience);
+            Assert.That(remaining, Is.GreaterThan(0), "experience " + experience);
+            Assert.That(remaining, Is.LessThanOrEqualTo(CharacterLevel.ExperiencePerLevel), "experience " + experience);
+
+            // reaching the remaining amount must advance exactly one level
+            Assert.That(
+                CharacterLevel.FromExperience(experience + remaining),
+                Is.EqualTo(CharacterLevel.FromExperience(experience) + 1),
+                "experience " + experience);
+        }
     }
 
     private static void AssertNamesAreUsable(string[] names, string label)

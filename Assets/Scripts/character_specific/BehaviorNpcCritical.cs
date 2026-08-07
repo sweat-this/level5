@@ -22,7 +22,8 @@ public class BehaviorNpcCritical : MonoBehaviour
         instance = this;
         audioSource = GetComponent<AudioSource>();
         anim = GetComponent<Animator>();
-        animOnCamera = GameObject.Find("camera_flash").GetComponent<Animator>();
+        // AUD-053: names the missing object instead of throwing partway through Start
+        animOnCamera = SceneObjects.Find<Animator>("camera_flash", this);
         //npcName = gameObject.transform.root.name;
         spriteObject = transform.gameObject;
         if (GameOptions.customCamera)
@@ -65,6 +66,11 @@ public class BehaviorNpcCritical : MonoBehaviour
     }
     private void playAnimationCameraFlash()
     {
+        if (animOnCamera == null)
+        {
+            return;
+        }
+
         animOnCamera.Play("camera_flash");
     }
 }

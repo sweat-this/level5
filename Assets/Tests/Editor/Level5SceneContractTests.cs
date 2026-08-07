@@ -23,4 +23,20 @@ public class Level5SceneContractTests
             "Gameplay scenes are missing objects their managers resolve by name:\n- "
                 + string.Join("\n- ", errors.ToArray()));
     }
+
+    /// <summary>
+    /// AUD-012: nothing in `Assets/Scripts/Dev` may be reachable from a release build. Production
+    /// code may call into it only from inside a `#if UNITY_EDITOR || DEVELOPMENT_BUILD` region.
+    /// </summary>
+    [Test]
+    public void ProductionCodeDoesNotReferenceDevScriptsWithoutAGuard()
+    {
+        List<string> errors = Level5ProjectValidator.CollectDevIsolationErrors();
+
+        Assert.That(
+            errors,
+            Is.Empty,
+            "Production code reaches into Assets/Scripts/Dev without a build guard:\n- "
+                + string.Join("\n- ", errors.ToArray()));
+    }
 }

@@ -1,5 +1,6 @@
-using System;
+﻿using System;
 using System.IO;
+using Assets.Scripts.restapi;
 using NUnit.Framework;
 
 public class Level5CoreTests
@@ -169,6 +170,55 @@ public class Level5CoreTests
             {
                 Directory.Delete(directory, true);
             }
+        }
+    }
+
+    [Test]
+    public void ClearingTheSessionAlsoClearsTheAuthenticationFlag()
+    {
+        // AUD-045: uploads gate on HasSession, not on GameOptions.userid. A local account
+        // selection or an offline guest fallback sets an identity without a session, and this
+        // is what keeps those from being mistaken for one.
+        string previousName = GameOptions.userName;
+        int previousId = GameOptions.userid;
+        try
+        {
+            GameOptions.userName = "someone";
+            GameOptions.userid = 74;
+
+            APIHelper.ClearSession();
+
+            Assert.That(APIHelper.HasSession, Is.False, "a cleared session must not report as authenticated");
+            Assert.That(GameOptions.userid, Is.EqualTo(0));
+            Assert.That(GameOptions.userName, Is.Empty);
+        }
+        finally
+        {
+            GameOptions.userName = previousName;
+            GameOptions.userid = previousId;
+        }
+    }
+
+    [Test]
+    public void AnIdentityWithoutATokenIsNotASession()
+    {
+        string previousName = GameOptions.userName;
+        int previousId = GameOptions.userid;
+        try
+        {
+            APIHelper.ClearSession();
+
+            // exactly what LocalAccount does for an offline guest: identity set, no token
+            GameOptions.userName = UserAccountManager.GuestUsername;
+            GameOptions.userid = UserAccountManager.GuestUserid;
+
+            Assert.That(GameOptions.userid, Is.Not.EqualTo(0), "guard against the guest id becoming 0");
+            Assert.That(APIHelper.HasSession, Is.False);
+        }
+        finally
+        {
+            GameOptions.userName = previousName;
+            GameOptions.userid = previousId;
         }
     }
 }

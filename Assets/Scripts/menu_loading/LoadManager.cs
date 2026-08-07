@@ -268,7 +268,12 @@ public class LoadManager : MonoBehaviour
     {
         List<CharacterProfileRecord> dbShootStatsList = DBHelper.instance.getCharacterProfileStats(GameOptions.userid)
             ?? new List<CharacterProfileRecord>();
+        // AUD-012: purely diagnostic - it only logs when the preset catalog and the database
+        // disagree. Compiled out of release builds so the production load path carries no
+        // dependency on Assets/Scripts/Dev.
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
         CharacterProgressParityLogger.LogMismatchWarnings(characterPresetCatalog, dbShootStatsList);
+#endif
         List<CharacterProfile> shooterList = new List<CharacterProfile>();
 
         string path = "Prefabs/menu_start/player_selected_objects";

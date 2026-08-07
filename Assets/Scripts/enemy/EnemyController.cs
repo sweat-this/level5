@@ -422,7 +422,14 @@ public class EnemyController : MonoBehaviour, ICombatAgent
 
         stateKnockDown = true;
         FreezeEnemyPosition();
-        GameObject.Find("camera_flash").GetComponent<Animator>().Play("camera_flash");
+        // AUD-053: a scene without the camera_flash object otherwise threw here and abandoned the
+        // rest of the lightning coroutine, leaving the enemy frozen mid-knockdown
+        Animator cameraFlash = SceneObjects.Find<Animator>("camera_flash", this);
+        if (cameraFlash != null)
+        {
+            cameraFlash.Play("camera_flash");
+        }
+
         anim.Play("lightning");
         yield return new WaitUntil(() => currentState == AnimatorState_Lightning);
 

@@ -764,6 +764,16 @@ public class StatsManager : MonoBehaviour
 
     private IEnumerator SubmitUnsubmittedScoresCoroutine()
     {
+        // PostUnsubmittedHighscores stamps each score with GameOptions.userid/userName, which are
+        // set by picking a local account or by the offline guest fallback - neither proves a
+        // session. Without a token the request carries no Authorization header, so it would fail
+        // server-side with nothing here to explain why.
+        if (!APIHelper.HasSession)
+        {
+            submittedHighscoresText.text = "sign in to submit";
+            yield break;
+        }
+
         try
         {
             unsubmittedHighScores = DBHelper.instance.getUnsubmittedHighScoreFromDatabase()

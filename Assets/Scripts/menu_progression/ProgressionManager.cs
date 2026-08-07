@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Assets.Scripts.Utility;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
@@ -84,9 +85,46 @@ public class ProgressionManager : MonoBehaviour
     private const string saveButtonName = "save_button";
     private const string resetButtonName = "reset_button";
 
+    private const string confirmationDialogueBoxName = "confirm_update";
+    private const string progression3AccuracyTextName = "3accuracy";
+    private const string progression4AccuracyTextName = "4accuracy";
+    private const string progression7AccuracyTextName = "7accuracy";
+    private const string progressionRangeName = "range";
+    private const string progressionReleaseName = "release";
+    private const string progressionSpeedName = "speed";
+    private const string progressionJumpName = "jump";
+    private const string progressionLuckName = "luck";
+
+    /// <summary>
+    /// Objects this manager resolves by name. Level5ProjectValidator asserts they exist in any
+    /// scene carrying a ProgressionManager, so a rename fails the build rather than the play
+    /// session - the same contract GameRules and Pause carry (AUD-028, AUD-047).
+    /// </summary>
+    public static readonly string[] RequiredProgressionObjectNames =
+    {
+        playerSelectButtonName,
+        playerSelectOptionButtonName,
+        playerSelectImageObjectName,
+        playerProgressionStatsName,
+        playerProgressionPointsAvailableName,
+        progression3AccuracyTextName,
+        progression4AccuracyTextName,
+        progression7AccuracyTextName,
+        progressionRangeName,
+        progressionReleaseName,
+        progressionSpeedName,
+        progressionJumpName,
+        progressionLuckName,
+        releaseBonusName,
+        rangeBonusName,
+        luckBonusName,
+        progression3AccuracyName,
+        progression4AccuracyName,
+        progression7AccuracyName
+    };
+
 
     private int playerSelectedIndex;
-    [SerializeField] int experienceRequiredForNextLevel;
 
     private PlayerControls controls;
     public static ProgressionManager instance;
@@ -106,7 +144,10 @@ public class ProgressionManager : MonoBehaviour
 
     GameObject prevSelectedObject;
 
-    public int ExperienceRequiredForNextLevel { get => experienceRequiredForNextLevel; set => experienceRequiredForNextLevel = value; }
+    // AUD-046: this used to be a serialized int with no initializer, which made it 0 unless
+    // someone had set it in the inspector - and the level formula below divides by it. It is also
+    // the tenth site of the XP curve AUD-036 was meant to collapse. CharacterLevel owns it now.
+    public int ExperienceRequiredForNextLevel => CharacterLevel.ExperiencePerLevel;
     public static string PlayerSelectOptionButtonName => playerSelectOptionButtonName;
     public static string StartButtonName => startButtonName;
     public static string StatsMenuButtonName => statsMenuButtonName;
@@ -148,21 +189,34 @@ public class ProgressionManager : MonoBehaviour
     {
         instance = this;
         // disable confirmation dialogue
-        confirmationDialogueBox = GameObject.Find("confirm_update");
+        confirmationDialogueBox = GameObject.Find(confirmationDialogueBoxName);
         if (confirmationDialogueBox != null)
         {
             confirmationDialogueBox.SetActive(confirmationDialogueBoxEnabled);
         }
 
         progressionState = GetComponent<ProgressionState>();
+        if (progressionState == null)
+        {
+            Debug.LogError("ProgressionManager requires a ProgressionState on the same object.", this);
+            enabled = false;
+            return;
+        }
+
         progressionService = new CharacterProgressionService();
+
+        controls = PlayerControlsProvider.Controls;
+        // find all button / text / etc and assign to variables. bail before starting any work if
+        // the scene cannot satisfy the UI contract, rather than half-initializing (AUD-047)
+        if (!getUiObjectReferences())
+        {
+            enabled = false;
+            return;
+        }
+
         // dont destroy on load / check for duplicate instance
         //destroyInstanceIfAlreadyExists();
         StartCoroutine(getLoadedData());
-
-        controls = PlayerControlsProvider.Controls;
-        // find all button / text / etc and assign to variables
-        getUiObjectReferences();
 
         //default index for player selected
         playerSelectedIndex = GameOptions.playerSelectedIndex;
@@ -526,7 +580,7 @@ public class ProgressionManager : MonoBehaviour
     {
         RunProgressionAction(() =>
         {
-            confirmationDialogueBox.SetActive(true);
+            SetConfirmationDialogueActive(true);
             SelectProgressionButton(confirmButton, confirmButtonName);
         });
     }
@@ -535,9 +589,22 @@ public class ProgressionManager : MonoBehaviour
     {
         RunProgressionAction(() =>
         {
-            confirmationDialogueBox.SetActive(false);
+            SetConfirmationDialogueActive(false);
             SelectProgressionButton(progression3AccuracyButton, progression3AccuracyName);
         });
+    }
+
+    // Awake null-checks confirmationDialogueBox but the three call sites that toggle it did not,
+    // so a scene without the dialogue threw into RunProgressionAction's catch and the save silently
+    // did nothing (AUD-047).
+    private void SetConfirmationDialogueActive(bool active)
+    {
+        if (confirmationDialogueBox == null)
+        {
+            return;
+        }
+
+        confirmationDialogueBox.SetActive(active);
     }
 
     public void resetChanges()
@@ -580,7 +647,7 @@ public class ProgressionManager : MonoBehaviour
         }
 
         // disable pop up
-        confirmationDialogueBox.SetActive(false);
+        SetConfirmationDialogueActive(false);
         // reset points
         ResetSelectedCharacterDraft();
         // display
@@ -698,6 +765,15 @@ public class ProgressionManager : MonoBehaviour
             playerSelectedData = LoadedData.instance.PlayerSelectedData;
             cheerleaderSelectedData = LoadedData.instance.CheerleaderSelectedData;
 
+            // GameOptions.playerSelectedIndex is written by StartManager against a roster that may
+            // have had a different length. Every user-driven path goes through
+            // HasSelectedCharacterData, but InitializeDisplay indexes the list directly, so clamp
+            // once here rather than relying on the two lists always matching (AUD-047).
+            if (playerSelectedData != null && playerSelectedIndex >= playerSelectedData.Count)
+            {
+                playerSelectedIndex = 0;
+            }
+
             if (playerSelectedData != null
                 && cheerleaderSelectedData != null)
             {
@@ -714,7 +790,7 @@ public class ProgressionManager : MonoBehaviour
     {
         //Debug.Log("------------------------------- start manager InitializeDisplay");
         yield return WaitForCondition(() => dataLoaded);
-        if (!dataLoaded)
+        if (!HasSelectedCharacterData())
         {
             yield break;
         }
@@ -727,35 +803,55 @@ public class ProgressionManager : MonoBehaviour
 
     }
     // ============================  get UI buttons / text references ==============================
-    private void getUiObjectReferences()
+    /// <summary>
+    /// Resolves every UI object this manager drives, collecting the names that are missing rather
+    /// than throwing on the first one. Returns false if any is absent.
+    ///
+    /// This was 17 consecutive `GameObject.Find(name).GetComponent&lt;T&gt;()` chains (AUD-047, the
+    /// same shape AUD-028 fixed in GameRules and Pause). A single renamed object threw partway
+    /// through Awake, which left `instance` published, `playerSelectedIndex` never read from
+    /// GameOptions, and no message naming what was missing.
+    /// </summary>
+    private bool getUiObjectReferences()
     {
+        List<string> missing = new List<string>();
 
-        //Debug.Log("getUiObjectReferences()");
         // buttons to disable for touch input
-        playerSelectButton = GameObject.Find(playerSelectButtonName).GetComponent<Button>();
+        playerSelectButton = SceneObjects.Find<Button>(playerSelectButtonName, missing, this);
 
         // player object with lock texture and unlock text
-        playerSelectOptionText = GameObject.Find(playerSelectOptionButtonName).GetComponent<Text>();
-        playerSelectOptionImage = GameObject.Find(playerSelectImageObjectName).GetComponent<Image>();
-        playerProgressionStatsText = GameObject.Find(playerProgressionStatsName).GetComponent<Text>();
-        playerProgressionUpdatePointsText = GameObject.Find(playerProgressionPointsAvailableName).GetComponent<Text>();
+        playerSelectOptionText = SceneObjects.Find<Text>(playerSelectOptionButtonName, missing, this);
+        playerSelectOptionImage = SceneObjects.Find<Image>(playerSelectImageObjectName, missing, this);
+        playerProgressionStatsText = SceneObjects.Find<Text>(playerProgressionStatsName, missing, this);
+        playerProgressionUpdatePointsText = SceneObjects.Find<Text>(playerProgressionPointsAvailableName, missing, this);
 
-        progression3Accuracy = GameObject.Find("3accuracy").GetComponent<Text>();
-        progression4Accuracy = GameObject.Find("4accuracy").GetComponent<Text>();
-        progression7Accuracy = GameObject.Find("7accuracy").GetComponent<Text>();
-        progressionRange = GameObject.Find("range").GetComponent<Text>();
-        progressionRelease = GameObject.Find("release").GetComponent<Text>();
-        progressionSpeed = GameObject.Find("speed").GetComponent<Text>();
-        progressionJump = GameObject.Find("jump").GetComponent<Text>();
-        progressionLuck = GameObject.Find("luck").GetComponent<Text>();
+        progression3Accuracy = SceneObjects.Find<Text>(progression3AccuracyTextName, missing, this);
+        progression4Accuracy = SceneObjects.Find<Text>(progression4AccuracyTextName, missing, this);
+        progression7Accuracy = SceneObjects.Find<Text>(progression7AccuracyTextName, missing, this);
+        progressionRange = SceneObjects.Find<Text>(progressionRangeName, missing, this);
+        progressionRelease = SceneObjects.Find<Text>(progressionReleaseName, missing, this);
+        progressionSpeed = SceneObjects.Find<Text>(progressionSpeedName, missing, this);
+        progressionJump = SceneObjects.Find<Text>(progressionJumpName, missing, this);
+        progressionLuck = SceneObjects.Find<Text>(progressionLuckName, missing, this);
 
-        bonusReleaseText = GameObject.Find(releaseBonusName).GetComponent<Text>();
-        bonusRangeText = GameObject.Find(rangeBonusName).GetComponent<Text>();
-        bonusLuckText = GameObject.Find(luckBonusName).GetComponent<Text>();
+        bonusReleaseText = SceneObjects.Find<Text>(releaseBonusName, missing, this);
+        bonusRangeText = SceneObjects.Find<Text>(rangeBonusName, missing, this);
+        bonusLuckText = SceneObjects.Find<Text>(luckBonusName, missing, this);
 
-        addTo3Text = GameObject.Find(progression3AccuracyName).GetComponent<Text>();
-        addTo4Text = GameObject.Find(progression4AccuracyName).GetComponent<Text>();
-        addTo7Text = GameObject.Find(progression7AccuracyName).GetComponent<Text>();
+        addTo3Text = SceneObjects.Find<Text>(progression3AccuracyName, missing, this);
+        addTo4Text = SceneObjects.Find<Text>(progression4AccuracyName, missing, this);
+        addTo7Text = SceneObjects.Find<Text>(progression7AccuracyName, missing, this);
+
+        if (missing.Count > 0)
+        {
+            Debug.LogError(
+                "ProgressionManager is missing scene objects and will be disabled: "
+                + string.Join(", ", missing.ToArray()),
+                this);
+            return false;
+        }
+
+        return true;
     }
 
     private static IEnumerator WaitForCondition(Func<bool> condition)
@@ -784,7 +880,10 @@ public class ProgressionManager : MonoBehaviour
         //Debug.Log("disable buttons for touch");
         //levelSelectButton.enabled = false;
         //trafficSelectButton.enabled = false;
-        playerSelectButton.enabled = false;
+        if (playerSelectButton != null)
+        {
+            playerSelectButton.enabled = false;
+        }
         //CheerleaderSelectButton.enabled = false;
         //modeSelectButton.enabled = false;
     }
@@ -886,10 +985,9 @@ public class ProgressionManager : MonoBehaviour
                 progression7Accuracy.text = progressionState.Accuracy7.ToString("F0") + " MAX";
             }
 
-            // get level by experience
-            progressionState.Level = progressionState.Experience / experienceRequiredForNextLevel;
-            //                      next level      x    exp to gain a level (ex 3000)  -   current amount of exp
-            int nextlvl = ((progressionState.Level + 1) * experienceRequiredForNextLevel) - progressionState.Experience;
+            // get level by experience - same curve StartManager and DBHelper use (AUD-036/AUD-046)
+            progressionState.Level = CharacterLevel.FromExperience(progressionState.Experience);
+            int nextlvl = CharacterLevel.ExperienceToNextLevel(progressionState.Experience);
             // display lvl, exp, exp for next lvl
             playerProgressionStatsText.text = progressionState.Level.ToString("F0") + "\n"
                 + progressionState.Experience.ToString("F0") + "\n"

@@ -503,10 +503,12 @@ public class GameRules : MonoBehaviour
                     && DBConnector.instance.savePlayerGameStats(user);
                 matchScoreSaveCompleted = savedLocally || PendingMatchPersistenceStore.QueueScore(user);
 
-                // if username is logged in
+                // only upload when we actually hold a session. gating on GameOptions.userid meant
+                // uploading for a user picked from the local list but never authenticated, and for
+                // an offline guest fallback - both with no Authorization header on the request.
                 try
                 {
-                    if (savedLocally && !string.IsNullOrEmpty(GameOptions.userName) && GameOptions.userid != 0)
+                    if (savedLocally && APIHelper.HasSession && !string.IsNullOrEmpty(GameOptions.userName))
                     {
                         StartCoroutine(APIHelper.PostHighscore(user));
                     }

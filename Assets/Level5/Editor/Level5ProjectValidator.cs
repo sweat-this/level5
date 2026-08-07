@@ -43,6 +43,7 @@ public sealed class Level5ProjectValidator : IPreprocessBuildWithReport
         ValidateSelectableLevels(errors);
         ValidateInputActions(errors);
         ValidateContestModeTimers(errors);
+        ValidateDevCodeIsolation(errors);
 
         if (errors.Count > 0)
         {
@@ -73,6 +74,97 @@ public sealed class Level5ProjectValidator : IPreprocessBuildWithReport
         AssetDatabase.ForceReserializeAssets(paths, ForceReserializeAssetsOptions.ReserializeAssets);
         AssetDatabase.SaveAssets();
         Debug.Log("Reserialized " + paths.Count + " Unity assets for source control.");
+    }
+
+    private const string DevScriptFolder = "Assets/Scripts/Dev";
+    private const string DevGuardSymbol = "#if UNITY_EDITOR || DEVELOPMENT_BUILD";
+
+    /// <summary>
+    /// AUD-012: `Assets/Scripts/Dev` holds dev tools, diagnostics, and dead experiments. Production
+    /// code may reference them only from inside a
+    /// <c>#if UNITY_EDITOR || DEVELOPMENT_BUILD</c> region, so nothing in Dev is reachable from a
+    /// release build.
+    ///
+    /// This is a lint, not a proof - it checks that a referencing file carries the guard symbol at
+    /// all, not that the specific reference sits inside it. That is enough to catch the regression
+    /// it exists for: someone adding a new, unguarded call into Dev. Three such references existed
+    /// when the folder was created (`DevFunctions`, `CharacterProgressParityLogger`, and a
+    /// commented-out `AutoPlayerControllerTest` use).
+    /// </summary>
+    public static List<string> CollectDevIsolationErrors()
+    {
+        List<string> errors = new List<string>();
+        if (!Directory.Exists(DevScriptFolder))
+        {
+            return errors;
+        }
+
+        HashSet<string> devTypeNames = new HashSet<string>(StringComparer.Ordinal);
+        foreach (string devFile in Directory.GetFiles(DevScriptFolder, "*.cs", SearchOption.AllDirectories))
+        {
+            devTypeNames.Add(Path.GetFileNameWithoutExtension(devFile));
+        }
+
+        if (devTypeNames.Count == 0)
+        {
+            return errors;
+        }
+
+        foreach (string sourceFile in Directory.GetFiles("Assets/Scripts", "*.cs", SearchOption.AllDirectories))
+        {
+            string normalized = sourceFile.Replace('\\', '/');
+            if (normalized.StartsWith(DevScriptFolder, StringComparison.Ordinal) || normalized.Contains("~/"))
+            {
+                continue;
+            }
+
+            string text = File.ReadAllText(sourceFile);
+            if (text.Contains(DevGuardSymbol))
+            {
+                continue;
+            }
+
+            foreach (string devType in devTypeNames)
+            {
+                if (ContainsWord(text, devType))
+                {
+                    errors.Add(
+                        normalized + " references Dev type '" + devType
+                        + "' without a '" + DevGuardSymbol + "' guard.");
+                }
+            }
+        }
+
+        return errors;
+    }
+
+    private static bool ContainsWord(string text, string word)
+    {
+        int index = text.IndexOf(word, StringComparison.Ordinal);
+        while (index >= 0)
+        {
+            bool leftClear = index == 0 || !IsIdentifierChar(text[index - 1]);
+            int after = index + word.Length;
+            bool rightClear = after >= text.Length || !IsIdentifierChar(text[after]);
+            if (leftClear && rightClear)
+            {
+                return true;
+            }
+
+            index = text.IndexOf(word, index + 1, StringComparison.Ordinal);
+        }
+
+        return false;
+    }
+
+    private static bool IsIdentifierChar(char value)
+    {
+        return char.IsLetterOrDigit(value) || value == '_';
+    }
+
+    private static void ValidateDevCodeIsolation(List<string> errors)
+    {
+        errors.AddRange(CollectDevIsolationErrors());
     }
 
     private static void ValidateSerializationPolicy(List<string> errors)
@@ -218,8 +310,10 @@ public sealed class Level5ProjectValidator : IPreprocessBuildWithReport
                 : EditorSceneManager.OpenScene(buildScene.path, OpenSceneMode.Additive);
             try
             {
-                // menu scenes have neither manager, so they have nothing to satisfy
-                if (!SceneContainsComponent<GameRules>(scene) && !SceneContainsComponent<Pause>(scene))
+                // scenes with none of these managers have nothing to satisfy
+                if (!SceneContainsComponent<GameRules>(scene)
+                    && !SceneContainsComponent<Pause>(scene)
+                    && !SceneContainsComponent<ProgressionManager>(scene))
                 {
                     continue;
                 }
@@ -234,6 +328,17 @@ public sealed class Level5ProjectValidator : IPreprocessBuildWithReport
                 if (SceneContainsComponent<Pause>(scene))
                 {
                     AddMissingObjectErrors(errors, buildScene.path, "Pause", Pause.RequiredPauseObjectNames, objectNames);
+                }
+
+                // AUD-047: the progression menu resolves 19 objects by name, the same way
+                if (SceneContainsComponent<ProgressionManager>(scene))
+                {
+                    AddMissingObjectErrors(
+                        errors,
+                        buildScene.path,
+                        "ProgressionManager",
+                        ProgressionManager.RequiredProgressionObjectNames,
+                        objectNames);
                 }
             }
             finally

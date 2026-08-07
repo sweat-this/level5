@@ -1535,7 +1535,6 @@ public class DBHelper : MonoBehaviour
 
                     dbcmd.CommandText = sqlQuery;
                     dbcmd.Parameters.Add(new SqliteParameter("@modeid", modeid));
-                    dbcmd.Parameters.Add(new SqliteParameter("@limit", StatsPaging.ResultsPerPage));
                     dbcmd.Parameters.Add(new SqliteParameter("@offset", pageNumberOffset));
                     dbcmd.Parameters.Add(new SqliteParameter("@hardcoreEnabled", Convert.ToInt32(hardcoreValue)));
                     dbcmd.Parameters.Add(new SqliteParameter("@trafficEnabled", Convert.ToInt32(trafficValue)));
@@ -1684,10 +1683,14 @@ public class DBHelper : MonoBehaviour
 
         string sortDirection = HighScoreFieldIsAscending(modeid) ? " ASC" : " DESC";
 
+        // ResultsPerPage is a compile-time int constant, so concatenating it carries no injection
+        // risk and still has a single definition. Bound parameters are used for every value that
+        // is not one. (@offset has long-standing precedent here; a bound LIMIT does not, and this
+        // is not something I can verify against the driver without running it.)
         return "SELECT  " + columns + " FROM HighScores "
             + BuildHighScoreFilterClause(hardcoreValue, trafficValue, enemiesValue, sniperValue)
             + " ORDER BY " + field + sortDirection + ", time ASC"
-            + " LIMIT @limit OFFSET @offset";
+            + " LIMIT " + StatsPaging.ResultsPerPage + " OFFSET @offset";
     }
 
     /// <summary>

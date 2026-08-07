@@ -10,8 +10,9 @@ AUD-022 through AUD-033 came out of the 2026-08-06 deep audit and are tracked, w
 [Deep Audit 2026-08-06](deep-audit-2026-08-06.md) rather than duplicated into the table below. All
 twelve (AUD-022 to AUD-033) are fixed in code and pending Unity compile/playtest verification. A
 second pass added AUD-034 to AUD-037 and a third added AUD-038 to AUD-039, also fixed and awaiting
-Unity compile/playtest verification. A fourth pass added AUD-040 to AUD-043 (stats-screen paging), also fixed.
-All twenty-two await Unity compile/playtest verification.
+Unity compile/playtest verification. A fourth pass added AUD-040 to AUD-043 (stats-screen paging) and a fifth added AUD-044 to AUD-045
+(combat ownership and account identity), also fixed. All twenty-four await Unity compile/playtest
+verification.
 
 ## Audit Status Legend
 
@@ -35,7 +36,7 @@ All twenty-two await Unity compile/playtest verification.
 | AUD-009 | Spawn/instantiate lifecycle | Medium | Open | Projectiles have pooling, but enemies, vehicles, pickups, effects, and other high-churn objects do not appear to share a standard lifecycle. | Runtime allocation spikes, stale references, and reset bugs become more likely as scenes get busier. | Expand pooling patterns and document reset contracts for each pooled prefab category. |
 | AUD-010 | Basketball flow ownership | Medium | Open | Basketball shot state, scoring, range/shot meters, stats, game rules, and player actions are spread across multiple systems. | Makes/misses, score updates, UI feedback, and progression stats can drift if the flow changes. | Document the shot lifecycle and introduce a single shot result event consumed by UI, stats, audio, progression, and game rules. |
 | AUD-011 | Persistence boundaries | Medium | Open | Account, local save, server messages, database/API calls, progression, and migration systems need clearer source-of-truth documentation. | Offline behavior, retry handling, migration safety, and conflict resolution can become unclear. | Document local-vs-remote ownership, failure handling, retry behavior, migration rules, and user/account identity flow. |
-| AUD-012 | Legacy/dev/test separation | Low | Open | Production scripts, test scripts, diagnostics, original managers, and utility helpers are mixed in the runtime tree. | Old or diagnostic code may be accidentally referenced by production systems. | Tag or move code into clear `Runtime`, `Editor`, `Dev`, `Legacy`, and `Tests` ownership areas over time. |
+| AUD-012 | Legacy/dev/test separation | Low | Mitigated | Production scripts, test scripts, diagnostics, original managers, and utility helpers are mixed in the runtime tree. | Old or diagnostic code may be accidentally referenced by production systems - confirmed, not theoretical: three production files referenced dev code, and two more dead files (1683 + 311 lines) sat in the runtime tree. | Fixed: `Assets/Scripts/Dev/` now holds `DevFunctions`, `CharacterProgressParityLogger`, `AutoPlayerControllerTest`, `TestText`, `BasketballTestStats`, `BasketBallTestStatsConclusions`; the two live production call sites are wrapped in `#if UNITY_EDITOR \|\| DEVELOPMENT_BUILD`; the fully-commented `BasketBallShotMarkerAuto.cs` joined `StartManager_original.cs` in a `Legacy~` folder. `Level5ProjectValidator.CollectDevIsolationErrors()` + a new edit-mode test fail the build on any unguarded production→Dev reference. **Still open**: the `.asmdef` split of `Assets/Scripts` - see the note below the table. |
 | AUD-013 | Player identity/role ownership | Medium | Mitigated | `PlayerIdentifier.isCpu`/`isDefensivePlayer` are duplicated independently on `PlayerController`/`AutoPlayerController`, and each player slot has two hand-synced `PlayerIdentifier` instances (actor + basketball object). | A new spawn/mode path that sets one flag copy and forgets the other silently splits CPU-detection or defensive behavior between subsystems, with no validation. | Fixed: the known runtime reads in `BasketBall.cs`, `groundcheck.cs`, and `AutoPlayerController.cs` now go through `PlayerIdentifier`. Still open: the controllers' duplicate fields still exist (kept for serialization safety) and the two-`PlayerIdentifier`-instances-per-slot structure is unchanged. |
 | AUD-014 | Player slot index used as save-data key | High | Mitigated | `HighScoreModel` derives which player's stats to save by looping over `PlayerIdentifier` entries and overwriting an index variable for every non-CPU entry, then reads back by that index; other code assumes `pid` always equals list position. | With more than one human player, or if `pid`/list-position ever diverge, this silently saves/highscores the wrong player's stats - a save-data correctness bug, not just a smell. | Code fix in place: `convertBasketBallStatsToModel` now uses `GetPrimaryPlayer` and `TryGetPlayer`. Pending: Unity compile/playtest verification. |
 | AUD-015 | Basketball shot-attempt flags never reset on miss | High | Mitigated | `TwoAttempt`/`ThreeAttempt`/`FourAttempt`/`SevenAttempt` flags are set true when a shot is launched but only ever cleared inside the make path - nothing resets them on a miss. | A player who misses a 2pt attempt then makes a 3pt attempt gets scored for both categories at once - a reachable scoring-integrity bug, not theoretical. | Code fix in place: `BasketballState.ResetShotAttemptSnapshot()` clears attempt, marker, and moneyball snapshot state and is called at the start of each human/CPU attempt. Pending: Unity compile/playtest verification. |
@@ -45,6 +46,37 @@ All twenty-two await Unity compile/playtest verification.
 | AUD-019 | Match-end side effects run on a per-frame poll | Low | Mitigated | **Corrected 2026-08-02**: this entry originally claimed `GameRules.IsGameOver()` was dead code competing with a live `Timer` path - that was wrong (see Finding Details). The real, narrower issue: end-of-match side effects ran inside `GameRules.Update()`'s per-frame poll rather than a fire-once flow. | Per-frame polling of end-of-match side effects (persistence, progression, scene load) risked re-entrancy or duplicate execution if the condition held across multiple frames. | Code fix in place: `GameRules` now routes end conditions through `RequestGameOver()`, subscribes to `PlayerHealth.OnDied`, and gates match-end side effects with `matchEndHandled`/`HandleMatchEnded()`. Pending: Unity compile/playtest verification. |
 | AUD-020 | Traffic vehicles mutate shared prefab state before instantiating | Medium | Closed | `TrafficManager` set `Direction`/`FacingRight`/`CurrentTarget` directly on the shared, prefab-sourced `VehicleController` list entries before every `Instantiate()` call, in `spawnVehiclePrefabs`, `spawnCustomVehiclePrefabs`, and `spawnVehicleCoRoutine` - the exact pattern already generically flagged in AUD-009, with the original developer's own comment acknowledging it (`this is saving and changing prefabs value`). | `spawnVehicleCoRoutine` mutated the shared reference then waited (`WaitForSeconds`) before instantiating; two respawns of the same vehicle close together could race, with the second's field-writes overwriting the first's pending values on the same shared object. | Fixed: all three call sites now instantiate first and set the per-shot fields on the returned clone instead of the shared list entry. Verified `VehicleController`/`VehiclesList` have no consumers outside `vehicle/TrafficManager.cs` and `vehicle/VehicleController.cs`, so this was safe to change in isolation. |
 | AUD-021 | Beat the Computahs continues never reset between campaign attempts | High | Closed | `EndRoundData.numberOfContinues` is a `static` field decremented on a loss-with-continues-remaining (`EndRoundMenuManager.cs`) and zeroed for hardcore mode (`StartManager.setGameOptions`), but nothing ever reset it back to its default when starting a fresh, non-hardcore campaign run. | A player who exhausted their continues once had zero continues on every subsequent "Beat the Computahs" attempt for the rest of the application session, with no indication why - a real, session-persistent progression bug (ties confirmed as an intentional mechanic, not a bug - not touched). | Fixed: `StartManager.setGameOptions()` now explicitly resets `EndRoundData.numberOfContinues` to `EndRoundData.DefaultContinues` for non-hardcore runs (still 0 for hardcore) on every fresh game start, instead of only ever zeroing it. `DefaultContinues` extracted as a named constant (left at 2, the pre-existing default - not a confirmed design number, so not changed) so the default lives in one place. |
+
+### Note on the AUD-012 assembly split (2026-08-07)
+
+The folder separation and its enforcement are done. The remaining half - giving `Assets/Scripts` its
+own `.asmdef` - is **blocked on a Unity session**, not on effort, and should not be attempted blind.
+
+What was established:
+
+- **No reverse dependency.** Nothing under `Assets/Joystick Pack`, `Assets/Standard Assets`,
+  `Assets/OmniSARTechnologies`, or `Assets/DialogueManager.cs` references any type in
+  `Assets/Scripts`. The split is therefore possible without a circular assembly reference.
+- **The outbound surface is only two types.** `Joystick`/`FloatingJoystick` (used by
+  `GameLevelManager` and `RacingGameManager`) and `DialogueManager` (used by `LocalAccount` and
+  `UserAccountManager`). `LiteFPSCounter` looked like a third but is only a `GameObject.Find`
+  string, not a type reference. So the split needs one new asmdef for the Joystick Pack and a home
+  for `DialogueManager` - not a wholesale reorganisation.
+- **What blocks it.** An asmdef must name every package assembly it uses, and a wrong name is a
+  project-wide compile failure. `Assets/Scripts` pulls in `UnityEngine.InputSystem`,
+  `Unity.Mathematics`, `Newtonsoft.Json`, `UnityEngine.Analytics`, `Mono.Data.Sqlite`, and
+  `Unity.IO.LowLevel.Unsafe`. Some of those resolve to precompiled DLLs (referenced automatically);
+  others are asmdef-based package assemblies that must be listed explicitly. Which is which cannot
+  be determined from the repository - it depends on the resolved package versions in `Library/`,
+  which is correctly not tracked in git.
+
+Do this from an open Unity editor, where the console names any assembly that fails to resolve.
+
+One related observation worth recording: `ProjectSettings/EditorSettings.asset` and every `.unity`
+scene are currently **binary** on disk, even though `Level5ProjectValidator.ConfigureSourceControlPolicy`
+sets `SerializationMode.ForceText` on load. That confirms the project has not been opened in Unity
+since that policy was added. The first open will convert them - which also makes AUD-046's
+uninspectable serialized value greppable for the first time.
 
 ## Finding Details
 
