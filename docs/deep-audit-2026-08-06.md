@@ -91,6 +91,46 @@ What was and was not checked:
   they are as correct as the shipping code - but run `Level5/Reserialize Project Assets` and re-run
   the suite before trusting that.
 
+### Pre-existing Unity console issues (recorded 2026-08-07)
+
+The first Unity open surfaced a set of warnings. **None of them come from this audit** - recorded
+here so the next person does not re-diagnose them, and so they are not mistaken for regressions.
+
+How that was established: no audit commit touched a `.unity`, `.prefab`, or `.asset` file (the four
+such files on this branch came from `6411e874`, which predates the audit); every script moved to
+`Assets/Scripts/Dev/` moved with its `.meta`, so its GUID still resolves; and the two `.meta` files
+the audit did delete - `BasketBallShotMarkerAuto` (`ef41aeb5...`) and `StartManager_original`
+(`9d996086...`) - appear nowhere in the unresolved set, which confirms the claim made at the time
+that neither was referenced by any scene or prefab.
+
+**Missing script references.** Scanning every `m_Script` GUID in the text scenes and prefabs against
+every `.meta` in `Assets/`, `Packages/`, and `Library/PackageCache/`: 149 script GUIDs referenced,
+23 unresolved against `Assets/` alone, of which 15 resolve to packages. Eight are genuinely missing:
+
+| GUID | Referenced by | Console object |
+| --- | --- | --- |
+| `954300b2...` | the three `level_00_account*` scenes | likely `nextScene` |
+| `ab2fe067...` | `level_00_start` | likely `nextScene` |
+| `8b9a305e...`, `948f4100...`, `a79441f3...` | 3-4 gameplay levels each | likely the camera / `PostProcessing` behaviours |
+| `cadd54e4...` | `Standard Hose` / `Standard HoseMobile` prefabs | third-party asset |
+| `474bcb49...` | `level_01_scrapyard_lights` | one-off |
+| `a215fc91...` | `level_01_scrapyard_cpu_defense_test` | one-off |
+
+These are long-standing rot from scripts or asset packages removed earlier in the project's history.
+The accompanying *"Serialized files [version 17] before 2019.1 are deprecated"* message points the
+same way - the project was last opened by a much older Unity.
+
+**Recommended order:** close Unity, delete `Library/` (generated, untracked), reopen. That clears the
+version-17 complaint and forces a clean reimport after the reserialization. Judge every other
+warning only after that, because a stale import cache produces phantom errors. Whatever is still
+missing afterwards is a real decision per object: reinstall the package, or delete the dead
+component.
+
+**`BoxCollider does not support negative scale` warnings** on `Boundaries/boundary *` and
+`basketball(Clone)/groundCheck` are scene authoring issues, not code. Worth fixing rather than
+ignoring: a negatively-scaled collider silently has different collision geometry than the scene
+shows, and `groundCheck` is the ball's ground detection. Fix with positive scale plus rotation.
+
 ### Behaviour changes to be aware of
 
 Three fixes change gameplay numbers rather than just preventing a crash:
