@@ -1,5 +1,6 @@
 ﻿using Assets.Scripts.restapi;
 using Assets.Scripts.Utility;
+using Level5.Core.Match;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -11,6 +12,9 @@ using UnityEngine.UI;
 public class StartManager : MonoBehaviour
 {
     private const float DataWaitTimeoutSeconds = 12f;
+
+    /// <summary>The level the campaign always starts on, whatever the menu had selected.</summary>
+    private const int CampaignFirstLevelId = 1;
 
     [SerializeField]
     public string currentHighlightedButton;
@@ -177,27 +181,35 @@ public class StartManager : MonoBehaviour
     public const string Cpu2SelectOptionName = "cpu2_button";
     public const string Cpu3SelectOptionName = "cpu3_button";
 
-    [SerializeField]
-    private bool trafficEnabled;
-    [SerializeField]
-    private bool hardcoreEnabled;
-    [SerializeField]
-    private bool enemiesEnabled;
-    [SerializeField]
-    private bool obstaclesEnabled;
-    [SerializeField]
-    public int difficultySelected;
-    [SerializeField]
-    private bool sniperBulletEnabled;
-    [SerializeField]
-    private bool sniperLaserEnabled;
-    [SerializeField]
-    private bool sniperBulleAutoEnabled;
-    [SerializeField]
-    public int playerSelectedIndex;
-    private int levelSelectedIndex;
-    private int modeSelectedIndex;
-    private int friendSelectedIndex;
+    /// <summary>
+    /// Everything the player has picked. The menu changes this and nothing else; the match
+    /// configuration is built from it once, when start is pressed.
+    /// </summary>
+    private readonly StartMenuSelectionState selection = new StartMenuSelectionState();
+
+    private bool trafficEnabled { get => selection.TrafficEnabled; set => selection.TrafficEnabled = value; }
+    private bool hardcoreEnabled { get => selection.HardcoreEnabled; set => selection.HardcoreEnabled = value; }
+    private bool enemiesEnabled { get => selection.EnemiesEnabled; set => selection.EnemiesEnabled = value; }
+    private bool obstaclesEnabled { get => selection.ObstaclesEnabled; set => selection.ObstaclesEnabled = value; }
+    private int levelSelectedIndex { get => selection.LevelIndex; set => selection.LevelIndex = value; }
+    private int modeSelectedIndex { get => selection.ModeIndex; set => selection.ModeIndex = value; }
+    private int friendSelectedIndex { get => selection.FriendIndex; set => selection.FriendIndex = value; }
+
+    /// <summary>Read by the touch input controller, so it stays public.</summary>
+    public int difficultySelected
+    {
+        get => MatchDifficulties.ToInt(selection.Difficulty);
+        set => selection.Difficulty = MatchDifficulties.FromInt(value);
+    }
+
+    public int playerSelectedIndex { get => selection.PlayerIndex; set => selection.PlayerIndex = value; }
+
+    private bool sniperBulletEnabled => selection.Sniper == SniperMode.Bullet;
+    private bool sniperLaserEnabled => selection.Sniper == SniperMode.Laser;
+    private bool sniperBulleAutoEnabled => selection.Sniper == SniperMode.MachineGun;
+
+    /// <summary>The compatibility service and builder for the catalogs this menu is showing.</summary>
+    private GameModeCompatibility Compatibility => MatchCatalogs.Compatibility;
 
     //private int numOfPlayers; //testing with 1
 
@@ -239,14 +251,7 @@ public class StartManager : MonoBehaviour
         StartCoroutine(GetUiObjectReferences());
 
         //default index for selected configuration
-        playerSelectedIndex = GameOptions.playerSelectedIndex;
-        friendSelectedIndex = GameOptions.friendSelectedIndex;
-        levelSelectedIndex = GameOptions.levelSelectedIndex;
-        modeSelectedIndex = GameOptions.modeSelectedIndex;
-        trafficEnabled = GameOptions.trafficEnabled;
-        hardcoreEnabled = GameOptions.hardcoreModeEnabled;
-        difficultySelected = 1;
-        obstaclesEnabled = GameOptions.obstaclesEnabled;
+        selection.LoadPersistedPreferences();
 
         // update experience and levels
         // recommended here because experience will be gained after every game played
@@ -737,7 +742,10 @@ public class StartManager : MonoBehaviour
             && modeSelectedData != null
             && modeSelectedData.Count > 0
             && modeSelectedIndex >= 0
-            && modeSelectedIndex < modeSelectedData.Count;
+            && modeSelectedIndex < modeSelectedData.Count
+            // the menu draws from the catalogs, so an empty catalog means there is nothing to show
+            // or launch even when the raw prefab lists arrived
+            && MatchCatalogs.IsReady;
     }
 
     private bool HasLoadedStartUi()
@@ -1011,78 +1019,28 @@ public class StartManager : MonoBehaviour
 
     private void changeSelectedCpuOptionDown(string currentHighlightedButton)
     {
-        switch (currentHighlightedButton)
-        {
-            case Cpu1SelectOptionName:
-                if (GameOptions.cpu1SelectedIndex == 0)
-                {
-                    GameOptions.cpu1SelectedIndex = cpuPlayerSelectedData.Count - 1;
-                }
-                else
-                {
-                    GameOptions.cpu1SelectedIndex--;
-                }
-                setCpuPlayer1();
-                break;
-            case Cpu2SelectOptionName:
-                if (GameOptions.cpu2SelectedIndex == 0)
-                {
-                    GameOptions.cpu2SelectedIndex = cpuPlayerSelectedData.Count - 1;
-                }
-                else
-                {
-                    GameOptions.cpu2SelectedIndex--;
-                }
-                setCpuPlayer2();
-                break;
-            case Cpu3SelectOptionName:
-                if (GameOptions.cpu3SelectedIndex == 0)
-                {
-                    GameOptions.cpu3SelectedIndex = cpuPlayerSelectedData.Count - 1;
-                }
-                else
-                {
-                    GameOptions.cpu3SelectedIndex--;
-                }
-                setCpuPlayer3();
-                break;
-        }
+        CycleCpuSelection(currentHighlightedButton, -1);
     }
+
     public void changeSelectedCpuOptionUp(string currentHighlightedButton)
     {
-        switch (currentHighlightedButton)
+        CycleCpuSelection(currentHighlightedButton, 1);
+    }
+
+    private void CycleCpuSelection(string highlightedButton, int step)
+    {
+        switch (highlightedButton)
         {
             case Cpu1SelectOptionName:
-                if (GameOptions.cpu1SelectedIndex < cpuPlayerSelectedData.Count - 1)
-                {
-                    GameOptions.cpu1SelectedIndex++;
-                }
-                else
-                {
-                    GameOptions.cpu1SelectedIndex = 0;
-                }
+                selection.CycleCpu(1, cpuPlayerSelectedData.Count, step);
                 setCpuPlayer1();
                 break;
             case Cpu2SelectOptionName:
-                if (GameOptions.cpu2SelectedIndex < cpuPlayerSelectedData.Count - 1)
-                {
-                    GameOptions.cpu2SelectedIndex++;
-                }
-                else
-                {
-                    GameOptions.cpu2SelectedIndex = 0;
-                }
+                selection.CycleCpu(2, cpuPlayerSelectedData.Count, step);
                 setCpuPlayer2();
                 break;
             case Cpu3SelectOptionName:
-                if (GameOptions.cpu3SelectedIndex < cpuPlayerSelectedData.Count - 1)
-                {
-                    GameOptions.cpu3SelectedIndex++;
-                }
-                else
-                {
-                    GameOptions.cpu3SelectedIndex = 0;
-                }
+                selection.CycleCpu(3, cpuPlayerSelectedData.Count, step);
                 setCpuPlayer3();
                 break;
         }
@@ -1139,6 +1097,10 @@ public class StartManager : MonoBehaviour
                 && levelSelectedData != null
                 && modeSelectedData != null)
             {
+                // The mode/level catalogs the compatibility service and the launch builder work
+                // from. Built here, from the same authored prefabs the menu lists, so the menu can
+                // never offer a combination the launch validation would then refuse.
+                MatchCatalogs.EnsureBuilt(modeSelectedData, levelSelectedData);
                 dataLoaded = true;
             }
         }
@@ -1170,7 +1132,6 @@ public class StartManager : MonoBehaviour
         initializeObstacleOptionDisplay();
         initializePlayerDisplay();
         initializeCpuPlayerDisplay();
-        setInitialGameOptions();
     }
 
     public void initializeCpuDisplay()
@@ -1267,32 +1228,6 @@ public class StartManager : MonoBehaviour
         UiSelectionAdapter.EnsureSelected(GetDefaultSelectedButton());
     }
 
-    private void setInitialGameOptions()
-    {
-        GameOptions.characterObjectName = playerSelectedData[playerSelectedIndex].PlayerObjectName;
-        //List<string> names = new List<string>();
-        //List<int> ids = new List<int>();
-        //for (int i = 0; i < GameOptions.numPlayers; i++)
-        //{
-        //    names.Insert(i, playerSelectedData[playerSelectedIndex].PlayerObjectName);
-        //    ids.Insert(i, playerSelectedData[playerSelectedIndex].PlayerId);
-
-        //    Debug.Log(names[i]);
-        //    Debug.Log(ids[i]);
-        //}
-        //GameOptions.characterObjectNames = names;
-        //GameOptions.playerIds = ids;
-
-        //GameOptions.characterObjectName = playerSelectedData[playerSelectedIndex].PlayerObjectName;
-
-        GameOptions.levelSelected = levelSelectedData[levelSelectedIndex].LevelObjectName;
-        GameOptions.gameModeSelectedName = modeSelectedData[modeSelectedIndex].ModeObjectName;
-        GameOptions.gameModeSelectedId = modeSelectedData[modeSelectedIndex].ModeId;
-
-        GameOptions.gameModeRequiresCounter = modeSelectedData[modeSelectedIndex].ModeRequiresCounter;
-        GameOptions.gameModeRequiresCountDown = modeSelectedData[modeSelectedIndex].ModeRequiresCountDown;
-    }
-
     public String getRandomWizardOfBoat()
     {
 
@@ -1344,36 +1279,7 @@ public class StartManager : MonoBehaviour
 
     public void changeSelectedSniperOption()
     {
-        if (sniperBulletEnabled)
-        {
-            sniperBulletEnabled = false;
-            sniperLaserEnabled = false;
-            sniperBulleAutoEnabled = true;
-            return;
-        }
-        if (sniperBulleAutoEnabled)
-        {
-            sniperLaserEnabled = true;
-            sniperBulletEnabled = false;
-            sniperBulleAutoEnabled = false;
-            return;
-        }
-        if (sniperLaserEnabled)
-        {
-            sniperLaserEnabled = false;
-            sniperBulletEnabled = false;
-            sniperBulleAutoEnabled = false;
-            sniperBulletEnabled = true;
-            return;
-        }
-
-        if (!sniperBulletEnabled && !sniperLaserEnabled && !sniperBulleAutoEnabled)
-        {
-            sniperLaserEnabled = false;
-            sniperBulletEnabled = true;
-            sniperBulleAutoEnabled = false;
-            return;
-        }
+        selection.CycleSniper();
     }
 
     public void changeSelectedObstacleOption()
@@ -1381,18 +1287,13 @@ public class StartManager : MonoBehaviour
         obstaclesEnabled = !obstaclesEnabled;
     }
 
+    /// <summary>
+    /// The parameter is ignored; the selection model owns the current difficulty. It stays on the
+    /// signature because the touch input controller calls it with a value.
+    /// </summary>
     public void changeSelectedDifficultyOption(int currentDifficulty)
     {
-        int maxDifficulty = 2;
-        if (currentDifficulty == maxDifficulty)
-        {
-            currentDifficulty = 0;
-        }
-        else
-        {
-            currentDifficulty++;
-        }
-        difficultySelected = currentDifficulty;
+        selection.CycleDifficulty();
     }
 
     // ============================  Initialize displays ==============================
@@ -1488,21 +1389,24 @@ public class StartManager : MonoBehaviour
         disableMenuObjects("level_tab");
         enableMenuObjects("level_tab");
 
+        LevelDefinition level = selection.CurrentLevel(Compatibility);
+        if (level == null)
+        {
+            return;
+        }
+
         // NOTE : add level column 2 refs to change text/descr
         // add descritpion to startmenu levle objects
         StartMenuUiObjects.instance.column1_subgroup_column2_level_selected_name_text.text
             = StartMenuUiObjects.instance.column2_level_tab_level_selected_name.text
-            = levelSelectedData[levelSelectedIndex].LevelDisplayName;
-        StartMenuUiObjects.instance.column2_level_tab_level_selected_info.text = levelSelectedData[levelSelectedIndex].LevelInfo;
-
-        GameOptions.levelSelected = levelSelectedData[levelSelectedIndex].LevelObjectName;
+            = level.DisplayName;
+        StartMenuUiObjects.instance.column2_level_tab_level_selected_info.text = level.Info;
     }
 
     public void initializeNumPlayersDisplay()
     {
-        GameOptions.numPlayers = 1 + (GameOptions.cpu1SelectedIndex != 0 ? 1 : 0) + (GameOptions.cpu2SelectedIndex != 0 ? 1 : 0) + (GameOptions.cpu3SelectedIndex != 0 ? 1 : 0);
         numPlayersSelectOptionText = StartMenuUiObjects.instance.column1_subgroup_column2_num_players_selected_name_text;
-        numPlayersSelectOptionText.text = GameOptions.numPlayers.ToString();
+        numPlayersSelectOptionText.text = selection.ParticipantCount.ToString();
     }
 
     public void initializefriendDisplay()
@@ -1536,7 +1440,6 @@ public class StartManager : MonoBehaviour
 
             friendSelectOptionText = GameObject.Find(FriendSelectOptionButtonName).GetComponent<Text>();
             friendSelectOptionText.text = friendSelectedData[friendSelectedIndex].CheerleaderDisplayName;
-            GameOptions.cheerleaderObjectName = friendSelectedData[friendSelectedIndex].CheerleaderObjectName;
         }
         catch (Exception e)
         {
@@ -1564,14 +1467,20 @@ public class StartManager : MonoBehaviour
         disableMenuObjects("mode_tab");
         enableMenuObjects("mode_tab");
 
+        GameModeDefinition mode = selection.CurrentMode(Compatibility);
+        if (mode == null)
+        {
+            return;
+        }
+
         modeSelectOptionText = StartMenuUiObjects.instance.column1_subgroup_column2_mode_selected_name_text;
-        modeSelectOptionText.text = modeSelectedData[modeSelectedIndex].ModeDisplayName;
+        modeSelectOptionText.text = mode.DisplayName;
 
         modeSelectOptionNameText = StartMenuUiObjects.instance.column2_mode_tab_mode_selected_name;
-        modeSelectOptionNameText.text = modeSelectedData[modeSelectedIndex].ModeDisplayName;
+        modeSelectOptionNameText.text = mode.DisplayName;
 
         ModeSelectOptionDescriptionText = StartMenuUiObjects.instance.column2_mode_tab_mode_selected_description;
-        ModeSelectOptionDescriptionText.text = modeSelectedData[modeSelectedIndex].ModeDescription;
+        ModeSelectOptionDescriptionText.text = mode.Description;
     }
     void disableMenuObjects(string activeMenu)
     {
@@ -1711,8 +1620,6 @@ public class StartManager : MonoBehaviour
             {
                 playerProgressionUpdatePointsText.text = "";
             }
-            GameOptions.characterObjectName = playerSelectedData[playerSelectedIndex].PlayerObjectName;
-
         }
         catch (Exception e)
         {
@@ -1722,6 +1629,16 @@ public class StartManager : MonoBehaviour
     }
 
     // ============================  footer options activate - load scene/stats/quit/etc ==============================
+    // ============================  footer options activate - load scene/stats/quit/etc ==============================
+
+    /// <summary>
+    /// The launch path.
+    ///
+    /// Gather the selection into a request, build and validate the configuration, make it the
+    /// active match, push the legacy fields for the systems that have not migrated, then load the
+    /// scene. An invalid combination stops here with a reason instead of loading a scene that
+    /// cannot be played - the menu filters as a convenience, but this is what decides.
+    /// </summary>
     public void loadGame()
     {
         if (lastLoadGameFrame == Time.frameCount || !HasLoadedGameSetup())
@@ -1730,203 +1647,146 @@ public class StartManager : MonoBehaviour
         }
 
         lastLoadGameFrame = Time.frameCount;
-        // tells character profile to load profile from LoadedData.instance
-        GameOptions.gameModeHasBeenSelected = true; 
+        forceCampaignStartLevel();
 
-        LevelSelected selectedLevel = levelSelectedData[levelSelectedIndex];
-        string sceneName;
-        if (modeSelectedData[modeSelectedIndex].ModeId == Modes.BeatThaComputahs)
+        MatchRequest request = selection.BuildRequest(
+            Compatibility,
+            playerSelectedData,
+            cpuPlayerSelectedData,
+            friendSelectedData,
+            GetPlayerObjectNameOverride());
+
+        if (request == null)
         {
-            sceneName = Constants.SCENE_NAME_level_01_scrapyard;
-            int scrapyardLevelIndex = levelSelectedData.FindIndex(x => x.LevelId == 1);
-            if (scrapyardLevelIndex >= 0)
+            Debug.LogError("StartManager could not build a match request from the current selection.");
+            return;
+        }
+
+        MatchBuildResult result = MatchCatalogs.Builder.Build(request);
+        if (!result.Succeeded)
+        {
+            ShowLaunchError(result.Validation);
+            return;
+        }
+
+        MatchConfiguration configuration = result.Configuration;
+
+        // The new configuration is authoritative from here. The bridge is the only thing that
+        // writes the old globals, and it only ever writes - nothing reads back into the match.
+        ActiveMatch.Begin(configuration);
+        LegacyGameOptionsBridge.Apply(configuration);
+
+        selection.SavePersistedPreferences();
+        applyNonMatchLaunchState(configuration);
+
+        SceneManager.LoadScene(resolveSceneName(configuration));
+    }
+
+    /// <summary>
+    /// The campaign always begins at its first level, whatever the menu had selected.
+    ///
+    /// This has to move the selection itself, not just the scene: the campaign reads
+    /// <c>levelSelectedIndex</c> afterwards to pick the opponent and to know which round it is on,
+    /// so a scene override alone would start the run at the right place and then advance from the
+    /// wrong one.
+    /// </summary>
+    private void forceCampaignStartLevel()
+    {
+        GameModeDefinition mode = selection.CurrentMode(Compatibility);
+        if (mode == null || mode.Id != GameModeId.BeatThaComputahs)
+        {
+            return;
+        }
+
+        int firstCampaignLevel = -1;
+        for (int index = 0; index < Compatibility.Levels.Count; index++)
+        {
+            if (Compatibility.Levels.Definitions[index].LevelId == CampaignFirstLevelId)
             {
-                levelSelectedIndex = scrapyardLevelIndex;
-                selectedLevel = levelSelectedData[levelSelectedIndex];
+                firstCampaignLevel = index;
+                break;
             }
         }
-        else
+
+        if (firstCampaignLevel >= 0)
         {
-            sceneName = selectedLevel.LevelObjectName + "_" + selectedLevel.LevelDescription;
+            selection.LevelIndex = firstCampaignLevel;
+        }
+    }
+
+    /// <summary>
+    /// Which scene a configuration loads. Normally the arena's own scene; the campaign mode is the
+    /// one launch-time special case, and it stays here rather than in the domain model until it has
+    /// characterization coverage.
+    /// </summary>
+    private static string resolveSceneName(MatchConfiguration configuration)
+    {
+        return configuration.ModeId == GameModeId.BeatThaComputahs
+            ? Constants.SCENE_NAME_level_01_scrapyard
+            : configuration.SceneName;
+    }
+
+    /// <summary>
+    /// If Wizard of Boat is selected, pick which one spawns. Resolved once, here, so the roster
+    /// carries the actual character rather than something downstream re-rolling it.
+    /// </summary>
+    private string GetPlayerObjectNameOverride()
+    {
+        CharacterProfile selected = playerSelectedData[playerSelectedIndex];
+        return selected.PlayerDisplayName.ToLower().Contains("boat")
+            ? getRandomWizardOfBoat()
+            : null;
+    }
+
+    private void ShowLaunchError(ValidationResult validation)
+    {
+        string reasons = validation == null ? "unknown" : validation.ToString();
+        Debug.LogError("This match cannot be started: " + reasons);
+        if (ModeSelectOptionDescriptionText != null)
+        {
+            ModeSelectOptionDescriptionText.text = reasons;
+        }
+    }
+
+    /// <summary>
+    /// The launch-time state that is not part of the match configuration: application metadata,
+    /// the campaign level list, the end-round portraits and the progression snapshot. These belong
+    /// to their own owners (plan phase 11) and are only gathered here because they are gathered at
+    /// the same moment.
+    /// </summary>
+    private void applyNonMatchLaunchState(MatchConfiguration configuration)
+    {
+        GameOptions.applicationVersion = Application.version;
+        GameOptions.operatingSystemVersion = SystemInfo.operatingSystem;
+        GameOptions.levelsList = PlayerData.instance.LevelsList;
+
+        CharacterProfile player = playerSelectedData[playerSelectedIndex];
+        EndRoundData.currentRoundPlayerWinnerImage = player.winPortrait;
+        EndRoundData.currentRoundPlayerLoserImage = player.losePortrait;
+
+        // Reset continues for this fresh run - numberOfContinues is a static field that only
+        // ever gets decremented during play, so without this a player who exhausted continues in
+        // an earlier campaign attempt would start every later attempt (in the same session) with
+        // zero continues left, silently.
+        EndRoundData.numberOfContinues = configuration.Rules.Hardcore ? 0 : EndRoundData.DefaultContinues;
+
+        // if mode contains 'free', or mode is not arcade mode, carry progression into the match
+        string modeName = configuration.Mode.DisplayName.ToLower();
+        if (modeName.Contains("free") || !modeName.Contains("arcade"))
+        {
+            PlayerData.instance.CurrentExperience = player.Experience;
+            PlayerData.instance.CurrentLevel = player.Level;
+            PlayerData.instance.UpdatePointsAvailable = player.PointsAvailable;
+            PlayerData.instance.UpdatePointsUsed = player.PointsUsed;
         }
 
-        // update game options for game mode
-        setGameOptions();
-       
-
-        // if player not locked, friend not locked, mode contains 'free', mode not aracde mode
-        if (modeSelectedData[modeSelectedIndex].ModeDisplayName.ToLower().Contains("free")
-            || !modeSelectedData[modeSelectedIndex].ModeDisplayName.ToLower().Contains("arcade"))
-        {
-            // load player progression info
-            PlayerData.instance.CurrentExperience = playerSelectedData[playerSelectedIndex].Experience;
-            PlayerData.instance.CurrentLevel = playerSelectedData[playerSelectedIndex].Level;
-            PlayerData.instance.UpdatePointsAvailable = playerSelectedData[playerSelectedIndex].PointsAvailable;
-            PlayerData.instance.UpdatePointsUsed = playerSelectedData[playerSelectedIndex].PointsUsed;
-        }
-        SceneManager.LoadScene(sceneName);
+        // load hardcore mode highscores (for ui display) for game mode if hardcore mode enabled
+        PlayerData.instance.loadStatsFromDatabase();
     }
 
     public void loadMenu(string sceneName)
     {
         SceneManager.LoadScene(sceneName);
-    }
-
-    // ============================  set game options ==============================
-    // this is necessary for setting Game Rules on game manager
-    private void setGameOptions()
-    {
-        MatchSession.BeginNewMatch();
-        GameOptions.characterId = playerSelectedData[playerSelectedIndex].PlayerId;
-        GameOptions.characterDisplayName = playerSelectedData[playerSelectedIndex].PlayerDisplayName;
-        // if Wizard of Boat selected, randomly choose which one to spawn
-        if (playerSelectedData[playerSelectedIndex].PlayerDisplayName.ToLower().Contains("boat"))
-        {
-            GameOptions.characterObjectName = getRandomWizardOfBoat();
-        }
-        else
-        {
-            GameOptions.characterObjectName = playerSelectedData[playerSelectedIndex].PlayerObjectName;
-        }
-        GameOptions.levelSelected = levelSelectedData[levelSelectedIndex].LevelObjectName;
-        GameOptions.levelId = levelSelectedData[levelSelectedIndex].LevelId;
-        GameOptions.levelDisplayName = levelSelectedData[levelSelectedIndex].LevelDisplayName;
-        GameOptions.levelRequiresTimeOfDay = levelSelectedData[levelSelectedIndex].LevelRequiresTimeOfDay;
-
-        GameOptions.gameModeSelectedId = modeSelectedData[modeSelectedIndex].ModeId;
-        GameOptions.gameModeSelectedName = modeSelectedData[modeSelectedIndex].ModeDisplayName;
-
-        GameOptions.gameModeRequiresCountDown = modeSelectedData[modeSelectedIndex].ModeRequiresCountDown;
-        GameOptions.gameModeRequiresCounter = modeSelectedData[modeSelectedIndex].ModeRequiresCounter;
-
-        GameOptions.gameModeRequiresShotMarkers3s = modeSelectedData[modeSelectedIndex].ModeRequiresShotMarkers3S;
-        GameOptions.gameModeRequiresShotMarkers4s = modeSelectedData[modeSelectedIndex].ModeRequiresShotMarkers4S;
-        GameOptions.gameModeRequiresShotMarkers7s = modeSelectedData[modeSelectedIndex].ModeRequiresShotMarkers7s;
-
-        GameOptions.gameModeThreePointContest = modeSelectedData[modeSelectedIndex].GameModeThreePointContest;
-        GameOptions.gameModeFourPointContest = modeSelectedData[modeSelectedIndex].GameModeFourPointContest;
-        GameOptions.gameModeSevenPointContest = modeSelectedData[modeSelectedIndex].GameModeSevenPointContest;
-        GameOptions.gameModeAllPointContest = modeSelectedData[modeSelectedIndex].GameModeAllPointContest;
-
-        // check if game mode requires timer that is not 120
-        if (modeSelectedData[modeSelectedIndex].CustomTimer > 0)
-        {
-            GameOptions.customTimer = modeSelectedData[modeSelectedIndex].CustomTimer;
-        }
-        else
-        {
-            GameOptions.customTimer = 0;
-        }
-
-        GameOptions.gameModeRequiresMoneyBall = modeSelectedData[modeSelectedIndex].ModeRequiresMoneyBall;
-        GameOptions.gameModeRequiresConsecutiveShot = modeSelectedData[modeSelectedIndex].ModeRequiresConsecutiveShots;
-
-        GameOptions.cheerleaderDisplayName = friendSelectedData[friendSelectedIndex].CheerleaderDisplayName;
-        GameOptions.cheerleaderId = friendSelectedData[friendSelectedIndex].CheerleaderId;
-        GameOptions.cheerleaderObjectName = friendSelectedData[friendSelectedIndex].CheerleaderObjectName;
-
-        //GameOptions.trafficEnabled = trafficEnabled;
-
-        GameOptions.applicationVersion = Application.version;
-        GameOptions.operatingSystemVersion = SystemInfo.operatingSystem;
-
-        // send current selected options to game options for next load on start manager
-        GameOptions.playerSelectedIndex = playerSelectedIndex;
-        GameOptions.friendSelectedIndex = friendSelectedIndex;
-        GameOptions.levelSelectedIndex = levelSelectedIndex;
-        GameOptions.modeSelectedIndex = modeSelectedIndex;
-        GameOptions.trafficEnabled = trafficEnabled;
-        GameOptions.enemiesEnabled = enemiesEnabled;
-        if (sniperBulleAutoEnabled || sniperBulletEnabled || sniperLaserEnabled)
-        {
-            GameOptions.sniperEnabled = true;
-        }
-        else
-        {
-            GameOptions.sniperEnabled = false;
-        }
-        GameOptions.sniperEnabledBullet = sniperBulletEnabled;
-        //if (sniperBulleAutoEnabled)
-        //{
-        //    GameOptions.sniperEnabledBulletAuto = false;
-        //    GameOptions.sniperEnabledBullet = true;
-        //}
-        GameOptions.sniperEnabledBulletAuto = sniperBulleAutoEnabled;
-        GameOptions.sniperEnabledLaser = sniperLaserEnabled;
-
-        GameOptions.arcadeModeEnabled = modeSelectedData[modeSelectedIndex].ArcadeModeActive;
-        GameOptions.EnemiesOnlyEnabled = modeSelectedData[modeSelectedIndex].EnemiesOnlyEnabled;
-
-        GameOptions.levelRequiresWeather = levelSelectedData[levelSelectedIndex].LevelHasWeather;
-        GameOptions.levelHasSevenPointers = levelSelectedData[levelSelectedIndex].LevelHasSevenPointers;
-
-        GameOptions.difficultySelected = difficultySelected;
-        if (difficultySelected == 2) { hardcoreEnabled = true; }
-        GameOptions.hardcoreModeEnabled = hardcoreEnabled;
-
-        GameOptions.obstaclesEnabled = obstaclesEnabled;
-        GameOptions.battleRoyalEnabled = modeSelectedData[modeSelectedIndex].IsBattleRoyal;
-        GameOptions.cageMatchEnabled = modeSelectedData[modeSelectedIndex].IsCageMatch;
-
-        GameOptions.gameModeRequiresPlayerSurvive = modeSelectedData[modeSelectedIndex].GameModeRequiresPlayerSurvive;
-
-        // if enemies only mode, enable enemies whether it was selected or not
-        if (GameOptions.EnemiesOnlyEnabled || GameOptions.battleRoyalEnabled)
-        {
-            GameOptions.enemiesEnabled = true;
-        }
-
-        if (!levelSelectedData[levelSelectedIndex].LevelHasTraffic)
-        {
-            GameOptions.trafficEnabled = false;
-        }
-        GameOptions.gameModeRequiresBasketball = modeSelectedData[modeSelectedIndex].GameModeRequiresBasketball;
-        GameOptions.customCamera = levelSelectedData[levelSelectedIndex].CustomCamera;
-        GameOptions.gameModeAllowsCpuShooters = modeSelectedData[modeSelectedIndex].GameModeAllowsCpuShooters;
-
-        GameOptions.characterObjectNames = new List<string>();
-        GameOptions.characterObjectNames.Add(GameOptions.characterObjectName);
-        if (GameOptions.cpu1SelectedIndex != 0 && modeSelectedData[modeSelectedIndex].ModeId != Modes.Lockdown) 
-        { 
-            GameOptions.characterObjectNames.Add(cpuPlayerSelectedData[GameOptions.cpu1SelectedIndex].PlayerObjectName); 
-        }
-        if (GameOptions.cpu1SelectedIndex == 0 
-            && GameOptions.characterObjectNames.Count == 1
-            && (modeSelectedData[modeSelectedIndex].ModeId == Modes.VersusCpu || modeSelectedData[modeSelectedIndex].ModeId == Modes.BeatThaComputahs))
-        {
-            GameOptions.cpu1SelectedIndex = 1;
-            GameOptions.characterObjectNames.Add(cpuPlayerSelectedData[GameOptions.cpu1SelectedIndex].PlayerObjectName);
-        }
-        if (GameOptions.cpu2SelectedIndex != 0 && modeSelectedData[modeSelectedIndex].ModeId != Modes.Lockdown) 
-        { GameOptions.characterObjectNames.Add(cpuPlayerSelectedData[GameOptions.cpu2SelectedIndex].PlayerObjectName); }
-        if (GameOptions.cpu3SelectedIndex != 0 && modeSelectedData[modeSelectedIndex].ModeId != Modes.Lockdown)
-        { GameOptions.characterObjectNames.Add(cpuPlayerSelectedData[GameOptions.cpu3SelectedIndex].PlayerObjectName); }
-
-        GameOptions.ConfigureSingleHumanRoster(
-            GameOptions.characterObjectNames.Count,
-            modeSelectedData[modeSelectedIndex].ModeId == Modes.Lockdown);
-
-        GameOptions.levelsList = PlayerData.instance.LevelsList;
-
-        EndRoundData.currentRoundPlayerWinnerImage = playerSelectedData[playerSelectedIndex].winPortrait;
-        EndRoundData.currentRoundPlayerLoserImage = playerSelectedData[playerSelectedIndex].losePortrait;
-        // Reset continues for this fresh run - numberOfContinues is a static field that only
-        // ever gets decremented during play, so without this a player who exhausted continues in
-        // an earlier campaign attempt would start every later attempt (in the same session) with
-        // zero continues left, silently.
-        EndRoundData.numberOfContinues = hardcoreEnabled ? 0 : EndRoundData.DefaultContinues;
-
-        GameOptions.friendBonus3Accuracy = friendSelectedData[friendSelectedIndex].bonus3Accuracy;
-        GameOptions.friendBonus4Accuracy = friendSelectedData[friendSelectedIndex].bonus4Accuracy;
-        GameOptions.friendBonus7Accuracy = friendSelectedData[friendSelectedIndex].bonus7Accuracy;
-        GameOptions.friendBonusRelease = friendSelectedData[friendSelectedIndex].bonusRelease;
-        GameOptions.friendBonusRange = friendSelectedData[friendSelectedIndex].bonusRange;
-        GameOptions.friendBonusLuck = friendSelectedData[friendSelectedIndex].bonusLuck;
-        GameOptions.friendBonusClutch = friendSelectedData[friendSelectedIndex].bonusClutch;
-
-        // load hardcore mode highscores (for ui display) for game mode if hardcore mode enabled
-        //Debug.Log("hardcore enabled : "+ GameOptions.hardcoreModeEnabled);
-        PlayerData.instance.loadStatsFromDatabase();
     }
 
     // ============================  message display ==============================
@@ -1941,247 +1801,59 @@ public class StartManager : MonoBehaviour
 
     // ============================  navigation functions ==============================
 
-    public void changeSelectedNumPlayersUp()
-    {
-        // if default index (first in list), go to end of list
-        if (GameOptions.numPlayers == 4)
-        {
-            GameOptions.numPlayers = 1;
-        }
-        else
-        {
-            GameOptions.numPlayers++;
-        }
-    }
-    public void changeSelectedNumPlayersDown()
-    {
-        // if default index (first in list), go to end of list
-        if (GameOptions.numPlayers == 1)
-        {
-            GameOptions.numPlayers = 4;
-        }
-        else
-        {
-            GameOptions.numPlayers--;
-        }
-    }
+    // The player count is not something the menu sets any more - it is how many participants the
+    // CPU picks add up to. changeSelectedNumPlayersUp/Down are gone with the field they wrote.
+
+    // ============================  selection cycling ==============================
+    // Every one of these used to recurse until it found a valid entry, and used to publish the
+    // result straight into GameOptions. Now they step the selection model, which asks the
+    // compatibility service and walks the catalog a bounded number of times, and nothing outside
+    // the menu changes until start is pressed.
 
     public void changeSelectedPlayerUp()
     {
-        // if default index (first in list), go to end of list
-        if (playerSelectedIndex == 0)
-        {
-            playerSelectedIndex = playerSelectedData.Count - 1;
-        }
-        else
-        {
-            // if not first index, decrement
-            playerSelectedIndex--;
-        }
-        // check for fighting modes + if player is fighter
-        if (!playerSelectedData[playerSelectedIndex].IsFighter
-            && (modeSelectedData[modeSelectedIndex].EnemiesOnlyEnabled
-            || enemiesEnabled))
-        {
-            //Debug.Log("player not fighter : " + playerSelectedData[playerSelectedIndex].PlayerObjectName);
-            changeSelectedPlayerUp();
-        }
-        // check for shooting modes + if player is fighter
-        // check for shooting modes + if player is fighter
-        if (!playerSelectedData[playerSelectedIndex].IsShooter
-            && !modeSelectedData[modeSelectedIndex].EnemiesOnlyEnabled
-            && !enemiesEnabled)
-        {
-            //Debug.Log("player not shooter : " + playerSelectedData[playerSelectedIndex].PlayerObjectName);
-            changeSelectedPlayerUp();
-        }
-        GameOptions.characterObjectName = playerSelectedData[playerSelectedIndex].PlayerObjectName;
+        selection.CyclePlayer(playerSelectedData, Compatibility, -1);
     }
+
     public void changeSelectedPlayerDown()
     {
-        // if default index (first in list
-        if (playerSelectedIndex == playerSelectedData.Count - 1)
-        {
-            playerSelectedIndex = 0;
-        }
-        else
-        {
-            //if not first index, increment
-            playerSelectedIndex++;
-        }
-        // check for fighting modes + if player is fighter
-        if (!playerSelectedData[playerSelectedIndex].IsFighter
-            && (modeSelectedData[modeSelectedIndex].EnemiesOnlyEnabled
-            || enemiesEnabled))
-        {
-            //Debug.Log("player not fighter : " + playerSelectedData[playerSelectedIndex].PlayerObjectName);
-            changeSelectedPlayerDown();
-        }
-        // check for shooting modes + if player is fighter
-        if (!playerSelectedData[playerSelectedIndex].IsShooter
-            && !modeSelectedData[modeSelectedIndex].EnemiesOnlyEnabled
-            && !enemiesEnabled)
-        {
-            //Debug.Log("player not shooter : " + playerSelectedData[playerSelectedIndex].PlayerObjectName);
-            changeSelectedPlayerDown();
-        }
-        GameOptions.characterObjectName = playerSelectedData[playerSelectedIndex].PlayerObjectName;
+        selection.CyclePlayer(playerSelectedData, Compatibility, 1);
     }
 
     public void changeSelectedfriendUp()
     {
-        // if default index (first in list
-        if (friendSelectedIndex == 0)
-        {
-            friendSelectedIndex = friendSelectedData.Count - 1;
-        }
-        else
-        {
-            //if not first index, increment
-            friendSelectedIndex--;
-        }
-        GameOptions.cheerleaderObjectName = friendSelectedData[friendSelectedIndex].CheerleaderObjectName;
+        selection.CycleFriend(friendSelectedData.Count, -1);
     }
 
     public void changeSelectedfriendDown()
     {
-        // if default index (first in list
-        if (friendSelectedIndex == friendSelectedData.Count - 1)
-        {
-            friendSelectedIndex = 0;
-        }
-        else
-        {
-            //if not first index, increment
-            friendSelectedIndex++;
-        }
-        GameOptions.cheerleaderObjectName = friendSelectedData[friendSelectedIndex].CheerleaderObjectName;
+        selection.CycleFriend(friendSelectedData.Count, 1);
     }
 
     public void changeSelectedLevelUp()
     {
-        // if default index (first in list), go to end of list
-        if (levelSelectedIndex == 0)
-        {
-            levelSelectedIndex = levelSelectedData.Count - 1;
-        }
-        else
-        {
-            // if not first index, decrement
-            levelSelectedIndex--;
-        }
-        if (modeSelectedData[modeSelectedIndex].IsCageMatch && !levelSelectedData[levelSelectedIndex].IsCageMatchLevel)
-        {
-            changeSelectedLevelUp();
-        }
-
-        // if mode is shooting, level is not
-        if ((!modeSelectedData[modeSelectedIndex].EnemiesOnlyEnabled && !levelSelectedData[levelSelectedIndex].IsShootingLevel)
-            // mode has enemies, level isnt a fighting level
-            || (modeSelectedData[modeSelectedIndex].EnemiesOnlyEnabled && !levelSelectedData[levelSelectedIndex].IsFightingLevel)
-            // battle royal mode, level isnt battle royal level
-            || (modeSelectedData[modeSelectedIndex].IsBattleRoyal && !levelSelectedData[levelSelectedIndex].IsBattleRoyalLevel)
-            // not battle royal mode, level is battle royal
-            || (!modeSelectedData[modeSelectedIndex].IsBattleRoyal && levelSelectedData[levelSelectedIndex].IsBattleRoyalLevel))
-        //// mode is cage match, level is not cage match
-        //|| (modeSelectedData[modeSelectedIndex].IsCageMatch && !levelSelectedData[levelSelectedIndex].IsCageMatchLevel)
-        ////mode is not cage match, level is cage match
-        //|| (!modeSelectedData[modeSelectedIndex].IsCageMatch && levelSelectedData[levelSelectedIndex].IsCageMatchLevel))
-        {
-            changeSelectedLevelUp();
-        }
-
+        selection.CycleLevel(Compatibility, -1);
         initializeLevelDisplay();
         initializeModeDisplay();
     }
+
     public void changeSelectedLevelDown()
     {
-        // if default index (first in list
-        if (levelSelectedIndex == levelSelectedData.Count - 1)
-        {
-            levelSelectedIndex = 0;
-        }
-        else
-        {
-            //if not first index, increment
-            levelSelectedIndex++;
-        }
-        if ((modeSelectedData[modeSelectedIndex].IsCageMatch && !levelSelectedData[levelSelectedIndex].IsCageMatchLevel))
-        {
-            changeSelectedLevelDown();
-        }
-        // if mode is shooting, level is not
-        if ((!modeSelectedData[modeSelectedIndex].EnemiesOnlyEnabled && !levelSelectedData[levelSelectedIndex].IsShootingLevel)
-            // mode has enemies, level isnt a fighting level
-            || (modeSelectedData[modeSelectedIndex].EnemiesOnlyEnabled && !levelSelectedData[levelSelectedIndex].IsFightingLevel)
-            // battle royal mode, level isnt battle royal level
-            || (modeSelectedData[modeSelectedIndex].IsBattleRoyal && !levelSelectedData[levelSelectedIndex].IsBattleRoyalLevel)
-            // not battle royal mode, level is battle royal
-            || (!modeSelectedData[modeSelectedIndex].IsBattleRoyal && levelSelectedData[levelSelectedIndex].IsBattleRoyalLevel))
-        //// mode is cage match, level is not cage match
-        //|| (modeSelectedData[modeSelectedIndex].IsCageMatch && !levelSelectedData[levelSelectedIndex].IsCageMatchLevel)
-        ////mode is not cage match, level is cage match
-        //|| (!modeSelectedData[modeSelectedIndex].IsCageMatch && levelSelectedData[levelSelectedIndex].IsCageMatchLevel))
-        {
-            changeSelectedLevelDown();
-        }
-
-        GameOptions.levelSelected = levelSelectedData[levelSelectedIndex].LevelObjectName;
+        selection.CycleLevel(Compatibility, 1);
         initializeLevelDisplay();
         initializeModeDisplay();
-
     }
+
     public void changeSelectedModeUp()
     {
-        // if default index (first in list), go to end of list
-        if (modeSelectedIndex == 0)
-        {
-            modeSelectedIndex = modeSelectedData.Count - 1;
-        }
-        else
-        {
-            // if not first index, decrement
-            modeSelectedIndex--;
-        }
-        // mode is not battle royal, level is not
-        if (modeSelectedData[modeSelectedIndex].IsBattleRoyal
-            && !levelSelectedData[levelSelectedIndex].IsBattleRoyalLevel)
-        {
-            changeSelectedLevelUp();
-        }
-        if ((modeSelectedData[modeSelectedIndex].IsCageMatch && !levelSelectedData[levelSelectedIndex].IsCageMatchLevel))
-        {
-            changeSelectedLevelUp();
-        }
-        GameOptions.gameModeSelectedId = modeSelectedData[modeSelectedIndex].ModeId;
-        GameOptions.gameModeSelectedName = modeSelectedData[modeSelectedIndex].ModeDisplayName;
+        selection.CycleMode(Compatibility, -1);
         initializeModeDisplay();
         initializeLevelDisplay();
     }
 
     public void changeSelectedModeDown()
     {
-        // if default index (first in list
-        if (modeSelectedIndex == modeSelectedData.Count - 1)
-        {
-            modeSelectedIndex = 0;
-        }
-        else
-        {
-            //if not first index, increment
-            modeSelectedIndex++;
-        }
-        if (modeSelectedData[modeSelectedIndex].IsBattleRoyal
-            && !levelSelectedData[levelSelectedIndex].IsBattleRoyalLevel)
-        {
-            changeSelectedLevelDown();
-        }
-        if ((modeSelectedData[modeSelectedIndex].IsCageMatch && !levelSelectedData[levelSelectedIndex].IsCageMatchLevel))
-        {
-            changeSelectedLevelUp();
-        }
-        GameOptions.gameModeSelectedId = modeSelectedData[modeSelectedIndex].ModeId;
-        GameOptions.gameModeSelectedName = modeSelectedData[modeSelectedIndex].ModeDisplayName;
+        selection.CycleMode(Compatibility, 1);
         initializeModeDisplay();
         initializeLevelDisplay();
     }
@@ -2194,96 +1866,51 @@ public class StartManager : MonoBehaviour
             setCpuPlayer3();
         }
     }
-    public void setCpuPlayer(int cpuPlayerIndex)
-    {
-        StartMenuUiObjects.instance.column4_cpu1_image.sprite = cpuPlayerSelectedData[cpuPlayerIndex].PlayerPortrait;
-        StartMenuUiObjects.instance.column4_cpu1_name_text.text = cpuPlayerSelectedData[cpuPlayerIndex].PlayerDisplayName;
-        if (cpuPlayerSelectedData[GameOptions.cpu1SelectedIndex].PlayerId != 0)
-        {
-            StartMenuUiObjects.instance.column4_cpu_selected_stats_numbers_text.text =
-                    cpuPlayerSelectedData[cpuPlayerIndex].Accuracy3Pt.ToString("F0") + "\n"
-                    + cpuPlayerSelectedData[cpuPlayerIndex].Accuracy4Pt.ToString("F0") + "\n"
-                    + cpuPlayerSelectedData[cpuPlayerIndex].Accuracy7Pt.ToString("F0") + "\n"
-                    + cpuPlayerSelectedData[cpuPlayerIndex].Release.ToString("F0") + "\n"
-                    + cpuPlayerSelectedData[cpuPlayerIndex].Range.ToString("F0") + " ft\n"
-                    + cpuPlayerSelectedData[cpuPlayerIndex].calculateSpeedToPercent().ToString("F0") + "\n"
-                    + cpuPlayerSelectedData[cpuPlayerIndex].calculateJumpValueToPercent().ToString("F0") + "\n"
-                    + cpuPlayerSelectedData[cpuPlayerIndex].Luck.ToString("F0") + "\n"
-                    + cpuPlayerSelectedData[cpuPlayerIndex].Clutch.ToString("F0") + "\n"
-                    + cpuPlayerSelectedData[cpuPlayerIndex].Level.ToString("F0");
-        }
-    }
     public void setCpuPlayer1()
     {
-        StartMenuUiObjects.instance.column4_cpu1_image.sprite = cpuPlayerSelectedData[GameOptions.cpu1SelectedIndex].PlayerPortrait;
-        StartMenuUiObjects.instance.column4_cpu1_name_text.text = cpuPlayerSelectedData[GameOptions.cpu1SelectedIndex].PlayerDisplayName;
-        if (cpuPlayerSelectedData[GameOptions.cpu1SelectedIndex].PlayerId != 0)
-        {
-            StartMenuUiObjects.instance.column4_cpu_selected_stats_numbers_text.text =
-                    cpuPlayerSelectedData[GameOptions.cpu1SelectedIndex].Accuracy3Pt.ToString("F0") + "\n"
-                    + cpuPlayerSelectedData[GameOptions.cpu1SelectedIndex].Accuracy4Pt.ToString("F0") + "\n"
-                    + cpuPlayerSelectedData[GameOptions.cpu1SelectedIndex].Accuracy7Pt.ToString("F0") + "\n"
-                    + cpuPlayerSelectedData[GameOptions.cpu1SelectedIndex].Release.ToString("F0") + "\n"
-                    + cpuPlayerSelectedData[GameOptions.cpu1SelectedIndex].Range.ToString("F0") + " ft\n"
-                    + cpuPlayerSelectedData[GameOptions.cpu1SelectedIndex].calculateSpeedToPercent().ToString("F0") + "\n"
-                    + cpuPlayerSelectedData[GameOptions.cpu1SelectedIndex].calculateJumpValueToPercent().ToString("F0") + "\n"
-                    + cpuPlayerSelectedData[GameOptions.cpu1SelectedIndex].Luck.ToString("F0") + "\n"
-                    + cpuPlayerSelectedData[GameOptions.cpu1SelectedIndex].Clutch.ToString("F0") + "\n"
-                    + cpuPlayerSelectedData[GameOptions.cpu1SelectedIndex].Level.ToString("F0");
-        }
-        else
-        {
-            StartMenuUiObjects.instance.column4_cpu_selected_stats_numbers_text.text = "";
-        }
-        initializeNumPlayersDisplay();
+        setCpuPlayerDisplay(1, StartMenuUiObjects.instance.column4_cpu1_image, StartMenuUiObjects.instance.column4_cpu1_name_text);
     }
+
     public void setCpuPlayer2()
     {
-        StartMenuUiObjects.instance.column4_cpu2_image.sprite = cpuPlayerSelectedData[GameOptions.cpu2SelectedIndex].PlayerPortrait;
-        StartMenuUiObjects.instance.column4_cpu2_name_text.text = cpuPlayerSelectedData[GameOptions.cpu2SelectedIndex].PlayerDisplayName;
-        if (cpuPlayerSelectedData[GameOptions.cpu2SelectedIndex].PlayerId != 0)
-        {
-            StartMenuUiObjects.instance.column4_cpu_selected_stats_numbers_text.text =
-                cpuPlayerSelectedData[GameOptions.cpu2SelectedIndex].Accuracy3Pt.ToString("F0") + "\n"
-                + cpuPlayerSelectedData[GameOptions.cpu2SelectedIndex].Accuracy4Pt.ToString("F0") + "\n"
-                + cpuPlayerSelectedData[GameOptions.cpu2SelectedIndex].Accuracy7Pt.ToString("F0") + "\n"
-                + cpuPlayerSelectedData[GameOptions.cpu2SelectedIndex].Release.ToString("F0") + "\n"
-                + cpuPlayerSelectedData[GameOptions.cpu2SelectedIndex].Range.ToString("F0") + " ft\n"
-                + cpuPlayerSelectedData[GameOptions.cpu2SelectedIndex].calculateSpeedToPercent().ToString("F0") + "\n"
-                + cpuPlayerSelectedData[GameOptions.cpu2SelectedIndex].calculateJumpValueToPercent().ToString("F0") + "\n"
-                + cpuPlayerSelectedData[GameOptions.cpu2SelectedIndex].Luck.ToString("F0") + "\n"
-                + cpuPlayerSelectedData[GameOptions.cpu2SelectedIndex].Clutch.ToString("F0") + "\n"
-                + cpuPlayerSelectedData[GameOptions.cpu2SelectedIndex].Level.ToString("F0");
-        }
-        else
-        {
-            StartMenuUiObjects.instance.column4_cpu_selected_stats_numbers_text.text = "";
-        }
-        initializeNumPlayersDisplay();
+        setCpuPlayerDisplay(2, StartMenuUiObjects.instance.column4_cpu2_image, StartMenuUiObjects.instance.column4_cpu2_name_text);
     }
+
     public void setCpuPlayer3()
     {
-        StartMenuUiObjects.instance.column4_cpu3_image.sprite = cpuPlayerSelectedData[GameOptions.cpu3SelectedIndex].PlayerPortrait;
-        StartMenuUiObjects.instance.column4_cpu3_name_text.text = cpuPlayerSelectedData[GameOptions.cpu3SelectedIndex].PlayerDisplayName;
-        if (cpuPlayerSelectedData[GameOptions.cpu3SelectedIndex].PlayerId != 0)
-        {
-            StartMenuUiObjects.instance.column4_cpu_selected_stats_numbers_text.text =
-                cpuPlayerSelectedData[GameOptions.cpu3SelectedIndex].Accuracy3Pt.ToString("F0") + "\n"
-                + cpuPlayerSelectedData[GameOptions.cpu3SelectedIndex].Accuracy4Pt.ToString("F0") + "\n"
-                + cpuPlayerSelectedData[GameOptions.cpu3SelectedIndex].Accuracy7Pt.ToString("F0") + "\n"
-                + cpuPlayerSelectedData[GameOptions.cpu3SelectedIndex].Release.ToString("F0") + "\n"
-                + cpuPlayerSelectedData[GameOptions.cpu3SelectedIndex].Range.ToString("F0") + " ft\n"
-                + cpuPlayerSelectedData[GameOptions.cpu3SelectedIndex].calculateSpeedToPercent().ToString("F0") + "\n"
-                + cpuPlayerSelectedData[GameOptions.cpu3SelectedIndex].calculateJumpValueToPercent().ToString("F0") + "\n"
-                + cpuPlayerSelectedData[GameOptions.cpu3SelectedIndex].Luck.ToString("F0") + "\n"
-                + cpuPlayerSelectedData[GameOptions.cpu3SelectedIndex].Clutch.ToString("F0") + "\n"
-                + cpuPlayerSelectedData[GameOptions.cpu3SelectedIndex].Level.ToString("F0");
-        }
-        else
-        {
-            StartMenuUiObjects.instance.column4_cpu_selected_stats_numbers_text.text = "";
-        }
+        setCpuPlayerDisplay(3, StartMenuUiObjects.instance.column4_cpu3_image, StartMenuUiObjects.instance.column4_cpu3_name_text);
+    }
+
+    /// <summary>
+    /// Shows one CPU slot. The three slots used to be three near-identical copies of this, each
+    /// reading its own GameOptions index; they differ only in which slot and which widgets.
+    /// </summary>
+    private void setCpuPlayerDisplay(int cpuSlot, Image portrait, Text nameText)
+    {
+        CharacterProfile profile = cpuPlayerSelectedData[selection.GetCpuIndex(cpuSlot)];
+        portrait.sprite = profile.PlayerPortrait;
+        nameText.text = profile.PlayerDisplayName;
+
+        // Player id 0 is the "no CPU here" entry, which has no stats worth showing.
+        StartMenuUiObjects.instance.column4_cpu_selected_stats_numbers_text.text = profile.PlayerId != 0
+            ? getCharacterStatsText(profile)
+            : "";
+
         initializeNumPlayersDisplay();
+    }
+
+    private static string getCharacterStatsText(CharacterProfile profile)
+    {
+        return profile.Accuracy3Pt.ToString("F0") + "\n"
+            + profile.Accuracy4Pt.ToString("F0") + "\n"
+            + profile.Accuracy7Pt.ToString("F0") + "\n"
+            + profile.Release.ToString("F0") + "\n"
+            + profile.Range.ToString("F0") + " ft\n"
+            + profile.calculateSpeedToPercent().ToString("F0") + "\n"
+            + profile.calculateJumpValueToPercent().ToString("F0") + "\n"
+            + profile.Luck.ToString("F0") + "\n"
+            + profile.Clutch.ToString("F0") + "\n"
+            + profile.Level.ToString("F0");
     }
 
     // ============================  public var references  ==============================
