@@ -1,10 +1,54 @@
 # Game Options and Match System Overhaul Plan
 
-Status: Proposed architecture and migration plan  
+Status: Phases 0-9 implemented; phases 10-11 (deleting legacy fields) outstanding  
 Project: Level 5  
 Branch target: `dev`  
 Primary scope: `GameOptions`, `StartManager`, `StartScreenModeSelected`, `Modes`, `GameLevelManager`, `GameRules`, mode/level compatibility, roster configuration, and gameplay scene bootstrap  
 Last reviewed: 2026-08-08
+
+## Implementation status
+
+| Phase | State | Notes |
+| --- | --- | --- |
+| 0 - baseline and freeze | done | [`docs/game-options-inventory.md`](game-options-inventory.md); characterization matrix exported by `Level 5 > Match > Export Mode Characterization Matrix` |
+| 1 - typed identity and catalogs | done | `GameModeId`, `GameModeCatalog`, `LevelDefinitionCatalog`; `Modes` unchanged and asserted equal |
+| 2 - authored `GameModeDefinition` | done | ScriptableObject + `GameModeDefinitionFactory` seam + parity validator over the shipping prefab |
+| 3 - capabilities and compatibility | done | `ArenaCapability`, `GameModeCompatibility`; the recursive menu cycling is gone |
+| 4 - request and immutable configuration | done | `MatchRequest`, `MatchConfigurationBuilder`, `ResolvedMatchRules`, `MatchConfiguration` |
+| 5 - legacy bridge | done | `LegacyGameOptionsBridge`, one-way, with parity tests |
+| 6 - player roster | done | `PlayerRoster` / `PlayerSlot` / `PlayerControlType` |
+| 7 - `LevelRuntimeContext` | done | plus `MatchRuntime` for scenes entered without a launch |
+| 8 - decompose `GameLevelManager` | done | `PlayerRegistry`, `SpawnCoordinator`, `ArenaBootstrap`; the manager is a facade |
+| 9 - refocus `GameRules` | done | `MatchController` owns the lifecycle, `MatchHudPresenter` owns presentation, `MatchEndConditions` owns the "is it over?" rules, and `GameRules` reads the configuration rather than copying it |
+| 10 - remove legacy match fields | in progress | 36 gameplay scripts moved onto `MatchRuntime` and off the allowlist; 20 fields deleted (85 → 65). Four gameplay files remain, all on the boundary itself |
+| 11 - split remaining global state | not started | account, navigation and application metadata are separate work |
+
+Three behaviour changes were made deliberately rather than preserved:
+
+- an invalid combination refuses to launch with a stated reason instead of loading a scene (§6.3);
+- a mode needing seven point markers now requires an arena with a seven point line (§6.1). Every
+  authored arena currently has one, so this excludes nothing today - see the characterization
+  matrix;
+- **a scene with an incomplete HUD now still finishes and saves its match** (§11.3). `GameRules`
+  used one flag both to switch off the score display and to gate the durable end-of-match work,
+  while logging "Match results are still saved." They were not: a renamed HUD object meant the
+  match never ended, no score was written and no experience was applied. Presentation moved to
+  `MatchHudPresenter` and cannot gate any of that.
+
+One oddity was preserved rather than fixed, and is marked in the code: the basketball goal is hidden
+for a battle royal only in a scene entered without a launch, because the old condition also required
+that no mode had been selected.
+
+Two of the plan's proposed rule dimensions had to be flag sets rather than single values, because
+the parity validator found the shipping data using them that way and gameplay reading each flag
+separately:
+
+- `ShotRule` - the authored all point contest is also marked a three point and a four point contest;
+- `CombatMode` - the authored Cage Match is also marked a battle royal, which is why a cage match
+  needs a battle-royal arena today.
+
+A single value would have dropped those flags silently. Sections 5.2 and 4.2 assumed exclusivity
+that the data does not have.
 
 ## Executive Summary
 
