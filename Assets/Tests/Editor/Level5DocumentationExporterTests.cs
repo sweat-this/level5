@@ -74,10 +74,12 @@ public class Level5DocumentationExporterTests
         BoxCollider[] colliders = prefabChild.GetComponents<BoxCollider>();
         Assert.That(colliders.Length, Is.EqualTo(2));
 
+        string rootReference = InvokePrivate<string>("ObjectReference", prefab);
         string childReference = InvokePrivate<string>("ObjectReference", prefabChild);
         string firstColliderReference = InvokePrivate<string>("ObjectReference", colliders[0]);
         string secondColliderReference = InvokePrivate<string>("ObjectReference", colliders[1]);
 
+        Assert.That(rootReference, Is.EqualTo(prefabPath));
         Assert.That(
             childReference,
             Is.EqualTo("asset:" + prefabPath + "#Root[0]/Child[0]"));
