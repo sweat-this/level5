@@ -2,6 +2,7 @@
 using System;
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using Level5.Core.Match;
 
 public class cameraUpdater : MonoBehaviour
 {
@@ -72,7 +73,7 @@ public class cameraUpdater : MonoBehaviour
     void Start()
     {
         sniperCamera = false;
-        requiresWeatherSystem = GameOptions.levelRequiresWeather;
+        requiresWeatherSystem = MatchRuntime.LevelHasWeather;
 
         // get weather system object reference
         foreach (Transform t in gameObject.transform)
@@ -153,16 +154,16 @@ public class cameraUpdater : MonoBehaviour
         // * note change var to player distance because each camera is in a different spot
         if (Math.Abs(playerDistanceFromRimX) > 8 && !onGoalCameraEnabled
             && CameraManager.instance.CameraOnGoalAllowed
-            && !GameOptions.EnemiesOnlyEnabled
-            && !GameOptions.battleRoyalEnabled)
+            && !MatchRuntime.Rules.EnemiesOnly
+            && !MatchRuntime.Rules.IsBattleRoyal)
         {
             toggleCameraOnGoal();
         }
 
         if (Math.Abs(playerDistanceFromRimX) < 8 && onGoalCameraEnabled
             && CameraManager.instance.CameraOnGoalAllowed
-            && !GameOptions.EnemiesOnlyEnabled
-            && !GameOptions.battleRoyalEnabled)
+            && !MatchRuntime.Rules.EnemiesOnly
+            && !MatchRuntime.Rules.IsBattleRoyal)
         {
             toggleCameraOnGoal();
         }

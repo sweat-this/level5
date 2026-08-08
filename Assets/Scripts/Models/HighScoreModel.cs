@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 using Random = System.Random;
+using Level5.Core.Match;
 
 namespace Assets.Scripts.database
 {
@@ -72,22 +73,22 @@ namespace Assets.Scripts.database
         public HighScoreModel convertCampaignBasketBallStatsToModel(GameStats gameStats)
         {
             int trafficEnabled = 0;
-            if (GameOptions.trafficEnabled)
+            if (MatchRuntime.Rules.TrafficEnabled)
             {
                 trafficEnabled = 1;
             }
             int hardcoreEnabled = 0;
-            if (GameOptions.hardcoreModeEnabled)
+            if (MatchRuntime.Rules.Hardcore)
             {
                 hardcoreEnabled = 1;
             }
             int enemiesEnabled = 0;
-            if (GameOptions.enemiesEnabled)
+            if (MatchRuntime.Rules.EnemiesEnabled)
             {
                 enemiesEnabled = 1;
             }
             int sniperEnabled = 0;
-            if (GameOptions.sniperEnabled)
+            if (MatchRuntime.Rules.SniperEnabled)
             {
                 sniperEnabled = 1;
             }
@@ -95,16 +96,16 @@ namespace Assets.Scripts.database
             HighScoreModel model = new HighScoreModel();
 
             model.Scoreid = generateUniqueScoreID();
-            model.Modeid = GameOptions.gameModeSelectedId;
-            model.Characterid = GameOptions.characterId;
-            model.Character = GameOptions.characterDisplayName;
-            model.Levelid = GameOptions.levelId;
-            model.Level = GameOptions.levelDisplayName;
+            model.Modeid = MatchRuntime.RawModeId;
+            model.Characterid = MatchRuntime.PrimaryCharacterId;
+            model.Character = MatchRuntime.PrimaryCharacterDisplayName;
+            model.Levelid = MatchRuntime.LevelId;
+            model.Level = MatchRuntime.LevelDisplayName;
             model.Os = SystemInfo.operatingSystem;
             model.Version = Application.version;
             model.Date = DateTime.Now.ToString();
             model.Time = gameStats.TimePlayed;
-            model.Difficulty = GameOptions.difficultySelected;
+            model.Difficulty = MatchDifficulties.ToInt(MatchRuntime.Rules.Difficulty);
             model.TotalPoints = gameStats.TotalPoints;
             model.LongestShot = gameStats.LongestShotMade;
             model.TotalDistance = gameStats.TotalDistance;
@@ -132,35 +133,35 @@ namespace Assets.Scripts.database
             model.UserName = GameOptions.userName;
             model.Userid = GameOptions.userid;
             model.SniperEnabled = sniperEnabled;
-            if (!GameOptions.sniperEnabled)
+            if (!MatchRuntime.Rules.SniperEnabled)
             {
                 model.SniperMode = 0;
                 model.SniperModeName = "none";
             }
-            if (GameOptions.sniperEnabledBullet)
+            if (MatchRuntime.Rules.Sniper == Level5.Core.Match.SniperMode.Bullet)
             {
                 model.SniperMode = 1;
                 model.SniperModeName = "single bullet";
             }
-            if (GameOptions.sniperEnabledBulletAuto)
+            if (MatchRuntime.Rules.Sniper == Level5.Core.Match.SniperMode.MachineGun)
             {
                 model.SniperMode = 2;
                 model.SniperModeName = "machine gun ";
             }
-            if (GameOptions.sniperEnabledLaser)
+            if (MatchRuntime.Rules.Sniper == Level5.Core.Match.SniperMode.Laser)
             {
                 model.SniperMode = 3;
                 model.SniperModeName = "disintegration ray";
             }
             model.SniperShots = gameStats.SniperShots;
             model.Sniperhits = gameStats.SniperHits;
-            //Debug.Log("GameOptions.numPlayers : " + GameOptions.numPlayers);
+            //Debug.Log("MatchRuntime.ParticipantCount : " + MatchRuntime.ParticipantCount);
             //Debug.Log("isCpu : " + isCpu);
             //Debug.Log(" : " + characterProfile.PlayerDisplayName);
             //Debug.Log("pi[1]. : " + pi[1].characterProfile.PlayerDisplayName);
 
-            model.numPlayers = GameOptions.numPlayers;
-            model.Difficulty = GameOptions.difficultySelected;
+            model.numPlayers = MatchRuntime.ParticipantCount;
+            model.Difficulty = MatchDifficulties.ToInt(MatchRuntime.Rules.Difficulty);
             model.campaignWins = gameStats.campaignWins;
             model.campaignLosses = gameStats.campaignLosses;
             model.campaignTies = gameStats.campaignTies;
@@ -172,22 +173,22 @@ namespace Assets.Scripts.database
             PlayerIdentifier primaryPlayer = GetPrimaryPlayer(pi);
             GameStats primaryStats = primaryPlayer != null ? primaryPlayer.gameStats : null;
             int trafficEnabled = 0;
-            if (GameOptions.trafficEnabled)
+            if (MatchRuntime.Rules.TrafficEnabled)
             {
                 trafficEnabled = 1;
             }
             int hardcoreEnabled = 0;
-            if (GameOptions.hardcoreModeEnabled)
+            if (MatchRuntime.Rules.Hardcore)
             {
                 hardcoreEnabled = 1;
             }
             int enemiesEnabled = 0;
-            if (GameOptions.enemiesEnabled)
+            if (MatchRuntime.Rules.EnemiesEnabled)
             {
                 enemiesEnabled = 1;
             }
             int sniperEnabled = 0;
-            if (GameOptions.sniperEnabled)
+            if (MatchRuntime.Rules.SniperEnabled)
             {
                 sniperEnabled = 1;
             }
@@ -195,15 +196,15 @@ namespace Assets.Scripts.database
             HighScoreModel model = new HighScoreModel();
 
             model.Scoreid = generateUniqueScoreID();
-            model.Modeid = GameOptions.gameModeSelectedId;
-            model.Characterid = GameOptions.characterId;
-            model.Character = GameOptions.characterDisplayName;
-            model.Levelid = GameOptions.levelId;
-            model.Level = GameOptions.levelDisplayName;
+            model.Modeid = MatchRuntime.RawModeId;
+            model.Characterid = MatchRuntime.PrimaryCharacterId;
+            model.Character = MatchRuntime.PrimaryCharacterDisplayName;
+            model.Levelid = MatchRuntime.LevelId;
+            model.Level = MatchRuntime.LevelDisplayName;
             model.Os = SystemInfo.operatingSystem;
             model.Version = Application.version;
             model.Date = DateTime.Now.ToString();
-            model.Difficulty = GameOptions.difficultySelected;
+            model.Difficulty = MatchDifficulties.ToInt(MatchRuntime.Rules.Difficulty);
             if (primaryStats != null)
             {
                 model.Time = primaryStats.TimePlayed;
@@ -241,22 +242,22 @@ namespace Assets.Scripts.database
             model.UserName = GameOptions.userName;
             model.Userid = GameOptions.userid;
             model.SniperEnabled = sniperEnabled;
-            if (!GameOptions.sniperEnabled)
+            if (!MatchRuntime.Rules.SniperEnabled)
             {
                 model.SniperMode = 0;
                 model.SniperModeName = "none";
             }
-            if (GameOptions.sniperEnabledBullet)
+            if (MatchRuntime.Rules.Sniper == Level5.Core.Match.SniperMode.Bullet)
             {
                 model.SniperMode = 1;
                 model.SniperModeName = "single bullet";
             }
-            if (GameOptions.sniperEnabledBulletAuto)
+            if (MatchRuntime.Rules.Sniper == Level5.Core.Match.SniperMode.MachineGun)
             {
                 model.SniperMode = 2;
                 model.SniperModeName = "machine gun ";
             }
-            if (GameOptions.sniperEnabledLaser)
+            if (MatchRuntime.Rules.Sniper == Level5.Core.Match.SniperMode.Laser)
             {
                 model.SniperMode = 3;
                 model.SniperModeName = "disintegration ray";
@@ -266,7 +267,7 @@ namespace Assets.Scripts.database
                 model.SniperShots = primaryStats.SniperShots;
                 model.Sniperhits = primaryStats.SniperHits;
             }
-            //Debug.Log("GameOptions.numPlayers : " + GameOptions.numPlayers);
+            //Debug.Log("MatchRuntime.ParticipantCount : " + MatchRuntime.ParticipantCount);
             //Debug.Log("primaryPlayer.isCpu : " + primaryPlayer.isCpu);
             //Debug.Log("primaryPlayer : " + primaryPlayer.characterProfile.PlayerDisplayName);
             //Debug.Log("pi[1]. : " + pi[1].characterProfile.PlayerDisplayName);
@@ -284,8 +285,8 @@ namespace Assets.Scripts.database
                 model.p1IsCpu = 99;
             }
             //player2
-            if (GameOptions.numPlayers > 1
-                && GameOptions.gameModeSelectedId != Modes.Lockdown
+            if (MatchRuntime.ParticipantCount > 1
+                && MatchRuntime.RawModeId != Modes.Lockdown
                 && TryGetPlayer(pi, 1, out PlayerIdentifier secondPlacePlayer))
             {
                 model.p2TotalPoints = secondPlacePlayer.gameStats.TotalPoints;
@@ -299,7 +300,7 @@ namespace Assets.Scripts.database
                 model.p2IsCpu = 99;
             }
             //player 3
-            if (GameOptions.numPlayers > 2 && TryGetPlayer(pi, 2, out PlayerIdentifier thirdPlacePlayer))
+            if (MatchRuntime.ParticipantCount > 2 && TryGetPlayer(pi, 2, out PlayerIdentifier thirdPlacePlayer))
             {
                 model.p3TotalPoints = thirdPlacePlayer.gameStats.TotalPoints;
                 model.thirdPlace = thirdPlacePlayer.characterProfile.PlayerDisplayName;
@@ -312,7 +313,7 @@ namespace Assets.Scripts.database
                 model.p3IsCpu = 99;
             }
             //player 4
-            if (GameOptions.numPlayers > 3 && TryGetPlayer(pi, 3, out PlayerIdentifier fourthPlacePlayer))
+            if (MatchRuntime.ParticipantCount > 3 && TryGetPlayer(pi, 3, out PlayerIdentifier fourthPlacePlayer))
             {
                 model.p4TotalPoints = fourthPlacePlayer.gameStats.TotalPoints;
                 model.fourthPlace = fourthPlacePlayer.characterProfile.PlayerDisplayName;
@@ -324,8 +325,8 @@ namespace Assets.Scripts.database
                 model.fourthPlace = "";
                 model.p4IsCpu = 99;
             }
-            model.numPlayers = GameOptions.numPlayers;
-            model.Difficulty = GameOptions.difficultySelected;
+            model.numPlayers = MatchRuntime.ParticipantCount;
+            model.Difficulty = MatchDifficulties.ToInt(MatchRuntime.Rules.Difficulty);
 
             return model;
         }

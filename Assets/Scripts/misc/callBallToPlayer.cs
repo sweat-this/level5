@@ -1,3 +1,4 @@
+using Level5.Core.Match;
 ﻿using UnityEngine;
 
 public class CallBallToPlayer : MonoBehaviour
@@ -20,10 +21,10 @@ public class CallBallToPlayer : MonoBehaviour
         Locked = false;
         pullSpeed = 2.3f;
 
-        if (GameOptions.hardcoreModeEnabled && GameOptions.EnemiesOnlyEnabled)
+        if (MatchRuntime.Rules.Hardcore && MatchRuntime.Rules.EnemiesOnly)
         {
             CallEnabled = false;
-            if (GameOptions.gameModeThreePointContest || GameOptions.gameModeFourPointContest || GameOptions.gameModeSevenPointContest || GameOptions.gameModeAllPointContest)
+            if (MatchRuntime.Rules.IsThreePointContest || MatchRuntime.Rules.IsFourPointContest || MatchRuntime.Rules.IsSevenPointContest || MatchRuntime.Rules.IsAllPointContest)
             {
                 CallEnabled = true;
             }
@@ -33,7 +34,7 @@ public class CallBallToPlayer : MonoBehaviour
 
     public void pullBallToPlayer(GameObject basketBall)
     {
-        //if (!GameOptions.hardcoreModeEnabled)
+        //if (!MatchRuntime.Rules.Hardcore)
         //{
             Rigidbody basketballRigidBody = basketBall.GetComponent<Rigidbody>();
 
@@ -44,7 +45,7 @@ public class CallBallToPlayer : MonoBehaviour
     }
     public void pullBallToPlayerAuto(GameObject basketBallAuto)
     {
-        //if (!GameOptions.hardcoreModeEnabled)
+        //if (!MatchRuntime.Rules.Hardcore)
         //{
             Rigidbody basketballRigidBody = basketBallAuto.GetComponent<Rigidbody>();
 

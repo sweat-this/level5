@@ -2,6 +2,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
+using Level5.Core.Match;
 
 public class PlayerAttackQueue : MonoBehaviour
 {
@@ -56,17 +57,17 @@ public class PlayerAttackQueue : MonoBehaviour
 
     private int GetMaxEnemiesQueued()
     {
-        if (GameOptions.battleRoyalEnabled)
+        if (MatchRuntime.Rules.IsBattleRoyal)
         {
             return 20;
         }
 
-        if (GameOptions.EnemiesOnlyEnabled && GameOptions.hardcoreModeEnabled)
+        if (MatchRuntime.Rules.EnemiesOnly && MatchRuntime.Rules.Hardcore)
         {
             return 8;
         }
 
-        if (!GameOptions.EnemiesOnlyEnabled && GameOptions.hardcoreModeEnabled)
+        if (!MatchRuntime.Rules.EnemiesOnly && MatchRuntime.Rules.Hardcore)
         {
             return 6;
         }
@@ -269,7 +270,7 @@ public class PlayerAttackQueue : MonoBehaviour
         PlayerAttackPosition bestSlot = null;
         int bestOccupancy = int.MaxValue;
         float bestDistance = float.MaxValue;
-        bool allowSharedSlots = maxEnemiesQueued > attackPositions.Length || GameOptions.battleRoyalEnabled;
+        bool allowSharedSlots = maxEnemiesQueued > attackPositions.Length || MatchRuntime.Rules.IsBattleRoyal;
 
         foreach (GameObject attackPositionObject in attackPositions)
         {

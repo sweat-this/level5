@@ -1,5 +1,6 @@
 ﻿using System.Collections;
 using UnityEngine;
+using Level5.Core.Match;
 
 public class timeOfDay : MonoBehaviour
 {
@@ -49,7 +50,7 @@ public class timeOfDay : MonoBehaviour
          * */
 
         // if level doesnt require this object, disable it
-        if (!GameOptions.levelRequiresTimeOfDay)
+        if (!MatchRuntime.LevelRequiresTimeOfDay)
         {
             gameObject.SetActive(false);
         }

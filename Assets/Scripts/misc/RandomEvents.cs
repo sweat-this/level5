@@ -2,6 +2,7 @@ using Assets.Scripts.Utility;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using Level5.Core.Match;
 
 public class RandomEvents : MonoBehaviour
 {
@@ -31,7 +32,7 @@ public class RandomEvents : MonoBehaviour
     private void Update()
     {
         if (Time.time > invokeEventTime
-            && (GameOptions.enemiesEnabled || GameOptions.EnemiesOnlyEnabled || GameOptions.battleRoyalEnabled))
+            && (MatchRuntime.Rules.EnemiesEnabled || MatchRuntime.Rules.EnemiesOnly || MatchRuntime.Rules.IsBattleRoyal))
         {
             invokeGodOfThunder();
             setNextEventTime();

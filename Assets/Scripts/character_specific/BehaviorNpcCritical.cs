@@ -1,6 +1,7 @@
 ﻿using System.Collections;
 using UnityEngine;
 using Assets.Scripts.Utility;
+using Level5.Core.Match;
 
 public class BehaviorNpcCritical : MonoBehaviour
 {
@@ -26,7 +27,7 @@ public class BehaviorNpcCritical : MonoBehaviour
         animOnCamera = SceneObjects.Find<Animator>("camera_flash", this);
         //npcName = gameObject.transform.root.name;
         spriteObject = transform.gameObject;
-        if (GameOptions.customCamera)
+        if (MatchRuntime.CustomCamera)
         {
             spriteObject.transform.rotation = Quaternion.Euler(0, 0, 0);
         }

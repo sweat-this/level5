@@ -8,6 +8,7 @@ using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
+using Level5.Core.Match;
 
 public class Pause : MonoBehaviour
 {
@@ -88,7 +89,7 @@ public class Pause : MonoBehaviour
         progressionService = new ProgressionService();
         freePlayProgressionResultId = MatchSession.EnsureCurrentMatch();
 #if !UNITY_ANDROID
-        if (!GameOptions.battleRoyalEnabled && !GameOptions.cageMatchEnabled)
+        if (!MatchRuntime.Rules.IsBattleRoyal && !MatchRuntime.Rules.IsCageMatch)
         {
             startOnPause = true;
             paused = true;
@@ -186,8 +187,8 @@ public class Pause : MonoBehaviour
             paused = TogglePause();
         }
         if(startOnPause && GameLevelManager.instance.Controls.Player.submit.triggered)
-            //&& !GameOptions.battleRoyalEnabled 
-            //&& !GameOptions.cageMatchEnabled)
+            //&& !MatchRuntime.Rules.IsBattleRoyal 
+            //&& !MatchRuntime.Rules.IsCageMatch)
         {
             StartGame();
         }
@@ -216,7 +217,7 @@ public class Pause : MonoBehaviour
             // reload scene
             if (currentHighlightedButton.name.Equals(loadSceneButton.name)
                 && PlayerControlsProvider.MenuSubmitTriggered
-                && ( GameOptions.gameModeSelectedId != 26 ))
+                && ( MatchRuntime.RawModeId != 26 ))
             {
                 reloadScene();
             }
@@ -275,7 +276,7 @@ public class Pause : MonoBehaviour
     {
         // update all time stats
         if (DBConnector.instance != null &&
-           (GameOptions.gameModeSelectedName.ToLower().Contains("free") || GameOptions.gameModeSelectedId == 99))
+           (MatchRuntime.ModeDisplayName.ToLower().Contains("free") || MatchRuntime.RawModeId == 99))
         {
             updateFreePlayStats();
         }
@@ -287,7 +288,7 @@ public class Pause : MonoBehaviour
     {
         // update all time stats
         if (DBConnector.instance != null &&
-           (GameOptions.gameModeSelectedName.ToLower().Contains("free") || GameOptions.gameModeSelectedId == 99))
+           (MatchRuntime.ModeDisplayName.ToLower().Contains("free") || MatchRuntime.RawModeId == 99))
         {
             updateFreePlayStats();
         }
@@ -308,7 +309,7 @@ public class Pause : MonoBehaviour
     {
         // update all time stats
         if (DBConnector.instance != null
-            && (GameOptions.gameModeSelectedName.ToLower().Contains("free") || GameOptions.gameModeSelectedId == 99))
+            && (MatchRuntime.ModeDisplayName.ToLower().Contains("free") || MatchRuntime.RawModeId == 99))
         {
             updateFreePlayStats();
             //make sure new high scores (if any) are loaded
@@ -364,7 +365,7 @@ public class Pause : MonoBehaviour
 
         MatchProgressionResult result = new MatchProgressionResult(
             freePlayProgressionResultId,
-            GameOptions.characterId,
+            MatchRuntime.PrimaryCharacterId,
             BasketBall.instance.GameStats.ExperienceGained);
         progressionService.ApplyMatchResult(result);
     }

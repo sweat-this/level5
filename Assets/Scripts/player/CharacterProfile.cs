@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
+using Level5.Core.Match;
 
 public class CharacterProfile : MonoBehaviour
 {
@@ -57,7 +58,7 @@ public class CharacterProfile : MonoBehaviour
 
     void Start()
     {
-        //if (GameOptions.gameModeHasBeenSelected && !isCpu)
+        //if (MatchRuntime.HasConfiguration && !isCpu)
         //{
         //    //GameOptions.gameModeHasBeenSelected = false;
         //    intializeShooterStatsFromProfile();
@@ -68,7 +69,7 @@ public class CharacterProfile : MonoBehaviour
         {
             intializeCpuShooterStats();
         }
-        if (GameOptions.arcadeModeEnabled || GameOptions.difficultySelected == 0 )
+        if (MatchRuntime.Rules.ArcadeMode || MatchDifficulties.ToInt(MatchRuntime.Rules.Difficulty) == 0 )
         {
             Accuracy2Pt = 100;
             Accuracy3Pt = 100;
@@ -93,7 +94,7 @@ public class CharacterProfile : MonoBehaviour
     public void intializeShooterStatsFromProfile()
     {
         CharacterProfile temp = LoadedData.instance != null
-            ? LoadedData.instance.getSelectedCharacterProfile(GameOptions.characterId)
+            ? LoadedData.instance.getSelectedCharacterProfile(MatchRuntime.PrimaryCharacterId)
             : null;
         if (temp == null)
         {
@@ -117,36 +118,36 @@ public class CharacterProfile : MonoBehaviour
         shootAngle = temp.shootAngle;
 
         Accuracy2Pt = temp.accuracy2pt;
-        Accuracy3Pt = temp.accuracy3pt + GameOptions.friendBonus3Accuracy;
-        Accuracy4Pt = temp.accuracy4pt + GameOptions.friendBonus4Accuracy;
-        Accuracy7Pt = temp.accuracy7pt + GameOptions.friendBonus7Accuracy;
+        Accuracy3Pt = temp.accuracy3pt + MatchRuntime.Cheerleader.BonusThreeAccuracy;
+        Accuracy4Pt = temp.accuracy4pt + MatchRuntime.Cheerleader.BonusFourAccuracy;
+        Accuracy7Pt = temp.accuracy7pt + MatchRuntime.Cheerleader.BonusSevenAccuracy;
 
-        Range = temp.range + GameOptions.friendBonusRange;
-        Release = temp.release + GameOptions.friendBonusRelease;
+        Range = temp.range + MatchRuntime.Cheerleader.BonusRange;
+        Release = temp.release + MatchRuntime.Cheerleader.BonusRelease;
 
-        clutch = temp.clutch + GameOptions.friendBonusClutch;
+        clutch = temp.clutch + MatchRuntime.Cheerleader.BonusClutch;
 
         pointsAvailable = temp.PointsAvailable;
         pointsUsed = temp.PointsUsed;
 
         // if 3/4/All point contest, disable Luck/citical %
-        if (GameOptions.gameModeThreePointContest
-            || GameOptions.gameModeFourPointContest
-            || GameOptions.gameModeSevenPointContest
-            || GameOptions.gameModeAllPointContest)
+        if (MatchRuntime.Rules.IsThreePointContest
+            || MatchRuntime.Rules.IsFourPointContest
+            || MatchRuntime.Rules.IsSevenPointContest
+            || MatchRuntime.Rules.IsAllPointContest)
         {
             Luck = 0;
             clutch = 0;
         }
         else
         {
-            Luck = temp.Luck + GameOptions.friendBonusLuck;
+            Luck = temp.Luck + MatchRuntime.Cheerleader.BonusLuck;
         }
     }
     public void intializeCpuShooterStats()
     {
         // in hardcore if CPU level less than player level, set equal to player level+10
-        if (GameOptions.hardcoreModeEnabled)
+        if (MatchRuntime.Rules.Hardcore)
         {
             int playerLevel = GameLevelManager.instance.players[0].characterProfile.level;
             if(playerLevel > level)
@@ -172,10 +173,10 @@ public class CharacterProfile : MonoBehaviour
         clutch = level <= 100 ? level : 100;
 
         // if 3/4/All point contest, disable Luck/citical %
-        if (GameOptions.gameModeThreePointContest
-            || GameOptions.gameModeFourPointContest
-            || GameOptions.gameModeSevenPointContest
-            || GameOptions.gameModeAllPointContest)
+        if (MatchRuntime.Rules.IsThreePointContest
+            || MatchRuntime.Rules.IsFourPointContest
+            || MatchRuntime.Rules.IsSevenPointContest
+            || MatchRuntime.Rules.IsAllPointContest)
         {
             Luck = 0;
             clutch = 0;

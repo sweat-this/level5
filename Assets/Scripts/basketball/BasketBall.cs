@@ -5,6 +5,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using Assets.Scripts.Utility;
 using Random = UnityEngine.Random;
+using Level5.Core.Match;
 
 public class BasketBall : MonoBehaviour
 {
@@ -104,7 +105,7 @@ public class BasketBall : MonoBehaviour
         InvokeRepeating("CheckIsBallFacingGoal", 0, 0.5f);
         InvokeRepeating("displayUiStats", 0, 0.5f);
 
-        if (GameOptions.EnemiesOnlyEnabled || GameOptions.battleRoyalEnabled)//|| GameOptions.gameModeHasBeenSelected)
+        if (MatchRuntime.Rules.EnemiesOnly || MatchRuntime.Rules.IsBattleRoyal)//|| MatchRuntime.HasConfiguration)
         {
             transform.position = new Vector3(transform.position.x, transform.position.y + 20, transform.position.z);
             rigidbody.constraints = RigidbodyConstraints.FreezeAll;
@@ -118,7 +119,7 @@ public class BasketBall : MonoBehaviour
     private void Update()
     {
         // get speed for basketball animation
-        if (!GameOptions.EnemiesOnlyEnabled)
+        if (!MatchRuntime.Rules.EnemiesOnly)
         {
             if (rigidbody.linearVelocity.magnitude > maxBasketballSpeed && !basketBallState.InAir)
             {
@@ -313,7 +314,7 @@ public class BasketBall : MonoBehaviour
 
             if (basketBallState.PlayerOnMarkerOnShoot
                 && GameRules.instance.BasketBallShotMarkersList[basketBallState.OnShootShotMarkerId].ShotAttempt == 5
-                && (GameOptions.gameModeThreePointContest || GameOptions.gameModeFourPointContest || GameOptions.gameModeSevenPointContest))
+                && (MatchRuntime.Rules.IsThreePointContest || MatchRuntime.Rules.IsFourPointContest || MatchRuntime.Rules.IsSevenPointContest))
             {
                 GameStats.MoneyBallAttempts++;
             }

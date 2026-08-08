@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using Level5.Core.Match;
 
 public class PlayerIdentifier : MonoBehaviour
 {
@@ -38,7 +39,7 @@ public class PlayerIdentifier : MonoBehaviour
         this.player = player;
         playerController = player.GetComponent<PlayerController>();
         characterProfile = player.GetComponent<CharacterProfile>();
-        if(GameOptions.gameModeHasBeenSelected) { 
+        if(MatchRuntime.HasConfiguration) { 
             characterProfile.intializeShooterStatsFromProfile();
         }
     }

@@ -3,6 +3,7 @@ using System;
 using System.Collections;
 using UnityEngine;
 using UnityEngine.UI;
+using Level5.Core.Match;
 
 public class PlayerController : MonoBehaviour
 {
@@ -180,7 +181,7 @@ public class PlayerController : MonoBehaviour
             return;
         }
 
-        inputPlayerId = GameOptions.GetHumanPlayerInputSlot(playerId);
+        inputPlayerId = MatchRuntime.LocalInputSlotFor(playerId);
         if (inputPlayerId < 0)
         {
             Debug.LogError("PlayerController could not resolve a human input slot.", this);
@@ -243,7 +244,7 @@ public class PlayerController : MonoBehaviour
         screenXRange = Screen.width / 10;
         screenYRange = Screen.height / 10;
 
-        if (GameOptions.customCamera)
+        if (MatchRuntime.CustomCamera)
         {
             spriteObject.transform.rotation = Quaternion.Euler(0, 0, 0);
             if (damageDisplayObject != null)
@@ -252,7 +253,7 @@ public class PlayerController : MonoBehaviour
             }
         }
         //GameOptions.sniperEnabled = true; // test flag;
-        if (GameOptions.enemiesEnabled || GameOptions.EnemiesOnlyEnabled || GameOptions.sniperEnabled)
+        if (MatchRuntime.Rules.EnemiesEnabled || MatchRuntime.Rules.EnemiesOnly || MatchRuntime.Rules.SniperEnabled)
         {
             if (GetComponent<PlayerSwapAttack>() != null)
             {
@@ -269,7 +270,7 @@ public class PlayerController : MonoBehaviour
         }
 
         // custom knockdown time for sniper mode
-        if (GameOptions.sniperEnabled)
+        if (MatchRuntime.Rules.SniperEnabled)
         {
             _knockDownTime = 0.75f;
         }
@@ -461,7 +462,7 @@ public class PlayerController : MonoBehaviour
         }
 
         Vector2 touchJumpOrShootPosition;
-        if (reader.ConsumeTouchJumpOrShoot(out touchJumpOrShootPosition) && !GameOptions.EnemiesOnlyEnabled)
+        if (reader.ConsumeTouchJumpOrShoot(out touchJumpOrShootPosition) && !MatchRuntime.Rules.EnemiesOnly)
         {
             TouchControlJumpOrShoot(touchJumpOrShootPosition);
         }
@@ -472,7 +473,7 @@ public class PlayerController : MonoBehaviour
             && hasBasketball
             && Grounded
             && !KnockedDown
-            && !GameOptions.EnemiesOnlyEnabled
+            && !MatchRuntime.Rules.EnemiesOnly
             && !InAir)
         {
             if (PlayerDunk != null
@@ -491,7 +492,7 @@ public class PlayerController : MonoBehaviour
         if (InAir
             && hasBasketball
             && reader.ShootPressed
-            && !GameOptions.EnemiesOnlyEnabled
+            && !MatchRuntime.Rules.EnemiesOnly
             && currentState != inAirDunkState)
         {
             //Debug.Log("shoot");
@@ -522,7 +523,7 @@ public class PlayerController : MonoBehaviour
             //&& controls.Player.jump.ReadValue<float>() == 1
             && !hasBasketball
             && canAttack
-            && GameOptions.enemiesEnabled
+            && MatchRuntime.Rules.EnemiesEnabled
             && currentState != attackState
             && currentState != specialState)
         {
@@ -537,7 +538,7 @@ public class PlayerController : MonoBehaviour
             //&& controls.Player.run.ReadValue<float>() == 1
             //&& !hasBasketball
             && canBlock
-            && (GameOptions.EnemiesOnlyEnabled || GameOptions.enemiesEnabled || GameOptions.battleRoyalEnabled)
+            && (MatchRuntime.Rules.EnemiesOnly || MatchRuntime.Rules.EnemiesEnabled || MatchRuntime.Rules.IsBattleRoyal)
             && PlayerHealth.Block > 0)
         {
             if (playerCanBlock)
@@ -563,7 +564,7 @@ public class PlayerController : MonoBehaviour
             && !InAir
             && Grounded
             && !KnockedDown
-            && GameOptions.enemiesEnabled
+            && MatchRuntime.Rules.EnemiesEnabled
             && PlayerHealth.Special == PlayerHealth.MaxSpecial)
         {
             PlayerSpecial();
@@ -581,7 +582,7 @@ public class PlayerController : MonoBehaviour
 
     private void checkIdleTimeForSniper()
     {
-        if (!GameOptions.sniperEnabled || SniperManager.instance == null)
+        if (!MatchRuntime.Rules.SniperEnabled || SniperManager.instance == null)
         {
             idleStartTime = Time.time;
             idleTime = 0;
@@ -740,7 +741,7 @@ public class PlayerController : MonoBehaviour
         // AUD-048: this was `!battleRoyal || !enemiesOnly`, which is only false when BOTH are on -
         // so the shot meter still started in a plain battle royal and in a plain enemies-only run,
         // the two modes it exists to exclude. The other shooting gates in Update use `&&`.
-        if (!GameOptions.battleRoyalEnabled && !GameOptions.EnemiesOnlyEnabled)
+        if (!MatchRuntime.Rules.IsBattleRoyal && !MatchRuntime.Rules.EnemiesOnly)
         {
             Shotmeter.MeterStarted = true;
             Shotmeter.MeterStartTime = Time.time;
@@ -801,7 +802,7 @@ public class PlayerController : MonoBehaviour
         transform.localScale = thisScale;
 
         if (damageDisplayObject != null
-            && (GameOptions.enemiesEnabled || GameOptions.EnemiesOnlyEnabled || GameOptions.sniperEnabled))
+            && (MatchRuntime.Rules.EnemiesEnabled || MatchRuntime.Rules.EnemiesOnly || MatchRuntime.Rules.SniperEnabled))
         {
             Vector3 damageScale = damageDisplayObject.transform.localScale;
             damageScale.x *= -1;

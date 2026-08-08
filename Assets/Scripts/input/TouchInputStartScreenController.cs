@@ -380,7 +380,7 @@ public class TouchInputStartScreenController : MonoBehaviour
         }
         if (prevSelectedGameObject.name.Equals(StartManager.difficultySelectOptionName))
         {
-            StartManager.instance.changeSelectedDifficultyOption(GameOptions.difficultySelected);
+            StartManager.instance.changeSelectedDifficultyOption(StartManager.instance.difficultySelected);
             StartManager.instance.initializeDifficultyOptionDisplay();
         }
         if (prevSelectedGameObject.name.Equals(StartManager.ObstacleSelectOptionName))
@@ -461,7 +461,7 @@ public class TouchInputStartScreenController : MonoBehaviour
         }
         if (prevSelectedGameObject.name.Equals(StartManager.difficultySelectOptionName))
         {
-            StartManager.instance.changeSelectedDifficultyOption(GameOptions.difficultySelected);
+            StartManager.instance.changeSelectedDifficultyOption(StartManager.instance.difficultySelected);
             StartManager.instance.initializeDifficultyOptionDisplay();
         }
         if (prevSelectedGameObject.name.Equals(StartManager.ObstacleSelectOptionName))

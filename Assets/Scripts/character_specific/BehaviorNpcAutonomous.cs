@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.AI;
+using Level5.Core.Match;
 
 public class BehaviorNpcAutonomous : MonoBehaviour
 {
@@ -61,7 +62,7 @@ public class BehaviorNpcAutonomous : MonoBehaviour
     void Start()
     {
         spriteObject = transform.GetComponentInChildren<SpriteRenderer>().gameObject;
-        if (GameOptions.customCamera)
+        if (MatchRuntime.CustomCamera)
         {
             spriteObject.transform.rotation = Quaternion.Euler(0, 0, 0);
         }

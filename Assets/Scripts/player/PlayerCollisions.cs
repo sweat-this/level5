@@ -1,6 +1,7 @@
 ﻿
 using System.Collections;
 using UnityEngine;
+using Level5.Core.Match;
 
 public class PlayerCollisions : MonoBehaviour
 {
@@ -48,9 +49,9 @@ public class PlayerCollisions : MonoBehaviour
         }
 
         if (gameObject.CompareTag("playerHitbox")
-            && !GameOptions.battleRoyalEnabled
-            && !GameOptions.cageMatchEnabled
-            && !GameOptions.EnemiesOnlyEnabled
+            && !MatchRuntime.Rules.IsBattleRoyal
+            && !MatchRuntime.Rules.IsCageMatch
+            && !MatchRuntime.Rules.EnemiesOnly
             && playerController.InAir
             && playerController.currentState != playerController.dunkState
             && (other.name.Equals("dunk_position_left") || other.name.Equals("dunk_position_right")))
@@ -70,13 +71,13 @@ public class PlayerCollisions : MonoBehaviour
         && (other.CompareTag("enemyAttackBox") || other.CompareTag("obstacleAttackBox") || other.CompareTag("playerAttackBox"))
         && !playerController.KnockedDown
         && !playerController.TakeDamage
-        && (GameOptions.enemiesEnabled
-        || GameOptions.trafficEnabled
-        || GameOptions.obstaclesEnabled
+        && (MatchRuntime.Rules.EnemiesEnabled
+        || MatchRuntime.Rules.TrafficEnabled
+        || MatchRuntime.Rules.ObstaclesEnabled
         || other.transform.root.name.Contains("snake")
-        || GameOptions.sniperEnabled
-        || GameOptions.sniperEnabledBullet
-        || GameOptions.sniperEnabledLaser
+        || MatchRuntime.Rules.SniperEnabled
+        || MatchRuntime.Rules.Sniper == SniperMode.Bullet
+        || MatchRuntime.Rules.Sniper == SniperMode.Laser
         || other.transform.root.name.Contains("projectile_bullet_instantkill_enemy"))
         // roll for evade attack chance
         && !rollForPlayerEvadeAttackChance(playerController.CharacterProfile.Luck)

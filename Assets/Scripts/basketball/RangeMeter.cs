@@ -1,5 +1,6 @@
 ﻿using UnityEngine;
 using UnityEngine.UI;
+using Level5.Core.Match;
 
 public class RangeMeter : MonoBehaviour
 {
@@ -37,8 +38,8 @@ public class RangeMeter : MonoBehaviour
 
         InvokeRepeating("setSliderValue", 0, 0.1f);
 
-        if (!playerIdentifier.isCpu && ( GameOptions.hardcoreModeEnabled || GameOptions.EnemiesOnlyEnabled || GameOptions.battleRoyalEnabled
-            || !GameOptions.gameModeHasBeenSelected || GameOptions.gameModeAllowsCpuShooters))
+        if (!playerIdentifier.isCpu && ( MatchRuntime.Rules.Hardcore || MatchRuntime.Rules.EnemiesOnly || MatchRuntime.Rules.IsBattleRoyal
+            || !MatchRuntime.HasConfiguration || MatchRuntime.Rules.AllowsCpuShooters))
         {
             gameObject.SetActive(false);
         }

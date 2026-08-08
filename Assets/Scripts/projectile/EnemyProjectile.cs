@@ -1,4 +1,5 @@
 using UnityEngine;
+using Level5.Core.Match;
 
 public class EnemyProjectile : MonoBehaviour
 {
@@ -231,7 +232,7 @@ public class EnemyProjectile : MonoBehaviour
 
         if (sniperProjectile
             && impactProjectile
-            && !GameOptions.sniperEnabledLaser
+            && MatchRuntime.Rules.Sniper != SniperMode.Laser
             && (other.gameObject.CompareTag("enemyHitbox")
             || other.gameObject.CompareTag("playerHitbox")))
         {
