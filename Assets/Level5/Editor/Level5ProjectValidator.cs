@@ -329,7 +329,13 @@ public sealed class Level5ProjectValidator : IPreprocessBuildWithReport
 
                 if (SceneContainsComponent<GameRules>(scene))
                 {
-                    AddMissingObjectErrors(errors, buildScene.path, "GameRules", GameRules.RequiredHudObjectNames, objectNames);
+                    AddMissingObjectErrors(errors, buildScene.path, "GameRules", GameRules.RequiredSceneObjectNames, objectNames);
+                    AddMissingObjectErrors(
+                        errors,
+                        buildScene.path,
+                        "MatchHudPresenter",
+                        MatchHudPresenter.RequiredHudObjectNames,
+                        objectNames);
                 }
 
                 if (SceneContainsComponent<Pause>(scene))

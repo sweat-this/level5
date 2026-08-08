@@ -354,7 +354,8 @@ public class Level5CombatMathTests
     [Test]
     public void RequiredSceneObjectNamesAreNonEmptyAndUnique()
     {
-        AssertNamesAreUsable(GameRules.RequiredHudObjectNames, "GameRules.RequiredHudObjectNames");
+        AssertNamesAreUsable(GameRules.RequiredSceneObjectNames, "GameRules.RequiredSceneObjectNames");
+        AssertNamesAreUsable(MatchHudPresenter.RequiredHudObjectNames, "MatchHudPresenter.RequiredHudObjectNames");
         AssertNamesAreUsable(Pause.RequiredPauseObjectNames, "Pause.RequiredPauseObjectNames");
         AssertNamesAreUsable(
             ProgressionManager.RequiredProgressionObjectNames,
