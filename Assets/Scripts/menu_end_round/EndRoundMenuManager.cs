@@ -1,5 +1,6 @@
 using Assets.Scripts.database;
 using Assets.Scripts.restapi;
+using Level5.Core.Match;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -298,10 +299,30 @@ public class EndRoundMenuManager : MonoBehaviour
         SceneManager.LoadScene(nextLevelName);
     }
 
+    /// <summary>
+    /// Points the match at the next campaign arena.
+    ///
+    /// This used to only write the level globals, which was enough when everything read them. It is
+    /// not any more: gameplay reads the active configuration, so a round advance that changed only
+    /// the globals would have started round two in round one's arena. The configuration moves too,
+    /// and the bridge pushes the same values out for whatever still reads them.
+    /// </summary>
     private void ApplyLevelSelection(int levelIndex)
     {
         LevelSelected level = levelsList[levelIndex];
         GameOptions.levelSelectedIndex = levelIndex;
+
+        MatchConfiguration nextRound = ActiveMatch.ContinueInLevel(LevelDefinitionFactory.Create(level));
+        if (nextRound != null)
+        {
+            ActiveMatch.Begin(nextRound);
+            LegacyGameOptionsBridge.Apply(nextRound);
+            return;
+        }
+
+        // No configuration to continue - the campaign was entered without one. Fall back to the
+        // globals so the round still loads, the way it always did.
+        Debug.LogWarning("Campaign round advanced without an active match configuration; using legacy fields.");
         GameOptions.levelHasSevenPointers = level.LevelHasSevenPointers;
         GameOptions.levelId = level.LevelId;
         GameOptions.levelSelected = level.LevelObjectName;
