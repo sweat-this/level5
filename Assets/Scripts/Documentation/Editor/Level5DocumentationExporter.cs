@@ -531,6 +531,17 @@ public static class Level5DocumentationExporter
 
         string hierarchyPath = GetHierarchyPath(gameObject.transform);
         string assetPath = GetContainerAssetPath(gameObject.transform);
+
+        // A prefab root GameObject is already uniquely identified by its asset path. Keep that
+        // common external-prefab reference concise. Child GameObjects and all Component references
+        // need the extended identity so the exact authored target survives export.
+        if (!string.IsNullOrEmpty(assetPath)
+            && component == null
+            && gameObject.transform.parent == null)
+        {
+            return assetPath;
+        }
+
         string reference = string.IsNullOrEmpty(assetPath)
             ? "scene:" + hierarchyPath
             : "asset:" + assetPath + "#" + hierarchyPath;
