@@ -20,7 +20,7 @@ In the Unity editor:
 Level 5 > Documentation > Export Authored Game Data
 ```
 
-The exporter refuses to run while entering/running Play Mode or while an open scene has unsaved changes. It temporarily opens authored scenes to inspect scene-level configuration and restores the original scene setup afterward.
+The exporter refuses to run while entering/running Play Mode or while an open scene has unsaved changes. It temporarily opens authored scenes to inspect scene-level configuration and restores the original scene setup afterward. If Unity reports no restorable scene setup, the exporter returns to a neutral untitled empty scene rather than leaving the final inspected authored scene open.
 
 ### Batch mode
 
@@ -39,7 +39,7 @@ Use the project's supported Unity editor version.
 
 ## Exported domains
 
-Schema version 1 includes:
+Schema version **2** includes:
 
 - current character-selection prefabs;
 - fallback/default character profiles;
@@ -55,16 +55,72 @@ Schema version 1 includes:
 - scene `TrafficManager` serialized configuration;
 - scene `RacingVehicleProfile` configuration.
 
-Each exported component contains Unity serialized property paths, property types, and normalized string values. Object references are represented by asset paths when persistent, or by `scene:<hierarchy path>` for scene objects.
+Each exported component contains:
+
+- collision-safe hierarchy path;
+- component type;
+- zero-based same-type component index on that GameObject;
+- Unity serialized property paths;
+- property types;
+- normalized string values.
+
+## Stable hierarchy identity
+
+Hierarchy segments use the form:
+
+```text
+EscapedName[siblingIndex]
+```
+
+and are joined with `/`.
+
+Example:
+
+```text
+Root[0]/Spawn%2FGroup[2]/Enemy[1]
+```
+
+Names are URI-escaped before the sibling index is appended. The index makes duplicate sibling names distinguishable and the escaping prevents `/`, brackets, and other path delimiters inside authored names from colliding with the identity syntax.
+
+## Object-reference encoding
+
+Ordinary persistent assets such as sprites, materials, ScriptableObjects, and external prefabs remain concise asset-path references:
+
+```text
+Assets/Path/To/Asset.ext
+```
+
+References to a specific GameObject inside a prefab preserve both the container asset and hierarchy target:
+
+```text
+asset:Assets/Path/Thing.prefab#Root[0]/Child[1]
+```
+
+References to a specific component inside a prefab additionally preserve component type and same-type component index:
+
+```text
+asset:Assets/Path/Thing.prefab#Root[0]/Child[1]@Namespace.ComponentType[0]
+```
+
+Scene object/component references use the same hierarchy/component identity under a `scene:` prefix because the containing `SceneRecord` already retains the source scene path:
+
+```text
+scene:Root[0]/Spawner[3]
+scene:Root[0]/Spawner[3]@EnemySpawner[0]
+```
+
+This prevents multiple child objects/components in one prefab, or duplicate sibling names in a scene, from collapsing to the same exported reference.
 
 ## Determinism and provenance
 
-The export intentionally omits a generation timestamp. Collections, scene components, component fields, and findings are sorted deterministically.
+The export intentionally omits a generation timestamp. Collections, scene components, component fields, findings, hierarchy identities, and component indices are deterministic for unchanged authored content.
 
 Every record retains its source prefab/scene path. The generated file is evidence of authored implementation state, not automatic narrative canon.
 
 ## Refresh policy
 
 Regenerate the file whenever changes alter any exported authored data. Review the JSON diff like source code.
+
+Run the exporter twice from an unchanged project before accepting a new snapshot. The second run should produce no JSON diff.
 
 Do not manually edit the generated JSON to make documentation look cleaner. Fix the authored Unity data or the exporter, then regenerate.

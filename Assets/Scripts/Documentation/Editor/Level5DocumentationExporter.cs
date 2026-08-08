@@ -17,7 +17,7 @@ using Object = UnityEngine.Object;
 /// </summary>
 public static class Level5DocumentationExporter
 {
-    public const int SchemaVersion = 1;
+    public const int SchemaVersion = 2;
     public const string OutputRelativePath = "docs/generated/level5-authored-game-data.json";
 
     private const string CharacterSelectionRoot =
@@ -293,15 +293,27 @@ public static class Level5DocumentationExporter
         }
         finally
         {
-            if (originalSetup != null && originalSetup.Length > 0)
-            {
-                EditorSceneManager.RestoreSceneManagerSetup(originalSetup);
-            }
+            RestoreOriginalSceneSetup(originalSetup);
         }
 
         records.Sort((left, right) =>
             StringComparer.Ordinal.Compare(left.sourcePath, right.sourcePath));
         return records;
+    }
+
+    private static void RestoreOriginalSceneSetup(SceneSetup[] originalSetup)
+    {
+        // Unity requires RestoreSceneManagerSetup to contain at least one loaded/active scene.
+        // The editor normally satisfies that contract. If a headless/editor context reports an
+        // empty setup, do not leave the final authored scene open after inspection: return to a
+        // neutral untitled empty scene instead.
+        if (originalSetup != null && originalSetup.Length > 0)
+        {
+            EditorSceneManager.RestoreSceneManagerSetup(originalSetup);
+            return;
+        }
+
+        EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
     }
 
     private static List<SceneComponentRecord> ExportSceneComponents<T>() where T : Component
@@ -363,7 +375,13 @@ public static class Level5DocumentationExporter
             return hierarchy;
         }
 
-        return StringComparer.Ordinal.Compare(left.componentType, right.componentType);
+        int componentType = StringComparer.Ordinal.Compare(left.componentType, right.componentType);
+        if (componentType != 0)
+        {
+            return componentType;
+        }
+
+        return left.componentIndex.CompareTo(right.componentIndex);
     }
 
     private static List<ComponentRecord> ExportAllMonoBehaviours(GameObject prefab)
@@ -387,7 +405,8 @@ public static class Level5DocumentationExporter
         ComponentRecord record = new ComponentRecord
         {
             hierarchyPath = GetHierarchyPath(component.transform),
-            componentType = component.GetType().FullName ?? component.GetType().Name
+            componentType = component.GetType().FullName ?? component.GetType().Name,
+            componentIndex = GetComponentTypeIndex(component)
         };
 
         SerializedObject serializedObject = new SerializedObject(component);
@@ -484,23 +503,97 @@ public static class Level5DocumentationExporter
             return string.Empty;
         }
 
+        if (value is Component component)
+        {
+            return HierarchyObjectReference(component.gameObject, component);
+        }
+
+        if (value is GameObject gameObject)
+        {
+            return HierarchyObjectReference(gameObject, null);
+        }
+
         string assetPath = AssetDatabase.GetAssetPath(value);
         if (!string.IsNullOrEmpty(assetPath))
         {
             return assetPath;
         }
 
-        if (value is Component component)
-        {
-            return "scene:" + GetHierarchyPath(component.transform);
-        }
-
-        if (value is GameObject gameObject)
-        {
-            return "scene:" + GetHierarchyPath(gameObject.transform);
-        }
-
         return value.name ?? value.GetType().Name;
+    }
+
+    private static string HierarchyObjectReference(GameObject gameObject, Component component)
+    {
+        if (gameObject == null)
+        {
+            return string.Empty;
+        }
+
+        string hierarchyPath = GetHierarchyPath(gameObject.transform);
+        string assetPath = GetContainerAssetPath(gameObject.transform);
+
+        // A prefab root GameObject is already uniquely identified by its asset path. Keep that
+        // common external-prefab reference concise. Child GameObjects and all Component references
+        // need the extended identity so the exact authored target survives export.
+        if (!string.IsNullOrEmpty(assetPath)
+            && component == null
+            && gameObject.transform.parent == null)
+        {
+            return assetPath;
+        }
+
+        string reference = string.IsNullOrEmpty(assetPath)
+            ? "scene:" + hierarchyPath
+            : "asset:" + assetPath + "#" + hierarchyPath;
+
+        if (component == null)
+        {
+            return reference;
+        }
+
+        string componentType = component.GetType().FullName ?? component.GetType().Name;
+        return reference
+            + "@"
+            + componentType
+            + "["
+            + GetComponentTypeIndex(component).ToString(CultureInfo.InvariantCulture)
+            + "]";
+    }
+
+    private static string GetContainerAssetPath(Transform transform)
+    {
+        Transform current = transform;
+        while (current != null)
+        {
+            string assetPath = AssetDatabase.GetAssetPath(current.gameObject);
+            if (!string.IsNullOrEmpty(assetPath))
+            {
+                return assetPath;
+            }
+
+            current = current.parent;
+        }
+
+        return string.Empty;
+    }
+
+    private static int GetComponentTypeIndex(Component component)
+    {
+        if (component == null || component.gameObject == null)
+        {
+            return -1;
+        }
+
+        Component[] matching = component.gameObject.GetComponents(component.GetType());
+        for (int i = 0; i < matching.Length; i++)
+        {
+            if (ReferenceEquals(matching[i], component))
+            {
+                return i;
+            }
+        }
+
+        return -1;
     }
 
     private static string GetHierarchyPath(Transform transform)
@@ -514,7 +607,12 @@ public static class Level5DocumentationExporter
         Transform current = transform;
         while (current != null)
         {
-            parts.Add(current.name);
+            string escapedName = Uri.EscapeDataString(current.name ?? string.Empty);
+            parts.Add(
+                escapedName
+                + "["
+                + current.GetSiblingIndex().ToString(CultureInfo.InvariantCulture)
+                + "]");
             current = current.parent;
         }
 
@@ -703,6 +801,7 @@ public static class Level5DocumentationExporter
     {
         public string hierarchyPath;
         public string componentType;
+        public int componentIndex;
         public List<SerializedFieldRecord> properties = new List<SerializedFieldRecord>();
     }
 
