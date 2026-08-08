@@ -80,9 +80,13 @@ public class Level5DocumentationExporterTests
         string secondColliderReference = InvokePrivate<string>("ObjectReference", colliders[1]);
 
         Assert.That(rootReference, Is.EqualTo(prefabPath));
+
+        // Rooted at whatever the saved prefab's root is actually called, not at the name the
+        // GameObject had in the scene: SaveAsPrefabAsset renames the root to the asset file, so
+        // hardcoding "Root" here asserted a Unity behaviour rather than the exporter's.
         Assert.That(
             childReference,
-            Is.EqualTo("asset:" + prefabPath + "#Root[0]/Child[0]"));
+            Is.EqualTo("asset:" + prefabPath + "#" + prefab.name + "[0]/Child[0]"));
         Assert.That(firstColliderReference, Does.EndWith("@UnityEngine.BoxCollider[0]"));
         Assert.That(secondColliderReference, Does.EndWith("@UnityEngine.BoxCollider[1]"));
         Assert.That(firstColliderReference, Is.Not.EqualTo(secondColliderReference));
