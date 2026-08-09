@@ -15,8 +15,12 @@ AUD-001 to AUD-056; this one adds AUD-057 to AUD-063.
 
 **All seven were fixed on 2026-08-09.** Code changes are described per finding under "Fix applied".
 293 edit-mode tests and 4 play-mode tests pass. AUD-059 is fixed in the sense that mattered - gameplay
-code is now testable and has tests - but its structural half, the assembly split, remains open and is
-carried forward.
+code is now testable and has tests - but its structural half, the assembly split, remains open.
+
+A follow-up pass then analysed that split rather than deferring it, and found it is **blocked** on
+breaking the `player` / `game manager` / `basketball` cycle - see
+[why it is blocked](#the-assembly-split-why-it-is-blocked-aud-059-follow-up). That pass also added
+AUD-064.
 
 ## Correction to this document
 
@@ -38,6 +42,7 @@ unchanged, and the exposure on existing devices was real.
 | AUD-061 | Unity null semantics | Low | Fixed | `?.` on a `UnityEngine.Object` bypasses Unity's destroyed-object check. Three sites, all safe by accident of placement rather than by design. |
 | AUD-062 | Input / device assumptions | Low | Fixed | `SniperCameraController` caches `Gamepad.current` in `Start` and dereferences it unguarded every tick. Null on any device without a controller. |
 | AUD-063 | Performance | Low | Fixed | `RacingVehicleController.Update` builds a four-part debug string into a live UI `Text` every frame. |
+| AUD-064 | Dead code | Low | Open | `email/SendEmail.cs` is an entirely commented-out file with no references anywhere. Its dormant body carries a public plaintext password field. |
 
 ---
 
@@ -335,6 +340,86 @@ when `movementSpeed` actually changes.
 **Fix applied.** The readout moved into `UpdateSpeedReadout`, marked
 `[Conditional("UNITY_EDITOR")]` / `[Conditional("DEVELOPMENT_BUILD")]` so the call disappears
 entirely from a release build, and it rebuilds the string only when the speed actually changes.
+
+---
+
+## AUD-064 - `SendEmail.cs` is a dead file (Low)
+
+**Where:** `Assets/Scripts/email/SendEmail.cs`.
+
+The entire class body is commented out. What remains compiling is an empty `MonoBehaviour`. Its GUID
+appears in **no** scene, prefab or script anywhere under `Assets/`, and the type name has no code
+references.
+
+Worth a register entry rather than a silent deletion for one reason: the commented-out body contains
+
+```csharp
+//public string password = "YourGmailAccountPassword";
+```
+
+a public inspector field for an account password, alongside hardcoded from/to addresses. That is a
+pattern nobody should copy back in, and a commented-out file is exactly where someone eventually
+finds it and uncomments it.
+
+**Recommendation:** delete the file. Nothing references it and its history is in git. Left in place
+here rather than deleted unilaterally, because removing files is the user's call - but there is no
+argument for keeping it.
+
+---
+
+## The assembly split: why it is blocked (AUD-059 follow-up)
+
+The structural half of AUD-059 was carried forward as "a planned piece of work". Analysing it
+produced a more useful answer than a plan: **the split cannot proceed meaningfully until the core
+gameplay cycle is broken**, which makes it dependent on AUD-002 and AUD-010 rather than independent
+of them.
+
+Every folder under `Assets/Scripts` was checked for outbound references to types owned by other
+folders. Four are true leaves with no outbound dependencies at all:
+
+| Folder | Files | Referenced by |
+| --- | --- | --- |
+| `pooling` | 2 | 2 folders |
+| `SFX manager` | 1 | 7 folders |
+| `email` | 1 | 0 folders (see AUD-064) |
+| `Documentation` | 1 | 0 folders (already editor-only) |
+
+Everything else is entangled, and the entanglement is concentrated in four folders that reference
+each other in both directions:
+
+```
+player  <--->  game manager      player -> game manager (20), game manager -> player (13)
+player  <--->  basketball        player -> basketball (15), basketball -> player (18)
+game manager <---> menu_start    game manager -> menu_start (8), menu_start -> ... (via player/input)
+```
+
+Those four folders are 73 of the 206 files. An assembly cannot contain a cycle with another
+assembly, so no arrangement of asmdefs separates them - they would all have to land in one assembly,
+which is the situation that exists today.
+
+The two near-misses are worth naming because they look extractable and are not:
+
+- **`constants`** (referenced by 19 folders - the single most valuable extraction available) reaches
+  out to exactly two types: `CharacterProfile` in `player` and `CheerleaderProfile` in `menu_start`.
+  Two references stand between the project and a foundational constants assembly.
+- **`Models`** (referenced by 8) depends on `GameStats`, `Modes`, `MatchRuntime`, `GameOptions` and
+  `PlayerIdentifier` - `HighScoreModel` converts live gameplay state into a save row, so it is a
+  gameplay consumer wearing a data-model name.
+
+**What was done now:** `pooling` is extracted as `Level5.Pooling`. It is small, but it is the
+pattern, and it is the one leaf with behaviour worth isolating - `RuntimeObjectPool` is shared
+infrastructure that must not grow a dependency on gameplay, and now it structurally cannot.
+
+**What should happen next**, in order:
+
+1. Move `CharacterProfile` / `CheerleaderProfile` off `constants`, then extract `constants`. Highest
+   value per unit of risk of anything on this list.
+2. Break the `player` ↔ `basketball` cycle. That is AUD-010's "single shot result event" - the shot
+   pipeline is what ties them together in both directions.
+3. Break `player` ↔ `game manager`. That is AUD-002.
+4. Only then does splitting the remainder become a mechanical exercise.
+
+Attempting the split before those is not a matter of effort; it is not possible.
 
 ---
 
