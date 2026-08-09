@@ -293,7 +293,15 @@ public class GameRules : MonoBehaviour
             bool progressionComplete = ApplyMatchProgressionResult(primaryGameStats);
             bool transitionComplete = TryStartCampaignTransition();
 
-            matchEndHandled = persistenceComplete && progressionComplete && transitionComplete;
+            // If this match was one participant's turn in a versus series, hand the numbers over.
+            // No-ops for every ordinary match, and joins the same retry loop as the saves above so a
+            // turn is never lost to a write that failed once.
+            bool versusComplete = VersusMatchReporter.TryReport(
+                primaryGameStats,
+                MatchRuntime.ModeId,
+                timePlayedEnd - timePlayedStart);
+
+            matchEndHandled = persistenceComplete && progressionComplete && transitionComplete && versusComplete;
             if (matchEndHandled)
             {
                 // Only now is the match finished. Work that failed and will be retried leaves the
