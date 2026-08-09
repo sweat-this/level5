@@ -1,8 +1,13 @@
 ﻿<Solution>
+  <Project Path="Level5.Core.csproj" />
   <Project Path="Assembly-CSharp.csproj" />
+  <Project Path="Assembly-CSharp-Editor.csproj" />
   <Project Path="Assembly-CSharp-firstpass.csproj" />
   <Project Path="NavMeshComponents.csproj" />
-  <Project Path="Assembly-CSharp-Editor.csproj" />
+  <Project Path="Level5.PlayModeTests.csproj" />
+  <Project Path="Level5.Constants.csproj" />
+  <Project Path="Level5.Pooling.csproj" />
   <Project Path="MobileDependencyResolverLP.Installer.Editor.csproj" />
   <Project Path="NavMeshComponentsEditor.csproj" />
+  <Project Path="Level5.Audio.csproj" />
 </Solution>

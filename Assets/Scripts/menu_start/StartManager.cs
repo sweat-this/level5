@@ -239,6 +239,7 @@ public class StartManager : MonoBehaviour
     int lastCommandFrame = -1;
     int lastLoadGameFrame = -1;
     int lastOptionFrame = -1;
+    GameObject lastSelectedObject;
 
     private void OnEnable()
     {
@@ -317,6 +318,16 @@ public class StartManager : MonoBehaviour
             return;
         }
 
+        bool useManualMenuInput = ShouldUseManualMenuInput(selectedObject);
+        if (PlayerControlsProvider.MenuSubmitTriggered
+            && UiSelectionAdapter.TryInvokeSelectedButton(GetDefaultSelectedButton()))
+        {
+            lastSelectedObject = EventSystem.current != null
+                ? EventSystem.current.currentSelectedGameObject
+                : null;
+            return;
+        }
+
         // if player highlighted, display player
         if ((currentHighlightedButton.Equals(numPlayersSelectButtonName) || currentHighlightedButton.Equals(numPlayersSelectOptionButtonName))
             && dataLoaded)
@@ -362,7 +373,7 @@ public class StartManager : MonoBehaviour
             initializeOptionsDisplay();
         }
         // ================================== navigation =====================================================================
-        if (!UiSelectionAdapter.InputSystemUiActive)
+        if (useManualMenuInput)
         {
             // up, option select
             if (controls.UINavigation.Up.triggered && !buttonPressed
@@ -420,7 +431,7 @@ public class StartManager : MonoBehaviour
         }
 
         // ================================== change options =============================================================
-        if (!UiSelectionAdapter.InputSystemUiActive)
+        if (useManualMenuInput)
         {
             // up, change options
             if (controls.UINavigation.Up.triggered && !buttonPressed)
@@ -585,8 +596,18 @@ public class StartManager : MonoBehaviour
             }
         }
 
+        lastSelectedObject = EventSystem.current != null
+            ? EventSystem.current.currentSelectedGameObject
+            : null;
     }
 #endif
+
+    private bool ShouldUseManualMenuInput(GameObject selectedObject)
+    {
+        return !UiSelectionAdapter.InputSystemUiActive
+            || selectedObject == null
+            || selectedObject == lastSelectedObject;
+    }
 
     private void ResolveCommandButtonReferences()
     {

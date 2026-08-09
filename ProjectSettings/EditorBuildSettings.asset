@@ -12,8 +12,8 @@ EditorBuildSettings:
     path: Assets/Scenes/level_00_loading.unity
     guid: 64f345c9e1053ba4692884fc42be6f5d
   - enabled: 1
-    path: Assets/Scenes/level_00_start.unity
-    guid: 7bf708e707f6e694fb2132837edfa627
+    path: Assets/Scenes/level_00_start_test.unity
+    guid: 26f428f436800854a8ac6a292431d051
   - enabled: 1
     path: Assets/Scenes/level_00_account.unity
     guid: e19f801782fbd824caccfa56806e1355

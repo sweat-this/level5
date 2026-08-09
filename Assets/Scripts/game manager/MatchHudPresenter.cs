@@ -34,6 +34,10 @@ public class MatchHudPresenter : MonoBehaviour
     private const string displayMoneyObjectName = "money_display";
     private const string displayMoneyBallObjectName = "money_ball_enabled";
     private const string displayOtherMessageName = "other_message";
+    private const string displayP1ScoreObjectName = "display_p1_score";
+    private const string displayP2ScoreObjectName = "display_p2_score";
+    private const string displayP3ScoreObjectName = "display_p3_score";
+    private const string displayP4ScoreObjectName = "display_p4_score";
 
     /// <summary>
     /// HUD objects every gameplay scene must provide. Level5ProjectValidator asserts these
@@ -88,12 +92,88 @@ public class MatchHudPresenter : MonoBehaviour
     /// </summary>
     public void Initialize()
     {
-        displayScoreText = SceneObjects.Find<Text>(displayScoreObjectName, this);
-        displayCurrentScoreText = SceneObjects.Find<Text>(displayCurrentScoreObjectName, this);
-        displayHighScoreText = SceneObjects.Find<Text>(displayHighScoreObjectName, this);
-        displayMoneyText = SceneObjects.Find<Text>(displayMoneyObjectName, this);
-        displayMoneyBallText = SceneObjects.Find<Text>(displayMoneyBallObjectName, this);
-        displayOtherMessageText = SceneObjects.Find<Text>(displayOtherMessageName, this);
+        List<string> fallbackNames = new List<string>();
+        Transform fallbackRoot = null;
+        displayScoreText = ResolveHudText(
+            displayScoreText,
+            displayScoreObjectName,
+            ref fallbackRoot,
+            fallbackNames,
+            new Vector2(0f, -36f),
+            new Vector2(600f, 300f),
+            30);
+        displayCurrentScoreText = ResolveHudText(
+            displayCurrentScoreText,
+            displayCurrentScoreObjectName,
+            ref fallbackRoot,
+            fallbackNames,
+            new Vector2(0f, -198f),
+            new Vector2(250f, 100f),
+            30);
+        displayHighScoreText = ResolveHudText(
+            displayHighScoreText,
+            displayHighScoreObjectName,
+            ref fallbackRoot,
+            fallbackNames,
+            new Vector2(0f, -250f),
+            new Vector2(350f, 80f),
+            24);
+        displayMoneyText = ResolveHudText(
+            displayMoneyText,
+            displayMoneyObjectName,
+            ref fallbackRoot,
+            fallbackNames,
+            new Vector2(-300f, 250f),
+            new Vector2(220f, 60f),
+            22);
+        displayMoneyBallText = ResolveHudText(
+            displayMoneyBallText,
+            displayMoneyBallObjectName,
+            ref fallbackRoot,
+            fallbackNames,
+            new Vector2(300f, 250f),
+            new Vector2(260f, 60f),
+            22);
+        displayOtherMessageText = ResolveHudText(
+            displayOtherMessageText,
+            displayOtherMessageName,
+            ref fallbackRoot,
+            fallbackNames,
+            new Vector2(0f, 250f),
+            new Vector2(500f, 80f),
+            24);
+        displayP1ScoreText = ResolveHudText(
+            displayP1ScoreText,
+            displayP1ScoreObjectName,
+            ref fallbackRoot,
+            fallbackNames,
+            new Vector2(-300f, 115f),
+            new Vector2(220f, 120f),
+            20);
+        displayP2ScoreText = ResolveHudText(
+            displayP2ScoreText,
+            displayP2ScoreObjectName,
+            ref fallbackRoot,
+            fallbackNames,
+            new Vector2(-100f, 115f),
+            new Vector2(220f, 120f),
+            20);
+        displayP3ScoreText = ResolveHudText(
+            displayP3ScoreText,
+            displayP3ScoreObjectName,
+            ref fallbackRoot,
+            fallbackNames,
+            new Vector2(100f, 115f),
+            new Vector2(220f, 120f),
+            20);
+        displayP4ScoreText = ResolveHudText(
+            displayP4ScoreText,
+            displayP4ScoreObjectName,
+            ref fallbackRoot,
+            fallbackNames,
+            new Vector2(300f, 115f),
+            new Vector2(220f, 120f),
+            20);
 
         ClearText(displayScoreText);
         ClearText(displayCurrentScoreText);
@@ -110,9 +190,17 @@ public class MatchHudPresenter : MonoBehaviour
         if (!IsComplete)
         {
             Debug.LogError(
-                "The match HUD is missing required objects, so the score display is switched off. "
-                + "The match still plays and its results are still saved. See the errors above for "
-                + "the missing names.",
+                "The match HUD could not be initialized, so the score display is switched off. "
+                + "The match still plays and its results are still saved.",
+                this);
+            return;
+        }
+
+        if (fallbackNames.Count > 0)
+        {
+            Debug.LogWarning(
+                "The match HUD created fallback text objects for this legacy scene: "
+                + string.Join(", ", fallbackNames.ToArray()),
                 this);
         }
     }
@@ -181,6 +269,108 @@ public class MatchHudPresenter : MonoBehaviour
         {
             text.text = "";
         }
+    }
+
+    private static Text ResolveHudText(
+        Text assigned,
+        string objectName,
+        ref Transform fallbackRoot,
+        List<string> fallbackNames,
+        Vector2 anchoredPosition,
+        Vector2 size,
+        int fontSize)
+    {
+        if (assigned != null)
+        {
+            return assigned;
+        }
+
+        Text found = FindSceneText(objectName);
+        if (found != null)
+        {
+            return found;
+        }
+
+        fallbackRoot ??= FindOrCreateHudRoot();
+        Text created = CreateFallbackText(fallbackRoot, objectName, anchoredPosition, size, fontSize);
+        fallbackNames.Add(objectName);
+        return created;
+    }
+
+    private static Text FindSceneText(string objectName)
+    {
+        foreach (Text candidate in Resources.FindObjectsOfTypeAll<Text>())
+        {
+            if (candidate != null
+                && candidate.gameObject.name == objectName
+                && candidate.gameObject.scene.IsValid())
+            {
+                return candidate;
+            }
+        }
+
+        return null;
+    }
+
+    private static Transform FindOrCreateHudRoot()
+    {
+        foreach (Canvas candidate in Resources.FindObjectsOfTypeAll<Canvas>())
+        {
+            if (candidate != null && candidate.gameObject.scene.IsValid())
+            {
+                return candidate.transform;
+            }
+        }
+
+        GameObject canvasObject = new GameObject(
+            "runtime_match_hud",
+            typeof(Canvas),
+            typeof(CanvasScaler),
+            typeof(GraphicRaycaster));
+        Canvas canvas = canvasObject.GetComponent<Canvas>();
+        canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+
+        CanvasScaler scaler = canvasObject.GetComponent<CanvasScaler>();
+        scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+        scaler.referenceResolution = new Vector2(800f, 600f);
+
+        return canvasObject.transform;
+    }
+
+    private static Text CreateFallbackText(
+        Transform parent,
+        string objectName,
+        Vector2 anchoredPosition,
+        Vector2 size,
+        int fontSize)
+    {
+        GameObject textObject = new GameObject(
+            objectName,
+            typeof(RectTransform),
+            typeof(CanvasRenderer),
+            typeof(Text));
+        textObject.transform.SetParent(parent, false);
+
+        RectTransform rectTransform = textObject.GetComponent<RectTransform>();
+        rectTransform.anchorMin = new Vector2(0.5f, 0.5f);
+        rectTransform.anchorMax = new Vector2(0.5f, 0.5f);
+        rectTransform.anchoredPosition = anchoredPosition;
+        rectTransform.sizeDelta = size;
+
+        Text text = textObject.GetComponent<Text>();
+        text.font = GetFallbackFont();
+        text.fontSize = fontSize;
+        text.alignment = TextAnchor.MiddleCenter;
+        text.color = Color.white;
+        text.raycastTarget = false;
+        text.text = "";
+        return text;
+    }
+
+    private static Font GetFallbackFont()
+    {
+        Font font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        return font != null ? font : Resources.GetBuiltinResource<Font>("Arial.ttf");
     }
 
     private bool HasCompleteScoreHud()
