@@ -15,6 +15,7 @@ This folder is the baseline documentation home for the Level5 Unity project. It 
 - [Versus Implementation Plan](versus-correspondence-plan.md) - the decision record behind the above: audit findings, target architecture, and the two review passes.
 - [Player Input Architecture](player-input-architecture.md) - current input ownership, modernization target, migration plan, and first input-reader slice.
 - [UI Input Architecture](ui-input-architecture.md) - menu input baseline, UI module target, EndRound pilot, and mobile/desktop smoke checks.
+- [Player Select Architecture Overhaul](player-select-architecture-overhaul-plan.md) - audited target architecture, two review passes, behavior decisions, phased migration, guardrails, and verification for replacing `StartManager`-owned player/CPU selection with a stable-ID roster draft that feeds `PlayerRoster`.
 
 ## Documentation Backlog
 
