@@ -62,6 +62,14 @@ public class PlayerHealthBar : MonoBehaviour
 
     private void OnDestroy()
     {
+        // Released first, and outside the playerHealth guard below: a bar destroyed before it ever
+        // resolved its health source would otherwise return early and leave the static pointing at
+        // a destroyed object.
+        if (instance == this)
+        {
+            instance = null;
+        }
+
         if (playerHealth == null)
         {
             return;

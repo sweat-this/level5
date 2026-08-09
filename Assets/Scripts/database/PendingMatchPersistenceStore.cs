@@ -62,7 +62,12 @@ public static class PendingMatchPersistenceStore
                 continue;
             }
 
-            DBHelper.instance?.setGameScoreSubmitted(score.Scoreid, false);
+            // `?.` compiles to a reference null check and bypasses Unity's overloaded ==, so a
+            // destroyed component would not be treated as null and the call would run on it.
+            if (DBHelper.instance != null)
+            {
+                DBHelper.instance.setGameScoreSubmitted(score.Scoreid, false);
+            }
             data.scores.RemoveAt(index);
         }
         data.allTime.RemoveAll(snapshot => snapshot == null || DBConnector.instance.savePlayerAllTimeStats(snapshot));

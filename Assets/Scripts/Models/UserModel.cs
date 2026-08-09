@@ -15,6 +15,8 @@ namespace Assets.Scripts.database
         public string IpAddress;
         public string SignUpDate;
         public string LastLogin;
-        public string BearerToken;
+
+        // No BearerToken field. A session token belongs to APIHelper, in memory, for the life of
+        // the session - not on a model that gets serialized, logged and written to a database.
     }
 }

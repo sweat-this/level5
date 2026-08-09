@@ -235,6 +235,34 @@ public class RacingVehicleController : MonoBehaviour
     }
 
 
+    /// <summary>
+    /// The developer speed readout.
+    ///
+    /// This built four concatenated strings into a live UI Text every single frame - roughly seven
+    /// allocations per frame per vehicle, on a mobile target, for a diagnostic. Three of the four
+    /// values come from the vehicle profile and never change during a run.
+    ///
+    /// Now it is development-only and rebuilds the string only when the speed actually changes.
+    /// </summary>
+    [System.Diagnostics.Conditional("UNITY_EDITOR")]
+    [System.Diagnostics.Conditional("DEVELOPMENT_BUILD")]
+    private void UpdateSpeedReadout()
+    {
+        if (vehicleCurrentSpeedText == null || Mathf.Approximately(movementSpeed, lastReadoutSpeed))
+        {
+            return;
+        }
+
+        lastReadoutSpeed = movementSpeed;
+        vehicleCurrentSpeedText.text = "speed : " + movementSpeed
+            + "\nmax speed : " + vehicleProfile.MaxSpeed
+            + "\nacceleration : " + vehicleProfile.Acceleration
+            + "\njump : " + vehicleProfile.JumpForce;
+    }
+
+    /// <summary>Last speed the readout was built for, so an unchanged speed costs nothing.</summary>
+    private float lastReadoutSpeed = float.NaN;
+
     // Update :: once once per frame
     void Update()
     {
@@ -244,10 +272,8 @@ public class RacingVehicleController : MonoBehaviour
         currentState = currentStateInfo.fullPathHash;
 
 
-        vehicleCurrentSpeedText.text = "speed : " + movementSpeed.ToString()
-            + "\nmax speed : " + vehicleProfile.MaxSpeed
-            + "\nacceleration : " + vehicleProfile.Acceleration
-            + "\njump : " + vehicleProfile.JumpForce;
+        UpdateSpeedReadout();
+
         // knocked down
         if (KnockedDown && !Locked)
         {

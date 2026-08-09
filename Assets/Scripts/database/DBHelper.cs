@@ -24,6 +24,21 @@ public class DBHelper : MonoBehaviour
 
     public static DBHelper instance;
 
+    /// <summary>
+    /// Releases the static so it cannot outlive the object it points at.
+    ///
+    /// Unity's overloaded == reports a destroyed object as null, so a stale static survives most
+    /// guards - until something uses ?., caches the reference, or dereferences it directly. Clearing
+    /// it here removes the whole class of problem rather than relying on every caller to guard.
+    /// </summary>
+    private void OnDestroy()
+    {
+        if (instance == this)
+        {
+            instance = null;
+        }
+    }
+
     private static string RequireSqlIdentifier(string value, string parameterName)
     {
         if (string.IsNullOrWhiteSpace(value))
@@ -1194,14 +1209,11 @@ public class DBHelper : MonoBehaviour
                                 // password is no longer persisted locally (see InsertUserCoroutine) - column is
                                 // kept for schema stability but will typically be NULL going forward.
                                 temp.Password = reader.IsDBNull(8) ? "" : reader.GetString(8);
-                                if (reader.IsDBNull(9))
-                                {
-                                    temp.BearerToken = "";
-                                }
-                                else
-                                {
-                                    temp.BearerToken = reader.GetString(9);
-                                }
+
+                                // Column 9 is bearerToken. It is deliberately not read: a session
+                                // token is a live credential, nothing has ever restored a session
+                                // from it, and hydrating it here only put one back into memory for
+                                // no purpose. DBConnector scrubs the column on startup.
                                 userModel.Add(temp);
                             }
                         }

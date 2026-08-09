@@ -14,6 +14,13 @@ Unity compile/playtest verification. A fourth pass added AUD-040 to AUD-043 (sta
 (combat ownership and account identity), also fixed. All twenty-four await Unity compile/playtest
 verification.
 
+AUD-057 through AUD-063 came out of the 2026-08-09 deep audit and are tracked, with their fixes, in
+[Deep Audit 2026-08-09](deep-audit-2026-08-09.md). All seven are fixed; 293 edit-mode and 4 play-mode
+tests pass. Two carry follow-ups: AUD-057 needs token TTL/revocation confirmed against
+`Level5Backend`, and AUD-059's structural half - the `Assets/Scripts` assembly split, which is the
+still-open part of AUD-012 - remains outstanding. What AUD-059 did fix is the consequence that was
+blocking everything else: runtime gameplay code can now be covered by play-mode tests, and now is.
+
 ## Audit Status Legend
 
 - Open: Known issue with no durable fix yet.

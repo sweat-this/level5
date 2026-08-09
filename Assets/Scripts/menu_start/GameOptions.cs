@@ -120,7 +120,8 @@ public static class GameOptions
 
     static public string userName;
     static public int userid;
-    static public string bearerToken;
+    // The session bearer token deliberately does not live here. It is a credential; it belongs to
+    // APIHelper for the life of the session. Ask APIHelper.HasSession instead.
     static public string matchResultId;
     static public int numOfLocalUsers;
 

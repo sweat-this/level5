@@ -82,8 +82,11 @@ public class GameRules : MonoBehaviour
     [SerializeField]
     private GameObject _rakesClone;
 
+    /// <summary>
+    /// The player was killed by an instant-kill attack. Presentation only: it changes the
+    /// end-of-match display. It used to also trigger a load of the developer test level.
+    /// </summary>
     public bool killedOnIdle;
-    private bool killedOnIdleTransitionStarted;
     private bool matchEndHandled;
     private bool matchEndHandling;
     private bool matchScoreSaveCompleted;
@@ -181,6 +184,13 @@ public class GameRules : MonoBehaviour
         {
             GameLevelManager.instance.PlayerHealth.OnDied -= OnPlayerDied;
         }
+
+        // Released so the static cannot outlive the scene. GameRules is scene-scoped, so without
+        // this it points at a destroyed object for the whole of the next menu.
+        if (instance == this)
+        {
+            instance = null;
+        }
     }
 
     // ================================================ Update ============================================
@@ -201,12 +211,14 @@ public class GameRules : MonoBehaviour
             hud.ClearForMatchEnd();
         }
 
-        if (killedOnIdle && !killedOnIdleTransitionStarted)
-        {
-            killedOnIdleTransitionStarted = true;
-            //Load dev after 5 seconds
-            StartCoroutine(LoadGame.LoadDevLevelVersus(5));
-        }
+        // killedOnIdle used to load the developer test level here, five seconds after the player
+        // was hit by an instant-kill projectile. That is a live path in a shipping build -
+        // projectile_bullet_instantkill_enemy sets the flag, and level_23_dev is in the build
+        // settings - so a real death in a real arena dropped the player into the dev scene.
+        //
+        // The flag itself is kept: it is what makes the end-of-match display read "You dead bruh"
+        // rather than a score summary. It now does only that, and the death runs the same
+        // end-of-match path as every other death.
 
         // game over. pause / display end game / save
         if (!matchEndHandled
@@ -520,7 +532,11 @@ public class GameRules : MonoBehaviour
 
     private bool TryStartCampaignTransition()
     {
-        if (gameModeId != Modes.BeatThaComputahs || killedOnIdle || campaignTransitionStarted)
+        // killedOnIdle used to be excluded here because that death loaded the dev level instead,
+        // so the campaign never needed to advance. With that load gone, excluding it would leave a
+        // campaign run sitting on the end-of-match screen with no way forward. An instant-kill
+        // death now advances the campaign exactly like any other loss.
+        if (gameModeId != Modes.BeatThaComputahs || campaignTransitionStarted)
         {
             return true;
         }
