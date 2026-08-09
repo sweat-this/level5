@@ -67,16 +67,19 @@ in exactly one:
 The streak bonus is +1 on a three, +2 on a four and +3 on a seven, and nothing on a two. That is not
 a formula, it is the four numbers the mode was authored with.
 
-Two behaviours are preserved deliberately and pinned by tests rather than fixed, because changing
-either is a scoring change rather than a refactor:
+One behaviour is preserved deliberately and pinned by a test, because changing it would be a scoring
+change rather than a refactor:
 
 - **A contest shot taken off the marker counts as nothing at all** - not even towards the made-shot
   counter. This is why a stray shot during a contest cannot inflate the shooting percentage.
-- **The final marker shot taken with the money ball active credits two money balls.** The original
-  credited one for the doubled marker shot and another for the active money ball, with no check that
-  they were the same shot. Almost certainly unintended;
-  `AFinalMarkerShotTakenWithTheMoneyBallActiveCreditsTwo` names it for what it does so that changing
-  it later is a visible decision.
+
+One was a bug and is fixed:
+
+- **The final marker shot taken with the money ball active credited two money balls.** A shot can be
+  a money ball for either of two reasons - it was a marker's final attempt in a doubling contest, or
+  the player had the money ball active - and the two were counted in separate places with nothing
+  checking they were the same shot. One shot is now at most one money ball. The doubled points were
+  never affected; only the count, which fed the stat and the saved high-score row.
 
 ## Where it is still spread out
 

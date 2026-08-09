@@ -42,7 +42,7 @@ unchanged, and the exposure on existing devices was real.
 | AUD-061 | Unity null semantics | Low | Fixed | `?.` on a `UnityEngine.Object` bypasses Unity's destroyed-object check. Three sites, all safe by accident of placement rather than by design. |
 | AUD-062 | Input / device assumptions | Low | Fixed | `SniperCameraController` caches `Gamepad.current` in `Start` and dereferences it unguarded every tick. Null on any device without a controller. |
 | AUD-063 | Performance | Low | Fixed | `RacingVehicleController.Update` builds a four-part debug string into a live UI `Text` every frame. |
-| AUD-064 | Dead code | Low | Open | `email/SendEmail.cs` is an entirely commented-out file with no references anywhere. Its dormant body carries a public plaintext password field. |
+| AUD-064 | Dead code | Low | Fixed | `email/SendEmail.cs` is an entirely commented-out file with no references anywhere. Its dormant body carries a public plaintext password field. Deleted. |
 
 ---
 
@@ -75,10 +75,24 @@ never got the same treatment. Whatever an old build left in
 `Application.persistentDataPath/level5.db` is still sitting there in clear text.
 
 **Impact.** On a rooted or jailbroken device, or through an unencrypted platform backup, a stale
-token is readable and replayable for whatever remains of its server-side lifetime. The blast radius
-depends on the token's TTL and whether revocation exists, neither of which is visible from this
-repository - so **confirm both against `Level5Backend`**. Scrubbing is correct regardless; if tokens
-are long-lived or non-revocable, it is also urgent.
+token is readable and replayable for whatever remains of its server-side lifetime.
+
+**Answered against `Level5Backend` on 2026-08-09**, which settles the severity:
+
+- **Lifetime: 24 hours.** `TokenController` issues `expires: DateTime.UtcNow.AddDays(1)`, and
+  expiry is enforced - `ValidateLifetime` defaults to true and nothing turns it off.
+- **Revocation: none.** The token is a stateless JWT. There is no blacklist, no refresh token and
+  no logout endpoint anywhere in the backend. The only way to invalidate one is rotating `Jwt:Key`,
+  which invalidates every token for every player at once.
+
+So a stolen token is usable for at most a day and cannot be cancelled - but a token sitting in an
+old local database was written by a build that stopped writing them some time ago, and is therefore
+long expired and worthless. **The residual risk is effectively nil, and the scrub is hygiene rather
+than an incident.** Keeping the scrub is still right: it costs nothing, and it means the next person
+to read this table does not have to re-derive any of the above.
+
+Worth knowing rather than fixing: with no revocation, "log this account out everywhere" is not
+something the backend can currently do. That is a product decision, not a defect.
 
 **Fix applied.** `DBConnector.createDatabase` now scrubs the token alongside the password:
 `UPDATE User SET bearerToken = NULL WHERE bearerToken IS NOT NULL`, so every device closes the
@@ -361,9 +375,8 @@ a public inspector field for an account password, alongside hardcoded from/to ad
 pattern nobody should copy back in, and a commented-out file is exactly where someone eventually
 finds it and uncomments it.
 
-**Recommendation:** delete the file. Nothing references it and its history is in git. Left in place
-here rather than deleted unilaterally, because removing files is the user's call - but there is no
-argument for keeping it.
+**Fix applied.** Deleted, on the owner's instruction. Nothing referenced it and its history is in
+git. The `email` folder is now empty and gone with it.
 
 ---
 

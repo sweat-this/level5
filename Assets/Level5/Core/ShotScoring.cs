@@ -187,26 +187,20 @@ namespace Level5.Core
         }
 
         /// <summary>
-        /// How many money balls this shot credits.
+        /// How many money balls this shot credits: one, or none. Never two.
         ///
-        /// **Preserved oddity.** The original credited a money ball in two independent places: once
-        /// when a marker's final shot scored double, and again, unconditionally, when the player had
-        /// the money ball active. A shot that is both - the final marker attempt taken with the money
-        /// ball active, in a three, four or seven point contest - credited **two**.
+        /// A shot can be a money ball for either of two reasons - it was a marker's final attempt in
+        /// a contest that doubles those, or the player had the money ball active - and the original
+        /// counted them in two independent places with nothing checking they were the same shot. A
+        /// shot that was both credited two money balls for one shot, inflating the stat and the
+        /// saved high-score row.
         ///
-        /// That is almost certainly not intended, and it is preserved anyway, because this extraction
-        /// is meant to leave scoring identical. It is pinned by a test named for the behaviour rather
-        /// than for the intent, so changing it later is a deliberate act with a visible diff.
+        /// Confirmed as a bug and fixed 2026-08-09. It is one shot, so it is at most one money ball.
+        /// The doubled points were never affected - only the count.
         /// </summary>
         private static int MoneyBallCredit(ShotScoringInput input, bool alreadyCreditedByMarker)
         {
-            int credit = alreadyCreditedByMarker ? 1 : 0;
-            if (input.MoneyBallActive)
-            {
-                credit++;
-            }
-
-            return credit;
+            return alreadyCreditedByMarker || input.MoneyBallActive ? 1 : 0;
         }
     }
 }

@@ -142,18 +142,20 @@ public class Level5ShotScoringTests
     }
 
     [Test]
-    public void AFinalMarkerShotTakenWithTheMoneyBallActiveCreditsTwo()
+    public void AFinalMarkerShotTakenWithTheMoneyBallActiveStillCreditsOnlyOne()
     {
-        // Preserved oddity, pinned deliberately. The original credited a money ball once for the
-        // doubled marker shot and again for the active money ball, with no check that they were the
-        // same shot. Named for what it does, not for what anyone intended, so that changing it later
-        // is a visible decision rather than a silent one.
+        // Was a bug, confirmed and fixed: the original counted the doubled marker shot and the
+        // active money ball in two independent places, so a shot that was both credited two money
+        // balls for one shot - inflating the stat and the saved high-score row.
         ShotScoringInput input = Marker(ShotKind.Four, onEnabledMarker: true);
         input.IsFinalMarkerAttempt = true;
         input.MarkerFinalShotScoresDouble = true;
         input.MoneyBallActive = true;
 
-        Assert.That(Score(input).MoneyBallMade, Is.EqualTo(2));
+        ShotScore score = Score(input);
+
+        Assert.That(score.MoneyBallMade, Is.EqualTo(1), "one shot is at most one money ball");
+        Assert.That(score.Points, Is.EqualTo(8), "the doubled points were never the problem");
     }
 
     [Test]
