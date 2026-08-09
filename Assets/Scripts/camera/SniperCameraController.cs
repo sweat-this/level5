@@ -14,7 +14,6 @@ public class SniperCameraController : MonoBehaviour
     private float movementSpeed;
     bool isPressed;
 
-    Gamepad gamepad;
 
     private void OnEnable()
     {
@@ -32,12 +31,16 @@ public class SniperCameraController : MonoBehaviour
     {
         controls = PlayerControlsProvider.Controls;
     }
-    // Start is called before the first frame update
-    void Start()
-    {
-        Debug.Log(Gamepad.all);
-        gamepad = Gamepad.current;
-    }
+    /// <summary>
+    /// The controller driving this camera, or null when none is connected.
+    ///
+    /// Resolved on every use rather than cached in Start. <c>Gamepad.current</c> is null on any
+    /// device without a controller attached - which is most of this game's audience - and caching
+    /// it once meant a null dereference on every physics tick and every frame. Caching also missed
+    /// a controller connected after the scene loaded and kept a stale device after one was
+    /// unplugged.
+    /// </summary>
+    private static Gamepad ActiveGamepad => Gamepad.current;
 
     // Update is called once per frame
     void FixedUpdate()
@@ -48,6 +51,12 @@ public class SniperCameraController : MonoBehaviour
         //    Debug.Log("Gamepad" + g.name);
         //}
         //Debug.Log("Gamepad current : "+Gamepad.current);
+
+        Gamepad gamepad = ActiveGamepad;
+        if (gamepad == null)
+        {
+            return;
+        }
 
         Vector2 move = gamepad.leftStick.ReadValue();
         //Debug.Log("move : " + move);
@@ -61,6 +70,12 @@ public class SniperCameraController : MonoBehaviour
     }
     private void Update()
     {
+        Gamepad gamepad = ActiveGamepad;
+        if (gamepad == null)
+        {
+            return;
+        }
+
         if (gamepad.buttonSouth.wasPressedThisFrame && !isPressed)
         {
             isPressed = true;

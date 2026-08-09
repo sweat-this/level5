@@ -62,7 +62,6 @@ namespace Assets.Scripts.restapi
         public static void ClearSession()
         {
             bearerToken = null;
-            GameOptions.bearerToken = null;
             GameOptions.userName = string.Empty;
             GameOptions.userid = 0;
         }
@@ -381,10 +380,12 @@ namespace Assets.Scripts.restapi
                 yield break;
             }
 
+            // The token stays here and nowhere else. It used to be copied into a public static on
+            // GameOptions that nothing ever read - a live credential parked in global state where
+            // any script could pick it up, for no benefit. HasSession is what callers actually want.
             bearerToken = response.Value.Trim().Trim('"');
             GameOptions.userName = user.UserName;
             GameOptions.userid = user.Userid;
-            GameOptions.bearerToken = bearerToken;
             ApiResult<string> success = ApiResult<string>.Ok(bearerToken, response.StatusCode);
             completed?.Invoke(success);
 

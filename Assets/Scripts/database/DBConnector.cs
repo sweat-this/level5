@@ -27,6 +27,21 @@ public class DBConnector : MonoBehaviour
     DBHelper dbHelper;
     public static DBConnector instance;
 
+    /// <summary>
+    /// Releases the static so it cannot outlive the object it points at.
+    ///
+    /// Unity's overloaded == reports a destroyed object as null, so a stale static survives most
+    /// guards - until something uses ?., caches the reference, or dereferences it directly. Clearing
+    /// it here removes the whole class of problem rather than relying on every caller to guard.
+    /// </summary>
+    private void OnDestroy()
+    {
+        if (instance == this)
+        {
+            instance = null;
+        }
+    }
+
     void Awake()
     {
         // keep Database object persistent
@@ -549,10 +564,26 @@ public class DBConnector : MonoBehaviour
 
                 // local password comparison is never performed (login is authenticated against
                 // the server); scrub any plaintext password persisted by older app versions.
+                //
+                // The bearer token gets the same treatment, and for a stronger reason: a password
+                // is useless here without the server agreeing to it, but a token IS the credential
+                // - anything holding one can act as that account until it expires. Older builds
+                // wrote tokens into this column, so an upgraded install can still be carrying one
+                // at rest. Nothing has written it for some time and nothing reads it back into a
+                // session, so clearing it costs nothing and closes the exposure on every device
+                // that launches this build.
                 using (IDbCommand scrubCmd = dbconn.CreateCommand())
                 {
-                    scrubCmd.CommandText = "UPDATE User SET password = NULL WHERE password IS NOT NULL";
+                    scrubCmd.CommandText =
+                        "UPDATE User SET password = NULL WHERE password IS NOT NULL";
                     scrubCmd.ExecuteNonQuery();
+                }
+
+                using (IDbCommand scrubTokenCmd = dbconn.CreateCommand())
+                {
+                    scrubTokenCmd.CommandText =
+                        "UPDATE User SET bearerToken = NULL WHERE bearerToken IS NOT NULL";
+                    scrubTokenCmd.ExecuteNonQuery();
                 }
             }
 
