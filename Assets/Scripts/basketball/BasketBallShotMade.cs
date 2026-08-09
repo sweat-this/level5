@@ -1,5 +1,6 @@
 ﻿
 using UnityEngine;
+using Level5.Core;
 using Level5.Core.Match;
 
 
@@ -151,6 +152,54 @@ public class BasketBallShotMade : MonoBehaviour
         Instantiate(moneyClone, tempPos, Quaternion.identity);
     }
 
+    /// <summary>
+    /// Which line the shot came from.
+    ///
+    /// The attempt flags are set when the shot is launched and are mutually exclusive by the time a
+    /// make is registered, so the first one that is set is the answer. Tested in the order the
+    /// original evaluated them, which matters only if they ever stop being exclusive.
+    /// </summary>
+    private static ShotKind ShotKindOf(BasketBallState basketBallState)
+    {
+        if (basketBallState.TwoAttempt)
+        {
+            return ShotKind.Two;
+        }
+
+        if (basketBallState.ThreeAttempt)
+        {
+            return ShotKind.Three;
+        }
+
+        if (basketBallState.FourAttempt)
+        {
+            return ShotKind.Four;
+        }
+
+        return basketBallState.SevenAttempt ? ShotKind.Seven : ShotKind.None;
+    }
+
+    /// <summary>
+    /// The marker the player was standing on when they shot, or null.
+    ///
+    /// The original indexed the marker list directly at three separate points. It is read once here
+    /// and bounds-checked, because <c>OnShootShotMarkerId</c> is a plain int that defaults to 0 -
+    /// so a shot taken off any marker in a mode with no markers at all indexed an empty list.
+    /// </summary>
+    private static BasketBallShotMarker ShotMarkerFor(BasketBallState basketBallState)
+    {
+        System.Collections.Generic.List<BasketBallShotMarker> markers =
+            GameRules.instance != null ? GameRules.instance.BasketBallShotMarkersList : null;
+
+        if (markers == null)
+        {
+            return null;
+        }
+
+        int id = basketBallState.OnShootShotMarkerId;
+        return id >= 0 && id < markers.Count ? markers[id] : null;
+    }
+
     private void updateShotMadeBasketBallStats(GameStats gameStats, BasketBallState basketBallState)
     {
         // first thing, update shot made total
@@ -186,141 +235,60 @@ public class BasketBallShotMade : MonoBehaviour
         //}
 
         // ==================== point total logic ==============================
-        // if not 3/4/all point contest
-        if (!GameRules.instance.GameModeThreePointContest
-            && !GameRules.instance.GameModeFourPointContest
-            && !GameRules.instance.GameModeSevenPointContest
-            && !GameRules.instance.GameModeAllPointContest
-            && MatchRuntime.RawModeId != 19)
-        // game mode 19 is 1 pt per 10 feet of last shot made
+        // The rules themselves live in Level5.Core.ShotScoring, where they can be tested without a
+        // basketball, a marker list or a running match. This method's job is to describe the shot
+        // that was just made and apply the answer.
+        //
+        // The original tested "is this a marker contest" and "is this Points by Distance" as two
+        // branches that could in principle both run. No authored mode is both - Points by Distance
+        // has no shot markers - so the extraction treats them as the alternatives they are, and
+        // this comment is the record of that being a decision rather than an oversight.
+        BasketBallShotMarker marker = ShotMarkerFor(basketBallState);
+
+        ShotScoringInput input = new ShotScoringInput
         {
-            if (basketBallState.TwoAttempt)
-            {
+            Kind = ShotKindOf(basketBallState),
+            IsMarkerContest = GameRules.instance.GameModeThreePointContest
+                || GameRules.instance.GameModeFourPointContest
+                || GameRules.instance.GameModeSevenPointContest
+                || GameRules.instance.GameModeAllPointContest,
+            ScoresByDistance = MatchRuntime.RawModeId == Modes.PointsByDistance,
+            HasStreakBonus = MatchRuntime.RawModeId == Modes.InThePocket,
+            ConsecutiveShotsMade = gameStats.ConsecutiveShotsMade,
+            StreakBonusThreshold = GameRules.instance.InThePocketActivateValue,
+            OnEnabledMarker = basketBallState.PlayerOnMarkerOnShoot
+                && marker != null
+                && marker.MarkerEnabled,
+            IsFinalMarkerAttempt = marker != null && marker.ShotAttempt == marker.MaxShotAttempt,
+            MarkerFinalShotScoresDouble = MatchRuntime.Rules.IsThreePointContest
+                || MatchRuntime.Rules.IsFourPointContest
+                || MatchRuntime.Rules.IsSevenPointContest,
+            MoneyBallActive = basketBallState.MoneyBallEnabledOnShoot,
+            ShotDistance = BasketBall.instance != null ? BasketBall.instance.LastShotDistance : 0f
+        };
+
+        ShotScore score = ShotScoring.Score(input);
+
+        gameStats.TotalPoints += score.Points;
+        gameStats.MoneyBallMade += score.MoneyBallMade;
+
+        switch (score.CountedAs)
+        {
+            case ShotKind.Two:
                 gameStats.TwoPointerMade++;
-                gameStats.TotalPoints += 2;
-            }
-
-            if (basketBallState.ThreeAttempt)
-            {
+                break;
+            case ShotKind.Three:
                 gameStats.ThreePointerMade++;
-                // if consecutive > 5 and game mode for 'Total Points+'
-                if (gameStats.ConsecutiveShotsMade >= GameRules.instance.InThePocketActivateValue && MatchRuntime.RawModeId == 15)
-                {
-                    gameStats.TotalPoints += 4;
-                }
-                else
-                {
-                    gameStats.TotalPoints += 3;
-                }
-            }
-
-            if (basketBallState.FourAttempt)
-            {
+                break;
+            case ShotKind.Four:
                 gameStats.FourPointerMade++;
-                // if consecutive > 5 and game mode for 'Total Points+'
-                if (gameStats.ConsecutiveShotsMade >= GameRules.instance.InThePocketActivateValue && MatchRuntime.RawModeId == 15)
-                {
-                    gameStats.TotalPoints += 6;
-                }
-                else
-                {
-                    gameStats.TotalPoints += 4;
-                }
-
-            }
-            if (basketBallState.SevenAttempt)
-            {
+                break;
+            case ShotKind.Seven:
                 gameStats.SevenPointerMade++;
-                // if consecutive > 5 and game mode for 'Total Points+'
-                if (gameStats.ConsecutiveShotsMade >= GameRules.instance.InThePocketActivateValue && MatchRuntime.RawModeId == 15)
-                {
-                    gameStats.TotalPoints += 10;
-                }
-                else
-                {
-                    gameStats.TotalPoints += 7;
-                }
-            }
+                break;
         }
-        else
-        {
-            int pointsScored = 0;
-            // if player is on marker and marker enabled && not game mode 19
-            if (basketBallState.PlayerOnMarkerOnShoot
-                && GameRules.instance.BasketBallShotMarkersList[basketBallState.OnShootShotMarkerId].MarkerEnabled)
-            {
-                // if moneyball
-                if (basketBallState.TwoAttempt)
-                {
-                    gameStats.TwoPointerMade++;
-                    pointsScored = 2;
-                }
 
-                if (basketBallState.ThreeAttempt)
-                {
-                    gameStats.ThreePointerMade++;
-                    pointsScored = 3;
-                }
-
-                if (basketBallState.FourAttempt)
-                {
-                    gameStats.FourPointerMade++;
-                    pointsScored = 4;
-                }
-
-                if (basketBallState.SevenAttempt)
-                {
-                    gameStats.SevenPointerMade++;
-                    pointsScored = 7;
-                }
-                // if moneyball / last shot on marker (5/5)
-                if (GameRules.instance.BasketBallShotMarkersList[basketBallState.OnShootShotMarkerId].ShotAttempt 
-                    == GameRules.instance.BasketBallShotMarkersList[basketBallState.OnShootShotMarkerId].MaxShotAttempt
-                    && (MatchRuntime.Rules.IsThreePointContest || MatchRuntime.Rules.IsFourPointContest || MatchRuntime.Rules.IsSevenPointContest))
-                {
-                    gameStats.TotalPoints += (pointsScored * 2);
-                    gameStats.MoneyBallMade++;
-                }
-                // not last shot on marker (1-4/5)
-                else
-                {
-                    gameStats.TotalPoints += pointsScored;
-                }
-            }
-            // is game mode 19 [Points By Distance]
-            if (MatchRuntime.RawModeId == 19)
-            {
-                if (basketBallState.TwoAttempt)
-                {
-                    gameStats.TwoPointerMade++;
-                }
-
-                if (basketBallState.ThreeAttempt)
-                {
-                    gameStats.ThreePointerMade++;
-                }
-
-                if (basketBallState.FourAttempt)
-                {
-                    gameStats.FourPointerMade++;
-                }
-
-                if (basketBallState.SevenAttempt)
-                {
-                    gameStats.SevenPointerMade++;
-                }
-                // reset point scored if Points By Distance mode
-                pointsScored = 0;
-                pointsScored = Mathf.FloorToInt((BasketBall.instance.LastShotDistance * 6) / 10);
-                gameStats.TotalPoints += pointsScored;
-            }
-        }
-        // moneyball stats
-        if (basketBallState.MoneyBallEnabledOnShoot)
-        {
-            gameStats.MoneyBallMade++;
-        }
-        gameStats.ShotMade = gameStats.TwoPointerMade + gameStats.ThreePointerMade 
+        gameStats.ShotMade = gameStats.TwoPointerMade + gameStats.ThreePointerMade
             + gameStats.FourPointerMade + gameStats.SevenPointerMade;
 
         // ==================== requires position markers logic ==============================
