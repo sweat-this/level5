@@ -375,14 +375,27 @@ gameplay cycle is broken**, which makes it dependent on AUD-002 and AUD-010 rath
 of them.
 
 Every folder under `Assets/Scripts` was checked for outbound references to types owned by other
-folders. Four are true leaves with no outbound dependencies at all:
+folders.
 
-| Folder | Files | Referenced by |
-| --- | --- | --- |
-| `pooling` | 2 | 2 folders |
-| `SFX manager` | 1 | 7 folders |
-| `email` | 1 | 0 folders (see AUD-064) |
-| `Documentation` | 1 | 0 folders (already editor-only) |
+> **The first run of this analysis was wrong in two places, and the corrections went in opposite
+> directions.** Its string-stripping mishandled verbatim strings: it reported `constants` as
+> depending on `player` and `menu_start` when those "references" were the string literals
+> `"CharacterProfile"` and `"CheerleaderProfile"` - database table names - and it reported
+> `Documentation` as a leaf when the exporter genuinely reads six folders' types. Both were caught by
+> reading the files rather than trusting the tool. The numbers below are from the corrected run.
+
+Four folders are true leaves with no outbound dependencies at all:
+
+| Folder | Files | Referenced by | Status |
+| --- | --- | --- | --- |
+| `constants` | 4 | **19 folders** | extracted as `Level5.Constants` |
+| `SFX manager` | 1 | 7 folders | extracted as `Level5.Audio` |
+| `pooling` | 2 | 2 folders | extracted as `Level5.Pooling` |
+| `email` | 1 | 0 folders | left alone - it is dead, see AUD-064 |
+
+`constants` is the one that mattered: pure constants and enums, referenced by more folders than
+anything else in the tree, and it turned out to need no untangling at all - only the analysis said
+otherwise.
 
 Everything else is entangled, and the entanglement is concentrated in four folders that reference
 each other in both directions:
@@ -397,29 +410,33 @@ Those four folders are 73 of the 206 files. An assembly cannot contain a cycle w
 assembly, so no arrangement of asmdefs separates them - they would all have to land in one assembly,
 which is the situation that exists today.
 
-The two near-misses are worth naming because they look extractable and are not:
+One near-miss is worth naming because it looks extractable and is not:
 
-- **`constants`** (referenced by 19 folders - the single most valuable extraction available) reaches
-  out to exactly two types: `CharacterProfile` in `player` and `CheerleaderProfile` in `menu_start`.
-  Two references stand between the project and a foundational constants assembly.
 - **`Models`** (referenced by 8) depends on `GameStats`, `Modes`, `MatchRuntime`, `GameOptions` and
   `PlayerIdentifier` - `HighScoreModel` converts live gameplay state into a save row, so it is a
-  gameplay consumer wearing a data-model name.
+  gameplay consumer wearing a data-model name. Extracting it means separating the save-row shape
+  from the conversion, which is real work rather than a file move.
 
-**What was done now:** `pooling` is extracted as `Level5.Pooling`. It is small, but it is the
-pattern, and it is the one leaf with behaviour worth isolating - `RuntimeObjectPool` is shared
-infrastructure that must not grow a dependency on gameplay, and now it structurally cannot.
+**What was done now.** Three assemblies, in ascending order of how much they matter:
+
+- `Level5.Pooling` - `RuntimeObjectPool` is shared infrastructure that must not grow a dependency on
+  gameplay, and now it structurally cannot.
+- `Level5.Audio` - the same argument, and it is reached from seven folders.
+- `Level5.Constants` - the foundation. Nineteen folders depend on it and it depends on nothing, so
+  it can never be part of a cycle again.
+
+None of this changes behaviour; the predefined assembly automatically references all three.
 
 **What should happen next**, in order:
 
-1. Move `CharacterProfile` / `CheerleaderProfile` off `constants`, then extract `constants`. Highest
-   value per unit of risk of anything on this list.
-2. Break the `player` ↔ `basketball` cycle. That is AUD-010's "single shot result event" - the shot
-   pipeline is what ties them together in both directions.
-3. Break `player` ↔ `game manager`. That is AUD-002.
+1. Break the `player` ↔ `basketball` cycle. That is AUD-010's "single shot result event" - the shot
+   pipeline is what ties them together in both directions, and it is the larger of the two knots
+   (18 references one way, 15 the other).
+2. Break `player` ↔ `game manager`. That is AUD-002.
+3. Separate `Models` from the gameplay state it converts.
 4. Only then does splitting the remainder become a mechanical exercise.
 
-Attempting the split before those is not a matter of effort; it is not possible.
+Attempting steps beyond the leaves before those is not a matter of effort; it is not possible.
 
 ---
 
