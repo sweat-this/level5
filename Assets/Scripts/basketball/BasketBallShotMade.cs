@@ -296,15 +296,19 @@ public class BasketBallShotMade : MonoBehaviour
             && (MatchRuntime.Rules.RequiresShotMarkers3s || MatchRuntime.Rules.RequiresShotMarkers4s || MatchRuntime.Rules.RequiresShotMarkers7s))
         {
             // if money ball enabled
+            if (marker == null)
+            {
+                return;
+            }
+
             if (basketBallState.MoneyBallEnabledOnShoot)
             {
-                int max = GameRules.instance.BasketBallShotMarkersList[basketBallState.OnShootShotMarkerId].MaxShotMade;
-                GameRules.instance.BasketBallShotMarkersList[basketBallState.OnShootShotMarkerId].ShotMade = max;
+                marker.ShotMade = marker.MaxShotMade;
             }
             // no money ball, update current shot marker stats
             else
             {
-                GameRules.instance.BasketBallShotMarkersList[basketBallState.OnShootShotMarkerId].ShotMade++;
+                marker.ShotMade++;
             }
         }
     }

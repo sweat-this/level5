@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 using Level5.Core.Match;
 
@@ -80,10 +81,10 @@ public class BasketBallState : MonoBehaviour
             //PlayerDistanceFromRim = Mathf.Abs( GameLevelManager.instance.Player.transform.position.z - _basketBallTarget.transform.position.z);
 
             // is player on  marker  +  is marker required for game mode
-            if (GameRules.instance.PositionMarkersRequired)
+            if (GameRules.instance != null && GameRules.instance.PositionMarkersRequired)
             {
-                PlayerOnMarker = isCpu ? GameRules.instance.BasketBallShotMarkersList[CurrentShotMarkerId].AutoPlayerOnMarker
-                    : GameRules.instance.BasketBallShotMarkersList[CurrentShotMarkerId].PlayerOnMarker;
+                BasketBallShotMarker marker = CurrentShotMarker();
+                PlayerOnMarker = marker != null && (isCpu ? marker.AutoPlayerOnMarker : marker.PlayerOnMarker);
             }
 
             if (PlayerDistanceFromRim < Constants.DISTANCE_3point)
@@ -124,6 +125,19 @@ public class BasketBallState : MonoBehaviour
                 SevenPoints = false;
             }
         }
+    }
+
+    private BasketBallShotMarker CurrentShotMarker()
+    {
+        List<BasketBallShotMarker> markers =
+            GameRules.instance != null ? GameRules.instance.BasketBallShotMarkersList : null;
+
+        if (markers == null || CurrentShotMarkerId < 0 || CurrentShotMarkerId >= markers.Count)
+        {
+            return null;
+        }
+
+        return markers[CurrentShotMarkerId];
     }
 
     public void ResetShotAttemptSnapshot()

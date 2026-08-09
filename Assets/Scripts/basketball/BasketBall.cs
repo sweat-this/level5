@@ -324,11 +324,16 @@ public class BasketBall : MonoBehaviour
             // on shoot. 
             basketBallState.PlayerOnMarkerOnShoot = true;
             basketBallState.OnShootShotMarkerId = basketBallState.CurrentShotMarkerId;
+            BasketBallShotMarker marker = ShotMarkerFor(basketBallState);
             // update shot attempt stat for marker position shot from
-            GameRules.instance.BasketBallShotMarkersList[basketBallState.OnShootShotMarkerId].ShotAttempt++;
+            if (marker != null)
+            {
+                marker.ShotAttempt++;
+            }
 
             if (basketBallState.PlayerOnMarkerOnShoot
-                && GameRules.instance.BasketBallShotMarkersList[basketBallState.OnShootShotMarkerId].ShotAttempt == 5
+                && marker != null
+                && marker.ShotAttempt == 5
                 && (MatchRuntime.Rules.IsThreePointContest || MatchRuntime.Rules.IsFourPointContest || MatchRuntime.Rules.IsSevenPointContest))
             {
                 GameStats.MoneyBallAttempts++;
@@ -355,6 +360,20 @@ public class BasketBall : MonoBehaviour
         //reset state flags
         basketBallState.Thrown = true;
         playerController.CallBallToPlayer.Locked = false;
+    }
+
+    private static BasketBallShotMarker ShotMarkerFor(BasketBallState basketBallState)
+    {
+        List<BasketBallShotMarker> markers =
+            GameRules.instance != null ? GameRules.instance.BasketBallShotMarkersList : null;
+
+        if (markers == null)
+        {
+            return null;
+        }
+
+        int id = basketBallState.OnShootShotMarkerId;
+        return id >= 0 && id < markers.Count ? markers[id] : null;
     }
 
     public void updateBasketBallStateShotTypeOnShoot(bool two, bool three, bool four, bool seven)

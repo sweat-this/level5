@@ -88,12 +88,13 @@ public class MatchHudPresenter : MonoBehaviour
     /// </summary>
     public void Initialize()
     {
-        displayScoreText = SceneObjects.Find<Text>(displayScoreObjectName, this);
-        displayCurrentScoreText = SceneObjects.Find<Text>(displayCurrentScoreObjectName, this);
-        displayHighScoreText = SceneObjects.Find<Text>(displayHighScoreObjectName, this);
-        displayMoneyText = SceneObjects.Find<Text>(displayMoneyObjectName, this);
-        displayMoneyBallText = SceneObjects.Find<Text>(displayMoneyBallObjectName, this);
-        displayOtherMessageText = SceneObjects.Find<Text>(displayOtherMessageName, this);
+        List<string> missing = new List<string>();
+        displayScoreText = FindOptionalText(displayScoreObjectName, missing);
+        displayCurrentScoreText = FindOptionalText(displayCurrentScoreObjectName, missing);
+        displayHighScoreText = FindOptionalText(displayHighScoreObjectName, missing);
+        displayMoneyText = FindOptionalText(displayMoneyObjectName, missing);
+        displayMoneyBallText = FindOptionalText(displayMoneyBallObjectName, missing);
+        displayOtherMessageText = FindOptionalText(displayOtherMessageName, missing);
 
         ClearText(displayScoreText);
         ClearText(displayCurrentScoreText);
@@ -109,12 +110,42 @@ public class MatchHudPresenter : MonoBehaviour
         IsComplete = HasCompleteScoreHud();
         if (!IsComplete)
         {
-            Debug.LogError(
-                "The match HUD is missing required objects, so the score display is switched off. "
-                + "The match still plays and its results are still saved. See the errors above for "
-                + "the missing names.",
-                this);
+            string message =
+                "The match HUD is incomplete, so the score display is switched off. "
+                + "The match still plays and its results are still saved.";
+
+            if (missing.Count > 0)
+            {
+                message += " Missing objects: " + string.Join(", ", missing.ToArray()) + ".";
+            }
+
+            if (MatchRuntime.HasConfiguration)
+            {
+                Debug.LogError(message, this);
+            }
+            else
+            {
+                Debug.LogWarning(message + " This is expected when playing a bare level scene directly.", this);
+            }
         }
+    }
+
+    private static Text FindOptionalText(string objectName, List<string> missing)
+    {
+        GameObject found = GameObject.Find(objectName);
+        if (found == null)
+        {
+            missing.Add(objectName);
+            return null;
+        }
+
+        Text text = found.GetComponent<Text>();
+        if (text == null)
+        {
+            missing.Add(objectName + " (Text)");
+        }
+
+        return text;
     }
 
     /// <summary>Gives the display the match state it needs. Called before each use, not stored elsewhere.</summary>

@@ -41,7 +41,7 @@ public class GameRules : MonoBehaviour
 
     // all these specific game rules for each will need to moved to a different file eventually on refactor
     [SerializeField] private GameObject[] basketBallShotMarkerObjects;
-    [SerializeField] private List<BasketBallShotMarker> _basketBallShotMarkersList;
+    [SerializeField] private List<BasketBallShotMarker> _basketBallShotMarkersList = new List<BasketBallShotMarker>();
 
     [SerializeField]
     private int markersRemaining;
@@ -107,6 +107,10 @@ public class GameRules : MonoBehaviour
         }
 
         instance = this;
+        if (_basketBallShotMarkersList == null)
+        {
+            _basketBallShotMarkersList = new List<BasketBallShotMarker>();
+        }
 
         // Every gameplay scene needs a lifecycle owner, and none of them has the component yet.
         // Adding it here rather than editing every scene keeps the migration to code; a scene that
@@ -138,6 +142,9 @@ public class GameRules : MonoBehaviour
         campaignTransitionStarted = false;
 
         gameModeId = GameModeIds.ToInt(MatchRuntime.ModeId);
+        positionMarkersRequired = false;
+        BasketBallShotMarkersList.Clear();
+        markersRemaining = 0;
 
         // components
         // player 1 game stats
