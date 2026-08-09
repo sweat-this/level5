@@ -1,5 +1,6 @@
 ﻿using System.Collections;
 using UnityEngine;
+using Level5.Core.Match;
 
 public class EnemyDetection : MonoBehaviour, ICombatDetection
 {
@@ -35,11 +36,11 @@ public class EnemyDetection : MonoBehaviour, ICombatDetection
             ? GameLevelManager.instance.PlayerController1.PlayerAttackQueue
             : null;
         // if only enemies, make increase enemy sight
-        if (GameOptions.EnemiesOnlyEnabled || GameOptions.enemiesEnabled)
+        if (MatchRuntime.Rules.EnemiesOnly || MatchRuntime.Rules.EnemiesEnabled)
         {
             enemySightDistance = 10;
         }
-        if (GameOptions.battleRoyalEnabled)
+        if (MatchRuntime.Rules.IsBattleRoyal)
         {
             enemySightDistance = 30;
         }

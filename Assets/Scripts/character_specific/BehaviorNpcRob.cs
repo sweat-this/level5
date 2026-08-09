@@ -1,3 +1,4 @@
+using Level5.Core.Match;
 ﻿using UnityEngine;
 
 public class BehaviorNpcRob : MonoBehaviour
@@ -9,7 +10,7 @@ public class BehaviorNpcRob : MonoBehaviour
     private void Start()
     {
         spriteObject = transform.GetComponentInChildren<SpriteRenderer>().gameObject;
-        if (GameOptions.customCamera)
+        if (MatchRuntime.CustomCamera)
         {
             spriteObject.transform.rotation = Quaternion.Euler(0, 0, 0);
         }

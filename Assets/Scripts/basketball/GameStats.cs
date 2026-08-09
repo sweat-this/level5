@@ -1,5 +1,6 @@
 ﻿using Assets.Scripts.Utility;
 using UnityEngine;
+using Level5.Core.Match;
 
 public class GameStats : MonoBehaviour
 {
@@ -62,8 +63,8 @@ public class GameStats : MonoBehaviour
     //{
     //    // for saving character specific info
     //    // id and name use to construct key that will be stored
-    //    PlayerId = GameOptions.characterId;
-    //    PlayerName = GameOptions.characterObjectName;
+    //    PlayerId = MatchRuntime.PrimaryCharacterId;
+    //    PlayerName = MatchRuntime.PrimaryCharacterObjectName;
     //}
 
     public void calculateConsecutiveShot(BasketBallState basketBallState)
@@ -138,12 +139,12 @@ public class GameStats : MonoBehaviour
             MinionsKilled = MinionsKilled,
             BossKilled = BossKilled,
 
-            TrafficEnabled = GameOptions.trafficEnabled,
-            EnemiesEnabled = GameOptions.enemiesEnabled || GameOptions.EnemiesOnlyEnabled,
-            HardcoreEnabled = GameOptions.hardcoreModeEnabled,
-            SniperEnabled = GameOptions.sniperEnabled,
-            ArcadeMode = GameOptions.arcadeModeEnabled,
-            DifficultySelected = GameOptions.difficultySelected
+            TrafficEnabled = MatchRuntime.Rules.TrafficEnabled,
+            EnemiesEnabled = MatchRuntime.Rules.EnemiesEnabled || MatchRuntime.Rules.EnemiesOnly,
+            HardcoreEnabled = MatchRuntime.Rules.Hardcore,
+            SniperEnabled = MatchRuntime.Rules.SniperEnabled,
+            ArcadeMode = MatchRuntime.Rules.ArcadeMode,
+            DifficultySelected = MatchDifficulties.ToInt(MatchRuntime.Rules.Difficulty)
         };
     }
 

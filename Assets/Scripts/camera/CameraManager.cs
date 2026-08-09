@@ -1,6 +1,7 @@
 ﻿using System.Collections;
 using UnityEngine;
 using UnityEngine.UI;
+using Level5.Core.Match;
 
 public class CameraManager : MonoBehaviour
 {
@@ -60,7 +61,7 @@ public class CameraManager : MonoBehaviour
             // #review for better way to make this more generic
             // if level requires weather system. currently only this level so can hardcode
             // doesnt work unless game options display name set
-            if (GameOptions.levelDisplayName != null && GameOptions.levelDisplayName.ToLower().Contains("norf"))
+            if (MatchRuntime.LevelDisplayName != null && MatchRuntime.LevelDisplayName.ToLower().Contains("norf"))
             {
                 Cameras[i].GetComponent<cameraUpdater>().RequiresWeatherSystem = true;
                 //Debug.Log("level requires WEATHER");

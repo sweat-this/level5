@@ -1,5 +1,6 @@
 ﻿using System.Collections.Generic;
 using UnityEngine;
+using Level5.Core.Match;
 
 public class EnemySpawner : MonoBehaviour
 {
@@ -29,7 +30,7 @@ public class EnemySpawner : MonoBehaviour
         //GameOptions.battleRoyalEnabled = true;
         // get number of enemies already in scene
         //if (GameObject.FindGameObjectWithTag("enemy") != null)
-        if (GameOptions.enemiesEnabled)
+        if (MatchRuntime.Rules.EnemiesEnabled)
         {
             //GameOptions.enemiesEnabled = true;
             // this needs to second option or enabling it will spawn enemies
@@ -50,21 +51,21 @@ public class EnemySpawner : MonoBehaviour
         //    GameOptions.enemiesEnabled = true;
         //}
         // if enemies in scene, spawn max
-        //Debug.Log(GameOptions.enemiesEnabled);
-        //Debug.Log(GameOptions.EnemiesOnlyEnabled);
-        //Debug.Log(GameOptions.gameModeHasBeenSelected);
-        if ((GameOptions.enemiesEnabled || GameOptions.EnemiesOnlyEnabled) /* && GameOptions.gameModeHasBeenSelected */)
+        //Debug.Log(MatchRuntime.Rules.EnemiesEnabled);
+        //Debug.Log(MatchRuntime.Rules.EnemiesOnly);
+        //Debug.Log(MatchRuntime.HasConfiguration);
+        if ((MatchRuntime.Rules.EnemiesEnabled || MatchRuntime.Rules.EnemiesOnly) /* && MatchRuntime.HasConfiguration */)
         {
             if (!HasSpawnConfiguration())
             {
                 enabled = false;
                 return;
             }
-            if (GameOptions.hardcoreModeEnabled && GameOptions.EnemiesOnlyEnabled)
+            if (MatchRuntime.Rules.Hardcore && MatchRuntime.Rules.EnemiesOnly)
             {
                 maxNumberOfEnemies = 8;
             }
-            else if (GameOptions.hardcoreModeEnabled && !GameOptions.EnemiesOnlyEnabled)
+            else if (MatchRuntime.Rules.Hardcore && !MatchRuntime.Rules.EnemiesOnly)
             {
                 maxNumberOfEnemies = 6;
             }
@@ -73,11 +74,11 @@ public class EnemySpawner : MonoBehaviour
             // enable enemies whether it was selected or not"), so that disjunct was always true
             // whenever battleRoyalEnabled was - which made the two branches below unreachable.
             // A non-cage battle royal therefore spawned 4 enemies where the branch order says 2.
-            else if (!GameOptions.battleRoyalEnabled || !GameOptions.gameModeHasBeenSelected)
+            else if (!MatchRuntime.Rules.IsBattleRoyal || !MatchRuntime.HasConfiguration)
             {
                 maxNumberOfEnemies = 4;
             }
-            else if (GameOptions.cageMatchEnabled)
+            else if (MatchRuntime.Rules.IsCageMatch)
             {
                 maxNumberOfEnemies = 4;
             }
@@ -90,10 +91,10 @@ public class EnemySpawner : MonoBehaviour
             maxNumberOfEnemies = maxNumberOfEnemies/2;
 #endif
             maxNumberOfMinions = maxNumberOfEnemies - maxNumberOfBoss;
-            //Debug.Log(GameOptions.battleRoyalEnabled);
-            //Debug.Log(GameOptions.cageMatchEnabled);
+            //Debug.Log(MatchRuntime.Rules.IsBattleRoyal);
+            //Debug.Log(MatchRuntime.Rules.IsCageMatch);
             //Debug.Log(steelcage != null);
-            if ((!GameOptions.battleRoyalEnabled || GameOptions.cageMatchEnabled))
+            if ((!MatchRuntime.Rules.IsBattleRoyal || MatchRuntime.Rules.IsCageMatch))
             {
                 // spawn enemies if necessary
                 spawnDefaultMinions();
@@ -101,11 +102,11 @@ public class EnemySpawner : MonoBehaviour
                 // start function to check status of current enemies
                 InvokeRepeating("getNumberOfCurrentEnemiesInScene", 5, 2f);
             }
-            if (!GameOptions.cageMatchEnabled && steelcage != null)
+            if (!MatchRuntime.Rules.IsCageMatch && steelcage != null)
             {
                 steelcage.SetActive(false);
             }
-            if (GameOptions.battleRoyalEnabled && !GameOptions.cageMatchEnabled)
+            if (MatchRuntime.Rules.IsBattleRoyal && !MatchRuntime.Rules.IsCageMatch)
             {
                 maxNumberOfEnemies = 20;
                 //battleRoyalSpawnPosition = GameObject.Find("battleRoyalSpawnPosition");
@@ -113,7 +114,7 @@ public class EnemySpawner : MonoBehaviour
                 //spawnBattleRoyalContestant();
             }
         }
-        //if (!GameOptions.battleRoyalEnabled || GameOptions.cageMatchEnabled)
+        //if (!MatchRuntime.Rules.IsBattleRoyal || MatchRuntime.Rules.IsCageMatch)
         //{
         //    Debug.Log("spawn");
         //    // spawn enemies if necessary
@@ -122,11 +123,11 @@ public class EnemySpawner : MonoBehaviour
         //    // start function to check status of current enemies
         //    InvokeRepeating("getNumberOfCurrentEnemiesInScene", 5, 2f);
         //}
-        //if (!GameOptions.cageMatchEnabled && steelcage != null)
+        //if (!MatchRuntime.Rules.IsCageMatch && steelcage != null)
         //{
         //    steelcage.SetActive(false);
         //}
-        //if (GameOptions.battleRoyalEnabled && !GameOptions.cageMatchEnabled)
+        //if (MatchRuntime.Rules.IsBattleRoyal && !MatchRuntime.Rules.IsCageMatch)
         //{
         //    maxNumberOfEnemies = 20;
         //    battleRoyallSpawnPosition = GameObject.Find("battleRoyalSpawnPosition");
@@ -220,7 +221,7 @@ public class EnemySpawner : MonoBehaviour
 
         int randomIndex;
 
-        if (GameOptions.battleRoyalEnabled && !GameOptions.hardcoreModeEnabled)
+        if (MatchRuntime.Rules.IsBattleRoyal && !MatchRuntime.Rules.Hardcore)
         {
             if(getNumberOfBoss() == 0)
             {
@@ -233,7 +234,7 @@ public class EnemySpawner : MonoBehaviour
                 Spawn(enemyMinionPrefabs[randomIndex], battleRoyalSpawnPosition.transform.position);
             }
         }
-        if (GameOptions.battleRoyalEnabled && GameOptions.hardcoreModeEnabled)
+        if (MatchRuntime.Rules.IsBattleRoyal && MatchRuntime.Rules.Hardcore)
         {
             randomIndex = Random.Range(0, enemyBossPrefabs.Count);
             Spawn(enemyBossPrefabs[randomIndex], battleRoyalSpawnPosition.transform.position);
@@ -264,7 +265,7 @@ public class EnemySpawner : MonoBehaviour
 
     private bool HasSpawnConfiguration()
     {
-        bool usesBattleRoyalSpawn = GameOptions.battleRoyalEnabled && !GameOptions.cageMatchEnabled;
+        bool usesBattleRoyalSpawn = MatchRuntime.Rules.IsBattleRoyal && !MatchRuntime.Rules.IsCageMatch;
         bool hasSpawnLocations = usesBattleRoyalSpawn
             ? battleRoyalSpawnPosition != null
             : spawnPositions != null

@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using Unity.Mathematics;
 using UnityEngine;
+using Level5.Core.Match;
 
 public class EnemyController : MonoBehaviour, ICombatAgent, IPooledSpawnReset
 {
@@ -130,7 +131,7 @@ public class EnemyController : MonoBehaviour, ICombatAgent, IPooledSpawnReset
         }
 
         movementSpeed = walkMovementSpeed;
-        if (GameOptions.hardcoreModeEnabled || GameOptions.difficultySelected == 2)
+        if (MatchRuntime.Rules.Hardcore || MatchRuntime.Rules.Difficulty == MatchDifficulty.Hardcore)
         {
             // +25% speed
             movementSpeed *= 1.25f;
@@ -143,7 +144,7 @@ public class EnemyController : MonoBehaviour, ICombatAgent, IPooledSpawnReset
             damageDisplayObject.transform.parent.GetComponent<Canvas>().worldCamera = Camera.main;
         }
         // if level has custom level specific camera
-        if (GameOptions.customCamera)
+        if (MatchRuntime.CustomCamera)
         {
             if (spriteObject != null)
             {
@@ -393,10 +394,10 @@ public class EnemyController : MonoBehaviour, ICombatAgent, IPooledSpawnReset
         thisScale.x *= -1;
         transform.localScale = thisScale;
 
-        if ((GameOptions.enemiesEnabled
-            || GameOptions.EnemiesOnlyEnabled
-            || GameOptions.sniperEnabled
-            || GameOptions.battleRoyalEnabled)
+        if ((MatchRuntime.Rules.EnemiesEnabled
+            || MatchRuntime.Rules.EnemiesOnly
+            || MatchRuntime.Rules.SniperEnabled
+            || MatchRuntime.Rules.IsBattleRoyal)
             && damageDisplayObject != null)
         {
             Vector3 messageScale = damageDisplayObject.transform.localScale;

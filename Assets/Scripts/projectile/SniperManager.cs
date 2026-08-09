@@ -1,6 +1,7 @@
 using Assets.Scripts.Utility;
 using System.Collections;
 using UnityEngine;
+using Level5.Core.Match;
 
 public class SniperManager : MonoBehaviour
 {
@@ -44,7 +45,7 @@ public class SniperManager : MonoBehaviour
         //GameOptions.sniperEnabled = true; 
         //test flag
         // auto start autonomous sniper system
-        if (GameOptions.sniperEnabled || GameOptions.sniperEnabledLaser || GameOptions.sniperEnabledBullet)
+        if (MatchRuntime.Rules.SniperEnabled || MatchRuntime.Rules.Sniper == SniperMode.Laser || MatchRuntime.Rules.Sniper == SniperMode.Bullet)
         {
             instance = this;
             InvokeRepeating("startSniper", 0, 0.5f);
@@ -105,15 +106,15 @@ public class SniperManager : MonoBehaviour
 
             //// test flag to enable
             //GameOptions.sniperEnabledBullet = true;
-            if (GameOptions.sniperEnabledBullet && !playerController.PlayerHealth.IsDead)
+            if (MatchRuntime.Rules.Sniper == SniperMode.Bullet && !playerController.PlayerHealth.IsDead)
             {
                 StartCoroutine(StartSniperBullet(random));
             }
-            if (GameOptions.sniperEnabledLaser && !playerController.PlayerHealth.IsDead)
+            if (MatchRuntime.Rules.Sniper == SniperMode.Laser && !playerController.PlayerHealth.IsDead)
             {
                 StartCoroutine(StartSniperLaser(random));
             }
-            if (GameOptions.sniperEnabledBulletAuto && !playerController.PlayerHealth.IsDead)
+            if (MatchRuntime.Rules.Sniper == SniperMode.MachineGun && !playerController.PlayerHealth.IsDead)
             {
                 StartCoroutine(StartSniperBulletAuto(random));
             }

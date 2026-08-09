@@ -1,6 +1,7 @@
 ﻿using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Analytics;
+using Level5.Core.Match;
 
 public static class AnaylticsManager
 {
@@ -26,10 +27,10 @@ public static class AnaylticsManager
             Analytics.CustomEvent(eventName,
             new Dictionary<string, object>
             {
-                {"game mode", GameOptions.gameModeSelectedName },
-                {"player", GameOptions.characterDisplayName },
-                {"cheerleader", GameOptions.cheerleaderDisplayName },
-                {"traffic", GameOptions.trafficEnabled },
+                {"game mode", MatchRuntime.ModeDisplayName },
+                {"player", MatchRuntime.PrimaryCharacterDisplayName },
+                {"cheerleader", MatchRuntime.Cheerleader.DisplayName },
+                {"traffic", MatchRuntime.Rules.TrafficEnabled },
                 {"deviceType", SystemInfo.deviceType },
                 {"deviceModel", SystemInfo.deviceModel },
                 {"OperatingSystem", SystemInfo.operatingSystem }
@@ -44,10 +45,10 @@ public static class AnaylticsManager
             Analytics.CustomEvent(eventName,
             new Dictionary<string, object>
             {
-                {"game mode", GameOptions.gameModeSelectedName },
-                {"player", GameOptions.characterDisplayName },
-                {"cheerleader", GameOptions.cheerleaderDisplayName },
-                {"traffic", GameOptions.trafficEnabled },
+                {"game mode", MatchRuntime.ModeDisplayName },
+                {"player", MatchRuntime.PrimaryCharacterDisplayName },
+                {"cheerleader", MatchRuntime.Cheerleader.DisplayName },
+                {"traffic", MatchRuntime.Rules.TrafficEnabled },
                 {"deviceType", SystemInfo.deviceType },
                 {"deviceModel", SystemInfo.deviceModel },
                 {"OperatingSystem", SystemInfo.operatingSystem }
@@ -62,7 +63,7 @@ public static class AnaylticsManager
             Analytics.CustomEvent(eventName,
             new Dictionary<string, object>
             {
-                {"player", GameOptions.characterDisplayName },
+                {"player", MatchRuntime.PrimaryCharacterDisplayName },
                 {"slider value", sliderValue }
             }
             );
@@ -81,9 +82,9 @@ public static class AnaylticsManager
             Analytics.CustomEvent(eventName,
             new Dictionary<string, object>
             {
-                {"game mode", GameOptions.gameModeSelectedName },
-                {"player", GameOptions.characterDisplayName },
-                {"cheerleader", GameOptions.cheerleaderDisplayName },
+                {"game mode", MatchRuntime.ModeDisplayName },
+                {"player", MatchRuntime.PrimaryCharacterDisplayName },
+                {"cheerleader", MatchRuntime.Cheerleader.DisplayName },
                 {"points", basketBallStats.TotalPoints },
                 {"accuracy", accuracy.ToString("##.####") },
                 {"deviceType", SystemInfo.deviceType },
@@ -99,9 +100,9 @@ public static class AnaylticsManager
             Analytics.CustomEvent(eventName,
             new Dictionary<string, object>
             {
-                {"game mode", GameOptions.gameModeSelectedName },
-                {"player", GameOptions.characterDisplayName },
-                {"cheerleader", GameOptions.cheerleaderDisplayName },
+                {"game mode", MatchRuntime.ModeDisplayName },
+                {"player", MatchRuntime.PrimaryCharacterDisplayName },
+                {"cheerleader", MatchRuntime.Cheerleader.DisplayName },
                 {"points", basketBallStats.TotalPoints },
                 {"accuracy", (basketBallStats.ShotMade / basketBallStats.ShotAttempt).ToString("##.####") },
                 {"deviceType", SystemInfo.deviceType },

@@ -1,4 +1,5 @@
-﻿using UnityEngine;
+﻿using Level5.Core.Match;
+using UnityEngine;
 using UnityEngine.UI;
 
 public class Timer : MonoBehaviour
@@ -69,8 +70,12 @@ public class Timer : MonoBehaviour
             timeStart = MatchClock.DefaultMatchSeconds;
         }
 
-        modeRequiresCounter = GameOptions.gameModeRequiresCounter;
-        modeRequiresCountDown = GameOptions.gameModeRequiresCountDown;
+        // The clock behaviour comes from the resolved rules, not from two separate globals that
+        // could each be set independently. MatchClockMode makes "counts up and counts down at the
+        // same time" unrepresentable.
+        ResolvedMatchRules rules = MatchRuntime.Rules;
+        modeRequiresCounter = rules.RequiresCounter;
+        modeRequiresCountDown = rules.RequiresCountDown;
 
         if (modeRequiresCounter || modeRequiresCountDown)
         {
@@ -120,40 +125,14 @@ public class Timer : MonoBehaviour
                 shotClockText.text = "";
             }
         }
-        // time's up, pause and reset timer text
+        // time's up. Whether that actually ends the match is MatchEndConditions' call - the clock
+        // only reports that it reached zero.
         if (timeRemaining <= 0
             && !GameRules.instance.GameOver
             && !modeRequiresCounter
             && timerEnabled)
         {
-            // ball is in the air, let the shot go before pausing 
-            // or player in air and has basketball
-            // not consecutive game mode
-            if (GameLevelManager.instance != null
-                && GameLevelManager.instance.players != null
-                && GameLevelManager.instance.players.Count > 0
-                && !GameLevelManager.instance.players[0].basketBallState.Thrown
-                // player in air, has ball
-                //&& !(GameLevelManager.instance.players[0].playerController.hasBasketball && GameLevelManager.instance.players[0].playerController.InAir)
-                && GameLevelManager.instance.players[0].playerController.Grounded
-                // not consecutive shots game mode
-                && !GameRules.instance.GameModeRequiresConsecutiveShots)
-            {
-          
-                //Debug.Log("game over");
-                GameRules.instance.RequestGameOver();
-            }
-            // if consecutive shots mode and streak is less than 2
-            if (GameLevelManager.instance != null
-                && GameLevelManager.instance.players != null
-                && GameLevelManager.instance.players.Count > 0
-                && (GameRules.instance.GameModeRequiresConsecutiveShots
-                && GameLevelManager.instance.players[0].gameStats.ConsecutiveShotsMade < 3))
-            {
-                //Debug.Log("game over");
-                
-                GameRules.instance.RequestGameOver();
-            }
+            ReportTimeExpired();
         }
         // countdown timer
         if (displayTimer
@@ -212,6 +191,33 @@ public class Timer : MonoBehaviour
                     shotClockText.text = minutes.ToString("0") + ":" + seconds.ToString("00.00");
                 }
             }
+        }
+    }
+
+    /// <summary>
+    /// Asks whether a clock at zero ends this match, and reports it if so. Returns without doing
+    /// anything when the scene has no player to ask about yet.
+    /// </summary>
+    private void ReportTimeExpired()
+    {
+        PlayerIdentifier player = GameLevelManager.instance != null
+            ? GameLevelManager.instance.Player1
+            : null;
+        if (player == null)
+        {
+            return;
+        }
+
+        bool requiresConsecutiveShots = GameRules.instance.GameModeRequiresConsecutiveShots;
+        bool expired = MatchEndConditions.TimeExpired(
+            requiresConsecutiveShots,
+            player.basketBallState.Thrown,
+            player.playerController.Grounded,
+            player.gameStats.ConsecutiveShotsMade);
+
+        if (expired)
+        {
+            GameRules.instance.RequestEnd(MatchEndConditions.TimeExpiredReason(requiresConsecutiveShots));
         }
     }
 

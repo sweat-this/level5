@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections;
 using UnityEngine;
+using Level5.Core.Match;
 
 
 public class BasketBallState : MonoBehaviour
@@ -73,7 +74,7 @@ public class BasketBallState : MonoBehaviour
     }
     void Update()
     {
-        if (GameOptions.gameModeRequiresBasketball)
+        if (MatchRuntime.Rules.RequiresBasketball)
         {
             PlayerDistanceFromRim = Vector3.Distance(new Vector3(player.transform.position.x,0, player.transform.position.z), new Vector3(_basketBallTarget.transform.position.x,0, _basketBallTarget.transform.position.z));
             //PlayerDistanceFromRim = Mathf.Abs( GameLevelManager.instance.Player.transform.position.z - _basketBallTarget.transform.position.z);

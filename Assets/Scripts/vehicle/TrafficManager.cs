@@ -1,6 +1,7 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using Level5.Core.Match;
 
 public class TrafficManager : MonoBehaviour
 {
@@ -52,7 +53,7 @@ public class TrafficManager : MonoBehaviour
     void Awake()
     {
         instance = this;
-        trafficEnabled = GameOptions.trafficEnabled;
+        trafficEnabled = MatchRuntime.Rules.TrafficEnabled;
         // NOTE : for testing purposes
         //GameOptions.trafficEnabled = true;
 

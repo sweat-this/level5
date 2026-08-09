@@ -9,6 +9,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using Random = UnityEngine.Random;
 using Touch = UnityEngine.Touch;
+using Level5.Core.Match;
 
 public class AutoPlayerController : MonoBehaviour
 {
@@ -174,7 +175,7 @@ public class AutoPlayerController : MonoBehaviour
             : null;
 
         //GameOptions.sniperEnabled = true; // test flag;
-        if (GameOptions.enemiesEnabled || GameOptions.EnemiesOnlyEnabled || GameOptions.sniperEnabled)
+        if (MatchRuntime.Rules.EnemiesEnabled || MatchRuntime.Rules.EnemiesOnly || MatchRuntime.Rules.SniperEnabled)
         {
             playerSwapAttack = GetComponent<PlayerSwapAttack>();
             if (damageDisplayObject != null && damageDisplayObject.GetComponent<Canvas>() != null)
@@ -186,7 +187,7 @@ public class AutoPlayerController : MonoBehaviour
         {
             damageDisplayObject.SetActive(false);
         }
-        if (GameOptions.customCamera)
+        if (MatchRuntime.CustomCamera)
         {
             spriteObject.transform.rotation = Quaternion.Euler(0, 0, 0);
             if (damageDisplayObject != null)
@@ -195,7 +196,7 @@ public class AutoPlayerController : MonoBehaviour
             }
         }
         // custom knockdown time for sniper mode
-        if (GameOptions.sniperEnabled)
+        if (MatchRuntime.Rules.SniperEnabled)
         {
             _knockDownTime = 0.75f;
         }
@@ -413,7 +414,7 @@ public class AutoPlayerController : MonoBehaviour
         // note -- At top of the jump
         if (InAir
             && hasBasketball
-            && !GameOptions.EnemiesOnlyEnabled
+            && !MatchRuntime.Rules.EnemiesOnly
             && rigidBody.linearVelocity.y <= 0
             && (currentState == inAirHasBasketballFrontState || currentState == inAirHasBasketballSideState)
             && !shootTrigger)
@@ -500,7 +501,7 @@ public class AutoPlayerController : MonoBehaviour
         //Debug.Log("rangePercent : " + rangePercent);
         //Debug.Log("characterProfile.Accuracy7Pt : " + characterProfile.Accuracy7Pt);
 
-        if (GameOptions.levelHasSevenPointers
+        if (MatchRuntime.LevelHasSevenPointers
             && (rangePercent > 70)) 
         { 
             returnValue = true;
@@ -674,7 +675,7 @@ public class AutoPlayerController : MonoBehaviour
         transform.localScale = thisScale;
 
         if (damageDisplayObject != null
-            && (GameOptions.enemiesEnabled || GameOptions.EnemiesOnlyEnabled || GameOptions.sniperEnabled))
+            && (MatchRuntime.Rules.EnemiesEnabled || MatchRuntime.Rules.EnemiesOnly || MatchRuntime.Rules.SniperEnabled))
         {
             Vector3 damageScale = damageDisplayObject.transform.localScale;
             damageScale.x *= -1;

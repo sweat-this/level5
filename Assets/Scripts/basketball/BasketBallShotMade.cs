@@ -1,5 +1,6 @@
 ﻿
 using UnityEngine;
+using Level5.Core.Match;
 
 
 public class BasketBallShotMade : MonoBehaviour
@@ -175,7 +176,7 @@ public class BasketBallShotMade : MonoBehaviour
             && !GameRules.instance.GameModeFourPointContest
             && !GameRules.instance.GameModeSevenPointContest
             && !GameRules.instance.GameModeAllPointContest
-            && GameOptions.gameModeSelectedId != 19)
+            && MatchRuntime.RawModeId != 19)
         // game mode 19 is 1 pt per 10 feet of last shot made
         {
             if (basketBallState.TwoAttempt)
@@ -188,7 +189,7 @@ public class BasketBallShotMade : MonoBehaviour
             {
                 gameStats.ThreePointerMade++;
                 // if consecutive > 5 and game mode for 'Total Points+'
-                if (gameStats.ConsecutiveShotsMade >= GameRules.instance.InThePocketActivateValue && GameOptions.gameModeSelectedId == 15)
+                if (gameStats.ConsecutiveShotsMade >= GameRules.instance.InThePocketActivateValue && MatchRuntime.RawModeId == 15)
                 {
                     gameStats.TotalPoints += 4;
                 }
@@ -202,7 +203,7 @@ public class BasketBallShotMade : MonoBehaviour
             {
                 gameStats.FourPointerMade++;
                 // if consecutive > 5 and game mode for 'Total Points+'
-                if (gameStats.ConsecutiveShotsMade >= GameRules.instance.InThePocketActivateValue && GameOptions.gameModeSelectedId == 15)
+                if (gameStats.ConsecutiveShotsMade >= GameRules.instance.InThePocketActivateValue && MatchRuntime.RawModeId == 15)
                 {
                     gameStats.TotalPoints += 6;
                 }
@@ -216,7 +217,7 @@ public class BasketBallShotMade : MonoBehaviour
             {
                 gameStats.SevenPointerMade++;
                 // if consecutive > 5 and game mode for 'Total Points+'
-                if (gameStats.ConsecutiveShotsMade >= GameRules.instance.InThePocketActivateValue && GameOptions.gameModeSelectedId == 15)
+                if (gameStats.ConsecutiveShotsMade >= GameRules.instance.InThePocketActivateValue && MatchRuntime.RawModeId == 15)
                 {
                     gameStats.TotalPoints += 10;
                 }
@@ -260,7 +261,7 @@ public class BasketBallShotMade : MonoBehaviour
                 // if moneyball / last shot on marker (5/5)
                 if (GameRules.instance.BasketBallShotMarkersList[basketBallState.OnShootShotMarkerId].ShotAttempt 
                     == GameRules.instance.BasketBallShotMarkersList[basketBallState.OnShootShotMarkerId].MaxShotAttempt
-                    && (GameOptions.gameModeThreePointContest || GameOptions.gameModeFourPointContest || GameOptions.gameModeSevenPointContest))
+                    && (MatchRuntime.Rules.IsThreePointContest || MatchRuntime.Rules.IsFourPointContest || MatchRuntime.Rules.IsSevenPointContest))
                 {
                     gameStats.TotalPoints += (pointsScored * 2);
                     gameStats.MoneyBallMade++;
@@ -272,7 +273,7 @@ public class BasketBallShotMade : MonoBehaviour
                 }
             }
             // is game mode 19 [Points By Distance]
-            if (GameOptions.gameModeSelectedId == 19)
+            if (MatchRuntime.RawModeId == 19)
             {
                 if (basketBallState.TwoAttempt)
                 {
@@ -309,7 +310,7 @@ public class BasketBallShotMade : MonoBehaviour
 
         // ==================== requires position markers logic ==============================
         if (basketBallState.PlayerOnMarkerOnShoot 
-            && (GameOptions.gameModeRequiresShotMarkers3s || GameOptions.gameModeRequiresShotMarkers4s || GameOptions.gameModeRequiresShotMarkers7s))
+            && (MatchRuntime.Rules.RequiresShotMarkers3s || MatchRuntime.Rules.RequiresShotMarkers4s || MatchRuntime.Rules.RequiresShotMarkers7s))
         {
             // if money ball enabled
             if (basketBallState.MoneyBallEnabledOnShoot)

@@ -2,6 +2,7 @@
 using System.Collections;
 using UnityEngine;
 using UnityEngine.UI;
+using Level5.Core.Match;
 
 public class ShotMeter : MonoBehaviour
 {
@@ -64,8 +65,8 @@ public class ShotMeter : MonoBehaviour
         sliderMessageText = transform.Find(sliderMessageName).GetComponent<Text>();
         sliderMessageText.text = "";
 
-        if (GameOptions.hardcoreModeEnabled || GameOptions.EnemiesOnlyEnabled
-            || GameOptions.battleRoyalEnabled /*|| !GameOptions.gameModeHasBeenSelected*/ || playerIdentifier.isCpu)
+        if (MatchRuntime.Rules.Hardcore || MatchRuntime.Rules.EnemiesOnly
+            || MatchRuntime.Rules.IsBattleRoyal /*|| !MatchRuntime.HasConfiguration*/ || playerIdentifier.isCpu)
         {
             meterRed.SetActive(false);
             meterYellow.SetActive(false);

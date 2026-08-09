@@ -3,6 +3,7 @@ using System;
 using System.Collections;
 using UnityEngine;
 using UnityEngine.UI;
+using Level5.Core.Match;
 
 public class RacingVehicleController : MonoBehaviour
 {
@@ -122,7 +123,7 @@ public class RacingVehicleController : MonoBehaviour
             : null;
 
         //GameOptions.sniperEnabled = true; // test flag;
-        if (GameOptions.enemiesEnabled || GameOptions.EnemiesOnlyEnabled || GameOptions.sniperEnabled)
+        if (MatchRuntime.Rules.EnemiesEnabled || MatchRuntime.Rules.EnemiesOnly || MatchRuntime.Rules.SniperEnabled)
         {
             //playerSwapAttack = GetComponent<PlayerSwapAttack>();
             if (damageDisplayObject != null && damageDisplayObject.GetComponent<Canvas>() != null)
@@ -136,7 +137,7 @@ public class RacingVehicleController : MonoBehaviour
         }
 
         // custom knockdown time for sniper mode
-        if (GameOptions.sniperEnabled)
+        if (MatchRuntime.Rules.SniperEnabled)
         {
             _knockDownTime = 0.75f;
         }
@@ -376,7 +377,7 @@ public class RacingVehicleController : MonoBehaviour
             //&& hasBasketball
             && (Grounded || IsGrinding)
             && !KnockedDown
-            && !GameOptions.EnemiesOnlyEnabled
+            && !MatchRuntime.Rules.EnemiesOnly
             && !InAir)
         {
             //if (PlayerDunk.instance != null
@@ -395,7 +396,7 @@ public class RacingVehicleController : MonoBehaviour
         //if (InAir
         //    && hasBasketball
         //    && GameLevelManager.instance.Controls.Player.shoot.triggered
-        //    && !GameOptions.EnemiesOnlyEnabled
+        //    && !MatchRuntime.Rules.EnemiesOnly
         //    && currentState != inAirDunkState)
         //{
         //    //Debug.Log("shoot");
@@ -411,7 +412,7 @@ public class RacingVehicleController : MonoBehaviour
         //    && GameLevelManager.instance.Controls.Player.jump.ReadValue<float>() == 1
         //    && !hasBasketball
         //    && canAttack
-        //    && GameOptions.enemiesEnabled)
+        //    && MatchRuntime.Rules.EnemiesEnabled)
         //{
         //    PlayerAttack();
         //}
@@ -424,7 +425,7 @@ public class RacingVehicleController : MonoBehaviour
         //    //&& GameLevelManager.instance.Controls.Player.run.ReadValue<float>() == 1
         //    && !hasBasketball
         //    && canBlock
-        //    && GameOptions.enemiesEnabled
+        //    && MatchRuntime.Rules.EnemiesEnabled
         //    && PlayerHealth.Block > 0)
         //{
         //    if (playerCanBlock)
@@ -450,7 +451,7 @@ public class RacingVehicleController : MonoBehaviour
         //    && !InAir
         //    && Grounded
         //    && !KnockedDown
-        //    && GameOptions.enemiesEnabled)
+        //    && MatchRuntime.Rules.EnemiesEnabled)
         //{
         //    PlayerSpecial();
         //}
@@ -618,7 +619,7 @@ public class RacingVehicleController : MonoBehaviour
         thisScale.x *= -1;
         transform.localScale = thisScale;
 
-        if (GameOptions.enemiesEnabled || GameOptions.EnemiesOnlyEnabled || GameOptions.sniperEnabled)
+        if (MatchRuntime.Rules.EnemiesEnabled || MatchRuntime.Rules.EnemiesOnly || MatchRuntime.Rules.SniperEnabled)
         {
             Vector3 damageScale = damageDisplayObject.transform.localScale;
             damageScale.x *= -1;

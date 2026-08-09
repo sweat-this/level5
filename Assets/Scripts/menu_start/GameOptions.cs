@@ -7,7 +7,6 @@ public static class GameOptions
     static public string applicationVersion;
     static public string operatingSystemVersion;
 
-    static public List<int> playerIds;
     static public int numPlayers = 1;
     static public int numCpuPlayers;
     static public bool player1IsCpu;
@@ -63,7 +62,6 @@ public static class GameOptions
     static public string levelSelected;
     static public int gameModeSelectedId;
     static public int levelId;
-    static public int cheerleaderId;
     // object names
     static public string characterObjectName;
     static public List<string> characterObjectNames;
@@ -71,19 +69,7 @@ public static class GameOptions
     static public string levelSelectedName;
     static public string levelDisplayName;
     static public string gameModeSelectedName;
-    static public string cheerleaderSelectedName;
 
-    static public int friendBonus3Accuracy;
-    static public int friendBonus4Accuracy;
-    static public int friendBonus7Accuracy;
-    static public int friendBonusLuck;
-    static public int friendBonusRelease;
-    static public int friendBonusRange;
-    static public int friendBonusSpeed;
-    static public int friendBonusClutch;
-    static public int friendBonusAttack;
-    static public int friendBonusHealth;
-    static public int friendBonusDefense;
 
     // game mode flags for game rules
     static public bool gameModeHasBeenSelected;
@@ -99,10 +85,6 @@ public static class GameOptions
     static public bool gameModeThreePointContest;
     static public bool gameModeFourPointContest;
     static public bool gameModeAllPointContest;
-    // moneyball required
-    static public bool gameModeRequiresMoneyBall;
-    // requires consecutive shots
-    static public bool gameModeRequiresConsecutiveShot;
     // custom timer used for 3 / 4 / all point contest, change from default of 120 to 80 / 160
     static public float customTimer;
 
@@ -112,7 +94,6 @@ public static class GameOptions
     static public int playerSelectedIndex = 0;
     static public int levelSelectedIndex = 0;
     static public int modeSelectedIndex = 0;
-    static public int cheerleaderSelectedIndex = 0;
     static public int friendSelectedIndex = 0;
     static public int cpu1SelectedIndex = 0;
     static public int cpu2SelectedIndex = 0;
@@ -129,7 +110,6 @@ public static class GameOptions
     static public int difficultySelected = 1;
 
     static public string previousSceneName;
-    static public bool arcadeModeEnabled;
 
     static public bool hardcoreModeEnabled = false;
     static public bool EnemiesOnlyEnabled = false;
@@ -147,10 +127,8 @@ public static class GameOptions
     static public bool tipDialogueLoadedOnStart;
     static public bool obstaclesEnabled;
     static public bool battleRoyalEnabled;
-    static public bool gameModeRequiresPlayerSurvive;
     static public bool cageMatchEnabled;
 
-    static public bool customCamera;
     static public bool gameModeRequiresShotMarkers7s;
     static public bool gameModeSevenPointContest;
 

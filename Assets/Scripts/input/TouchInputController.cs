@@ -5,6 +5,7 @@ using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
 using TouchPhase = UnityEngine.TouchPhase;
+using Level5.Core.Match;
 
 
 public class TouchInputController : MonoBehaviour
@@ -123,7 +124,7 @@ public class TouchInputController : MonoBehaviour
                 && touch1.position.y > Screen.safeArea.center.y
                 && playerController.PlayerCanBlock
                 //&& playerController.PlayerHealth.Block > 0
-                && GameOptions.enemiesEnabled) // if swipe on right 1/2 of screen)) )
+                && MatchRuntime.Rules.EnemiesEnabled) // if swipe on right 1/2 of screen)) )
             {
                 hold1Detected = true;
                 PlayerTouchInputState.BlockHeld = true;
@@ -160,7 +161,7 @@ public class TouchInputController : MonoBehaviour
                 && hold1Detected
                 && !buttonPressed
                 && startTouchPosition2.x > Screen.safeArea.center.x
-                && GameOptions.enemiesEnabled)
+                && MatchRuntime.Rules.EnemiesEnabled)
             // if swipe on right 1/2 of screen)) 
             //&& startTouchPosition2.x < (Screen.height / 2)) // if swipe on right 1/2 of screen)) )
             {
@@ -213,7 +214,7 @@ public class TouchInputController : MonoBehaviour
             }
         }
 
-        if (tap1Detected && !GameOptions.EnemiesOnlyEnabled)
+        if (tap1Detected && !MatchRuntime.Rules.EnemiesOnly)
         {
             PlayerTouchInputState.QueueJumpOrShoot(touch1.position);
             //tap1Detected = false;

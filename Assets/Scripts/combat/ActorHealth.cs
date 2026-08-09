@@ -1,6 +1,7 @@
 using System;
 using UnityEngine;
 using UnityEngine.Serialization;
+using Level5.Core.Match;
 
 /// <summary>
 /// The health, damage, and death behaviour shared by every non-player actor.
@@ -124,7 +125,7 @@ public abstract class ActorHealth : MonoBehaviour, IDamageable
     protected void ResetToMaxHealth(int configuredMax)
     {
         maxHealth = Mathf.Max(0, configuredMax);
-        if (GameOptions.hardcoreModeEnabled)
+        if (MatchRuntime.Rules.Hardcore)
         {
             maxHealth += maxHealth / 4;
         }

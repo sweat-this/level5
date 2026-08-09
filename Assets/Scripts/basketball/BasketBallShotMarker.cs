@@ -1,5 +1,6 @@
 ﻿using UnityEngine;
 using UnityEngine.UI;
+using Level5.Core.Match;
 
 public class BasketBallShotMarker : MonoBehaviour
 {
@@ -56,8 +57,8 @@ public class BasketBallShotMarker : MonoBehaviour
         // using basketball state
         setMarkerShotType();
         //test flag
-        //GameOptions.gameModeRequiresShotMarkers4s = true;
-        if (GameOptions.gameModeRequiresShotMarkers3s || GameOptions.gameModeRequiresShotMarkers4s || GameOptions.gameModeRequiresShotMarkers7s)
+        //MatchRuntime.Rules.RequiresShotMarkers4s = true;
+        if (MatchRuntime.Rules.RequiresShotMarkers3s || MatchRuntime.Rules.RequiresShotMarkers4s || MatchRuntime.Rules.RequiresShotMarkers7s)
         {
             markerEnabled = true;
             setDisplayText();
@@ -95,7 +96,7 @@ public class BasketBallShotMarker : MonoBehaviour
             displayCurrentMarkerStats.text = "";
         }
         // this needs to be turned off if ball hits ground
-        if (PlayerOnMarker /*|| _autoPlayerOnMarker && GameOptions.numPlayers >= 1*/)
+        if (PlayerOnMarker /*|| _autoPlayerOnMarker && MatchRuntime.ParticipantCount >= 1*/)
         {
             // if marker not completed yet
             if (markerEnabled)

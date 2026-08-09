@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using UnityEngine;
+using Level5.Core.Match;
 
 public class PlayerHealth : MonoBehaviour, IDamageable
 {
@@ -66,11 +67,11 @@ public class PlayerHealth : MonoBehaviour, IDamageable
             Health = maxHealth;
         }
 
-        if (GameOptions.enemiesEnabled
-            || GameOptions.sniperEnabled
-            || GameOptions.sniperEnabledBullet
-            || GameOptions.sniperEnabledLaser
-            || GameOptions.obstaclesEnabled)
+        if (MatchRuntime.Rules.EnemiesEnabled
+            || MatchRuntime.Rules.SniperEnabled
+            || MatchRuntime.Rules.Sniper == SniperMode.Bullet
+            || MatchRuntime.Rules.Sniper == SniperMode.Laser
+            || MatchRuntime.Rules.ObstaclesEnabled)
         {
             if (block < MaxBlock && !regenerateBlock)
             {

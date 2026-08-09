@@ -3,6 +3,7 @@ using Assets.Scripts.Utility;
 using System.Collections;
 using Unity.Mathematics;
 using UnityEngine;
+using Level5.Core.Match;
 
 public class BodyGuardController : MonoBehaviour, ICombatAgent
 {
@@ -115,7 +116,7 @@ public class BodyGuardController : MonoBehaviour, ICombatAgent
         if (lineOfSightVariance == 0) { lineOfSightVariance = 0.5f; }
         //if (takeDamageTime == 0) { takeDamageTime = 0.3f; }
         if (minDistanceCloseAttack == 0) { minDistanceCloseAttack = 0.6f; }
-        if (GameOptions.hardcoreModeEnabled)
+        if (MatchRuntime.Rules.Hardcore)
         {
             movementSpeed *= 1.25f;
             attackCooldown *= 0.5f;

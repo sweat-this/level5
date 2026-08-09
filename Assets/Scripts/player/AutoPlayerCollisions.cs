@@ -1,6 +1,7 @@
 ﻿
 using System.Collections;
 using UnityEngine;
+using Level5.Core.Match;
 
 public class AutoPlayerCollisions : MonoBehaviour
 {
@@ -48,7 +49,7 @@ public class AutoPlayerCollisions : MonoBehaviour
         }
 
         //if (gameObject.CompareTag("playerHitbox")
-        //    && (!GameOptions.battleRoyalEnabled || !GameOptions.cageMatchEnabled || !GameOptions.EnemiesOnlyEnabled)
+        //    && (!MatchRuntime.Rules.IsBattleRoyal || !MatchRuntime.Rules.IsCageMatch || !MatchRuntime.Rules.EnemiesOnly)
         //    && autoPlayerController.InAir
         //    && autoPlayerController.currentState != autoPlayerController.dunkState
         //    && (other.name.Equals("dunk_position_left") || other.name.Equals("dunk_position_right")))
@@ -69,11 +70,11 @@ public class AutoPlayerCollisions : MonoBehaviour
         && (other.CompareTag("enemyAttackBox") || other.CompareTag("obstacleAttackBox") || other.CompareTag("playerAttackBox"))
         && !autoPlayerController.KnockedDown
         && !autoPlayerController.TakeDamage
-        && (GameOptions.enemiesEnabled
-        || GameOptions.trafficEnabled
-        || GameOptions.obstaclesEnabled
+        && (MatchRuntime.Rules.EnemiesEnabled
+        || MatchRuntime.Rules.TrafficEnabled
+        || MatchRuntime.Rules.ObstaclesEnabled
         || other.transform.root.name.Contains("snake")
-        || GameOptions.sniperEnabled)
+        || MatchRuntime.Rules.SniperEnabled)
         // roll for evade attack chance
         && !rollForPlayerEvadeAttackChance(autoPlayerController.CharacterProfile.Luck)
         && !locked)

@@ -1,6 +1,7 @@
 ﻿using System.Collections;
 using UnityEngine;
 using UnityEngine.UI;
+using Level5.Core.Match;
 
 public class PlayerHealthBar : MonoBehaviour
 {
@@ -26,11 +27,11 @@ public class PlayerHealthBar : MonoBehaviour
     void Start()
     {
         //GameOptions.sniperEnabled = true; // test flag
-        if (GameOptions.enemiesEnabled 
-            || GameOptions.sniperEnabled 
-            || GameOptions.EnemiesOnlyEnabled
-            || GameOptions.obstaclesEnabled
-            || GameOptions.battleRoyalEnabled)
+        if (MatchRuntime.Rules.EnemiesEnabled 
+            || MatchRuntime.Rules.SniperEnabled 
+            || MatchRuntime.Rules.EnemiesOnly
+            || MatchRuntime.Rules.ObstaclesEnabled
+            || MatchRuntime.Rules.IsBattleRoyal)
         {
             instance = this;
             playerHealth = GameLevelManager.instance.Player1.GetComponentInChildren<PlayerHealth>();
