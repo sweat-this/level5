@@ -260,7 +260,17 @@ public class EnemySpawner : MonoBehaviour
 
     private static void Spawn(GameObject prefab, Vector3 position)
     {
-        RuntimeObjectPool.Spawn(prefab, position, Quaternion.identity);
+        // STEP 1: explicit target assignment happens here, before OnEnable runs (see
+        // RuntimeObjectPool.Spawn's configure-callback ordering), so EnemyController never has
+        // to reach for GameLevelManager.instance.PlayerController1 itself.
+        RuntimeObjectPool.Spawn(prefab, position, Quaternion.identity, instance =>
+        {
+            EnemyController enemyController = instance.GetComponent<EnemyController>();
+            if (enemyController != null && GameLevelManager.instance != null)
+            {
+                enemyController.AssignTargetQueue(GameLevelManager.instance.PlayerAttackQueue);
+            }
+        });
     }
 
     private bool HasSpawnConfiguration()

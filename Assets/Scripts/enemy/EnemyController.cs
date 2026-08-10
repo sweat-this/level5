@@ -61,6 +61,17 @@ public class EnemyController : MonoBehaviour, ICombatAgent, IPooledSpawnReset
     [SerializeField]
     bool isBoss;
 
+    // AI architecture: explicit target assignment (replaces reaching for
+    // GameLevelManager.instance.PlayerController1 from every method that needed the queue).
+    // EnemySpawner assigns this via RuntimeObjectPool's configure callback before OnEnable; the
+    // lazy fallback in the getter below covers enemies placed directly in a scene.
+    [SerializeField]
+    private PlayerAttackQueue targetQueue;
+    private ICombatAgent currentBodyguardTarget;
+    private readonly List<ICombatAgent> bodyGuardCandidateBuffer = new List<ICombatAgent>();
+    private CombatTacticalState currentAiState = CombatTacticalState.Idle;
+    private string lastTransitionReason = "spawn";
+
     private AnimatorStateInfo currentStateInfo;
     private int currentState;
     private static readonly int AnimatorState_Attack = Animator.StringToHash("base.attack");
@@ -186,6 +197,13 @@ public class EnemyController : MonoBehaviour, ICombatAgent, IPooledSpawnReset
         transform.localScale = initialScale;
         originalPosition = transform.position;
 
+        // STEP 15: a pooled reuse must not carry the previous life's target/state forward.
+        // targetQueue is intentionally left alone - EnemySpawner reassigns it via
+        // AssignTargetQueue on every spawn, and it is match-scoped identity, not per-life state.
+        currentBodyguardTarget = null;
+        currentAiState = CombatTacticalState.Idle;
+        lastTransitionReason = "spawn";
+
         if (rigidBody != null)
         {
             rigidBody.linearVelocity = Vector3.zero;
@@ -227,16 +245,19 @@ public class EnemyController : MonoBehaviour, ICombatAgent, IPooledSpawnReset
         currentStateInfo = anim.GetCurrentAnimatorStateInfo(0);
         currentState = currentStateInfo.fullPathHash;
         // ================== enemy facing player ==========================
-        PlayerAttackQueue playerAttackQueue = GameLevelManager.instance.PlayerController1.PlayerAttackQueue;
-        GameObject firstBodyGuard = playerAttackQueue.GetFirstBodyGuard();
-        if (firstBodyGuard == null)
+        PlayerAttackQueue playerAttackQueue = TargetQueue;
+        if (playerAttackQueue == null)
         {
-            relativePositionToPlayer = GameLevelManager.instance.Player1.transform.position.x - transform.position.x;
+            // STEP 1: no resolvable target queue (e.g. spawned before match wiring finished) -
+            // fail safe instead of chaining into a null reference. UpdateDistanceFromPlayer will
+            // pick this back up once a queue becomes available.
+            return;
         }
-        else
-        {
-            relativePositionToPlayer = firstBodyGuard.transform.position.x - transform.position.x;
-        }
+
+        Vector3 facingAnchor = currentBodyguardTarget != null
+            ? currentBodyguardTarget.CombatTransform.position
+            : playerAttackQueue.transform.position;
+        relativePositionToPlayer = facingAnchor.x - transform.position.x;
 
         // ================== enemy idle ==========================
         if ((/*GameLevelManager.instance.PlayerController.KnockedDown*/
@@ -327,6 +348,43 @@ public class EnemyController : MonoBehaviour, ICombatAgent, IPooledSpawnReset
         if (relativePositionToPlayer > 0 && !facingRight)
         {
             Flip();
+        }
+
+        UpdateAiStateDiagnostics();
+    }
+
+    // STEP 4/17: a diagnostic label derived from the flags above, not a parallel state machine -
+    // stateWalk/stateAttack/statePatrol/canAttack still own actual behaviour. Only updates on an
+    // actual transition, so this never spams per-frame.
+    private void UpdateAiStateDiagnostics()
+    {
+        CombatTacticalState nextState;
+        if (statePatrol)
+        {
+            nextState = CombatTacticalState.ReturnToPatrol;
+        }
+        else if (stateAttack)
+        {
+            nextState = CombatTacticalState.Attack;
+        }
+        else if (stateKnockDown)
+        {
+            nextState = CombatTacticalState.Recover;
+        }
+        else if (stateWalk)
+        {
+            nextState = currentBodyguardTarget != null || enemyDetection.Attacking
+                ? CombatTacticalState.Approach
+                : CombatTacticalState.AcquireTarget;
+        }
+        else
+        {
+            nextState = CombatTacticalState.Idle;
+        }
+
+        if (CombatTacticalStateTransitions.TryCommit(ref currentAiState, nextState, out string reason))
+        {
+            lastTransitionReason = reason;
         }
     }
 
@@ -525,12 +583,14 @@ public class EnemyController : MonoBehaviour, ICombatAgent, IPooledSpawnReset
 
     public void pursueTarget()
     {
-        //targetPosition = (GameLevelManager.instance.Player.transform.position - transform.position).normalized;
+        PlayerAttackQueue playerAttackQueue = TargetQueue;
+        if (playerAttackQueue == null)
+        {
+            return;
+        }
 
-        // if no bodyguards found
-        PlayerAttackQueue playerAttackQueue = GameLevelManager.instance.PlayerController1.PlayerAttackQueue;
-        GameObject firstBodyGuard = playerAttackQueue.GetFirstBodyGuard();
-        if (firstBodyGuard == null)
+        // if no valid bodyguard target, advance on the reserved attack position instead
+        if (currentBodyguardTarget == null)
         {
             Transform attackPosition = playerAttackQueue.GetAttackPositionTransform(enemyDetection.AttackPositionId);
             if (attackPosition == null)
@@ -540,16 +600,14 @@ public class EnemyController : MonoBehaviour, ICombatAgent, IPooledSpawnReset
 
             targetPosition = (attackPosition.position - transform.position).normalized;
         }
-        // if bodyguards, attack 1 first bodyguard
+        // otherwise engage the selected bodyguard (STEP 2/5 - selection happens in
+        // RefreshBodyguardTarget, on the same cadence as UpdateDistanceFromPlayer)
         else
         {
-            targetPosition = (firstBodyGuard.transform.position - transform.position).normalized;
+            targetPosition = (currentBodyguardTarget.CombatTransform.position - transform.position).normalized;
         }
         movement = targetPosition * (movementSpeed * Time.fixedDeltaTime);
-        //movement = targetPosition * (movementSpeed * Time.deltaTime);
         rigidBody.MovePosition(transform.position + movement);
-        //transform.Translate(movement);
-        //Debug.Log(gameObject.transform.root.name + " -- currentSpeed : " + currentSpeed);
     }
 
     public void moveToTarget(List<GameObject> waypoints)
@@ -591,36 +649,69 @@ public class EnemyController : MonoBehaviour, ICombatAgent, IPooledSpawnReset
 
     public void UpdateDistanceFromPlayer()
     {
-        PlayerAttackQueue playerAttackQueue = GameLevelManager.instance.PlayerController1.PlayerAttackQueue;
-        GameObject firstBodyGuard = playerAttackQueue.GetFirstBodyGuard();
-        if (firstBodyGuard == null)
+        PlayerAttackQueue playerAttackQueue = TargetQueue;
+        if (playerAttackQueue == null)
         {
-            distanceFromPlayer = Vector3.Distance(GameLevelManager.instance.Player1.transform.position, transform.position);
-            lineOfSight = GameLevelManager.instance.Player1.transform.position.z - transform.position.z;
+            return;
         }
-        else
+
+        // STEP 2/12: this runs on the existing 0.1s InvokeRepeating cadence (see OnEnable), which
+        // doubles as the AI's decision interval - Update()/pursueTarget() just read the cached
+        // result instead of re-selecting a bodyguard target every frame.
+        RefreshBodyguardTarget(playerAttackQueue);
+
+        Vector3 anchorPosition = currentBodyguardTarget != null
+            ? currentBodyguardTarget.CombatTransform.position
+            : playerAttackQueue.transform.position;
+
+        distanceFromPlayer = Vector3.Distance(anchorPosition, transform.position);
+        lineOfSight = anchorPosition.z - transform.position.z;
+        distanceFromBodyGuard = currentBodyguardTarget != null
+            ? Vector3.Distance(currentBodyguardTarget.CombatTransform.position, transform.position)
+            : 0f;
+    }
+
+    // STEP 2/3: reusable target-selection policy - hostility is structural here (bodyguards are
+    // the only candidates an enemy ever engages), so this only has to filter for
+    // alive/active/able-to-participate and score by distance/continuity.
+    private void RefreshBodyguardTarget(PlayerAttackQueue playerAttackQueue)
+    {
+        bodyGuardCandidateBuffer.Clear();
+        IReadOnlyList<GameObject> bodyGuards = playerAttackQueue.BodyGuards;
+        for (int i = 0; i < bodyGuards.Count; i++)
         {
-            distanceFromPlayer = Vector3.Distance(firstBodyGuard.transform.position, transform.position);
-            lineOfSight = firstBodyGuard.transform.position.z - transform.position.z;
+            GameObject bodyGuardObject = bodyGuards[i];
+            if (bodyGuardObject == null)
+            {
+                continue;
+            }
+
+            ICombatAgent agent = bodyGuardObject.GetComponent<ICombatAgent>();
+            if (agent != null)
+            {
+                bodyGuardCandidateBuffer.Add(agent);
+            }
         }
+
+        currentBodyguardTarget = CombatTargetSelector.SelectNearestValidTarget(
+            bodyGuardCandidateBuffer, transform.position, currentBodyguardTarget);
     }
 
     private void ReleaseAttackReservation(int attackPositionId = -1)
     {
-        if (GameLevelManager.instance == null
-            || GameLevelManager.instance.PlayerController1 == null
-            || GameLevelManager.instance.PlayerController1.PlayerAttackQueue == null)
+        PlayerAttackQueue playerAttackQueue = TargetQueue;
+        if (playerAttackQueue == null)
         {
             return;
         }
 
         if (attackPositionId >= 0)
         {
-            GameLevelManager.instance.PlayerController1.PlayerAttackQueue.RemoveFromQueue(gameObject, attackPositionId);
+            playerAttackQueue.RemoveFromQueue(gameObject, attackPositionId);
             return;
         }
 
-        GameLevelManager.instance.PlayerController1.PlayerAttackQueue.ReleaseReservation(this);
+        playerAttackQueue.ReleaseReservation(this);
     }
 
     // AUD-001: heal-on-kill amounts. These used to be written twice - 7/3 here and 5/2 in
@@ -706,4 +797,37 @@ public class EnemyController : MonoBehaviour, ICombatAgent, IPooledSpawnReset
     public Transform CombatTransform => transform;
     public bool CanAct => isActiveAndEnabled && (enemyHealth == null || !enemyHealth.IsDead);
     public static IReadOnlyCollection<EnemyController> ActiveEnemies => ActiveEnemySet;
+
+    /// <summary>
+    /// The attack queue this enemy fights against. Assigned explicitly by
+    /// <see cref="EnemySpawner"/> before spawn; resolves once from <see cref="GameLevelManager"/>
+    /// as a transitional fallback for enemies placed directly in a scene. STEP 1: replaces the
+    /// scattered <c>GameLevelManager.instance.PlayerController1.PlayerAttackQueue</c> chains that
+    /// used to appear in every method here.
+    /// </summary>
+    public PlayerAttackQueue TargetQueue
+    {
+        get
+        {
+            if (targetQueue == null && GameLevelManager.instance != null)
+            {
+                targetQueue = GameLevelManager.instance.PlayerAttackQueue;
+            }
+
+            return targetQueue;
+        }
+    }
+
+    public void AssignTargetQueue(PlayerAttackQueue queue)
+    {
+        targetQueue = queue;
+    }
+
+    // ---- diagnostics (STEP 17) - read-only, no per-frame logging ----
+    public CombatTacticalState CurrentAiState => currentAiState;
+    public GameObject CurrentTarget => currentBodyguardTarget?.CombatObject;
+    public float DistanceToTarget => currentBodyguardTarget != null
+        ? Vector3.Distance(transform.position, currentBodyguardTarget.CombatTransform.position)
+        : -1f;
+    public string LastTransitionReason => lastTransitionReason;
 }

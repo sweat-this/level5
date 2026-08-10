@@ -478,6 +478,13 @@ public class PlayerAttackQueue : MonoBehaviour
         attackSlotOpen = currentEnemiesQueued < maxEnemiesQueued && attackPositions.Length > 0;
     }
 
+    /// <summary>
+    /// The first enemy in queue order. No production caller left as of the Enemy/Bodyguard AI
+    /// architecture work - BodyGuardController now scores threats via CombatTargetSelector
+    /// instead of always fighting whichever enemy queued first. Kept for compatibility rather
+    /// than removed outright; a new caller should use <see cref="EnemiesQueued"/> with
+    /// CombatTargetSelector, not this, or "first queued" tactical priority comes back.
+    /// </summary>
     public GameObject GetFirstQueuedEnemy()
     {
         CleanupStaleEntries();
@@ -492,6 +499,12 @@ public class PlayerAttackQueue : MonoBehaviour
         return currentEnemiesQueued > 0;
     }
 
+    /// <summary>
+    /// The first registered bodyguard. No production caller left as of the Enemy/Bodyguard AI
+    /// architecture work - EnemyController now picks the nearest valid bodyguard via
+    /// CombatTargetSelector instead of always engaging index 0. Kept for compatibility; a new
+    /// caller should use <see cref="BodyGuards"/> with CombatTargetSelector instead.
+    /// </summary>
     public GameObject GetFirstBodyGuard()
     {
         bodyGuards.RemoveAll(bodyGuard => bodyGuard == null);

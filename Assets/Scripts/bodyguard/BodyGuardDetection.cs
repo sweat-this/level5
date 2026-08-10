@@ -4,7 +4,6 @@ using UnityEngine;
 public class BodyGuardDetection : MonoBehaviour, ICombatDetection
 {
     BodyGuardController bodyGuardController;
-    PlayerAttackQueue playerAttackQueue;
     [SerializeField]
     bool enemySighted;
     bool enemyDetectionEnabled = true;
@@ -23,7 +22,9 @@ public class BodyGuardDetection : MonoBehaviour, ICombatDetection
     private void Start()
     {
         bodyGuardController = GetComponent<BodyGuardController>();
-        playerAttackQueue = GameLevelManager.instance.players[0].GetComponent<PlayerAttackQueue>();
+        // STEP 1: no longer reaches for GameLevelManager.instance.players[0] directly - the
+        // queue now comes from BodyGuardController's explicit protected-actor assignment, read
+        // fresh each tick below so this works regardless of component resolution order.
         //if (enemySightDistance == 0)
         //{
         //    enemySightDistance = 5;
@@ -67,14 +68,8 @@ public class BodyGuardDetection : MonoBehaviour, ICombatDetection
         //    // move towards player
         //}
 
-        if (playerAttackQueue != null && playerAttackQueue.HasQueuedEnemies())
-        {
-            enemySighted = true;
-        }
-        else
-        {
-            enemySighted = false;
-        }
+        PlayerAttackQueue playerAttackQueue = bodyGuardController != null ? bodyGuardController.TargetQueue : null;
+        enemySighted = playerAttackQueue != null && playerAttackQueue.HasQueuedEnemies();
         // stay within certain distance of player
 
     }

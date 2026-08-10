@@ -5,11 +5,17 @@ using Level5.Core.Match;
 public class EnemyDetection : MonoBehaviour, ICombatDetection
 {
     EnemyController enemyController;
-    PlayerAttackQueue playerAttackQueue;
     [SerializeField]
     bool playerSighted;
     bool enemyDetectionEnabled = true;
     public float enemySightDistance;
+    // STEP 6: detection and pursuit are different ranges - noticing a target happens within
+    // enemySightDistance, but once engaged the enemy pursues until PursuitRange is exceeded.
+    // 0 (the default on every existing prefab) means "not configured", so it falls back to a
+    // wider multiple of enemySightDistance rather than reusing the same value for both, which
+    // was the previous (undifferentiated) behaviour.
+    [SerializeField]
+    private float pursuitRange;
     int attackPositionId;
     [SerializeField]
     bool attacking;
@@ -20,6 +26,7 @@ public class EnemyDetection : MonoBehaviour, ICombatDetection
     public bool TargetSighted { get => PlayerSighted; set => PlayerSighted = value; }
     public int AttackPositionId { get => attackPositionId; set => attackPositionId = value; }
     public bool Attacking { get => attacking; set => attacking = value; }
+    public float PursuitRange => pursuitRange > 0f ? pursuitRange : enemySightDistance * 1.5f;
 
     private void Awake()
     {
@@ -32,9 +39,6 @@ public class EnemyDetection : MonoBehaviour, ICombatDetection
         attacking = false;
         attackPositionId = -1;
         enemyDetectionEnabled = true;
-        playerAttackQueue = GameLevelManager.instance != null && GameLevelManager.instance.PlayerController1 != null
-            ? GameLevelManager.instance.PlayerController1.PlayerAttackQueue
-            : null;
         // if only enemies, make increase enemy sight
         if (MatchRuntime.Rules.EnemiesOnly || MatchRuntime.Rules.EnemiesEnabled)
         {
@@ -58,12 +62,13 @@ public class EnemyDetection : MonoBehaviour, ICombatDetection
 
     void CheckPlayerDistance()
     {
+        PlayerAttackQueue playerAttackQueue = enemyController != null ? enemyController.TargetQueue : null;
         if (playerAttackQueue == null)
         {
             return;
         }
 
-        // if player within enemy sight distance
+        // if player within enemy sight distance, acquire
         if (enemyController.DistanceFromPlayer < enemySightDistance
             && enemyDetectionEnabled)
         {
@@ -72,8 +77,8 @@ public class EnemyDetection : MonoBehaviour, ICombatDetection
                 playerAttackQueue.TryAddToQueue(gameObject);
             }
         }
-        // if player NOT within enemy sight distance
-        if (enemyController.DistanceFromPlayer >= enemySightDistance
+        // beyond pursuit range, disengage (STEP 6 - wider than the acquire range, not the same one)
+        if (enemyController.DistanceFromPlayer >= PursuitRange
             && enemyDetectionEnabled)
         {
             playerSighted = false;
@@ -108,4 +113,14 @@ public class EnemyDetection : MonoBehaviour, ICombatDetection
             enemyController.statePatrol = false;
         }
     }
+
+#if UNITY_EDITOR
+    private void OnDrawGizmosSelected()
+    {
+        Gizmos.color = Color.yellow;
+        Gizmos.DrawWireSphere(transform.position, enemySightDistance);
+        Gizmos.color = Color.red;
+        Gizmos.DrawWireSphere(transform.position, PursuitRange);
+    }
+#endif
 }
