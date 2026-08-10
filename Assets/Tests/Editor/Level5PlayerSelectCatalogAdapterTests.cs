@@ -1,0 +1,151 @@
+using System.Collections.Generic;
+using System.Reflection;
+using Level5.Core.PlayerSelection;
+using NUnit.Framework;
+using UnityEngine;
+
+/// <summary>
+/// Edit-mode tests for <see cref="PlayerSelectCatalogAdapter"/>: the projection from live
+/// <see cref="CharacterProfile"/> data into the read-only selection catalog. Profiles are plain
+/// <see cref="MonoBehaviour"/> instances created in memory - none of this touches persistence or a
+/// loaded scene.
+/// </summary>
+public class Level5PlayerSelectCatalogAdapterTests
+{
+    private readonly List<GameObject> spawned = new List<GameObject>();
+
+    [TearDown]
+    public void TearDown()
+    {
+        foreach (GameObject go in spawned)
+        {
+            if (go != null)
+            {
+                Object.DestroyImmediate(go);
+            }
+        }
+
+        spawned.Clear();
+    }
+
+    private CharacterProfile MakeProfile(
+        int playerId,
+        string displayName,
+        string objectName,
+        int experience = 0,
+        bool isShooter = true,
+        bool isFighter = false,
+        bool locked = false)
+    {
+        GameObject go = new GameObject("profile_" + playerId);
+        spawned.Add(go);
+        CharacterProfile profile = go.AddComponent<CharacterProfile>();
+        profile.PlayerId = playerId;
+        profile.PlayerDisplayName = displayName;
+        profile.PlayerObjectName = objectName;
+        profile.Experience = experience;
+        profile.IsShooter = isShooter;
+        profile.IsFighter = isFighter;
+
+        // IsLocked has an internal setter (see CharacterProfile.cs); reflection is the only way to
+        // drive it from an Editor-assembly test without loosening production accessibility for it.
+        PropertyInfo property = typeof(CharacterProfile).GetProperty("IsLocked");
+        property.SetValue(profile, locked);
+
+        return profile;
+    }
+
+    [Test]
+    public void ProjectsProfileIdentityAndCapabilityIntoTheOption()
+    {
+        CharacterProfile profile = MakeProfile(7, "Hero", "hero_obj", isShooter: true, isFighter: true);
+
+        PlayerSelectCatalog catalog = PlayerSelectCatalogAdapter.Project(new[] { profile }, new List<CharacterProfile>());
+
+        Assert.That(catalog.PrimaryOptions.Count, Is.EqualTo(1));
+        CharacterSelectOption option = catalog.PrimaryOptions[0];
+        Assert.That(option.CharacterId, Is.EqualTo(7));
+        Assert.That(option.DisplayName, Is.EqualTo("Hero"));
+        Assert.That(option.ObjectName, Is.EqualTo("hero_obj"));
+        Assert.That(option.IsShooter, Is.True);
+        Assert.That(option.IsFighter, Is.True);
+    }
+
+    [Test]
+    public void LockedProfileProjectsAsNotUnlocked()
+    {
+        CharacterProfile profile = MakeProfile(3, "Locked Guy", "locked_obj", locked: true);
+
+        PlayerSelectCatalog catalog = PlayerSelectCatalogAdapter.Project(new[] { profile }, new List<CharacterProfile>());
+
+        Assert.That(catalog.PrimaryOptions[0].IsUnlocked, Is.False);
+    }
+
+    [Test]
+    public void EffectiveClutchMatchesTheExistingMinLevelOneHundredRule()
+    {
+        CharacterProfile under = MakeProfile(1, "Under", "under_obj", experience: CharacterLevel.ExperiencePerLevel * 40);
+        CharacterProfile over = MakeProfile(2, "Over", "over_obj", experience: CharacterLevel.ExperiencePerLevel * 150);
+
+        PlayerSelectCatalog catalog = PlayerSelectCatalogAdapter.Project(new[] { under, over }, new List<CharacterProfile>());
+
+        CharacterSelectOption underOption = catalog.FindPrimary(1);
+        CharacterSelectOption overOption = catalog.FindPrimary(2);
+
+        Assert.That(underOption.Stats.EffectiveClutch, Is.EqualTo(underOption.Stats.Level));
+        Assert.That(overOption.Stats.EffectiveClutch, Is.EqualTo(100));
+    }
+
+    [Test]
+    public void ProjectionDoesNotLeaveClutchUnsetForGameplayToReadLater()
+    {
+        // Gameplay reads CharacterProfile.Clutch directly at match launch
+        // (CharacterProfile.intializeShooterStatsFromProfile). The old view wrote the effective
+        // value there on every render; the adapter now does it once, at projection time.
+        CharacterProfile profile = MakeProfile(1, "Hero", "hero_obj", experience: CharacterLevel.ExperiencePerLevel * 150);
+
+        PlayerSelectCatalogAdapter.Project(new[] { profile }, new List<CharacterProfile>());
+
+        Assert.That(profile.Clutch, Is.EqualTo(100));
+    }
+
+    [Test]
+    public void PortraitsAreExposedSeparatelyFromTheSelectionOption()
+    {
+        CharacterProfile profile = MakeProfile(1, "Hero", "hero_obj");
+        Sprite portrait = Sprite.Create(new Texture2D(1, 1), new Rect(0, 0, 1, 1), Vector2.zero);
+        profile.PlayerPortrait = portrait;
+
+        PlayerSelectCatalog catalog = PlayerSelectCatalogAdapter.Project(new[] { profile }, new List<CharacterProfile>());
+
+        Assert.That(catalog.VisualsFor(1).Portrait, Is.EqualTo(portrait));
+        Object.DestroyImmediate(portrait);
+    }
+
+    [Test]
+    public void LegacyCpuNoneIsNotInTheSelectableCpuCatalog()
+    {
+        CharacterProfile none = MakeProfile(0, "none", "none_obj");
+        CharacterProfile real = MakeProfile(1, "Real Cpu", "real_obj");
+
+        PlayerSelectCatalog catalog = PlayerSelectCatalogAdapter.Project(new List<CharacterProfile>(), new[] { none, real });
+
+        Assert.That(catalog.CpuOptions.Count, Is.EqualTo(1));
+        Assert.That(catalog.CpuOptions[0].CharacterId, Is.EqualTo(1));
+        Assert.That(catalog.CpuNoneDisplayName, Is.EqualTo("none"));
+    }
+
+    [Test]
+    public void CatalogOrderMatchesTheSourceProfileListOrder()
+    {
+        CharacterProfile a = MakeProfile(3, "C", "c_obj");
+        CharacterProfile b = MakeProfile(1, "A", "a_obj");
+        CharacterProfile c = MakeProfile(2, "B", "b_obj");
+
+        PlayerSelectCatalog catalog = PlayerSelectCatalogAdapter.Project(new[] { a, b, c }, new List<CharacterProfile>());
+
+        Assert.That(catalog.PrimaryOptions[0].CharacterId, Is.EqualTo(3));
+        Assert.That(catalog.PrimaryOptions[1].CharacterId, Is.EqualTo(1));
+        Assert.That(catalog.PrimaryOptions[2].CharacterId, Is.EqualTo(2));
+    }
+}

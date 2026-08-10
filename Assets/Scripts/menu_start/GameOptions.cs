@@ -91,13 +91,15 @@ public static class GameOptions
     // start manager selected option indices
     // set default values = 0 (first element in list)
     // using values from game options, will load previous values on next load of start manager
-    static public int playerSelectedIndex = 0;
+    //
+    // Player and CPU selection used to live here as catalog indices (playerSelectedIndex,
+    // cpu1SelectedIndex, cpu2SelectedIndex, cpu3SelectedIndex). They are gone: an index is only
+    // meaningful against the exact catalog that produced it, and reordering it silently changed
+    // what a stored value meant. PlayerSelectionSession now remembers the same draft by stable
+    // character id instead.
     static public int levelSelectedIndex = 0;
     static public int modeSelectedIndex = 0;
     static public int friendSelectedIndex = 0;
-    static public int cpu1SelectedIndex = 0;
-    static public int cpu2SelectedIndex = 0;
-    static public int cpu3SelectedIndex = 0;
 
     static public bool trafficEnabled = false;
     static public bool enemiesEnabled = false;

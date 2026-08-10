@@ -115,7 +115,9 @@ public class Level5MatchArchitectureTests
     {
         // GameOptions is a legacy compatibility surface being retired, not somewhere to add to.
         // The count is a ratchet: it may go down, never up. It started this migration at 85.
-        const int allowedPublicStaticFields = 65;
+        // Lowered from 65 to 60 when playerSelectedIndex/cpu1SelectedIndex/cpu2SelectedIndex/
+        // cpu3SelectedIndex moved to PlayerSelectionSession (player-select architecture overhaul).
+        const int allowedPublicStaticFields = 60;
 
         string text = File.ReadAllText(Path.Combine(ScriptsRoot, "menu_start", "GameOptions.cs"));
         int fields = Regex.Matches(StripComments(text), @"static\s+public|public\s+static").Count

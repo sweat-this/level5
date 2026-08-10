@@ -232,9 +232,6 @@ public class ProgressionManager : MonoBehaviour
         // dont destroy on load / check for duplicate instance
         //destroyInstanceIfAlreadyExists();
         StartCoroutine(getLoadedData());
-
-        //default index for player selected
-        playerSelectedIndex = GameOptions.playerSelectedIndex;
     }
 
     // Start is called before the first frame update
@@ -780,14 +777,13 @@ public class ProgressionManager : MonoBehaviour
             playerSelectedData = LoadedData.instance.PlayerSelectedData;
             cheerleaderSelectedData = LoadedData.instance.CheerleaderSelectedData;
 
-            // GameOptions.playerSelectedIndex is written by StartManager against a roster that may
-            // have had a different length. Every user-driven path goes through
-            // HasSelectedCharacterData, but InitializeDisplay indexes the list directly, so clamp
-            // once here rather than relying on the two lists always matching (AUD-047).
-            if (playerSelectedData != null && playerSelectedIndex >= playerSelectedData.Count)
-            {
-                playerSelectedIndex = 0;
-            }
+            // Resolve the stable character id player select remembered into this screen's own
+            // catalog position. Player select used to write a catalog index directly
+            // (GameOptions.playerSelectedIndex) against a list that could be a different length
+            // here; resolving by id instead means a reordered or shorter catalog degrades to a
+            // safe fallback instead of pointing at the wrong character.
+            playerSelectedIndex = ResolveSelectedIndexFromSession();
+            RememberSelectedCharacterInSession();
 
             if (playerSelectedData != null
                 && cheerleaderSelectedData != null)
@@ -1004,9 +1000,10 @@ public class ProgressionManager : MonoBehaviour
             progressionState.Level = CharacterLevel.FromExperience(progressionState.Experience);
             int nextlvl = CharacterLevel.ExperienceToNextLevel(progressionState.Experience);
             // display lvl, exp, exp for next lvl
-            playerProgressionStatsText.text = progressionState.Level.ToString("F0") + "\n"
-                + progressionState.Experience.ToString("F0") + "\n"
-                + nextlvl.ToString("F0") + "\n";
+            playerProgressionStatsText.text = CharacterLevel.FormatProgressionStats(
+                progressionState.Level,
+                progressionState.Experience,
+                nextlvl);
             playerProgressionUpdatePointsText.text = "points available : " + progressionState.PointsAvailable.ToString();
             // not sure what this is for but im not gonna touch it yet
             GameOptions.characterObjectName = playerSelectedData[playerSelectedIndex].PlayerObjectName;
@@ -1043,6 +1040,7 @@ public class ProgressionManager : MonoBehaviour
             ? playerSelectedData.Count - 1
             : playerSelectedIndex -= 1);
 
+        RememberSelectedCharacterInSession();
         InitializeSelectedCharacterDraft();
     }
     private void changeSelectedPlayerDown()
@@ -1054,8 +1052,46 @@ public class ProgressionManager : MonoBehaviour
             ? playerSelectedIndex = 0
             : playerSelectedIndex += 1);
 
+        RememberSelectedCharacterInSession();
         InitializeSelectedCharacterDraft();
 
+    }
+
+    /// <summary>
+    /// Resolves the primary character id player select remembered into this screen's current
+    /// catalog. Falls back to the first character when nothing is remembered or the remembered id
+    /// is no longer present.
+    /// </summary>
+    private int ResolveSelectedIndexFromSession()
+    {
+        if (playerSelectedData == null || playerSelectedData.Count == 0)
+        {
+            return 0;
+        }
+
+        int? rememberedId = PlayerSelectionSession.PrimaryCharacterId;
+        if (rememberedId.HasValue)
+        {
+            int index = playerSelectedData.FindIndex(p => p != null && p.PlayerId == rememberedId.Value);
+            if (index >= 0)
+            {
+                return index;
+            }
+        }
+
+        return 0;
+    }
+
+    /// <summary>
+    /// Keeps player select's session memory in step with this screen's own selection, so returning
+    /// to the start menu after changing character here shows the same character selected.
+    /// </summary>
+    private void RememberSelectedCharacterInSession()
+    {
+        if (playerSelectedData != null && playerSelectedIndex >= 0 && playerSelectedIndex < playerSelectedData.Count)
+        {
+            PlayerSelectionSession.RememberPrimary(playerSelectedData[playerSelectedIndex].PlayerId);
+        }
     }
 
     private void EnsureSelectedCharacterDraft()

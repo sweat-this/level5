@@ -186,6 +186,11 @@ public class TouchInputStartScreenController : MonoBehaviour
             return;
         }
 
+        // Captured before SetSelectedGameObject below reassigns focus, so it names the same
+        // control currentHighlightedButton was derived from this frame - not prevSelectedGameObject,
+        // which can have frozen at an earlier control if focus moved while the touch was in progress.
+        GameObject touchedObject = EventSystem.current.currentSelectedGameObject;
+
         EventSystem.current.SetSelectedGameObject(prevSelectedGameObject);
 
         //level select
@@ -198,8 +203,8 @@ public class TouchInputStartScreenController : MonoBehaviour
         // player select
         if (currentHighlightedButton.Equals(StartManager.playerSelectOptionButtonName))
         {
-            StartManager.instance.changeSelectedPlayerDown();
-            StartManager.instance.initializePlayerDisplay();
+            StartManager.instance.PlayerSelect.SelectNextPrimary();
+            StartManager.instance.PlayerSelect.RenderIfNeeded();
             buttonPressed = true;
         }
         // friend select
@@ -267,9 +272,6 @@ public class TouchInputStartScreenController : MonoBehaviour
             StartManager.instance.initializeCpuDisplay();
             buttonPressed = true;
         }
-        if (currentHighlightedButton.Equals(StartManager.Cpu1SelectOptionName)) { StartManager.instance.setCpuPlayer1(); buttonPressed = true; }
-        if (currentHighlightedButton.Equals(StartManager.Cpu2SelectOptionName)) { StartManager.instance.setCpuPlayer2(); buttonPressed = true; }
-        if (currentHighlightedButton.Equals(StartManager.Cpu3SelectOptionName)) { StartManager.instance.setCpuPlayer3(); buttonPressed = true; }
         if (currentHighlightedButton.Equals(StartManager.levelSelectButtonName) || currentHighlightedButton.Equals(StartManager.levelSelectOptionButtonName))
         {
             StartManager.instance.initializeLevelDisplay();
@@ -329,14 +331,37 @@ public class TouchInputStartScreenController : MonoBehaviour
             StartManager.instance.initializeObstacleOptionDisplay();
             buttonPressed = true;
         }
-        if (currentHighlightedButton.Equals(StartManager.Cpu1SelectOptionName)
-            || currentHighlightedButton.Equals(StartManager.Cpu2SelectOptionName)
-            || currentHighlightedButton.Equals(StartManager.Cpu3SelectOptionName))
+        // CPU slot identified by which button object is focused, not by comparing names against a
+        // fourth spot in this chain - the object reference is already known via StartManager.
+        int cpuSlot = IndexOfCpuSlotButton(touchedObject);
+        if (cpuSlot >= 0)
         {
-            StartManager.instance.changeSelectedCpuOptionUp(currentHighlightedButton);
+            StartManager.instance.PlayerSelect.SelectNextCpu(cpuSlot);
             buttonPressed = true;
         }
+
+        StartManager.instance.PlayerSelect.RenderIfNeeded();
         buttonPressed = false;
+    }
+
+    /// <summary>The CPU slot index a GameObject is bound to, or -1 if it is not one of the CPU slot buttons.</summary>
+    private static int IndexOfCpuSlotButton(GameObject candidate)
+    {
+        if (candidate == null || StartManager.instance == null)
+        {
+            return -1;
+        }
+
+        IReadOnlyList<GameObject> cpuButtons = StartManager.instance.CpuSlotButtonObjects;
+        for (int i = 0; i < cpuButtons.Count; i++)
+        {
+            if (cpuButtons[i] == candidate)
+            {
+                return i;
+            }
+        }
+
+        return -1;
     }
 
     private void selectPressedButton()
@@ -413,8 +438,7 @@ public class TouchInputStartScreenController : MonoBehaviour
         // player select
         if (prevSelectedGameObject.name.Equals(StartManager.playerSelectOptionButtonName))
         {
-            StartManager.instance.changeSelectedPlayerUp();
-            StartManager.instance.initializePlayerDisplay();
+            StartManager.instance.PlayerSelect.SelectPreviousPrimary();
             buttonPressed = true;
         }
         // friend select
@@ -431,6 +455,7 @@ public class TouchInputStartScreenController : MonoBehaviour
             StartManager.instance.initializeModeDisplay();
             buttonPressed = true;
         }
+        StartManager.instance.PlayerSelect.RenderIfNeeded();
         buttonPressed = false;
     }
     private void swipeDownOnOption()
@@ -487,8 +512,7 @@ public class TouchInputStartScreenController : MonoBehaviour
         // player select
         if (prevSelectedGameObject.name.Equals(StartManager.playerSelectOptionButtonName))
         {
-            StartManager.instance.changeSelectedPlayerDown();
-            StartManager.instance.initializePlayerDisplay();
+            StartManager.instance.PlayerSelect.SelectNextPrimary();
             buttonPressed = true;
         }
         // friend select
@@ -505,6 +529,7 @@ public class TouchInputStartScreenController : MonoBehaviour
             StartManager.instance.initializeModeDisplay();
             buttonPressed = true;
         }
+        StartManager.instance.PlayerSelect.RenderIfNeeded();
         buttonPressed = false;
     }
     //#endif

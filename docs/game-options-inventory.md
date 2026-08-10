@@ -94,12 +94,19 @@ every `friendBonus*` have been deleted.
 
 ### Menu preferences - not match state
 
-`playerSelectedIndex`, `levelSelectedIndex`, `modeSelectedIndex`, `friendSelectedIndex`,
-`cpu1SelectedIndex`, `cpu2SelectedIndex`, `cpu3SelectedIndex`.
+`levelSelectedIndex`, `modeSelectedIndex`, `friendSelectedIndex`.
 
 Owned by `StartMenuSelectionState`, which is the only place that reads or writes them
 (`LoadPersistedPreferences` / `SavePersistedPreferences`). That pair is the seam for moving them to
 a menu preference store - plan phase 11.
+
+### Menu preferences - migrated
+
+`playerSelectedIndex`, `cpu1SelectedIndex`, `cpu2SelectedIndex`, `cpu3SelectedIndex` are gone
+(player-select architecture overhaul). They were catalog indices, meaningful only against the
+exact list that produced them. `PlayerSelectionSession` now remembers the same draft by stable
+character id (`CharacterProfile.PlayerId`), resolved back into a catalog position by
+`PlayerSelectCoordinator` and `ProgressionManager` rather than stored as one.
 
 ### Account, session and application - separate owners, not this overhaul
 

@@ -71,6 +71,30 @@ namespace Level5.Core.Match
             return builder.Build();
         }
 
+        /// <summary>
+        /// The single fighter/shooter capability query. Player select and full roster validation
+        /// both call this rather than each re-deriving the rule, so they cannot drift apart.
+        ///
+        /// A fighting setup needs a fighter, a shooting setup needs a shooter. Enemies switched on
+        /// as a modifier makes a shooting mode a fighting one for this purpose, exactly as the
+        /// legacy menu treated it. An empty character (no selection yet) is reported playable so
+        /// callers that have not resolved a character do not get a spurious rejection from this
+        /// query alone.
+        ///
+        /// Unlock/account availability is not part of this method - it is not a property of the
+        /// game mode.
+        /// </summary>
+        public static bool CharacterCanPlay(GameModeDefinition mode, MatchModifiers modifiers, CharacterSelection character)
+        {
+            if (character == null || character.IsEmpty)
+            {
+                return true;
+            }
+
+            bool fightersRequired = (mode != null && mode.EnemiesOnly) || (modifiers != null && modifiers.EnemiesRequested);
+            return fightersRequired ? character.IsFighter : character.IsShooter;
+        }
+
         /// <summary>Whether a mode and an arena fit, ignoring roster and modifiers.</summary>
         public bool CanPlay(GameModeDefinition mode, LevelDefinition level)
         {
@@ -143,7 +167,7 @@ namespace Level5.Core.Match
 
             for (int offset = 1; offset <= count; offset++)
             {
-                int index = Wrap(startIndex + (offset * step), count);
+                int index = IndexMath.Wrap(startIndex + (offset * step), count);
                 if (CanPlay(mode, levels.Definitions[index]))
                 {
                     return index;
@@ -164,19 +188,13 @@ namespace Level5.Core.Match
                 return currentIndex;
             }
 
-            int wrapped = Wrap(currentIndex, levels.Count);
+            int wrapped = IndexMath.Wrap(currentIndex, levels.Count);
             if (CanPlay(mode, levels.Definitions[wrapped]))
             {
                 return wrapped;
             }
 
             return NextCompatibleLevelIndex(mode, wrapped, step);
-        }
-
-        private static int Wrap(int value, int count)
-        {
-            int wrapped = value % count;
-            return wrapped < 0 ? wrapped + count : wrapped;
         }
 
         private static void AddArenaErrors(ValidationResult.Builder builder, GameModeDefinition mode, LevelDefinition level)
@@ -262,9 +280,8 @@ namespace Level5.Core.Match
                 MatchValidationCode.ArenaLacksMultiplayer,
                 $"'{level.DisplayName}' does not support local multiplayer");
 
-            // Fighting modes need fighters and shooting modes need shooters - the rule the menu
-            // applied while cycling characters. Enemies switched on as a modifier makes a shooting
-            // mode a fighting one for this purpose, exactly as it did there.
+            // Fighting modes need fighters and shooting modes need shooters - CharacterCanPlay is
+            // the same query player select uses while cycling characters, so the two cannot drift.
             bool fightersRequired = mode.EnemiesOnly || (modifiers != null && modifiers.EnemiesRequested);
 
             foreach (PlayerSlot slot in roster.Players)
@@ -278,20 +295,16 @@ namespace Level5.Core.Match
                     continue;
                 }
 
-                if (slot.Character == null || slot.Character.IsEmpty)
+                if (slot.Character == null || slot.Character.IsEmpty || CharacterCanPlay(mode, modifiers, slot.Character))
                 {
                     continue;
                 }
 
-                builder.AddIf(
-                    fightersRequired && !slot.Character.IsFighter,
-                    MatchValidationCode.CharacterCannotFight,
-                    $"{slot.Character} cannot fight, so cannot play '{mode.DisplayName}'");
-
-                builder.AddIf(
-                    !fightersRequired && !slot.Character.IsShooter,
-                    MatchValidationCode.CharacterCannotShoot,
-                    $"{slot.Character} cannot shoot, so cannot play '{mode.DisplayName}'");
+                builder.Add(
+                    fightersRequired ? MatchValidationCode.CharacterCannotFight : MatchValidationCode.CharacterCannotShoot,
+                    fightersRequired
+                        ? $"{slot.Character} cannot fight, so cannot play '{mode.DisplayName}'"
+                        : $"{slot.Character} cannot shoot, so cannot play '{mode.DisplayName}'");
             }
         }
     }

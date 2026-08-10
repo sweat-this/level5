@@ -23,7 +23,8 @@ public static class TestDefinitions
         float customTimerSeconds = 0f,
         ArenaCapability required = ArenaCapability.None,
         ArenaCapability forbidden = ArenaCapability.None,
-        bool addsImplicitDefender = false)
+        bool addsImplicitDefender = false,
+        bool requiresCpuOpponent = false)
     {
         GameModeDefinitionData data = GameModeDefinitionData.Default((int)id);
         data.DisplayName = id.ToString();
@@ -41,6 +42,7 @@ public static class TestDefinitions
         data.RequiredArenaCapabilities = required;
         data.ForbiddenArenaCapabilities = forbidden;
         data.AddsImplicitDefender = addsImplicitDefender;
+        data.RequiresCpuOpponent = requiresCpuOpponent;
         return GameModeDefinition.Create(data);
     }
 

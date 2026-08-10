@@ -1,9 +1,13 @@
 using System.Collections.Generic;
 using Level5.Core.Match;
-using UnityEngine;
 
 /// <summary>
-/// What the start menu currently has selected, and nothing else.
+/// What the start menu currently has selected for mode/level/friend/options, and nothing else.
+///
+/// Player and CPU selection moved to the player-select subsystem
+/// (<see cref="PlayerSelectCoordinator"/>); this class no longer owns a character index or builds
+/// a roster. It receives an already-built <see cref="PlayerRoster"/> and turns the rest of the
+/// current selection into a <see cref="MatchRequest"/>.
 ///
 /// Browsing the menu changes only this. Nothing here writes gameplay configuration - highlighting a
 /// level used to set <c>GameOptions.levelSelected</c>, and cycling a mode used to set
@@ -16,19 +20,11 @@ using UnityEngine;
 /// </summary>
 public sealed class StartMenuSelectionState
 {
-    public int PlayerIndex { get; set; }
-
     public int FriendIndex { get; set; }
 
     public int LevelIndex { get; set; }
 
     public int ModeIndex { get; set; }
-
-    public int Cpu1Index { get; set; }
-
-    public int Cpu2Index { get; set; }
-
-    public int Cpu3Index { get; set; }
 
     public bool TrafficEnabled { get; set; }
 
@@ -42,52 +38,15 @@ public sealed class StartMenuSelectionState
 
     public MatchDifficulty Difficulty { get; set; } = MatchDifficulty.Normal;
 
-    /// <summary>How many participants the current CPU picks add up to, including the player.</summary>
-    public int ParticipantCount => 1
-        + (Cpu1Index != 0 ? 1 : 0)
-        + (Cpu2Index != 0 ? 1 : 0)
-        + (Cpu3Index != 0 ? 1 : 0);
-
-    public int GetCpuIndex(int cpuSlot)
-    {
-        switch (cpuSlot)
-        {
-            case 1: return Cpu1Index;
-            case 2: return Cpu2Index;
-            case 3: return Cpu3Index;
-            default: return 0;
-        }
-    }
-
-    public void SetCpuIndex(int cpuSlot, int value)
-    {
-        switch (cpuSlot)
-        {
-            case 1:
-                Cpu1Index = value;
-                break;
-            case 2:
-                Cpu2Index = value;
-                break;
-            case 3:
-                Cpu3Index = value;
-                break;
-        }
-    }
-
     // ---- persistence of menu preferences ----------------------------------------------------
-    // The only place that touches the GameOptions menu-index fields. When those move to a menu
-    // preference owner (plan phase 11) this is the seam that changes, not every call site.
+    // The only place that touches the GameOptions menu-index fields this class still owns. Player
+    // and CPU selection persist through PlayerSelectionSession instead (plan phase 6).
 
     public void LoadPersistedPreferences()
     {
-        PlayerIndex = GameOptions.playerSelectedIndex;
         FriendIndex = GameOptions.friendSelectedIndex;
         LevelIndex = GameOptions.levelSelectedIndex;
         ModeIndex = GameOptions.modeSelectedIndex;
-        Cpu1Index = GameOptions.cpu1SelectedIndex;
-        Cpu2Index = GameOptions.cpu2SelectedIndex;
-        Cpu3Index = GameOptions.cpu3SelectedIndex;
         TrafficEnabled = GameOptions.trafficEnabled;
         HardcoreEnabled = GameOptions.hardcoreModeEnabled;
         ObstaclesEnabled = GameOptions.obstaclesEnabled;
@@ -98,13 +57,9 @@ public sealed class StartMenuSelectionState
 
     public void SavePersistedPreferences()
     {
-        GameOptions.playerSelectedIndex = PlayerIndex;
         GameOptions.friendSelectedIndex = FriendIndex;
         GameOptions.levelSelectedIndex = LevelIndex;
         GameOptions.modeSelectedIndex = ModeIndex;
-        GameOptions.cpu1SelectedIndex = Cpu1Index;
-        GameOptions.cpu2SelectedIndex = Cpu2Index;
-        GameOptions.cpu3SelectedIndex = Cpu3Index;
     }
 
     // ---- bounded cycling ----------------------------------------------------------------------
@@ -134,44 +89,8 @@ public sealed class StartMenuSelectionState
             return;
         }
 
-        ModeIndex = Wrap(ModeIndex + step, compatibility.Modes.Count);
+        ModeIndex = IndexMath.Wrap(ModeIndex + step, compatibility.Modes.Count);
         LevelIndex = compatibility.CompatibleLevelIndexFor(CurrentMode(compatibility), LevelIndex, step);
-    }
-
-    /// <summary>
-    /// Moves the character selection by one, skipping characters that cannot play the way the
-    /// current mode and modifiers require - a fighting setup needs a fighter, a shooting setup
-    /// needs a shooter. Bounded for the same reason as <see cref="CycleLevel"/>.
-    /// </summary>
-    public void CyclePlayer(IReadOnlyList<CharacterProfile> characters, GameModeCompatibility compatibility, int step)
-    {
-        if (characters == null || characters.Count == 0 || step == 0)
-        {
-            return;
-        }
-
-        GameModeDefinition mode = CurrentMode(compatibility);
-        bool fightersRequired = EnemiesEnabled || (mode != null && mode.EnemiesOnly);
-
-        for (int offset = 1; offset <= characters.Count; offset++)
-        {
-            int index = Wrap(PlayerIndex + (offset * step), characters.Count);
-            CharacterProfile candidate = characters[index];
-            if (candidate == null)
-            {
-                continue;
-            }
-
-            if (fightersRequired ? candidate.IsFighter : candidate.IsShooter)
-            {
-                PlayerIndex = index;
-                return;
-            }
-        }
-
-        // Nothing qualifies. Step once anyway so the control still responds, rather than looking
-        // broken; the launch validation is what refuses an unplayable combination.
-        PlayerIndex = Wrap(PlayerIndex + step, characters.Count);
     }
 
     public void CycleFriend(int friendCount, int step)
@@ -181,17 +100,7 @@ public sealed class StartMenuSelectionState
             return;
         }
 
-        FriendIndex = Wrap(FriendIndex + step, friendCount);
-    }
-
-    public void CycleCpu(int cpuSlot, int cpuCount, int step)
-    {
-        if (cpuCount <= 0)
-        {
-            return;
-        }
-
-        SetCpuIndex(cpuSlot, Wrap(GetCpuIndex(cpuSlot) + step, cpuCount));
+        FriendIndex = IndexMath.Wrap(FriendIndex + step, friendCount);
     }
 
     public void CycleDifficulty()
@@ -228,7 +137,7 @@ public sealed class StartMenuSelectionState
             return null;
         }
 
-        return compatibility.Modes.Definitions[Wrap(ModeIndex, compatibility.Modes.Count)];
+        return compatibility.Modes.Definitions[IndexMath.Wrap(ModeIndex, compatibility.Modes.Count)];
     }
 
     public LevelDefinition CurrentLevel(GameModeCompatibility compatibility)
@@ -238,49 +147,28 @@ public sealed class StartMenuSelectionState
             return null;
         }
 
-        return compatibility.Levels.Definitions[Wrap(LevelIndex, compatibility.Levels.Count)];
+        return compatibility.Levels.Definitions[IndexMath.Wrap(LevelIndex, compatibility.Levels.Count)];
     }
 
     // ---- request construction -----------------------------------------------------------------
 
     /// <summary>
-    /// Turns the current selection into a request. The roster is one local human followed by the
-    /// chosen CPUs, which is the shape every current mode launches with; a mode that always plays
-    /// against the computer gets one even when the player picked none.
+    /// Turns the current selection into a request, given an already-built roster. This no longer
+    /// builds or mutates the roster itself - the player-select subsystem does that, explicitly,
+    /// before this is called. Reconciling a required CPU opponent is player select's job
+    /// (<c>PlayerSelectCoordinator.TryBuildRoster</c>); building a request here never changes what
+    /// was selected.
     /// </summary>
     public MatchRequest BuildRequest(
         GameModeCompatibility compatibility,
-        IReadOnlyList<CharacterProfile> characters,
-        IReadOnlyList<CharacterProfile> cpuCharacters,
-        IReadOnlyList<CheerleaderProfile> cheerleaders,
-        string playerObjectNameOverride = null)
+        PlayerRoster roster,
+        IReadOnlyList<CheerleaderProfile> cheerleaders)
     {
         GameModeDefinition mode = CurrentMode(compatibility);
         LevelDefinition level = CurrentLevel(compatibility);
-        if (mode == null || level == null)
+        if (mode == null || level == null || roster == null)
         {
             return null;
-        }
-
-        List<PlayerRosterEntry> entries = new List<PlayerRosterEntry>
-        {
-            PlayerRosterEntry.LocalHuman(ToSelection(Get(characters, PlayerIndex), playerObjectNameOverride))
-        };
-
-        // Lockdown brings its own defender and ignores the CPU picks entirely, exactly as the old
-        // launch path did when it skipped them for that mode.
-        if (!mode.AddsImplicitDefender)
-        {
-            AddCpu(entries, cpuCharacters, Cpu1Index);
-            AddCpu(entries, cpuCharacters, Cpu2Index);
-            AddCpu(entries, cpuCharacters, Cpu3Index);
-
-            if (mode.RequiresCpuOpponent && entries.Count == 1)
-            {
-                // Index 1 is the first real CPU character; index 0 is the "none" entry.
-                Cpu1Index = 1;
-                AddCpu(entries, cpuCharacters, Cpu1Index);
-            }
         }
 
         MatchModifiers modifiers = new MatchModifiers(
@@ -294,44 +182,10 @@ public sealed class StartMenuSelectionState
         return new MatchRequest(
             mode.Id,
             level.LevelId,
-            PlayerRoster.Build(entries),
+            roster,
             modifiers,
             ToSelection(Get(cheerleaders, FriendIndex)),
             "start menu");
-    }
-
-    private static void AddCpu(List<PlayerRosterEntry> entries, IReadOnlyList<CharacterProfile> cpuCharacters, int index)
-    {
-        if (index == 0)
-        {
-            return;
-        }
-
-        CharacterProfile profile = Get(cpuCharacters, index);
-        if (profile != null)
-        {
-            entries.Add(PlayerRosterEntry.Cpu(ToSelection(profile)));
-        }
-    }
-
-    private static T Get<T>(IReadOnlyList<T> list, int index) where T : class
-    {
-        return list != null && index >= 0 && index < list.Count ? list[index] : null;
-    }
-
-    public static CharacterSelection ToSelection(CharacterProfile profile, string objectNameOverride = null)
-    {
-        if (profile == null)
-        {
-            return CharacterSelection.None;
-        }
-
-        return new CharacterSelection(
-            profile.PlayerId,
-            string.IsNullOrEmpty(objectNameOverride) ? profile.PlayerObjectName : objectNameOverride,
-            profile.PlayerDisplayName,
-            profile.IsShooter,
-            profile.IsFighter);
     }
 
     public static CheerleaderSelection ToSelection(CheerleaderProfile profile)
@@ -354,14 +208,9 @@ public sealed class StartMenuSelectionState
             profile.bonusClutch);
     }
 
-    private static int Wrap(int value, int count)
+    private static T Get<T>(IReadOnlyList<T> list, int index) where T : class
     {
-        if (count <= 0)
-        {
-            return 0;
-        }
-
-        int wrapped = value % count;
-        return wrapped < 0 ? wrapped + count : wrapped;
+        return list != null && index >= 0 && index < list.Count ? list[index] : null;
     }
+
 }

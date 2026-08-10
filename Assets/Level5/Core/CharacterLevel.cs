@@ -47,4 +47,18 @@ public static class CharacterLevel
         int safeExperience = Mathf.Max(0, experience);
         return ((FromExperience(safeExperience) + 1) * ExperiencePerLevel) - safeExperience;
     }
+
+    /// <summary>Effective clutch shown and written for progression-derived character stats.</summary>
+    public static int EffectiveClutchFromLevel(int level)
+    {
+        return Mathf.Min(level, 100);
+    }
+
+    /// <summary>The three-line level/experience block shared by start and progression menus.</summary>
+    public static string FormatProgressionStats(int level, int experience, int experienceToNextLevel)
+    {
+        return level.ToString("F0") + "\n"
+            + experience.ToString("F0") + "\n"
+            + experienceToNextLevel.ToString("F0") + "\n";
+    }
 }

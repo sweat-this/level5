@@ -162,7 +162,30 @@ public class LoadedData : MonoBehaviour
 
     public CharacterProfile getSelectedCharacterProfile(int charid)
     {
-        return playerSelectedData?.Find(x => x.PlayerId == charid);
+        return GetSelectedCharacterProfile(playerSelectedData, charid);
+    }
+
+    public static CharacterProfile GetSelectedCharacterProfile(IReadOnlyList<CharacterProfile> profiles, int charid)
+    {
+        if (profiles is List<CharacterProfile> list)
+        {
+            return list.Find(x => x != null && x.PlayerId == charid);
+        }
+
+        if (profiles == null)
+        {
+            return null;
+        }
+
+        foreach (CharacterProfile profile in profiles)
+        {
+            if (profile != null && profile.PlayerId == charid)
+            {
+                return profile;
+            }
+        }
+
+        return null;
     }
 
     public List<CharacterProfile> PlayerSelectedData { get => playerSelectedData; }

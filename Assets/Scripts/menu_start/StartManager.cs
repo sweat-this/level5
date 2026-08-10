@@ -1,6 +1,7 @@
 ﻿using Assets.Scripts.restapi;
 using Assets.Scripts.Utility;
 using Level5.Core.Match;
+using Level5.Core.PlayerSelection;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -61,15 +62,13 @@ public class StartManager : MonoBehaviour
     [SerializeField] Button updateMenuButton;
     [SerializeField] Button accountMenuButton;
 
-    //player selected display
-    private Text playerSelectOptionText;
-    private Image playerSelectOptionImage;
-    private Text playerSelectOptionStatsText;
-    private Text playerSelectCategoryStatsText;
-    private Text playerProgressionCategoryText;
-    private Text playerProgressionStatsText;
-    [SerializeField]
-    private Text playerProgressionUpdatePointsText;
+    // player select rendering/state - owned by playerSelectCoordinator, not this class.
+    // cpuSlotButtonObjects is the one array CPU slot 0/1/2 map to: TouchInputStartScreenController
+    // resolves a slot by GameObject reference against it, and IndexOfCpuButtonName below resolves
+    // a slot by name against the same objects' names - so there is one place that knows which
+    // button is which slot, not a name array and a reference array kept in sync by hand.
+    private PlayerSelectView playerSelectView;
+    private GameObject[] cpuSlotButtonObjects = Array.Empty<GameObject>();
 
     // num player select display
     private Text numPlayersSelectOptionText;
@@ -182,10 +181,24 @@ public class StartManager : MonoBehaviour
     public const string Cpu3SelectOptionName = "cpu3_button";
 
     /// <summary>
-    /// Everything the player has picked. The menu changes this and nothing else; the match
-    /// configuration is built from it once, when start is pressed.
+    /// Everything the player has picked, except player/CPU selection. The menu changes this and
+    /// nothing else; the match configuration is built from it once, when start is pressed.
     /// </summary>
     private readonly StartMenuSelectionState selection = new StartMenuSelectionState();
+
+    /// <summary>
+    /// The player-selection subsystem: roster draft, cycling, launch validation and rendering.
+    /// <see cref="StartManager"/> no longer owns selected human/CPU indices or player-select render
+    /// methods - it composes this and the rest of the menu.
+    /// </summary>
+    private readonly PlayerSelectCoordinator playerSelectCoordinator = new PlayerSelectCoordinator();
+
+    /// <summary>Read by the touch input controller to identify the primary select control by reference, not by name.</summary>
+    public PlayerSelectCoordinator PlayerSelect => playerSelectCoordinator;
+
+    public GameObject PrimarySelectButtonObject => playerSelectButton != null ? playerSelectButton.gameObject : null;
+
+    public IReadOnlyList<GameObject> CpuSlotButtonObjects => cpuSlotButtonObjects;
 
     private bool trafficEnabled { get => selection.TrafficEnabled; set => selection.TrafficEnabled = value; }
     private bool hardcoreEnabled { get => selection.HardcoreEnabled; set => selection.HardcoreEnabled = value; }
@@ -202,14 +215,29 @@ public class StartManager : MonoBehaviour
         set => selection.Difficulty = MatchDifficulties.FromInt(value);
     }
 
-    public int playerSelectedIndex { get => selection.PlayerIndex; set => selection.PlayerIndex = value; }
-
     private bool sniperBulletEnabled => selection.Sniper == SniperMode.Bullet;
     private bool sniperLaserEnabled => selection.Sniper == SniperMode.Laser;
     private bool sniperBulleAutoEnabled => selection.Sniper == SniperMode.MachineGun;
 
     /// <summary>The compatibility service and builder for the catalogs this menu is showing.</summary>
     private GameModeCompatibility Compatibility => MatchCatalogs.Compatibility;
+
+    /// <summary>
+    /// The current modifiers, in the shape player select needs to evaluate character capability.
+    /// Passed to <see cref="PlayerSelectCoordinator.SetMatchContext"/> whenever mode or the
+    /// enemies-only modifier changes, so cycling and required-CPU reconciliation see the same
+    /// context the launch builder will.
+    /// </summary>
+    private MatchModifiers CurrentModifiers()
+    {
+        return new MatchModifiers(
+            difficulty: selection.Difficulty,
+            trafficRequested: selection.TrafficEnabled,
+            enemiesRequested: selection.EnemiesEnabled,
+            obstaclesRequested: selection.ObstaclesEnabled,
+            sniper: selection.Sniper,
+            hardcoreRequested: selection.HardcoreEnabled);
+    }
 
     //private int numOfPlayers; //testing with 1
 
@@ -235,6 +263,7 @@ public class StartManager : MonoBehaviour
 
     bool buttonPressed = false;
     bool dataLoaded = false;
+    bool experienceRefreshed = false;
     bool initialized = false;
     int lastCommandFrame = -1;
     int lastLoadGameFrame = -1;
@@ -334,11 +363,11 @@ public class StartManager : MonoBehaviour
         {
             initializeNumPlayersDisplay();
         }
-        // if player highlighted, display player
+        // if player highlighted, focus the primary select control so its stats stay current
         if ((currentHighlightedButton.Equals(playerSelectButtonName) || currentHighlightedButton.Equals(playerSelectOptionButtonName))
             && dataLoaded)
         {
-            initializePlayerDisplay();
+            FocusPlayersTab();
         }
         // friend
         if (currentHighlightedButton.Equals(friendSelectButtonName) || currentHighlightedButton.Equals(FriendSelectOptionButtonName))
@@ -357,9 +386,7 @@ public class StartManager : MonoBehaviour
         {
             initializeCpuDisplay();
         }
-        if (currentHighlightedButton.Equals(Cpu1SelectOptionName)) { setCpuPlayer1(); }
-        if (currentHighlightedButton.Equals(Cpu2SelectOptionName)) { setCpuPlayer2(); }
-        if (currentHighlightedButton.Equals(Cpu3SelectOptionName)) { setCpuPlayer3(); }
+        FocusHighlightedCpuSlot();
         if (currentHighlightedButton.Equals(levelSelectButtonName) || currentHighlightedButton.Equals(levelSelectOptionButtonName))
         {
             initializeLevelDisplay();
@@ -446,8 +473,7 @@ public class StartManager : MonoBehaviour
                     //}
                     if (currentHighlightedButton.Equals(playerSelectOptionButtonName))
                     {
-                        changeSelectedPlayerUp();
-                        initializePlayerDisplay();
+                        playerSelectCoordinator.SelectPreviousPrimary();
                     }
                     if (currentHighlightedButton.Equals(levelSelectOptionButtonName))
                     {
@@ -501,12 +527,8 @@ public class StartManager : MonoBehaviour
                         changeSelectedObstacleOption();
                         initializeObstacleOptionDisplay();
                     }
-                    if (currentHighlightedButton.Equals(Cpu1SelectOptionName)
-                        || currentHighlightedButton.Equals(Cpu2SelectOptionName)
-                        || currentHighlightedButton.Equals(Cpu3SelectOptionName))
-                    {
-                        changeSelectedCpuOptionUp(currentHighlightedButton);
-                    }
+                    // CPU cycling has always stepped opposite to level/player on Up/Down; preserved here.
+                    CycleHighlightedCpuSlot(currentHighlightedButton, 1);
                 }
                 catch (Exception e)
                 {
@@ -527,8 +549,7 @@ public class StartManager : MonoBehaviour
                     //}
                     if (currentHighlightedButton.Equals(playerSelectOptionButtonName))
                     {
-                        changeSelectedPlayerDown();
-                        initializePlayerDisplay();
+                        playerSelectCoordinator.SelectNextPrimary();
                     }
                     if (currentHighlightedButton.Equals(levelSelectOptionButtonName))
                     {
@@ -581,12 +602,7 @@ public class StartManager : MonoBehaviour
                         changeSelectedObstacleOption();
                         initializeObstacleOptionDisplay();
                     }
-                    if (currentHighlightedButton.Equals(Cpu1SelectOptionName)
-                        || currentHighlightedButton.Equals(Cpu2SelectOptionName)
-                        || currentHighlightedButton.Equals(Cpu3SelectOptionName))
-                    {
-                        changeSelectedCpuOptionDown(currentHighlightedButton);
-                    }
+                    CycleHighlightedCpuSlot(currentHighlightedButton, -1);
                 }
                 catch (Exception e)
                 {
@@ -596,11 +612,79 @@ public class StartManager : MonoBehaviour
             }
         }
 
+        // Change-driven: this is cheap when nothing changed and only rebuilds text/portraits when
+        // selection, focus or mode context actually did.
+        playerSelectCoordinator.RenderIfNeeded();
+
         lastSelectedObject = EventSystem.current != null
             ? EventSystem.current.currentSelectedGameObject
             : null;
     }
 #endif
+
+    /// <summary>
+    /// Activates the players tab and focuses the primary select control. Wrapped in try/catch like
+    /// the render method this replaced (initializePlayerDisplay) - it runs from Update() every
+    /// frame the control is highlighted, outside of RunOptionAction's own exception handling.
+    /// </summary>
+    private void FocusPlayersTab()
+    {
+        try
+        {
+            disableMenuObjects("players_tab");
+            enableMenuObjects("players_tab");
+            playerSelectCoordinator.FocusPrimary();
+        }
+        catch (Exception e)
+        {
+            Debug.Log("ERROR : " + e);
+        }
+    }
+
+    /// <summary>Focuses whichever CPU slot is currently highlighted, if any, so its stats become the shown ones.</summary>
+    private void FocusHighlightedCpuSlot()
+    {
+        int slot = IndexOfCpuButtonName(currentHighlightedButton);
+        if (slot >= 0)
+        {
+            playerSelectCoordinator.FocusCpu(slot);
+        }
+    }
+
+    /// <summary>
+    /// Routes an up/down navigation trigger on a CPU slot control to the one cycling command,
+    /// instead of three near-identical methods keyed to Cpu1Index/Cpu2Index/Cpu3Index.
+    /// </summary>
+    private void CycleHighlightedCpuSlot(string highlightedButton, int step)
+    {
+        int slot = IndexOfCpuButtonName(highlightedButton);
+        if (slot < 0)
+        {
+            return;
+        }
+
+        if (step > 0)
+        {
+            playerSelectCoordinator.SelectNextCpu(slot);
+        }
+        else
+        {
+            playerSelectCoordinator.SelectPreviousCpu(slot);
+        }
+    }
+
+    private int IndexOfCpuButtonName(string buttonName)
+    {
+        for (int i = 0; i < cpuSlotButtonObjects.Length; i++)
+        {
+            if (cpuSlotButtonObjects[i] != null && cpuSlotButtonObjects[i].name.Equals(buttonName))
+            {
+                return i;
+            }
+        }
+
+        return -1;
+    }
 
     private bool ShouldUseManualMenuInput(GameObject selectedObject)
     {
@@ -763,8 +847,7 @@ public class StartManager : MonoBehaviour
         return dataLoaded
             && playerSelectedData != null
             && playerSelectedData.Count > 0
-            && playerSelectedIndex >= 0
-            && playerSelectedIndex < playerSelectedData.Count
+            && playerSelectCoordinator.CurrentPrimary != null
             && cpuPlayerSelectedData != null
             && cpuPlayerSelectedData.Count > 0
             && friendSelectedData != null
@@ -787,11 +870,7 @@ public class StartManager : MonoBehaviour
     private bool HasLoadedStartUi()
     {
         return StartMenuUiObjects.instance != null
-            && playerSelectOptionText != null
-            && playerSelectOptionImage != null
-            && playerSelectOptionStatsText != null
-            && playerProgressionStatsText != null
-            && playerProgressionUpdatePointsText != null
+            && playerSelectView != null
             && friendSelectOptionText != null
             && friendSelectOptionImage != null
             && levelSelectOptionText != null
@@ -839,6 +918,13 @@ public class StartManager : MonoBehaviour
         try
         {
             action();
+
+            // Button clicks reach player select through this wrapper (SelectNextPlayer,
+            // CycleCpu1-3Option, ...). Update() drives the same call on desktop/editor every
+            // frame, but Update() is compiled out on device builds, so a raw UI Button tap there
+            // would otherwise change selection without ever repainting it. Cheap no-op when
+            // nothing changed.
+            playerSelectCoordinator.RenderIfNeeded();
         }
         catch (Exception e)
         {
@@ -879,7 +965,7 @@ public class StartManager : MonoBehaviour
                 return;
             }
 
-            GameOptions.playerSelectedIndex = playerSelectedIndex;
+            playerSelectCoordinator.PersistSessionPreferences();
             loadMenu(Constants.SCENE_NAME_level_00_progression);
         });
     }
@@ -913,8 +999,9 @@ public class StartManager : MonoBehaviour
                 return;
             }
 
-            changeSelectedPlayerDown();
-            initializePlayerDisplay();
+            disableMenuObjects("players_tab");
+            enableMenuObjects("players_tab");
+            playerSelectCoordinator.SelectNextPrimary();
         });
     }
 
@@ -1023,7 +1110,7 @@ public class StartManager : MonoBehaviour
                 return;
             }
 
-            changeSelectedCpuOptionUp(Cpu1SelectOptionName);
+            playerSelectCoordinator.SelectNextCpu(0);
         });
     }
 
@@ -1036,7 +1123,7 @@ public class StartManager : MonoBehaviour
                 return;
             }
 
-            changeSelectedCpuOptionUp(Cpu2SelectOptionName);
+            playerSelectCoordinator.SelectNextCpu(1);
         });
     }
 
@@ -1049,37 +1136,8 @@ public class StartManager : MonoBehaviour
                 return;
             }
 
-            changeSelectedCpuOptionUp(Cpu3SelectOptionName);
+            playerSelectCoordinator.SelectNextCpu(2);
         });
-    }
-
-    private void changeSelectedCpuOptionDown(string currentHighlightedButton)
-    {
-        CycleCpuSelection(currentHighlightedButton, -1);
-    }
-
-    public void changeSelectedCpuOptionUp(string currentHighlightedButton)
-    {
-        CycleCpuSelection(currentHighlightedButton, 1);
-    }
-
-    private void CycleCpuSelection(string highlightedButton, int step)
-    {
-        switch (highlightedButton)
-        {
-            case Cpu1SelectOptionName:
-                selection.CycleCpu(1, cpuPlayerSelectedData.Count, step);
-                setCpuPlayer1();
-                break;
-            case Cpu2SelectOptionName:
-                selection.CycleCpu(2, cpuPlayerSelectedData.Count, step);
-                setCpuPlayer2();
-                break;
-            case Cpu3SelectOptionName:
-                selection.CycleCpu(3, cpuPlayerSelectedData.Count, step);
-                setCpuPlayer3();
-                break;
-        }
     }
 
 
@@ -1088,6 +1146,7 @@ public class StartManager : MonoBehaviour
         yield return WaitForCondition(() => dataLoaded);
         if (!dataLoaded || DBHelper.instance == null)
         {
+            experienceRefreshed = true;
             yield break;
         }
 
@@ -1096,6 +1155,10 @@ public class StartManager : MonoBehaviour
             s.Experience = DBHelper.instance.getIntValueFromTableByFieldAndCharId("CharacterProfile", "experience", s.PlayerId);
             s.Level = DBHelper.instance.getIntValueFromTableByFieldAndCharId("CharacterProfile", "level", s.PlayerId);
         }
+
+        // Player select projects Level/Clutch from these values once, when it initializes - not on
+        // every render like the old view did - so this refresh has to land before that happens.
+        experienceRefreshed = true;
     }
 
     IEnumerator getLoadedData()
@@ -1148,11 +1211,16 @@ public class StartManager : MonoBehaviour
 
     IEnumerator InitializeDisplay()
     {
-        yield return WaitForCondition(() => dataLoaded);
+        yield return WaitForCondition(() => dataLoaded && experienceRefreshed);
         if (!dataLoaded)
         {
             yield break;
         }
+
+        playerSelectCoordinator.Initialize(playerSelectedData, cpuPlayerSelectedData, playerSelectView);
+        playerSelectCoordinator.SetMatchContext(selection.CurrentMode(Compatibility), CurrentModifiers());
+        playerSelectCoordinator.RenderIfNeeded();
+
         // display default data
         initializeNumPlayersDisplay();
         initializefriendDisplay();
@@ -1166,8 +1234,6 @@ public class StartManager : MonoBehaviour
         initializeSniperOptionDisplay();
         initializeDifficultyOptionDisplay();
         initializeObstacleOptionDisplay();
-        initializePlayerDisplay();
-        initializeCpuPlayerDisplay();
     }
 
     public void initializeCpuDisplay()
@@ -1176,6 +1242,11 @@ public class StartManager : MonoBehaviour
         disableMenuObjects("cpu_tab");
         enableMenuObjects("cpu_tab");
 
+        // The old CPU panel always repainted the shared stats readout from the last CPU slot
+        // (setCpuPlayer1, then 2, then 3, each overwriting the same text) whenever the tab
+        // activated, so it was never blank on entry. Defaulting focus to the last slot here
+        // preserves that instead of leaving the panel empty until a specific slot is highlighted.
+        playerSelectCoordinator.FocusCpu(PlayerSelectionState.CpuSlotCount - 1);
     }
 
     private IEnumerator SetVersion()
@@ -1230,14 +1301,39 @@ public class StartManager : MonoBehaviour
         cpu2OptionButton = GetButton(StartMenuUiObjects.instance.column4_cpu2_button);
         cpu3OptionButton = GetButton(StartMenuUiObjects.instance.column4_cpu3_button);
 
-        // player object with lock texture and unlock text
-        playerSelectOptionText = StartMenuUiObjects.instance.column1_subgroup_column2_player_select_name_text;
-        playerSelectOptionStatsText = StartMenuUiObjects.instance.column3_player_selected_stats_numbers_text;
-        playerSelectOptionImage = StartMenuUiObjects.instance.column2_players_tab_player_selected_image;
-        playerSelectCategoryStatsText = StartMenuUiObjects.instance.column3_player_selected_stats_category_text;
-        playerProgressionStatsText = StartMenuUiObjects.instance.column3_player_selected_progression_stats_text;
-        playerProgressionCategoryText = StartMenuUiObjects.instance.column3_player_selected_progression_text;
-        playerProgressionUpdatePointsText = StartMenuUiObjects.instance.column3_player_selected_progression_update_points_text;
+        cpuSlotButtonObjects = new[]
+        {
+            StartMenuUiObjects.instance.column4_cpu1_button,
+            StartMenuUiObjects.instance.column4_cpu2_button,
+            StartMenuUiObjects.instance.column4_cpu3_button,
+        };
+
+        // Every reference below already exists as a serialized StartMenuUiObjects field; wrapping
+        // them in PlayerSelectView adds no new serialized state to the scene.
+        playerSelectView = new PlayerSelectView(
+            StartMenuUiObjects.instance.column1_subgroup_column2_player_select_name_text,
+            StartMenuUiObjects.instance.column2_players_tab_player_selected_image,
+            StartMenuUiObjects.instance.column2_players_tab_lock,
+            StartMenuUiObjects.instance.column3_player_selected_stats_numbers_text,
+            StartMenuUiObjects.instance.column3_player_selected_progression_stats_text,
+            StartMenuUiObjects.instance.column3_player_selected_progression_update_points_text,
+            StartMenuUiObjects.instance.column1_subgroup_column2_num_players_selected_name_text,
+            StartMenuUiObjects.instance.column4_cpu_selected_stats_numbers_text,
+            new[]
+            {
+                new CpuSlotBinding(
+                    StartMenuUiObjects.instance.column4_cpu1_button,
+                    StartMenuUiObjects.instance.column4_cpu1_image,
+                    StartMenuUiObjects.instance.column4_cpu1_name_text),
+                new CpuSlotBinding(
+                    StartMenuUiObjects.instance.column4_cpu2_button,
+                    StartMenuUiObjects.instance.column4_cpu2_image,
+                    StartMenuUiObjects.instance.column4_cpu2_name_text),
+                new CpuSlotBinding(
+                    StartMenuUiObjects.instance.column4_cpu3_button,
+                    StartMenuUiObjects.instance.column4_cpu3_image,
+                    StartMenuUiObjects.instance.column4_cpu3_name_text),
+            });
 
         // friend object with lock texture and unlock text
         friendSelectOptionText = StartMenuUiObjects.instance.column1_subgroup_column2_friend_selected_name_text;
@@ -1262,21 +1358,6 @@ public class StartManager : MonoBehaviour
         ResolveCommandButtonReferences();
         RegisterButtonCallbacks();
         UiSelectionAdapter.EnsureSelected(GetDefaultSelectedButton());
-    }
-
-    public String getRandomWizardOfBoat()
-    {
-
-        int randNum = UnityEngine.Random.Range(1, 100);
-
-        if (randNum > 50)
-        {
-            return "wob1";
-        }
-        else
-        {
-            return "wob2";
-        }
     }
 
     public void disableButtonsNotUsedForTouchInput()
@@ -1311,6 +1392,11 @@ public class StartManager : MonoBehaviour
     public void changeSelectedEnemiesOption()
     {
         enemiesEnabled = !enemiesEnabled;
+
+        // Enemies-only changes which characters can play (fighter vs shooter), so player select
+        // needs to know immediately - both to keep cycling correct and to reconcile a required
+        // CPU opponent under the new context.
+        playerSelectCoordinator.SetMatchContext(selection.CurrentMode(Compatibility), CurrentModifiers());
     }
 
     public void changeSelectedSniperOption()
@@ -1442,7 +1528,7 @@ public class StartManager : MonoBehaviour
     public void initializeNumPlayersDisplay()
     {
         numPlayersSelectOptionText = StartMenuUiObjects.instance.column1_subgroup_column2_num_players_selected_name_text;
-        numPlayersSelectOptionText.text = selection.ParticipantCount.ToString();
+        numPlayersSelectOptionText.text = playerSelectCoordinator.ParticipantCount.ToString();
     }
 
     public void initializefriendDisplay()
@@ -1565,21 +1651,15 @@ public class StartManager : MonoBehaviour
             StartMenuUiObjects.instance.column2_players_tab.SetActive(true);
             StartMenuUiObjects.instance.column3.SetActive(true);
             StartMenuUiObjects.instance.column3_player_stats.SetActive(true);
-            if (playerSelectedData[playerSelectedIndex].IsLocked)
-            {
-                StartMenuUiObjects.instance.column2_players_tab_lock.SetActive(true);
-            }
-            else
-            {
-                StartMenuUiObjects.instance.column2_players_tab_lock.SetActive(false);
-            }
+            // Lock overlay is owned by PlayerSelectView now; it renders whenever selection changes,
+            // not only when this tab activates.
         }
 
         if (activeMenu.ToLower().Equals("cpu_tab"))
         {
             StartMenuUiObjects.instance.column4.SetActive(true);
-            // cpu player display
-            initializeCpuPlayerDisplay();
+            // CPU slot portraits/names are kept current by playerSelectCoordinator.RenderIfNeeded(),
+            // not refreshed here.
         }
 
         if (activeMenu.ToLower().Equals("friend_tab"))
@@ -1609,60 +1689,8 @@ public class StartManager : MonoBehaviour
         }
     }
 
-    public void initializePlayerDisplay()
-    {
-        try
-        {
-            disableMenuObjects("players_tab");
-            enableMenuObjects("players_tab");
-
-            playerSelectOptionText.text = playerSelectedData[playerSelectedIndex].PlayerDisplayName;
-            playerSelectOptionImage.sprite = playerSelectedData[playerSelectedIndex].PlayerPortrait;
-
-            playerSelectedData[playerSelectedIndex].Level =
-                CharacterLevel.FromExperience(playerSelectedData[playerSelectedIndex].Experience);
-            int nextlvl = CharacterLevel.ExperienceToNextLevel(playerSelectedData[playerSelectedIndex].Experience);
-
-            playerSelectedData[playerSelectedIndex].Clutch = playerSelectedData[playerSelectedIndex].Level > 100 ? 100 : playerSelectedData[playerSelectedIndex].Level;
-
-            playerSelectOptionStatsText.text = // playerSelectedData[playerSelectedIndex].Accuracy2Pt.ToString("F0") + "\n"
-                playerSelectedData[playerSelectedIndex].Accuracy3Pt.ToString("F0") + "\n"
-                + playerSelectedData[playerSelectedIndex].Accuracy4Pt.ToString("F0") + "\n"
-                + playerSelectedData[playerSelectedIndex].Accuracy7Pt.ToString("F0") + "\n"
-                + playerSelectedData[playerSelectedIndex].Release.ToString("F0") + "\n"
-                + playerSelectedData[playerSelectedIndex].Range.ToString("F0") + "\n"
-                + playerSelectedData[playerSelectedIndex].calculateSpeedToPercent().ToString("F0") + "\n"
-                + playerSelectedData[playerSelectedIndex].calculateJumpValueToPercent().ToString("F0") + "\n"
-                + playerSelectedData[playerSelectedIndex].Luck.ToString("F0") + "\n"
-                + playerSelectedData[playerSelectedIndex].Clutch.ToString("F0");
-
-            playerProgressionStatsText.text = playerSelectedData[playerSelectedIndex].Level.ToString("F0") + "\n"
-                + playerSelectedData[playerSelectedIndex].Experience.ToString("F0") + "\n"
-                + nextlvl.ToString("F0") + "\n";
-
-            // player points avaiable for upgrade
-            if (playerSelectedData[playerSelectedIndex].PointsAvailable != 0)
-            {
-                if (playerSelectedData[playerSelectedIndex].PointsAvailable > 0)
-                {
-                    playerProgressionUpdatePointsText.text = "+" + playerSelectedData[playerSelectedIndex].PointsAvailable.ToString();
-                }
-                else
-                {
-                    playerProgressionUpdatePointsText.text = playerSelectedData[playerSelectedIndex].PointsAvailable.ToString();
-                }
-            }
-            else
-            {
-                playerProgressionUpdatePointsText.text = "";
-            }
-        }
-        catch (Exception e)
-        {
-            Debug.Log("ERROR : " + e);
-            return;
-        }
-    }
+    // Player-select rendering (name/portrait/stats/progression/lock) is owned by PlayerSelectView,
+    // driven by playerSelectCoordinator.RenderIfNeeded() - not this class.
 
     // ============================  footer options activate - load scene/stats/quit/etc ==============================
     // ============================  footer options activate - load scene/stats/quit/etc ==============================
@@ -1685,12 +1713,13 @@ public class StartManager : MonoBehaviour
         lastLoadGameFrame = Time.frameCount;
         forceCampaignStartLevel();
 
-        MatchRequest request = selection.BuildRequest(
-            Compatibility,
-            playerSelectedData,
-            cpuPlayerSelectedData,
-            friendSelectedData,
-            GetPlayerObjectNameOverride());
+        if (!playerSelectCoordinator.TryBuildRoster(out PlayerRoster roster, out string playerSelectError))
+        {
+            ShowLaunchError(playerSelectError);
+            return;
+        }
+
+        MatchRequest request = selection.BuildRequest(Compatibility, roster, friendSelectedData);
 
         if (request == null)
         {
@@ -1713,6 +1742,7 @@ public class StartManager : MonoBehaviour
         LegacyGameOptionsBridge.Apply(configuration);
 
         selection.SavePersistedPreferences();
+        playerSelectCoordinator.PersistSessionPreferences();
         applyNonMatchLaunchState(configuration);
 
         SceneManager.LoadScene(resolveSceneName(configuration));
@@ -1762,21 +1792,13 @@ public class StartManager : MonoBehaviour
             : configuration.SceneName;
     }
 
-    /// <summary>
-    /// If Wizard of Boat is selected, pick which one spawns. Resolved once, here, so the roster
-    /// carries the actual character rather than something downstream re-rolling it.
-    /// </summary>
-    private string GetPlayerObjectNameOverride()
-    {
-        CharacterProfile selected = playerSelectedData[playerSelectedIndex];
-        return selected.PlayerDisplayName.ToLower().Contains("boat")
-            ? getRandomWizardOfBoat()
-            : null;
-    }
-
     private void ShowLaunchError(ValidationResult validation)
     {
-        string reasons = validation == null ? "unknown" : validation.ToString();
+        ShowLaunchError(validation == null ? "unknown" : validation.ToString());
+    }
+
+    private void ShowLaunchError(string reasons)
+    {
         Debug.LogError("This match cannot be started: " + reasons);
         if (ModeSelectOptionDescriptionText != null)
         {
@@ -1796,25 +1818,16 @@ public class StartManager : MonoBehaviour
         GameOptions.operatingSystemVersion = SystemInfo.operatingSystem;
         GameOptions.levelsList = PlayerData.instance.LevelsList;
 
-        CharacterProfile player = playerSelectedData[playerSelectedIndex];
-        EndRoundData.currentRoundPlayerWinnerImage = player.winPortrait;
-        EndRoundData.currentRoundPlayerLoserImage = player.losePortrait;
+        // End-round portraits and the progression snapshot are player-specific launch details;
+        // player select resolves them from the selected character without this class indexing
+        // playerSelectedData directly.
+        playerSelectCoordinator.ApplyLaunchSideEffects(configuration);
 
         // Reset continues for this fresh run - numberOfContinues is a static field that only
         // ever gets decremented during play, so without this a player who exhausted continues in
         // an earlier campaign attempt would start every later attempt (in the same session) with
         // zero continues left, silently.
         EndRoundData.numberOfContinues = configuration.Rules.Hardcore ? 0 : EndRoundData.DefaultContinues;
-
-        // if mode contains 'free', or mode is not arcade mode, carry progression into the match
-        string modeName = configuration.Mode.DisplayName.ToLower();
-        if (modeName.Contains("free") || !modeName.Contains("arcade"))
-        {
-            PlayerData.instance.CurrentExperience = player.Experience;
-            PlayerData.instance.CurrentLevel = player.Level;
-            PlayerData.instance.UpdatePointsAvailable = player.PointsAvailable;
-            PlayerData.instance.UpdatePointsUsed = player.PointsUsed;
-        }
 
         // load hardcore mode highscores (for ui display) for game mode if hardcore mode enabled
         PlayerData.instance.loadStatsFromDatabase();
@@ -1846,15 +1859,7 @@ public class StartManager : MonoBehaviour
     // compatibility service and walks the catalog a bounded number of times, and nothing outside
     // the menu changes until start is pressed.
 
-    public void changeSelectedPlayerUp()
-    {
-        selection.CyclePlayer(playerSelectedData, Compatibility, -1);
-    }
-
-    public void changeSelectedPlayerDown()
-    {
-        selection.CyclePlayer(playerSelectedData, Compatibility, 1);
-    }
+    // Primary character cycling is playerSelectCoordinator.SelectNextPrimary()/SelectPreviousPrimary() now.
 
     public void changeSelectedfriendUp()
     {
@@ -1885,6 +1890,7 @@ public class StartManager : MonoBehaviour
         selection.CycleMode(Compatibility, -1);
         initializeModeDisplay();
         initializeLevelDisplay();
+        playerSelectCoordinator.SetMatchContext(selection.CurrentMode(Compatibility), CurrentModifiers());
     }
 
     public void changeSelectedModeDown()
@@ -1892,61 +1898,7 @@ public class StartManager : MonoBehaviour
         selection.CycleMode(Compatibility, 1);
         initializeModeDisplay();
         initializeLevelDisplay();
-    }
-    private void initializeCpuPlayerDisplay()
-    {
-        if (StartMenuUiObjects.instance.column4.activeSelf)
-        {
-            setCpuPlayer1();
-            setCpuPlayer2();
-            setCpuPlayer3();
-        }
-    }
-    public void setCpuPlayer1()
-    {
-        setCpuPlayerDisplay(1, StartMenuUiObjects.instance.column4_cpu1_image, StartMenuUiObjects.instance.column4_cpu1_name_text);
-    }
-
-    public void setCpuPlayer2()
-    {
-        setCpuPlayerDisplay(2, StartMenuUiObjects.instance.column4_cpu2_image, StartMenuUiObjects.instance.column4_cpu2_name_text);
-    }
-
-    public void setCpuPlayer3()
-    {
-        setCpuPlayerDisplay(3, StartMenuUiObjects.instance.column4_cpu3_image, StartMenuUiObjects.instance.column4_cpu3_name_text);
-    }
-
-    /// <summary>
-    /// Shows one CPU slot. The three slots used to be three near-identical copies of this, each
-    /// reading its own GameOptions index; they differ only in which slot and which widgets.
-    /// </summary>
-    private void setCpuPlayerDisplay(int cpuSlot, Image portrait, Text nameText)
-    {
-        CharacterProfile profile = cpuPlayerSelectedData[selection.GetCpuIndex(cpuSlot)];
-        portrait.sprite = profile.PlayerPortrait;
-        nameText.text = profile.PlayerDisplayName;
-
-        // Player id 0 is the "no CPU here" entry, which has no stats worth showing.
-        StartMenuUiObjects.instance.column4_cpu_selected_stats_numbers_text.text = profile.PlayerId != 0
-            ? getCharacterStatsText(profile)
-            : "";
-
-        initializeNumPlayersDisplay();
-    }
-
-    private static string getCharacterStatsText(CharacterProfile profile)
-    {
-        return profile.Accuracy3Pt.ToString("F0") + "\n"
-            + profile.Accuracy4Pt.ToString("F0") + "\n"
-            + profile.Accuracy7Pt.ToString("F0") + "\n"
-            + profile.Release.ToString("F0") + "\n"
-            + profile.Range.ToString("F0") + " ft\n"
-            + profile.calculateSpeedToPercent().ToString("F0") + "\n"
-            + profile.calculateJumpValueToPercent().ToString("F0") + "\n"
-            + profile.Luck.ToString("F0") + "\n"
-            + profile.Clutch.ToString("F0") + "\n"
-            + profile.Level.ToString("F0");
+        playerSelectCoordinator.SetMatchContext(selection.CurrentMode(Compatibility), CurrentModifiers());
     }
 
     // ============================  public var references  ==============================
