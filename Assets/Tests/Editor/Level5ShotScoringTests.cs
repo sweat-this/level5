@@ -130,6 +130,27 @@ public class Level5ShotScoringTests
         Assert.That(Score(Distance(ShotKind.Four, 20f)).CountedAs, Is.EqualTo(ShotKind.Four));
     }
 
+    [Test]
+    public void MadeShotResultCarriesDistanceInSceneAndFeetUnits()
+    {
+        ShotScore score = new ShotScore(15, ShotKind.Three, moneyBallMade: 0);
+        MadeShotResult result = new MadeShotResult(
+            playerId: 2,
+            isCpu: true,
+            kind: ShotKind.Three,
+            score: score,
+            shotDistance: 25f,
+            totalPointsAfter: 42);
+
+        Assert.That(result.PlayerId, Is.EqualTo(2));
+        Assert.That(result.IsCpu, Is.True);
+        Assert.That(result.Kind, Is.EqualTo(ShotKind.Three));
+        Assert.That(result.Score, Is.EqualTo(score));
+        Assert.That(result.ShotDistance, Is.EqualTo(25f));
+        Assert.That(result.ShotDistanceFeet, Is.EqualTo(150f));
+        Assert.That(result.TotalPointsAfter, Is.EqualTo(42));
+    }
+
     // ---- money ball ---------------------------------------------------------------------------
 
     [Test]

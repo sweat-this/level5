@@ -1,11 +1,12 @@
 # The Basketball Shot Lifecycle
 
-Last reviewed: 2026-08-09
+Last reviewed: 2026-08-11
 
 AUD-010 asks for two things: this document, and a single shot result consumed by everything
 downstream. The result exists for the part that decides *what a shot is worth*
-(`Level5.Core.ShotScoring`); the rest of the pipeline is described here as it actually is, including
-the parts that are still spread out.
+(`Level5.Core.ShotScoring`), and `BasketBallShotMade` now publishes a first scene-level
+`MadeShotResult` event. The rest of the pipeline is described here as it actually is, including the
+parts that are still spread out.
 
 ## The path a shot takes
 
@@ -24,6 +25,7 @@ the parts that are still spread out.
   make                      BasketBallShotMade.OnTriggerEnter
     |                       - longest-shot tracking
     |                       - ShotScoring.Score decides points and which counter moves [Level5.Core]
+    |                       - publishes MadeShotResult for subscribers             [Level5.Core]
     |                       - marker ShotMade updated
     v
   display                   updateScoreText -> MatchHudPresenter
@@ -84,10 +86,10 @@ Being honest about what AUD-010 has and has not achieved:
 
 - **Done.** The scoring arithmetic is one tested function with no scene dependencies. Adding a mode
   no longer means reading 130 lines of nested conditionals to work out what a shot is worth.
-- **Not done.** There is still no single *event*. `BasketBallShotMade` applies the result directly to
-  a `GameStats` component, and the HUD, audio and marker updates each observe the world in their own
-  way rather than subscribing to one "shot resolved" signal. Doing that properly means giving
-  `GameStats` an owner, which is AUD-002 territory.
+- **Partially done.** `BasketBallShotMade` publishes `MadeShotResult`, a pure payload containing the
+  player id, CPU flag, shot kind, score, shot distance and resulting total points. The existing
+  `GameStats`, marker, audio and HUD paths still apply or observe state directly; moving them behind
+  subscribers is the remaining AUD-002/AUD-010 work.
 - **Not done.** `BasketBall` and `BasketBallAuto` still duplicate `shootBasketBall`, `Launch` and
   score-text formatting (AUD-017). The scoring path is now shared - both human and CPU shots reach
   the same single call site - but the launch path is not.

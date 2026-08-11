@@ -210,15 +210,7 @@ public sealed class FileVersusSeriesRepository : IVersusSeriesRepository
 
     private static bool WriteAtomically(string path, string contents)
     {
-        string temporary = path + ".tmp";
-        File.WriteAllText(temporary, contents);
-
-        if (File.Exists(path))
-        {
-            File.Delete(path);
-        }
-
-        File.Move(temporary, path);
+        AtomicFile.WriteAllText(path, contents);
         return true;
     }
 

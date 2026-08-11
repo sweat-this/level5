@@ -33,6 +33,10 @@ namespace Assets.Scripts.Utility
         //public static void LoadGameMode(StartScreenModeSelected mode, LevelSelected level, PlayerIdentifier player, PlayerIdentifier cpuPlayer)
         public static IEnumerator LoadDevLevelVersus(int seconds)
         {
+#if !UNITY_EDITOR && !DEVELOPMENT_BUILD
+            Debug.LogWarning("Dev level loading is unavailable in release builds.");
+            yield break;
+#else
             // get level id, mode id
             // get player prefab
             // get cpu prefab
@@ -69,6 +73,7 @@ namespace Assets.Scripts.Utility
 
             sceneLoadPending = true;
             SceneTransition.LoadScene(Constants.SCENE_NAME_level_23_dev);
+#endif
         }
 
         /// <summary>

@@ -39,4 +39,28 @@ public class Level5SceneContractTests
             "Production code reaches into Assets/Scripts/Dev without a build guard:\n- "
                 + string.Join("\n- ", errors.ToArray()));
     }
+
+    [Test]
+    public void DevScenesAreNotEnabledInReleaseBuildSettings()
+    {
+        List<string> errors = Level5ProjectValidator.CollectEnabledDevSceneErrors();
+
+        Assert.That(
+            errors,
+            Is.Empty,
+            "Dev-only scenes must stay out of enabled build settings:\n- "
+                + string.Join("\n- ", errors.ToArray()));
+    }
+
+    [Test]
+    public void UnityAssetsDoNotHaveMissingScriptReferences()
+    {
+        List<string> errors = Level5ProjectValidator.CollectMissingScriptReferenceErrors();
+
+        Assert.That(
+            errors,
+            Is.Empty,
+            "Unity assets/settings have missing MonoBehaviour script references:\n- "
+                + string.Join("\n- ", errors.ToArray()));
+    }
 }

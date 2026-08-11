@@ -193,19 +193,35 @@ public class PlayerController : MonoBehaviour
         inputReader = new PlayerInputReader(controls);
     }
 
-    private PlayerInputReader EnsureInputReader()
+    private bool TryEnsureInputReader(out PlayerInputReader reader)
     {
+        if (inputReader != null)
+        {
+            reader = inputReader;
+            return true;
+        }
+
         if (controls == null)
         {
-            controls = PlayerControlsProvider.Controls;
+            if (inputPlayerId < 0)
+            {
+                InitializeInput();
+            }
+            else
+            {
+                controls = PlayerControlsProvider.AcquireGameplayControls(inputPlayerId);
+            }
         }
 
-        if (inputReader == null)
+        if (controls == null || !enabled)
         {
-            inputReader = new PlayerInputReader(controls);
+            reader = null;
+            return false;
         }
 
-        return inputReader;
+        inputReader = new PlayerInputReader(controls);
+        reader = inputReader;
+        return true;
     }
     void Start()
     {
@@ -283,7 +299,12 @@ public class PlayerController : MonoBehaviour
         if (!KnockedDown && !Locked
             && currentState != takeDamageState)
         {
-            Vector2 moveInput = EnsureInputReader().ReadMove(screenXRange, screenYRange);
+            if (!TryEnsureInputReader(out PlayerInputReader reader))
+            {
+                return;
+            }
+
+            Vector2 moveInput = reader.ReadMove(screenXRange, screenYRange);
             movementHorizontal = moveInput.x;
             movementVertical = moveInput.y;
             movement = new Vector3(movementHorizontal, 0, movementVertical) * (movementSpeed * Time.fixedDeltaTime);
@@ -343,7 +364,10 @@ public class PlayerController : MonoBehaviour
             StartCoroutine(PlayerDisintegrated());
         }
 
-        PlayerInputReader reader = EnsureInputReader();
+        if (!TryEnsureInputReader(out PlayerInputReader reader))
+        {
+            return;
+        }
 
         if (reader.DebugLightningPressed)
         {
@@ -1068,8 +1092,8 @@ public class PlayerController : MonoBehaviour
         get => controls;
         set
         {
-            controls = value ?? PlayerControlsProvider.AcquireGameplayControls(inputPlayerId < 0 ? 0 : inputPlayerId);
-            inputReader = new PlayerInputReader(controls);
+            controls = value;
+            inputReader = controls != null ? new PlayerInputReader(controls) : null;
         }
     }
     public PlayerAttackQueue PlayerAttackQueue { get => playerAttackQueue; set => playerAttackQueue = value; }

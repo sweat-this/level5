@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using Level5.Core.Versus;
 using Level5.Core.Versus.Persistence;
 using NUnit.Framework;
@@ -315,6 +316,56 @@ public class Level5VersusPersistenceTests
     }
 
     [Test]
+    public void FileRepositoryWritesAndReloadsSerializedSeries()
+    {
+        string root = TemporaryRepositoryRoot();
+        try
+        {
+            FileVersusSeriesRepository repository = new FileVersusSeriesRepository(root);
+            VersusSeries series = VersusTestFixtures.Series(SeriesFormat.BestOf3);
+            VersusTestFixtures.PlayGame(series, clock, ids, 47, 31);
+
+            Assert.That(repository.Save(series), Is.True);
+
+            string path = Path.Combine(root, series.Id.Value + ".json");
+            Assert.That(File.Exists(path), Is.True);
+            Assert.That(File.Exists(path + ".tmp"), Is.False);
+            Assert.That(File.Exists(path + ".bak"), Is.True);
+
+            VersusSeries loaded = repository.Load(series.Id);
+            Assert.That(loaded, Is.Not.Null);
+            Assert.That(loaded, Is.Not.SameAs(series));
+            Assert.That(loaded.Score.ToString(), Is.EqualTo("1-0"));
+            Assert.That(loaded.CurrentGame.Number, Is.EqualTo(2));
+        }
+        finally
+        {
+            DeleteTemporaryRepositoryRoot(root);
+        }
+    }
+
+    [Test]
+    public void FileRepositoryPreservesArchiveFlagAcrossLaterSave()
+    {
+        string root = TemporaryRepositoryRoot();
+        try
+        {
+            FileVersusSeriesRepository repository = new FileVersusSeriesRepository(root);
+            VersusSeries series = VersusTestFixtures.Series(SeriesFormat.BestOf1);
+
+            Assert.That(repository.Save(series), Is.True);
+            Assert.That(repository.Archive(series.Id), Is.True);
+            Assert.That(repository.Save(repository.Load(series.Id)), Is.True);
+
+            Assert.That(repository.ListSummaries()[0].Archived, Is.True);
+        }
+        finally
+        {
+            DeleteTemporaryRepositoryRoot(root);
+        }
+    }
+
+    [Test]
     public void TimesRoundTripAsUtcRatherThanDriftingWithTheMachinesTimeZone()
     {
         VersusSeries original = VersusTestFixtures.Series(SeriesFormat.BestOf1);
@@ -332,5 +383,18 @@ public class Level5VersusPersistenceTests
     private static VersusSeries RoundTrip(VersusSeries series)
     {
         return VersusSeriesSerializer.FromJson(VersusSeriesSerializer.ToJson(series));
+    }
+
+    private static string TemporaryRepositoryRoot()
+    {
+        return Path.Combine(Path.GetTempPath(), "level5-versus-" + Guid.NewGuid().ToString("N"));
+    }
+
+    private static void DeleteTemporaryRepositoryRoot(string root)
+    {
+        if (!string.IsNullOrEmpty(root) && Directory.Exists(root))
+        {
+            Directory.Delete(root, true);
+        }
     }
 }

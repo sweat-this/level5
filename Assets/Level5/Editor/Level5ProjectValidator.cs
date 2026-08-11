@@ -47,6 +47,8 @@ public sealed class Level5ProjectValidator : IPreprocessBuildWithReport
         List<string> errors = new List<string>();
         ValidateSerializationPolicy(errors);
         ValidateBuildScenes(errors);
+        ValidateDevScenesExcludedFromBuild(errors);
+        ValidateNoMissingScriptReferences(errors);
         ValidateSelectableLevels(errors);
         ValidateInputActions(errors);
         ValidateContestModeTimers(errors);
@@ -210,6 +212,81 @@ public sealed class Level5ProjectValidator : IPreprocessBuildWithReport
         if (enabledScenes.Count == 0)
         {
             errors.Add("No enabled scenes are configured in Editor Build Settings.");
+        }
+    }
+
+    public static List<string> CollectEnabledDevSceneErrors()
+    {
+        List<string> errors = new List<string>();
+        foreach (EditorBuildSettingsScene scene in EditorBuildSettings.scenes)
+        {
+            if (!scene.enabled || string.IsNullOrWhiteSpace(scene.path))
+            {
+                continue;
+            }
+
+            string normalized = scene.path.Replace('\\', '/');
+            if (IsDevScenePath(normalized))
+            {
+                errors.Add("Dev scene must not be enabled in build settings: " + normalized + ".");
+            }
+        }
+
+        return errors;
+    }
+
+    private static void ValidateDevScenesExcludedFromBuild(List<string> errors)
+    {
+        errors.AddRange(CollectEnabledDevSceneErrors());
+    }
+
+    private static bool IsDevScenePath(string path)
+    {
+        string fileName = Path.GetFileNameWithoutExtension(path);
+        return path.IndexOf("/Dev/", StringComparison.OrdinalIgnoreCase) >= 0
+            || fileName.StartsWith("dev_", StringComparison.OrdinalIgnoreCase)
+            || fileName.EndsWith("_dev", StringComparison.OrdinalIgnoreCase)
+            || fileName.IndexOf("_dev_", StringComparison.OrdinalIgnoreCase) >= 0;
+    }
+
+    public static List<string> CollectMissingScriptReferenceErrors()
+    {
+        List<string> errors = new List<string>();
+        AddMissingScriptReferenceErrors(errors, "Assets");
+        AddMissingScriptReferenceErrors(errors, "ProjectSettings");
+        return errors;
+    }
+
+    private static void ValidateNoMissingScriptReferences(List<string> errors)
+    {
+        errors.AddRange(CollectMissingScriptReferenceErrors());
+    }
+
+    private static void AddMissingScriptReferenceErrors(List<string> errors, string root)
+    {
+        if (!Directory.Exists(root))
+        {
+            return;
+        }
+
+        foreach (string file in Directory.GetFiles(root, "*.*", SearchOption.AllDirectories))
+        {
+            string extension = Path.GetExtension(file);
+            if (extension != ".asset" && extension != ".prefab" && extension != ".unity")
+            {
+                continue;
+            }
+
+            string normalized = file.Replace('\\', '/');
+            int lineNumber = 0;
+            foreach (string line in File.ReadLines(file))
+            {
+                lineNumber++;
+                if (line.IndexOf("m_Script: {fileID: 0}", StringComparison.Ordinal) >= 0)
+                {
+                    errors.Add(normalized + ":" + lineNumber + " has a missing MonoBehaviour script reference.");
+                }
+            }
         }
     }
 

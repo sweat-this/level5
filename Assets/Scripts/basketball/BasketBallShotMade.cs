@@ -1,7 +1,9 @@
 ﻿
+using System;
 using UnityEngine;
 using Level5.Core;
 using Level5.Core.Match;
+using Random = UnityEngine.Random;
 
 
 public class BasketBallShotMade : MonoBehaviour
@@ -22,6 +24,7 @@ public class BasketBallShotMade : MonoBehaviour
     //int _expectedShotAttempts = 1;
 
     public static BasketBallShotMade instance;
+    public event Action<MadeShotResult> ShotResolved;
 
     /// <summary>
     /// Releases the static so it cannot outlive the object it points at.
@@ -93,28 +96,24 @@ public class BasketBallShotMade : MonoBehaviour
         audioSource.PlayOneShot(SFXBB.instance.basketballNetSwish);
         // play rim animation
         anim.Play("madeshot");
-        if (playerIdentifier.isCpu)
+        float shotDistance = LastShotDistanceFor(playerIdentifier, basketBall, basketBallAuto);
+        // add to total shot distance made total
+        float shotDistanceFeet = shotDistance * 6;
+        gameStats.TotalDistance += shotDistanceFeet;
+        // is this the longest shot made?
+        if (shotDistanceFeet > gameStats.LongestShotMade)
         {
-            // add to total shot distance made total
-            gameStats.TotalDistance += (basketBallAuto.LastShotDistance * 6);
-            // is this the longest shot made?
-            if ((basketBallAuto.LastShotDistance * 6) > gameStats.LongestShotMade)
-            {
-                gameStats.LongestShotMade = basketBallAuto.LastShotDistance * 6;
-            }
-        }
-        else
-        {
-            // add to total shot distance made total
-            gameStats.TotalDistance += (basketBall.LastShotDistance * 6);
-            // is this the longest shot made?
-            if ((basketBall.LastShotDistance * 6) > gameStats.LongestShotMade)
-            {
-                gameStats.LongestShotMade = basketBall.LastShotDistance * 6;
-            }
+            gameStats.LongestShotMade = shotDistanceFeet;
         }
         // updates shots made/shot attempted
-        updateShotMadeBasketBallStats(gameStats, basketBallState);
+        ShotScore score = updateShotMadeBasketBallStats(gameStats, basketBallState, shotDistance);
+        ShotResolved?.Invoke(new MadeShotResult(
+            playerIdentifier.pid,
+            playerIdentifier.isCpu,
+            ShotKindOf(basketBallState),
+            score,
+            shotDistance,
+            gameStats.TotalPoints));
 
         // instantiate money if game requires it
         if (GameRules.instance.GameModeRequiresMoneyBall
@@ -142,6 +141,19 @@ public class BasketBallShotMade : MonoBehaviour
         //    GameRules.instance.updatePlayerScore();
         //}
         // update game rules ui
+    }
+
+    private static float LastShotDistanceFor(
+        PlayerIdentifier playerIdentifier,
+        BasketBall basketBall,
+        BasketBallAuto basketBallAuto)
+    {
+        if (playerIdentifier != null && playerIdentifier.isCpu)
+        {
+            return basketBallAuto != null ? basketBallAuto.LastShotDistance : 0f;
+        }
+
+        return basketBall != null ? basketBall.LastShotDistance : 0f;
     }
     void instantiateMoney(float value)
     {
@@ -200,7 +212,7 @@ public class BasketBallShotMade : MonoBehaviour
         return id >= 0 && id < markers.Count ? markers[id] : null;
     }
 
-    private void updateShotMadeBasketBallStats(GameStats gameStats, BasketBallState basketBallState)
+    private ShotScore updateShotMadeBasketBallStats(GameStats gameStats, BasketBallState basketBallState, float shotDistance)
     {
         // first thing, update shot made total
         // ==================== consecutive shots logic ==============================
@@ -264,7 +276,7 @@ public class BasketBallShotMade : MonoBehaviour
                 || MatchRuntime.Rules.IsFourPointContest
                 || MatchRuntime.Rules.IsSevenPointContest,
             MoneyBallActive = basketBallState.MoneyBallEnabledOnShoot,
-            ShotDistance = BasketBall.instance != null ? BasketBall.instance.LastShotDistance : 0f
+            ShotDistance = shotDistance
         };
 
         ShotScore score = ShotScoring.Score(input);
@@ -307,6 +319,8 @@ public class BasketBallShotMade : MonoBehaviour
                 GameRules.instance.BasketBallShotMarkersList[basketBallState.OnShootShotMarkerId].ShotMade++;
             }
         }
+
+        return score;
     }
 
     //public int ConsecutiveShotsMade { get => _consecutiveShotsMade; }
