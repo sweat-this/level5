@@ -702,6 +702,13 @@ public class BodyGuardController : MonoBehaviour, ICombatAgent
     /// </summary>
     public PlayerIdentifier ProtectedActor => protectedActor;
 
+    /// <summary>
+    /// The range at which this bodyguard already considers a threat worth breaking formation to
+    /// intercept. BG-2 exposes it so <see cref="BodyGuardDetection"/> cannot report "no enemy
+    /// sighted" at a range this controller would act on.
+    /// </summary>
+    public float MaximumInterceptionDistance => maximumInterceptionDistance;
+
     /// <summary>The protected actor's own attack queue - resolves once, then stays cached.</summary>
     public PlayerAttackQueue TargetQueue
     {
