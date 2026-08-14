@@ -20,6 +20,17 @@ public class EnemyDetection : MonoBehaviour, ICombatDetection
     [SerializeField]
     bool attacking;
 
+    /// <summary>
+    /// ENM-1: this reads as "the player is within sight", and it is not. The only thing that ever
+    /// sets it true is <c>PlayerAttackQueue.SetAttackerDetection</c>, when this enemy is granted an
+    /// attack reservation; proximity alone never sets it. <see cref="EnemyController"/> gates
+    /// <c>stateWalk</c> on it, so an enemy that cannot get a slot stands idle no matter how close
+    /// the player is.
+    ///
+    /// That is deliberate crowd control - it is what stops twenty battle-royal enemies converging
+    /// at once - and is left as-is. Renaming it to say so would touch the ICombatDetection contract
+    /// and both actor types; the behaviour is what matters and the behaviour is correct.
+    /// </summary>
     public bool PlayerSighted { get => playerSighted; set => playerSighted = value; }
 
     // AUD-005: the queue's name for the same flag - an enemy hunts the player
@@ -28,9 +39,16 @@ public class EnemyDetection : MonoBehaviour, ICombatDetection
     public bool Attacking { get => attacking; set => attacking = value; }
     public float PursuitRange => pursuitRange > 0f ? pursuitRange : enemySightDistance * 1.5f;
 
+    // ENM-5: the value the prefab was authored with. OnEnable overwrites enemySightDistance for
+    // certain rule sets, and this component is pooled - without capturing the authored value here,
+    // the first respawn under a rule that widens sight permanently replaced it, and no later
+    // respawn could ever get it back.
+    private float authoredSightDistance;
+
     private void Awake()
     {
         enemyController = GetComponent<EnemyController>();
+        authoredSightDistance = enemySightDistance;
     }
 
     private void OnEnable()
@@ -39,6 +57,8 @@ public class EnemyDetection : MonoBehaviour, ICombatDetection
         attacking = false;
         attackPositionId = -1;
         enemyDetectionEnabled = true;
+        // always re-derive from the authored value rather than from whatever the last life left
+        enemySightDistance = authoredSightDistance;
         // if only enemies, make increase enemy sight
         if (MatchRuntime.Rules.EnemiesOnly || MatchRuntime.Rules.EnemiesEnabled)
         {

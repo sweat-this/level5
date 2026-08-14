@@ -70,10 +70,20 @@ public class AutoPlayerDefense : MonoBehaviour
     public bool isLocked;
     public bool playerCrossover;
 
+    // DEF-2: upper bound on one shot contest, from leaving the ground to releasing isLocked. A
+    // jump arc is well under a second; this only ever fires when the guarded player stops
+    // reporting Grounded at all.
+    private const float MaxContestDuration = 4f;
+
+    // DEF-4: shortest interval between two crossover rolls, so rapid direction changes cannot
+    // reroll it every frame.
+    private const float CrossoverRollCooldown = 0.5f;
+    private float nextCrossoverRollTime;
+
     // Start is called before the first frame update
     void Start()
     {
-        playerIdentifier = GameLevelManager.instance.players[0];
+        ResolveGuardedPlayerIfMissing();
         //cpuCharacterProfile = gameObject.GetComponent<CharacterProfile>();
         rigidBody = GetComponent<Rigidbody>();
         movementSpeed = speed;
@@ -89,10 +99,18 @@ public class AutoPlayerDefense : MonoBehaviour
     }
     void FixedUpdate()
     {
-        if (!playerCrossover)
+        // DEF-5: `!playerCrossover` was the only condition here. The knockdown and disintegrate
+        // checks its counterparts carry were absent - currently masked, because PlayerKnockedDown
+        // freezes the X and Z constraints so the MovePosition below has no visible effect, but the
+        // guard was missing rather than unnecessary, and DEF-1 changed how that step is computed.
+        if (playerCrossover
+            || currentState == knockedDownState
+            || currentState == disintegratedState)
         {
-            moveToPosition(moveCpuPlayer());
+            return;
         }
+
+        moveToPosition(moveCpuPlayer());
     }
     // Update is called once per frame
     void Update()
@@ -176,6 +194,45 @@ public class AutoPlayerDefense : MonoBehaviour
         anim.SetBool(animationName, isTrue);
     }
 
+    /// <summary>
+    /// The player this defender guards. DEF-3: explicit and assignable, matching the seam
+    /// <see cref="BodyGuardController.AssignProtectedActor"/> and
+    /// <see cref="EnemyController.AssignTargetQueue"/> already use.
+    /// </summary>
+    public PlayerIdentifier GuardedPlayer => playerIdentifier;
+
+    public void AssignGuardedPlayer(PlayerIdentifier player)
+    {
+        playerIdentifier = player;
+    }
+
+    /// <summary>
+    /// DEF-3: this was <c>playerIdentifier = GameLevelManager.instance.players[0]</c> inline in
+    /// Start - an unguarded index into a global roster, resolved once, with no assignment path.
+    /// The transitional fallback still resolves the primary local human, which is the only actor
+    /// the lockdown mode's defender has ever guarded; a mode that needs to guard someone else
+    /// should call <see cref="AssignGuardedPlayer"/> instead of changing this.
+    /// </summary>
+    private void ResolveGuardedPlayerIfMissing()
+    {
+        if (playerIdentifier != null)
+        {
+            return;
+        }
+
+        playerIdentifier = GameLevelManager.instance != null
+            ? GameLevelManager.instance.Player1
+            : null;
+
+        if (playerIdentifier == null)
+        {
+            Debug.LogError(
+                $"AutoPlayerDefense on {name} could not resolve a player to guard; disabling.",
+                this);
+            enabled = false;
+        }
+    }
+
     Vector3 moveCpuPlayer()
     {
         Vector3 directionOfTravel = (new Vector3(playerPosition.x, 0, playerPosition.z + playerGuardingDistance) - new Vector3(GameLevelManager.instance.BasketballRimVector.x, 0, GameLevelManager.instance.BasketballRimVector.z).normalized);
@@ -205,12 +262,32 @@ public class AutoPlayerDefense : MonoBehaviour
         return P;
     }
 
+    /// <summary>
+    /// Steps toward <paramref name="target"/> at <see cref="movementSpeed"/> units per second.
+    ///
+    /// DEF-1: this used to multiply the raw, un-normalized <c>(target - position)</c> vector by
+    /// speed and delta time, so the step was proportional to how far away the target was -
+    /// <c>speed</c> behaved as a spring constant, not a speed, and a large displacement produced a
+    /// single oversized MovePosition step. This is the same defect AUD-050 fixed in
+    /// <see cref="AutoPlayerController.moveToPosition"/>, which this now matches: normalize the
+    /// direction, and clamp the step to the remaining distance so arriving cannot overshoot.
+    ///
+    /// This changes how the lockdown defender feels. With the authored guard distance the two
+    /// forms agree at roughly one unit of separation; beyond that the old code was faster, inside
+    /// it slower. <c>speed</c> is now literally units per second and wants a Play Mode retune.
+    /// </summary>
     public void moveToPosition(Vector3 target)
     {
-        Vector3 targetPosition = new();
-        targetPosition = (target - transform.position);
-        
-        movement = targetPosition * (movementSpeed * Time.fixedDeltaTime);
+        Vector3 toTarget = target - transform.position;
+        float distanceRemaining = toTarget.magnitude;
+        if (distanceRemaining <= Mathf.Epsilon)
+        {
+            movement = Vector3.zero;
+            return;
+        }
+
+        float step = Mathf.Min(movementSpeed * Time.fixedDeltaTime, distanceRemaining);
+        movement = (toTarget / distanceRemaining) * step;
         rigidBody.MovePosition(rigidBody.position + movement);
     }
 
@@ -243,6 +320,19 @@ public class AutoPlayerDefense : MonoBehaviour
         Vector3 thisScale = transform.localScale;
         thisScale.x *= -1;
         transform.localScale = thisScale;
+
+        // DEF-4: the chance of being crossed over is rolled here, once per sprite flip. Flips
+        // happen whenever the guarded player crosses this defender's x axis, so a player who
+        // jitters left and right rerolls it as fast as they can change direction - the probability
+        // was effectively per-direction-change rather than per-move. The cooldown below bounds how
+        // often it can be rolled without moving the roll itself, which belongs with a dribble move
+        // rather than with a facing change and is a larger change than this.
+        if (Time.time < nextCrossoverRollTime)
+        {
+            return;
+        }
+
+        nextCrossoverRollTime = Time.time + CrossoverRollCooldown;
 
         float randomNum = UtilityFunctions.GetRandomFloat(0, 100);
         if (randomNum < crossoverPercent && !playerCrossover && !inAir)
@@ -286,21 +376,37 @@ public class AutoPlayerDefense : MonoBehaviour
         {
             playerCrossover = true;
         }
+        // DEF-2: the two branches differed only in this pre-jump delay; the jump and the wait that
+        // releases isLocked were duplicated below them. Shared now so the release path exists once.
         if (playerCrossover)
         {
             yield return new WaitForSeconds(jumpDelay);
             yield return new WaitUntil(() => currentState != knockedDownState);
             playerCrossover = false;
+        }
 
-            rigidBody.linearVelocity = Vector3.up * jumpForce;
-            yield return new WaitUntil(() => player.playerController.Grounded);
-            isLocked = false;
-        }
-        else
-        {
-            rigidBody.linearVelocity = Vector3.up * jumpForce;
-            yield return new WaitUntil(() => player.playerController.Grounded);
-            isLocked = false;
-        }
+        rigidBody.linearVelocity = Vector3.up * jumpForce;
+        yield return WaitForGuardedPlayerToLand(player);
+        isLocked = false;
+    }
+
+    /// <summary>
+    /// Waits for the guarded player to land, or for the contest to time out.
+    ///
+    /// DEF-2: this was an unbounded <c>WaitUntil(() =&gt; player.playerController.Grounded)</c> and
+    /// was the only path that cleared <see cref="isLocked"/>. A guarded player who never reported
+    /// grounded - knocked into a frozen state, disabled, destroyed, or landed somewhere the ground
+    /// check misses - left the defender locked for the remainder of the match, silently never
+    /// contesting another shot. The deadline is far longer than a jump arc, so a healthy contest
+    /// still ends on the landing rather than on the clock.
+    /// </summary>
+    private IEnumerator WaitForGuardedPlayerToLand(PlayerIdentifier player)
+    {
+        float deadline = Time.time + MaxContestDuration;
+        yield return new WaitUntil(() =>
+            player == null
+            || player.playerController == null
+            || player.playerController.Grounded
+            || Time.time >= deadline);
     }
 }

@@ -61,35 +61,16 @@ public class EnemySpawner : MonoBehaviour
                 enabled = false;
                 return;
             }
-            if (MatchRuntime.Rules.Hardcore && MatchRuntime.Rules.EnemiesOnly)
-            {
-                maxNumberOfEnemies = 8;
-            }
-            else if (MatchRuntime.Rules.Hardcore && !MatchRuntime.Rules.EnemiesOnly)
-            {
-                maxNumberOfEnemies = 6;
-            }
-            // AUD-056: this used to also test `|| GameOptions.enemiesEnabled`. StartManager forces
-            // enemiesEnabled = true for every battle royal (setGameOptions: "if enemies only mode,
-            // enable enemies whether it was selected or not"), so that disjunct was always true
-            // whenever battleRoyalEnabled was - which made the two branches below unreachable.
-            // A non-cage battle royal therefore spawned 4 enemies where the branch order says 2.
-            else if (!MatchRuntime.Rules.IsBattleRoyal || !MatchRuntime.HasConfiguration)
-            {
-                maxNumberOfEnemies = 4;
-            }
-            else if (MatchRuntime.Rules.IsCageMatch)
-            {
-                maxNumberOfEnemies = 4;
-            }
-            else
-            {
-                maxNumberOfEnemies = 2;
-            }
-
+            // ENM-2: this branch chain, including the AUD-056 correction to its ordering, now
+            // lives in EnemyPopulationRules next to the attack queue's separate answer to the
+            // same question. Same numbers - see that file for why they are still two answers.
+            bool halveForMobile = false;
 #if UNITY_ANDROID && !UNITY_EDITOR
-            maxNumberOfEnemies = maxNumberOfEnemies/2;
+            halveForMobile = true;
 #endif
+            maxNumberOfEnemies = EnemyPopulationRules.MaxAlive(
+                MatchRuntime.Rules, MatchRuntime.HasConfiguration, halveForMobile);
+
             maxNumberOfMinions = maxNumberOfEnemies - maxNumberOfBoss;
             //Debug.Log(MatchRuntime.Rules.IsBattleRoyal);
             //Debug.Log(MatchRuntime.Rules.IsCageMatch);
@@ -108,7 +89,7 @@ public class EnemySpawner : MonoBehaviour
             }
             if (MatchRuntime.Rules.IsBattleRoyal && !MatchRuntime.Rules.IsCageMatch)
             {
-                maxNumberOfEnemies = 20;
+                maxNumberOfEnemies = EnemyPopulationRules.MaxAliveForBattleRoyal();
                 //battleRoyalSpawnPosition = GameObject.Find("battleRoyalSpawnPosition");
                 InvokeRepeating("spawnBattleRoyalContestant", 0, 10f);
                 //spawnBattleRoyalContestant();

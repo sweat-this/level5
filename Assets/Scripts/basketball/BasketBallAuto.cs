@@ -402,8 +402,10 @@ public class BasketBallAuto : MonoBehaviour
 
         autoPlayerController.hasBasketball = false;
         autoPlayerController.SetPlayerAnim("hasBasketball", false);
-        autoPlayerController.shootTrigger = false;
-        autoPlayerController.Locked = false;
+        // CPU-2: the ball reports that the shot is away - it is the only thing that knows - but
+        // the CPU owns the state transition. This used to write `shootTrigger` and `Locked`
+        // directly, which meant the CPU could not complete a shoot cycle unless this method ran.
+        autoPlayerController.EndShootCycle();
     }
 
     // ============================ Functions and Properties ==========================================

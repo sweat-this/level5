@@ -35,6 +35,12 @@ public class BodyGuardDetection : MonoBehaviour, ICombatDetection
         //    enemySightDistance = 20;
         //}
 
+        // BG-2: enemySightDistance is assigned here and read by nothing. CheckPlayerDistance below
+        // no longer measures a distance at all - it asks the queue whether any enemy is engaged
+        // anywhere, which is the same answer for every bodyguard in the scene regardless of where
+        // it is standing. The field is left in place because it is public and serialized on
+        // existing prefabs; giving this component real per-bodyguard detection is a behaviour
+        // change that belongs with the threat-scoring work in BodyGuardController, not here.
         enemySightDistance = 20;
 
         InvokeRepeating("CheckPlayerDistance", 0, 0.5f);

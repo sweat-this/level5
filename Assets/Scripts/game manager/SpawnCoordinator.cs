@@ -131,7 +131,7 @@ public sealed class SpawnCoordinator
             primaryPrefab,
             locations.Player1.transform.position,
             Quaternion.identity);
-        RegisterHuman(primary, pid);
+        RegisterHuman(primary, pid, primarySlot);
         pid++;
 
         // A scene can already contain an auto player. It takes the next slot as it always has.
@@ -156,6 +156,16 @@ public sealed class SpawnCoordinator
                 locations.Player2.transform.position,
                 Quaternion.identity);
             RegisterCpu(defender, pid);
+
+            // DEF-3: tell the defender who it guards rather than letting it reach for
+            // GameLevelManager.instance.players[0] itself. This is the mode that spawns it, so
+            // this is the one place that knows.
+            AutoPlayerDefense defense = defender.GetComponent<AutoPlayerDefense>();
+            if (defense != null)
+            {
+                defense.AssignGuardedPlayer(registry.GetBySlot(0));
+            }
+
             pid++;
         }
 
@@ -189,7 +199,7 @@ public sealed class SpawnCoordinator
             }
             else
             {
-                RegisterHuman(spawned, pid);
+                RegisterHuman(spawned, pid, slot);
             }
 
             pid++;
@@ -237,7 +247,16 @@ public sealed class SpawnCoordinator
         }
     }
 
-    /// <summary>Spawns the chosen cheerleader when the scene has somewhere to put one.</summary>
+    /// <summary>
+    /// Spawns the chosen cheerleader when the scene has somewhere to put one.
+    ///
+    /// CHR-5: the cheerleader's stat bonuses and the cheerleader you can see reach the match by
+    /// completely separate routes - the bonuses through CheerleaderSelection into CharacterProfile,
+    /// the actor through this Resources.Load by name - joined only by the convention that the
+    /// prefab is named for the selection's ObjectName. Nothing checks that they agree. A failed
+    /// load used to return silently, leaving a match that is quietly paying out bonuses for a
+    /// cheerleader who is not there; it now says so.
+    /// </summary>
     public void SpawnCheerleader(string cheerleaderObjectName, float terrainHeight)
     {
         if (GameObject.FindWithTag("cheerleader") != null
@@ -247,9 +266,13 @@ public sealed class SpawnCoordinator
             return;
         }
 
-        GameObject prefab = Resources.Load("Prefabs/characters/cheerleaders/cheerleader_" + cheerleaderObjectName) as GameObject;
+        string prefabPath = "Prefabs/characters/cheerleaders/cheerleader_" + cheerleaderObjectName;
+        GameObject prefab = Resources.Load(prefabPath) as GameObject;
         if (prefab == null)
         {
+            Debug.LogError(
+                $"Cheerleader '{cheerleaderObjectName}' has no prefab at Resources/{prefabPath}, "
+                + "but its shooting bonuses are already applied to the player.");
             return;
         }
 
@@ -289,7 +312,7 @@ public sealed class SpawnCoordinator
         return slot.Character.ObjectName;
     }
 
-    private void RegisterHuman(GameObject spawned, int pid)
+    private void RegisterHuman(GameObject spawned, int pid, PlayerSlot slot)
     {
         PlayerIdentifier identifier = spawned.GetComponent<PlayerIdentifier>();
         if (identifier == null)
@@ -301,7 +324,49 @@ public sealed class SpawnCoordinator
         identifier.setIds(pid, pid, pid, false);
         identifier.player = spawned;
         identifier.setPlayer(identifier.player);
+        InitializeHumanProfile(identifier, slot);
         registry.Add(identifier);
+    }
+
+    /// <summary>
+    /// Rebuilds a human's CharacterProfile from the saved data for that human's own roster slot.
+    ///
+    /// This used to happen inside <c>PlayerIdentifier.setPlayer</c>, which had no idea which slot
+    /// it was wiring and so always loaded <c>MatchRuntime.PrimaryCharacterId</c> - slot zero. Every
+    /// human past the first therefore played with slot zero's stats, level, display name and
+    /// PlayerId. Only this class knows the roster, so the decision belongs here.
+    ///
+    /// A slot with no character of its own still falls back to the primary id, which is what a
+    /// single-human match has always resolved to.
+    /// </summary>
+    private static void InitializeHumanProfile(PlayerIdentifier identifier, PlayerSlot slot)
+    {
+        if (!MatchRuntime.HasConfiguration)
+        {
+            return;
+        }
+
+        if (identifier.characterProfile == null)
+        {
+            Debug.LogError($"Spawned human '{identifier.name}' has no CharacterProfile to initialize.", identifier);
+            return;
+        }
+
+        identifier.characterProfile.intializeShooterStatsFromProfile(ResolveHumanCharacterId(slot));
+    }
+
+    /// <summary>
+    /// Which saved character a human roster slot loads its stats from: its own, falling back to
+    /// the primary slot's id when the slot carries no character of its own.
+    ///
+    /// Separated from <see cref="InitializeHumanProfile"/> so the rule that regressed - every
+    /// human resolving to slot zero - is coverable without spawning prefabs.
+    /// </summary>
+    public static int ResolveHumanCharacterId(PlayerSlot slot)
+    {
+        return slot != null && slot.Character != null && slot.Character.CharacterId != 0
+            ? slot.Character.CharacterId
+            : MatchRuntime.PrimaryCharacterId;
     }
 
     private void RegisterCpu(GameObject spawned, int pid)

@@ -41,11 +41,11 @@ public class AutoPlayerController : MonoBehaviour
     private PlayerIdentifier playerIdentifier;
     CallBallToPlayer callBallToPlayer;
 
-    // PlayerIdentifier.isCpu/isDefensivePlayer (sibling component, same GameObject) is the source
-    // of truth for identity/role (AUD-013). These fields are independently set alongside it and
-    // can drift - new code should read from PlayerIdentifier rather than adding more readers here.
-    public bool isCPU;
-    public bool isDefensivePlayer;
+    // CPU-6: `isCPU` and `isDefensivePlayer` used to be duplicated here alongside the sibling
+    // PlayerIdentifier that owns them (AUD-013 flagged the drift risk). Removed: `isDefensivePlayer`
+    // had no readers at all, and `isCPU` had exactly one writer and no readers, so both were
+    // duplicate state that could disagree with PlayerIdentifier and nothing would notice.
+    // PlayerIdentifier.isCpu / isDefensivePlayer are the source of truth.
     // walk speed #review can potentially remove
     [SerializeField]
     private float movementSpeed;
@@ -154,6 +154,26 @@ public class AutoPlayerController : MonoBehaviour
     public bool shootTrigger;
     private float terrainYHeight;
 
+    // CPU-1/CPU-2: the jump-and-shoot sequence has its own flag now. It used to borrow `Locked`,
+    // which is also how the damage/knockdown/disintegrate reactions gate themselves - so a
+    // knockdown arriving mid-shot could not pass its own `KnockedDown && !Locked` guard. The
+    // knockdown was silently dropped, `KnockedDown` latched true, and because the jump gate
+    // requires `!KnockedDown` the CPU stopped shooting until the shot completed. If the shot never
+    // completed, that was the rest of the match.
+    //
+    // `Locked` now means exactly one thing: a damage reaction is running. This flag means: this
+    // CPU has committed to a shot and has not released the ball yet.
+    [SerializeField]
+    private bool shootCycleActive;
+    private float shootCycleStartTime;
+
+    // Upper bound on one jump-and-shoot sequence, measured from the moment the CPU commits. The
+    // release delay is at most CpuBaseStats.MAX_SHOOT_DELAY, followed by the jump arc and the shot
+    // meter, so this is far longer than a healthy cycle. It exists so a CPU that loses the ball
+    // between committing and launching recovers by itself rather than standing still - which is
+    // what the ambient-NPC collision hack in BehaviorNpcAutonomous used to paper over.
+    private const float ShootCycleTimeout = 6f;
+
     void Start()
     {
         getAnimatorStateHashes();
@@ -175,7 +195,12 @@ public class AutoPlayerController : MonoBehaviour
         dropShadow = transform.root.transform.Find("drop_shadow").gameObject;
         FacingRight = true;
 
-        movementSpeed = characterProfile.Speed;
+        // CPU-5: `movementSpeed = characterProfile.Speed;` sat here and was overwritten by
+        // `movementSpeed = runMovementSpeed;` further down this same method, so it never survived
+        // Start. It was also the only read of characterProfile in Start, and it raced
+        // CharacterProfile.Start - which is where a CPU's stats are actually derived - because both
+        // are Start on this GameObject and nothing orders them. Update recomputes movementSpeed
+        // from the profile every frame regardless, so removing it loses nothing.
 
         if (_knockDownTime == 0) { _knockDownTime = 1.5f; }
         if (_takeDamageTime == 0) { _takeDamageTime = 0.5f; }
@@ -303,6 +328,15 @@ public class AutoPlayerController : MonoBehaviour
             targetPosition = getClosestPositionMarker();
             //targetPosition = positionMarkers[closestPositionMarkerIndex].transform.position;
         }
+        // CPU-1: a reaction taking over abandons any shot this CPU had committed to, and a cycle
+        // that outlives its bound recovers on its own. Both run before the reaction gates below so
+        // the reaction sees a clean shoot state in the same frame.
+        if (ShootCycleActive
+            && (KnockedDown || TakeDamage || Disintegrated || Time.time - shootCycleStartTime > ShootCycleTimeout))
+        {
+            EndShootCycle();
+        }
+
         // knocked down
         if (KnockedDown && !Locked)
         {
@@ -421,9 +455,10 @@ public class AutoPlayerController : MonoBehaviour
             && !jumpTrigger
             && !shootTrigger
             && !InAir
-            && !Locked)
+            && !Locked
+            && !ShootCycleActive)
         {
-            Locked = true;
+            BeginShootCycle();
             arrivedAtTarget = false;
             StartCoroutine(SetJumptrigger());
         }
@@ -456,7 +491,9 @@ public class AutoPlayerController : MonoBehaviour
 
         float distance3 =( Constants.DISTANCE_3point - playerDistanceFromRim) + 0.5f;
         float distance4 = (Constants.DISTANCE_4point - playerDistanceFromRim) + 0.5f;
-        float distance7 = (Constants.DISTANCE_7point - playerDistanceFromRim) + 0.5f;
+        // CPU-4: distance7 is gone - the seven point branch below no longer measures from where
+        // the CPU currently stands, so it does not need the remaining-distance form the other two
+        // use to convert a rim-relative vector into a target.
         Vector3 finalDirection = new();
         Vector3 targetPosition = new();
         Vector3 directionOfTravelSeven = new();
@@ -484,9 +521,21 @@ public class AutoPlayerController : MonoBehaviour
             || (GameLevelManager.instance.currentHighScoreTotalPoints - gameStats.TotalPoints) >= 21)
             && cpuShootSevenpointers())
         {
-            finalDirection = directionOfTravelSeven + directionOfTravelSeven.normalized * distance7;
-            targetPosition = transform.position + finalDirection;
+            // CPU-4: this was `transform.position + finalDirection` - the only branch here that
+            // anchored its target to the CPU rather than to the rim. Update recomputes the marker
+            // every frame while the CPU has not arrived, so the target kept sliding sideways ahead
+            // of it and only converged once the CPU was roughly 1.5 units past the seven point
+            // line, rather than the 0.5 the other branches aim for.
+            //
+            // Expressed the same way the three and four point branches are: a point on the CPU's
+            // own side of the rim, exactly the shot distance plus the same 0.5 margin away, fixed
+            // in world space so the CPU can actually arrive at it.
+            finalDirection = directionOfTravelSeven * (Constants.DISTANCE_7point + 0.5f);
+            targetPosition = GameLevelManager.instance.BasketballRimVector + finalDirection;
         }
+        // Reachable: neither the three nor the four point branch fires when Accuracy3Pt is the
+        // higher of the two and the score gap sits between 13 and 15, so this is the genuine
+        // default rather than dead code.
         if (targetPosition == Vector3.zero)
         {
             finalDirection = directionOfTravel + directionOfTravel.normalized * distance4;
@@ -610,6 +659,31 @@ public class AutoPlayerController : MonoBehaviour
             basketball.BasketBallState.FourPoints,
             basketball.BasketBallState.SevenPoints);
         arrivedAtTarget = false;
+    }
+
+    /// <summary>
+    /// CPU-1: this CPU has committed to a shot - it will jump, then release.
+    /// </summary>
+    private void BeginShootCycle()
+    {
+        shootCycleActive = true;
+        shootCycleStartTime = Time.time;
+    }
+
+    /// <summary>
+    /// CPU-2: the shot is over, whether it launched, was interrupted by damage, or timed out.
+    ///
+    /// <see cref="BasketBallAuto"/> calls this on launch. It used to reach in and write
+    /// <c>Locked = false</c> directly, which made the ball the owner of the CPU's state machine:
+    /// the CPU could not finish a cycle unless the ball's launch path ran to completion. The ball
+    /// still reports the event - it is the only thing that knows the shot is away - but the state
+    /// transition happens here, and is safe to call more than once.
+    /// </summary>
+    public void EndShootCycle()
+    {
+        shootCycleActive = false;
+        shootTrigger = false;
+        jumpTrigger = false;
     }
 
     //public void PlayerSpecial()
@@ -788,11 +862,21 @@ public class AutoPlayerController : MonoBehaviour
         set { _inAir = value; }
     }
 
+    /// <summary>
+    /// A damage reaction (take damage / knockdown / disintegrate) is running.
+    ///
+    /// CPU-1: this used to also mean "a shot is in progress", which is why a knockdown landing
+    /// mid-shot could never start its own coroutine. Shot state lives in
+    /// <see cref="ShootCycleActive"/> now.
+    /// </summary>
     public bool Locked
     {
         get { return _locked; }
         set { _locked = value; }
     }
+
+    /// <summary>This CPU has committed to a shot and has not released the ball yet.</summary>
+    public bool ShootCycleActive => shootCycleActive;
 
     public bool FacingFront
     {

@@ -432,8 +432,10 @@ public class EnemyController : MonoBehaviour, ICombatAgent, IPooledSpawnReset
     {
         canAttack = false;
         stateAttack = false;
-        currentState = AnimatorState_Idle;
-        // wait for animator state to get to attack 
+        // ENM-6: `currentState = AnimatorState_Idle;` was here. currentState is re-read from the
+        // animator at the top of every Update, so the assignment could not outlive the frame it
+        // happened in - it read as though it suppressed a state check that it never affected.
+        // wait for animator state to get to attack
         yield return new WaitUntil(() => anim.GetCurrentAnimatorStateInfo(0).IsTag("attack"));
         // wait for animation to finish
         yield return new WaitUntil(() => !anim.GetCurrentAnimatorStateInfo(0).IsTag("attack"));

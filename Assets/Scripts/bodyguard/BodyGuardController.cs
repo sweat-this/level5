@@ -213,8 +213,15 @@ public class BodyGuardController : MonoBehaviour, ICombatAgent
         currentState = currentStateInfo.fullPathHash;
 
         // ================== bodyguard threat targeting ==========================
+        // BG-1: RefreshThreatTarget below dereferences protectedActor.transform unguarded, while
+        // ShouldMoveForProtection and pursuePlayer both null-check the same field. That is safe
+        // today only because targetQueue is always GetComponent'd off protectedActor's own
+        // GameObject (see AssignProtectedActor / ResolveProtectedActorIfMissing), so the two die
+        // together and the queue check below already covers it. Testing protectedActor explicitly
+        // makes that invariant enforced at this one entry point rather than assumed by every
+        // method downstream of it.
         PlayerAttackQueue queue = TargetQueue;
-        if (queue == null)
+        if (queue == null || protectedActor == null)
         {
             // STEP 1: no resolvable protected actor yet - stand down safely rather than reach
             // into a null chain (this used to be an unguarded
@@ -536,6 +543,14 @@ public class BodyGuardController : MonoBehaviour, ICombatAgent
         stateKnockDown = false;
     }
 
+    /// <summary>
+    /// BG-3: bodyguards are destroyed on death where enemies are returned to
+    /// <c>RuntimeObjectPool</c>. Left asymmetric on purpose. Pooling requires the actor to be able
+    /// to reset every piece of per-life state on reuse - which is what
+    /// <c>EnemyController.ResetForSpawn</c> exists to do, and which this class has no equivalent
+    /// of - and bodyguards are placed per level rather than spawned continuously, so the churn
+    /// pooling solves for enemies does not exist here.
+    /// </summary>
     public IEnumerator killEnemy()
     {
         stateKnockDown = true;

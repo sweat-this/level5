@@ -68,14 +68,6 @@ public class PlayerAnimationEvents : MonoBehaviour
             playerController = transform.root.GetComponentInChildren<PlayerController>();
         }
 
-        if (playerController == null)
-        {
-            Debug.LogError(
-                "PlayerAnimationEvents on " + name + " found no PlayerController on its hierarchy; "
-                + "attack boxes and lunge events will not run.",
-                this);
-        }
-
         audioSource = GetComponent<AudioSource>();
 
         Transform attackBoxTransform = transform.Find(attackBoxText);
@@ -116,8 +108,31 @@ public class PlayerAnimationEvents : MonoBehaviour
         {
             animOnCamera = null;
         }
+        // CHR-1: every cheerleader prefab carries this component, because it is what receives the
+        // playSfxCameraFlash animation event on jessica_critical_success.anim. A cheerleader has
+        // no PlayerController and no attack boxes, so the unconditional LogError above fired for a
+        // condition that is correct and expected - a guaranteed red error in every match that
+        // spawned one, which trains the error log to be ignored.
+        //
+        // An instance with none of the player-driven children is being used purely as a sound
+        // host, and has nothing to report or to police. An instance that owns any of them and has
+        // no controller really is misconfigured, and still says so.
+        bool drivesPlayerColliders = attackBox != null || attackBoxSpecial != null || hitBox != null;
+        if (playerController == null)
+        {
+            if (drivesPlayerColliders)
+            {
+                Debug.LogError(
+                    "PlayerAnimationEvents on " + name + " found no PlayerController on its hierarchy; "
+                    + "attack boxes and lunge events will not run.",
+                    this);
+            }
+
+            return;
+        }
+
         // check if attack box is active and should not be
-        if (!GameLevelManager.instance.AutoPlayer)
+        if (GameLevelManager.instance != null && !GameLevelManager.instance.AutoPlayer)
         {
             InvokeRepeating("checkCollidersDisabledProperly", 0, 1);
         }

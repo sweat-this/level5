@@ -34,14 +34,22 @@ public class PlayerIdentifier : MonoBehaviour
         this.bsid = bsid;
         this.isCpu = isCpu;
     }
+    /// <summary>
+    /// Wires this identifier to a human actor. Component resolution only.
+    ///
+    /// This used to also call <c>intializeShooterStatsFromProfile()</c>, which read
+    /// <see cref="MatchRuntime.PrimaryCharacterId"/> - roster slot zero - no matter which human it
+    /// was called for, so every human past the first was rebuilt as the slot zero character. Stat
+    /// initialization now belongs to <c>SpawnCoordinator</c>, which is the only thing that knows
+    /// which roster slot a spawned actor came from. It is also called on the basketball's
+    /// identifier, which shares the owner's CharacterProfile - so leaving initialization here ran
+    /// it twice on the same component.
+    /// </summary>
     public void setPlayer(GameObject player)
     {
         this.player = player;
         playerController = player.GetComponent<PlayerController>();
         characterProfile = player.GetComponent<CharacterProfile>();
-        if(MatchRuntime.HasConfiguration) { 
-            characterProfile.intializeShooterStatsFromProfile();
-        }
     }
     public void setAutoPlayer(GameObject autoPlayer)
     {
