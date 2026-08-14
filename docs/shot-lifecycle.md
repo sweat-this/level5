@@ -86,13 +86,39 @@ Being honest about what AUD-010 has and has not achieved:
 
 - **Done.** The scoring arithmetic is one tested function with no scene dependencies. Adding a mode
   no longer means reading 130 lines of nested conditionals to work out what a shot is worth.
-- **Partially done.** `BasketBallShotMade` publishes `MadeShotResult`, a pure payload containing the
-  player id, CPU flag, shot kind, score, shot distance and resulting total points. The existing
-  `GameStats`, marker, audio and HUD paths still apply or observe state directly; moving them behind
-  subscribers is the remaining AUD-002/AUD-010 work.
-- **Not done.** `BasketBall` and `BasketBallAuto` still duplicate `shootBasketBall`, `Launch` and
-  score-text formatting (AUD-017). The scoring path is now shared - both human and CPU shots reach
-  the same single call site - but the launch path is not.
+- **Partially done, and the remaining gap is narrower than it first looked.** `BasketBallShotMade`
+  publishes `MadeShotResult`, a pure payload containing the player id, CPU flag, shot kind, score,
+  shot distance and resulting total points. As of 2026-08-13 it has its first real subscriber: the
+  made-shot swish sound and rim animation moved behind `ShotResolved` instead of running inline in
+  `shotMade()`, proving the event actually reaches a listener.
+  - `GameStats` mutations correctly stay inline - they are the state the event reports, not a
+    reaction to it.
+  - The shot-marker `ShotMade` counter (`GameRules.instance.BasketBallShotMarkersList[...]`) also
+    correctly stays inline on closer inspection: it feeds `GameRules.IsGameOver()`'s win condition
+    directly, so it is rules/scoring bookkeeping computed as part of resolving the shot, not a
+    presentation reaction - the same category as `GameStats`, not a candidate for AUD-008.
+  - The HUD/scoreboard (`MatchHudPresenter`) is not actually called from `shotMade()` at all -
+    `GameRules.Update()` polls it every frame regardless of whether a shot just happened, reading
+    live `GameStats`/rules values. That is a different problem (a per-frame poll instead of a
+    push) than "UI reaches into gameplay," and converting it to a `ShotResolved` subscriber would
+    need its own design pass: other things the HUD displays (timers, streak state) change without
+    a made shot, so it cannot simply stop polling in favor of the one event without first covering
+    those paths too.
+
+  Net: `MadeShotResult`/`ShotResolved` now has a genuine subscriber and a proven pattern to extend,
+  but there is no further single-file, zero-risk slice left in this exact area - the next real step
+  is deciding whether the HUD should move off polling at all, which is a design question, not a
+  mechanical extraction.
+- **Mostly done, as of 2026-08-13 (AUD-017).** `Launch`'s modifier computation and score/profile-text
+  formatting now live in `BasketballShotPipeline.cs`, called by both `BasketBall` and `BasketBallAuto`.
+  The marker/money-ball block inside `shootBasketBall` - previously commented out on the CPU path,
+  so CPU shots earned no marker-contest or money-ball credit - is shared too now
+  (`BasketballShotPipeline.ApplyMarkerAndMoneyBallOnShoot`), confirmed as a real gap rather than
+  intentional scope and fixed accordingly. What's left per-caller is deliberate: `Launch`'s Rigidbody/
+  animator/analytics tail (human has an analytics call and an `isCpu` swish gate the CPU path
+  doesn't; CPU has `shootTrigger`/`Locked` resets the human path doesn't), and each
+  `LaunchBasketBall` coroutine's `MeterEnded` wait condition, which the two files check on opposite
+  values - confirmed intentional, left untouched.
 
 ## Why this blocks the assembly split
 

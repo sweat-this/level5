@@ -85,6 +85,7 @@ public class AutoPlayerCollisions : MonoBehaviour
             int damage = 0;
             bool isKnockdown = false;
             bool isRake = false;
+            bool isDisintegrate = false;
             // get attack box player/enemy
             if (other.CompareTag("playerAttackBox"))
             {
@@ -100,16 +101,28 @@ public class AutoPlayerCollisions : MonoBehaviour
                 isRake = enemyAttackBox.isRake;
                 damage = enemyAttackBox.attackDamage;
                 isKnockdown = enemyAttackBox.knockDownAttack;
+                isDisintegrate = enemyAttackBox.disintegrateAttack;
+                if (isDisintegrate)
+                {
+                    locked = true;
+                    playerDisintegrated();
+                }
             }
             //check if enemy attack
             if (playerAttackBox != null)
             {
                 damage = playerAttackBox.attackDamage;
                 isKnockdown = playerAttackBox.knockDownAttack;
+                isDisintegrate = playerAttackBox.disintegrateAttack;
+                if (isDisintegrate)
+                {
+                    locked = true;
+                    playerDisintegrated();
+                }
             }
 
             // player is not blocking
-            if (autoPlayerController.currentState != autoPlayerController.blockState)
+            if (autoPlayerController.currentState != autoPlayerController.blockState && !isDisintegrate)
             {
                 locked = true;
                 playerHealth.TakeDamage(damage);
@@ -170,6 +183,15 @@ public class AutoPlayerCollisions : MonoBehaviour
         }
 
         return false;
+    }
+
+    void playerDisintegrated()
+    {
+        autoPlayerController.TakeDamage = false;
+        autoPlayerController.KnockedDown = false;
+        autoPlayerController.hasBasketball = false;
+        autoPlayerController.Disintegrated = true;
+        autoPlayerController.SetPlayerAnim("hasBasketball", false);
     }
 
     void playerTakeDamage()

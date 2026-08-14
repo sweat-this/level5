@@ -194,7 +194,17 @@ Acceptance criteria:
 
 ### Phase 4: PlayerController Decomposition
 
-Status: Planned
+Status: In Progress - input reading already routes through `PlayerInputReader` (see
+docs/player-input-architecture.md). 2026-08-13: damage/knockdown/lightning/shrink reaction
+coroutines extracted to `PlayerDamageReactions` (human) and the matching subset (no disintegrate/
+lightning/shrink - the CPU path never had them) to `AutoPlayerDamageReactions` (CPU), both plain
+objects rather than components - no lifecycle/prefab change. Both controllers kept as facades with
+identical public signatures. The two extraction classes are still a parallel pair, not a shared
+implementation - `PlayerController`/`AutoPlayerController` are unrelated sibling classes with no
+common interface for their Rigidbody/Animator/state fields, and introducing one to genuinely merge
+this logic (rather than just relocate two copies of it) is a larger decision than either extraction
+was. Motor and basketball-request extraction have not been started; this area has no dedicated test
+coverage and has not been manually playtested since the extraction.
 
 Work:
 
@@ -227,7 +237,13 @@ Acceptance criteria:
 
 ### Phase 5: AI State Machines
 
-Status: Planned
+Status: In Progress - explicit target references, a shared `CombatTargetSelector` scoring policy,
+and a `CombatTacticalState` enum with transition bookkeeping already exist for both Enemy and
+Bodyguard (commit `0e001a60`; see docs/architecture-audit.md AUD-007). The enum is deliberately
+diagnostics-only by design, not an in-progress migration - `stateWalk`/`stateAttack`/`statePatrol`/
+`stateKnockDown` remain the actual behavior owners. Making the enum authoritative would be a
+behavior/feel decision needing explicit product sign-off and play-mode comparison, not a refactor;
+not attempted.
 
 Work:
 
@@ -324,7 +340,7 @@ Acceptance criteria:
 
 ### Phase 8: Basketball Result Flow
 
-Status: Planned
+Status: In Progress - shot lifecycle documented (docs/shot-lifecycle.md), `MadeShotResult`/`ShotResolved` exist and have their first subscriber (audio/rim animation, 2026-08-13), shot math is isolated in Level5.Core. Stats, marker updates, and HUD scoreboard formatting still run inline rather than as subscribers - see docs/architecture-audit.md AUD-008/AUD-010.
 
 Work:
 
@@ -408,7 +424,7 @@ A separate, independent track from the combat contracts and match-end-flow work 
 5. **Deferred.** Extract the shared basketball shot pipeline from `BasketBall`/`BasketBallAuto` into one actor-parameterized implementation (AUD-017). Assessed as too large/risky to do safely in the same pass as the smaller fixes above - this project has no automated test coverage for basketball scoring, and "Basketball is a core feel system and scoring must not drift" (Phase 8 risk note above) applies directly. Needs its own focused pass, ideally with manual playtesting of both human and CPU shooting before/after.
 6. **Done 2026-08-02 (partial).** Fix AUD-018: replaced raw integer literals with `Modes` constants in both `GameRules.GetDisplayText()`/`SetScoreDisplayText()`-adjacent dispatch and in `GameRules.Update()` (previously raw `26`/`23`), so the two dispatch methods can no longer silently drift by number. Did **not** collapse them into a single lookup table - same reasoning as item 5, too risky to restructure ~40 branches across two methods without test coverage.
 7. **Code fix in place 2026-08-02; verification pending.** AUD-019's original premise (a dead `GameRules.IsGameOver()` competing with a live `Timer` path) was factually wrong - `IsGameOver()` is live, marker-based win-condition logic for contest modes, and doesn't conflict with `Timer`'s time-based path for timed modes. The narrower, still-valid point was fixed by routing timer, marker, and death triggers through `GameRules.RequestGameOver()` and gating pause, persistence, progression, and campaign transition side effects behind `matchEndHandled`/`HandleMatchEnded()`.
-8. **Not done.** Reconcile the duplicate progression call sites in `Pause.updateFreePlayStats()` and `GameRules.ApplyMatchProgressionResult()` (AUD-011).
+8. **Done 2026-08-13.** Reconciled the duplicate progression call sites in `Pause.updateFreePlayStats()` and `GameRules.ApplyMatchProgressionResult()` (AUD-011) via a shared `ProgressionService.ApplyMatchResult(resultId, characterId, experienceGained)` overload. Not a double-grant fix - investigation confirmed the two paths already share a result id (`MatchSession.EnsureCurrentMatch()`) and the database layer is idempotent per id - just removed the duplicated construction code.
 9. **Done 2026-08-02.** Fix AUD-020: `TrafficManager`'s `spawnVehiclePrefabs`, `spawnCustomVehiclePrefabs`, and `spawnVehicleCoRoutine` now instantiate first and set `Direction`/`FacingRight`/`CurrentTarget` on the returned clone, instead of mutating the shared prefab-sourced `VehicleController` list entries before `Instantiate()` - closes a same-vehicle-ID respawn race. Confirmed via full-codebase grep that `VehicleController`/`VehiclesList` have no consumers outside `vehicle/TrafficManager.cs` and `vehicle/VehicleController.cs` before making the change.
 10. **Done 2026-08-02.** Fix AUD-021: user-requested audit of "Beat the Computahs" mode found `EndRoundData.numberOfContinues` (static field) was never reset between campaign attempts - only ever decremented or zeroed for hardcore mode. `StartManager.setGameOptions()` now resets it to a new `EndRoundData.DefaultContinues` constant (left at 2, the pre-existing default - not a confirmed design number, so not changed) for non-hardcore runs on every fresh game start. Also documented (not fixed - no live bug) a related campaign-index rollback gap in `GameRules.LoadNextCampaignLevel`/`EndRoundMenuManager.LoadData` that's currently only masked by `StartManager` hard-resetting the level index on every fresh "Beat the Computahs" start.
 

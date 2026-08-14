@@ -6,17 +6,6 @@ public static class CharacterProgressStore
 {
     private const string AccountsFolderName = "accounts";
 
-    public static CharacterProgressSave Load(string userId, CharacterPresetCatalog catalog)
-    {
-        if (TryLoadExisting(userId, out CharacterProgressSave save))
-        {
-            return save;
-        }
-
-        string normalizedUserId = NormalizeUserId(userId);
-        return catalog != null ? catalog.CreateDefaultProgress(normalizedUserId) : CreateEmptySave(normalizedUserId);
-    }
-
     public static bool TryLoadExisting(string userId, out CharacterProgressSave save)
     {
         save = null;

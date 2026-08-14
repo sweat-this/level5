@@ -508,12 +508,10 @@ public class GameRules : MonoBehaviour
             progressionService = new ProgressionService();
         }
 
-        MatchProgressionResult result = new MatchProgressionResult(
+        MatchProgressionResult appliedResult = progressionService.ApplyMatchResult(
             matchProgressionResultId,
             MatchRuntime.PrimaryCharacterId,
             primaryGameStats.getExperienceGainedFromSession());
-
-        MatchProgressionResult appliedResult = progressionService.ApplyMatchResult(result);
         matchProgressionApplied = appliedResult.Applied;
         if (!matchProgressionApplied)
         {
@@ -739,8 +737,9 @@ public class GameRules : MonoBehaviour
         set => gameModeId = value;
     }
 
-    // TODO: used to allow pause toggle. never set to false. still works somehow. 
-    // this needs a deeper look when i get time 
+    // Gates pause/cancel (Pause.cs) once a match ends. Reset false in Start() for every fresh
+    // GameRules instance; set true only through RequestEnd(), which HandleMatchEnded() guards
+    // against re-entry - see AUD-019. It does not need to reset to false again within a match.
     public bool GameOver
     {
         get => gameOver;

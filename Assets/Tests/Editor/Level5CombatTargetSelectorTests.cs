@@ -98,8 +98,13 @@ public class Level5CombatTargetSelectorTests
     {
         FakeCombatAgent destroyed = CreateAgent("destroyed", new Vector3(1, 0, 0));
         List<ICombatAgent> candidates = new List<ICombatAgent> { destroyed };
-        Object.DestroyImmediate(destroyed.gameObject);
-        spawned.Remove(destroyed.gameObject);
+
+        // Capture the GameObject reference before destroying it - destroyed.gameObject would
+        // itself throw MissingReferenceException once the component's native object is gone,
+        // same as the production code path this test exists to verify.
+        GameObject destroyedGameObject = destroyed.gameObject;
+        Object.DestroyImmediate(destroyedGameObject);
+        spawned.Remove(destroyedGameObject);
 
         Assert.That(() => CombatTargetSelector.SelectNearestValidTarget(candidates, Vector3.zero, null), Throws.Nothing);
         Assert.That(CombatTargetSelector.SelectNearestValidTarget(candidates, Vector3.zero, null), Is.Null);

@@ -378,11 +378,10 @@ public class Pause : MonoBehaviour
             progressionService = new ProgressionService();
         }
 
-        MatchProgressionResult result = new MatchProgressionResult(
+        progressionService.ApplyMatchResult(
             freePlayProgressionResultId,
             MatchRuntime.PrimaryCharacterId,
             BasketBall.instance.GameStats.ExperienceGained);
-        progressionService.ApplyMatchResult(result);
     }
 
     private IEnumerator WaitForDatabaseUnlock()

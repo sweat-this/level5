@@ -2,10 +2,38 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Pool;
+using UnityEngine.SceneManagement;
 
+/// <summary>
+/// AUD-009: structurally near-identical to <see cref="RuntimeObjectPool"/> (same <see cref="ObjectPool{T}"/>
+/// backing, same capacity), but projectiles need a post-activation <c>Launch()</c> step that generic
+/// pooled objects don't, so this stays a separate implementation rather than a forced merge. It was
+/// missing the scene-unload/domain-reload cleanup <see cref="RuntimeObjectPool"/> already has -
+/// without it, <see cref="poolsByPrefab"/> is a static dictionary that outlives every scene load,
+/// accumulating pools whose instances were destroyed with the scene they belonged to. Fixed by
+/// mirroring that same proven pattern here.
+/// </summary>
 public static class ProjectilePool
 {
     private static readonly Dictionary<GameObject, ObjectPool<GameObject>> poolsByPrefab = new Dictionary<GameObject, ObjectPool<GameObject>>();
+
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+    private static void Reset()
+    {
+        poolsByPrefab.Clear();
+        SceneManager.sceneUnloaded -= OnSceneUnloaded;
+        SceneManager.sceneUnloaded += OnSceneUnloaded;
+    }
+
+    private static void OnSceneUnloaded(Scene scene)
+    {
+        foreach (ObjectPool<GameObject> pool in poolsByPrefab.Values)
+        {
+            pool.Clear();
+        }
+
+        poolsByPrefab.Clear();
+    }
 
     public static GameObject Spawn(GameObject prefab, Vector3 position, Quaternion rotation, Action<GameObject> configure = null)
     {

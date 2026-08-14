@@ -1,10 +1,18 @@
 # Player Select Architecture Overhaul Plan
 
-Status: planned  
+Status: implemented (phases 0-8 complete; see verification note below)  
 Project: Level 5  
 Branch target: `dev`  
 Audit baseline: `ed689b20c1c3df6f1506f80579c883db94d8dfc1`  
-Reviewed: 2026-08-09, two architecture/problem-solution passes
+Reviewed: 2026-08-09, two architecture/problem-solution passes  
+Verified 2026-08-13: all 9 migration phases (section 9) are implemented in code and covered by
+`Level5PlayerSelectArchitectureTests.cs` plus the other `Level5PlayerSelect*Tests.cs` suites
+(70 edit-mode tests, all passing). `StartMenuUiObjects`'s cpu1/2/3 fields, which an earlier pass of
+this audit flagged as possibly-obsolete leftovers, are in fact the live `PlayerSelectView` binding
+targets - deliberately reused rather than replaced so the migration added no new serialized scene
+state. `StartManager` still composes the start screen for unrelated concerns (level/mode/cheerleader
+select, options, navigation) per this plan's own non-goals; that is expected, not a sign of
+incomplete migration.
 
 ## Executive summary
 

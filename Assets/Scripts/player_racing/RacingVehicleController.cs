@@ -116,7 +116,6 @@ public class RacingVehicleController : MonoBehaviour
         screenXRange = Screen.width / 10;
         screenYRange = Screen.height / 10;
 
-        // AUD-053: the same guards PlayerController carries. This twin was left unguarded.
         damageDisplayObject = SceneObjects.Find(damageDisplayValueName, this);
         damageDisplayValueText = damageDisplayObject != null
             ? damageDisplayObject.GetComponent<Text>()
@@ -492,97 +491,6 @@ public class RacingVehicleController : MonoBehaviour
         //}
     }
 
-    //public void TouchControlJumpOrShoot(Vector2 touchPosition)
-    //{
-    //    if (Grounded
-    //        && !KnockedDown
-    //        && hasBasketball
-    //        && playerDistanceFromRimFeet > PlayerDunk.instance.DunkRangeFeet
-    //        && touchPosition.x > (Screen.width / 2)
-    //        && !Locked)
-    //    {
-    //        jumpTrigger = true;
-    //    }
-    //    if (PlayerDunk.instance != null
-    //        && PlayerDunk.instance.PlayerCanDunk
-    //        && playerDistanceFromRimFeet < PlayerDunk.instance.DunkRangeFeet
-    //        && (currentState != inAirDunkState || currentState != inAirDunkState)
-    //        && !InAir
-    //        && Grounded
-    //        && hasBasketball
-    //        && touchPosition.x > (Screen.width / 2)
-    //        && !Locked)
-    //    {
-    //        dunkTrigger = true;
-    //    }
-    //    // if has ball, is in air, and pressed shoot button.
-    //    // shoot ball
-    //    if (InAir
-    //        && hasBasketball
-    //        && touchPosition.x > (Screen.width / 2)
-    //        && (currentState != inAirDunkState || currentState != inAirDunkState))
-    //    {
-    //        CallBallToPlayer.instance.Locked = true;
-    //        basketball.BasketBallState.Locked = true;
-    //        CheckIsPlayerFacingGoal(); // turns player facing rim
-    //        Shotmeter.MeterEnded = true;
-    //        PlayerShoot();
-    //    }
-    //    // call ball
-    //    if (!hasBasketball
-    //        && !InAir
-    //        && basketball.BasketBallState.CanPullBall
-    //        && !basketball.BasketBallState.Locked
-    //        && Grounded
-    //        && !CallBallToPlayer.instance.Locked
-    //        && touchPosition.x > (Screen.width / 2))
-    //    {
-    //        CallBallToPlayer.instance.Locked = true;
-    //        CallBallToPlayer.instance.pullBallToPlayer();
-    //        CallBallToPlayer.instance.Locked = false;
-    //    }
-    //}
-    //public void PlayerAttack()
-    //{
-    //    if (playerCanAttack)
-    //    {
-    //        // get random close attack if more than one
-    //        playerSwapAttack.setCloseAttack();
-    //        anim.Play("attack");
-    //    }
-    //}
-
-    //public void PlayerBlock()
-    //{
-    //    anim.SetBool("block", true);
-    //}
-
-    //public void PlayerShoot()
-    //{
-    //    basketball.shootBasketBall();
-    //}
-
-    //public void PlayerSpecial()
-    //{
-    //    PlayAnim("special");
-    //}
-    //public void CheckIsPlayerFacingGoal()
-    //{
-    //    if (bballRelativePositioning > 0 && !FacingRight
-    //        && currentState != specialState
-    //        && currentState != attackState)
-    //    {
-    //        Flip();
-    //    }
-
-    //    if (bballRelativePositioning < 0f && FacingRight
-    //        && currentState != specialState
-    //        && currentState != attackState)
-    //    {
-    //        Flip();
-    //    }
-    //}
-
     public void PlayerJump()
     {
         rigidBody.linearVelocity = Vector3.up * vehicleProfile.JumpForce; //+ (Vector3.forward * rigidBody.velocity.x)) 
@@ -745,20 +653,12 @@ public class RacingVehicleController : MonoBehaviour
     // ----------------------- freeze player postion ------------------------
     public void FreezePlayerPosition()
     {
-        //Debug.Log("FreezePlayerPosition");
-        //rigidBody.velocity = Vector3.zero;
-        rigidBody.constraints = RigidbodyConstraints.FreezeRotationX
-        | RigidbodyConstraints.FreezeRotationY
-        | RigidbodyConstraints.FreezeRotationZ
-        | RigidbodyConstraints.FreezePositionX
-        | RigidbodyConstraints.FreezePositionY
-        | RigidbodyConstraints.FreezePositionZ;
+        RigidbodyFreezeHelper.FreezePosition(rigidBody);
     }
 
     public void UnFreezePlayerPosition()
     {
-        //Debug.Log("UnFreezePlayerPosition");
-        rigidBody.constraints = RigidbodyConstraints.FreezeRotation;
+        RigidbodyFreezeHelper.UnfreezeRotationOnly(rigidBody);
     }
 
     // #todo find all these messageDisplay coroutines and move to seprate generic class MessageLog od something

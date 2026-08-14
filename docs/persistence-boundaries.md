@@ -9,39 +9,25 @@ is that "which store is the source of truth" was previously unanswerable without
 | Store | Location | Authority | Written by | Read by |
 | --- | --- | --- | --- | --- |
 | **SQLite** | `Application.persistentDataPath/level5.db` | **Authoritative for everything the game currently shows** | `DBHelper` (~30 methods, all lock-guarded via `DBConnector`) | `LoadManager`, `StartManager`, `ProgressionManager`, `StatsManager` |
-| **JSON per-account files** | `Application.persistentDataPath/accounts/<accountId>-characters.json` | Parallel, partially wired - see below | `ProgressionService` → `CharacterProgressStore.TryApplyProgressionSnapshot` | `UnlockService`, `CharacterRuntimeProvider` (both as a *fallback only*) |
+| **JSON per-account files** | `Application.persistentDataPath/accounts/<accountId>-characters.json` | Never authoritative; fallback only - see below | `ProgressionService` → `CharacterProgressStore.TryApplyProgressionSnapshot` | `UnlockService`, `CharacterRuntimeProvider` (both as a *fallback only*) |
 | **Server** | `Constants.API_ADDRESS_DEV_*` via `APIHelper` | Authoritative for leaderboards; the client cannot verify it | `APIHelper.PostHighscore`, `PostUnsubmittedHighscores` | `StatsManager` (online tab), `AccountManager` |
 
 ### The SQLite / JSON split is the thing to know
 
-These are two independent progression systems. SQLite is live. The JSON store is read but **never
-seeded**:
+These are two independent progression systems. SQLite is live and authoritative. The JSON store is a
+fallback only, written by `ProgressionService` → `CharacterProgressStore.TryApplyProgressionSnapshot`
+and read by `UnlockService`/`CharacterRuntimeProvider` only when a character is not found in the
+SQLite-backed data first.
 
-- `CharacterProgressStore.Load(userId, catalog)` - the path that would create a default save from the
-  preset catalog - **has no callers**. Only `TryLoadExisting` is used, and it returns false when no
-  file exists.
-- `CharacterProgressMigration.FromLegacyRecords` - which converts SQLite `CharacterProfileRecord`
-  rows into a `CharacterProgressSave` - is **entirely orphaned**. Nothing in `Assets/` references
-  `CharacterProgressMigration` except its own definition.
-
-So on a normal install the JSON file exists only if `ProgressionService` has written one, and the
-migration that was built to seed it from the existing SQLite data never runs.
-
-**This is not currently a bug**, and it is worth being precise about why. Both readers check the
-SQLite-backed data first:
-
-- `UnlockService.IsCharacterUnlocked` consults `LoadedData.instance.PlayerSelectedData` (loaded from
-  SQLite) and only falls through to the JSON store if the character is not found there.
-- `CharacterRuntimeProvider` follows the same shape.
-
-So the un-seeded store is a dead fallback, not a wrong answer. The risk is that it *looks* like a
-source of truth. Anyone who reorders those checks, or adds a reader that consults the JSON store
-first, gets empty progress for every existing player and no error.
-
-**Recommendation**: either wire the migration (call `FromLegacyRecords` once per account on first
-load, then `CharacterProgressStore.Save`) and make JSON authoritative, or delete
-`CharacterProgressMigration` and the unreferenced `Load` overload. Leaving a written-but-never-called
-migration in the tree is the worst of the three options.
+**Resolved 2026-08-13.** The never-called seeding path was deleted rather than wired, because making
+JSON authoritative would have been a real progression-authority change nobody had requested, and
+`CharacterProgressMigration`/`CharacterProgressStore.Load` had zero callers to begin with - deleting
+them changes no runtime behavior. `CharacterProgressStore.TryLoadExisting`, `Save`, and
+`TryApplyProgressionSnapshot` are unchanged and remain the only entry points into the JSON store.
+SQLite stays the sole source of truth; the JSON store stays a plain fallback that is never seeded from
+it. Reordering `UnlockService`/`CharacterRuntimeProvider` to check the JSON store first would still
+return empty progress for existing players - that risk is unchanged by this fix and worth remembering
+if either reader is touched again.
 
 ## Account identity
 
@@ -116,8 +102,6 @@ The client cannot enforce any of this; it is recorded so it can be confirmed aga
 
 ## Open items
 
-- Wire or delete `CharacterProgressMigration` (see above). This is the largest single ambiguity left
-  in this area.
 - `ProgressionManager` and `StartManager` read progression from SQLite; `ProgressionService` writes
   it to JSON. Nothing reconciles them. Today that is invisible because the JSON side is only a
   fallback, but the two will drift the moment either becomes authoritative.

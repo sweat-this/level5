@@ -13,14 +13,27 @@ using Level5.Core.Match;
 
 public class AutoPlayerController : MonoBehaviour
 {
-    // components 
+    // components
+    // AUD-002: internal rather than private so AutoPlayerDamageReactions - a same-assembly helper
+    // the coroutines below were extracted into - can reach them without a wider public surface.
     [SerializeField]
-    private Animator anim;
+    internal Animator anim;
     private AnimatorStateInfo currentStateInfo;
     private GameObject dropShadow;
-    private Rigidbody rigidBody;
+    internal Rigidbody rigidBody;
     private CharacterProfile characterProfile;
     private ShotMeter shotmeter;
+
+    // AUD-002: the damage/knockdown reaction coroutines live here now - see
+    // AutoPlayerDamageReactions. A plain object, not a component: it runs under this
+    // MonoBehaviour's own StartCoroutine exactly as before, so no prefab, lifecycle, or
+    // GetComponent wiring changes.
+    private readonly AutoPlayerDamageReactions damageReactions;
+
+    public AutoPlayerController()
+    {
+        damageReactions = new AutoPlayerDamageReactions(this);
+    }
     private PlayerSwapAttack playerSwapAttack;
     private PlayerHealth playerHealth;
     private BasketBallAuto basketball;
@@ -57,6 +70,7 @@ public class AutoPlayerController : MonoBehaviour
     private bool _knockedDown;
     private bool _takeDamage;
     private bool _avoidedKnockDown;
+    private bool _disintegrated;
 
     // player state bools
     //private bool running = false;
@@ -299,6 +313,11 @@ public class AutoPlayerController : MonoBehaviour
         {
             Locked = true;
             StartCoroutine(PlayerTakeDamage());
+        }
+        if (!KnockedDown && !TakeDamage && !Locked && Disintegrated)
+        {
+            Locked = true;
+            StartCoroutine(PlayerDisintegrated());
         }
 
         // keep drop shadow on ground at all times
@@ -686,72 +705,27 @@ public class AutoPlayerController : MonoBehaviour
     // ------------------------------- take damage -------------------------------------------------------
     public IEnumerator PlayerTakeDamage()
     {
-        //Debug.Log("PlayerTakeDamage");
-        rigidBody.constraints =
-        RigidbodyConstraints.FreezePositionX | RigidbodyConstraints.FreezePositionZ | RigidbodyConstraints.FreezeRotation;
-
-        anim.SetBool("takeDamage", true);
-        anim.Play("takeDamage");
-
-        float startTime = Time.time;
-        float endTime = startTime + _takeDamageTime;
-        yield return new WaitUntil(() => Time.time > endTime);
-        anim.SetBool("takeDamage", false);
-        yield return new WaitUntil(() => currentState != takeDamageState);
-
-        TakeDamage = false;
-        KnockedDown = false;
-        Locked = false;
-
-        rigidBody.constraints = RigidbodyConstraints.FreezeRotation;
+        return damageReactions.PlayerTakeDamage(_takeDamageTime);
     }
 
     public IEnumerator PlayerFreezeForXSeconds(float time)
     {
-        Debug.Log("freeze player");
-        rigidBody.constraints =
-        RigidbodyConstraints.FreezePositionX | RigidbodyConstraints.FreezePositionZ | RigidbodyConstraints.FreezeRotation;
-
-        anim.SetBool("takeDamage", true);
-        anim.Play("takeDamage");
-
-        float startTime = Time.time;
-        float endTime = startTime + time;
-        yield return new WaitUntil(() => Time.time > endTime);
-        anim.SetBool("takeDamage", false);
-        yield return new WaitUntil(() => currentState != takeDamageState);
-
-        rigidBody.constraints = RigidbodyConstraints.FreezeRotation;
+        return damageReactions.PlayerFreezeForXSeconds(time);
     }
 
     public IEnumerator PlayerKnockedDown()
     {
-        //Debug.Log("PlayerKnockedDown");
-        rigidBody.constraints =
-        RigidbodyConstraints.FreezePositionX | RigidbodyConstraints.FreezePositionZ | RigidbodyConstraints.FreezeRotation;
+        return damageReactions.PlayerKnockedDown(_knockDownTime);
+    }
 
-        anim.SetBool("knockedDown", true);
-        anim.Play("knockedDown");
-        //yield return new WaitUntil(() => currentState == knockedDownState); // anim started
-
-        float startTime = Time.time;
-        float endTime = startTime + _knockDownTime;
-        yield return new WaitUntil(() => Time.time > endTime);
-        anim.SetBool("knockedDown", false);
-        yield return new WaitUntil(() => currentState != knockedDownState);
-
-        KnockedDown = false;
-        TakeDamage = false;
-        Locked = false;
-
-        rigidBody.constraints = RigidbodyConstraints.FreezeRotation;
+    public IEnumerator PlayerDisintegrated()
+    {
+        return damageReactions.PlayerDisintegrated();
     }
 
     public void PlayerAvoidKnockedDown()
     {
-        anim.Play("knockedDown");
-        AvoidedKnockDown = false;
-        Locked = false;
+        damageReactions.PlayerAvoidKnockedDown();
     }
     IEnumerator SetJumptrigger()
     {
@@ -794,19 +768,12 @@ public class AutoPlayerController : MonoBehaviour
     // ----------------------- freeze player postion ------------------------
     public void FreezePlayerPosition()
     {
-        //Debug.Log("FreezePlayerPosition");
-        //rigidBody.velocity = Vector3.zero;
-        rigidBody.constraints = RigidbodyConstraints.FreezeRotationX
-        | RigidbodyConstraints.FreezeRotationY
-        | RigidbodyConstraints.FreezeRotationZ
-        | RigidbodyConstraints.FreezePositionX
-        | RigidbodyConstraints.FreezePositionY
-        | RigidbodyConstraints.FreezePositionZ;
+        RigidbodyFreezeHelper.FreezePosition(rigidBody);
     }
 
     public void UnFreezePlayerPosition()
     {
-        rigidBody.constraints = RigidbodyConstraints.FreezeRotation;
+        RigidbodyFreezeHelper.UnfreezeRotationOnly(rigidBody);
     }
 
     public bool Grounded
@@ -849,6 +816,7 @@ public class AutoPlayerController : MonoBehaviour
         set => _avoidedKnockDown = value;
     }
     public bool TakeDamage { get => _takeDamage; set => _takeDamage = value; }
+    public bool Disintegrated { get => _disintegrated; set => _disintegrated = value; }
     public bool FacingRight { get => _facingRight; set => _facingRight = value; }
     public float PlayerDistanceFromRim { get => playerDistanceFromRim; set => playerDistanceFromRim = value; }
     public PlayerHealth PlayerHealth { get => playerHealth; set => playerHealth = value; }

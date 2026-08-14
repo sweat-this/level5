@@ -60,6 +60,18 @@ public class BasketBallShotMade : MonoBehaviour
         // path to money prfab
         moneyClone = Resources.Load(moneyPrefabPath) as GameObject;
 
+        // AUD-008: the swish sound and rim animation are a presentation reaction to a made shot,
+        // not part of deciding or recording one. Subscribing here instead of calling them inline in
+        // shotMade() is this event's first real subscriber - proving ShotResolved (added for
+        // AUD-010) actually carries a working audience, not just an unused publish. Same object,
+        // same frame, so behavior is identical to the inline calls this replaces.
+        ShotResolved += PlayMadeShotPresentation;
+    }
+
+    private void PlayMadeShotPresentation(MadeShotResult result)
+    {
+        audioSource.PlayOneShot(SFXBB.instance.basketballNetSwish);
+        anim.Play("madeshot");
     }
 
     void Update()
@@ -93,9 +105,6 @@ public class BasketBallShotMade : MonoBehaviour
         }
         shotMade1 = false;
         shotMade2 = false;
-        audioSource.PlayOneShot(SFXBB.instance.basketballNetSwish);
-        // play rim animation
-        anim.Play("madeshot");
         float shotDistance = LastShotDistanceFor(playerIdentifier, basketBall, basketBallAuto);
         // add to total shot distance made total
         float shotDistanceFeet = shotDistance * 6;

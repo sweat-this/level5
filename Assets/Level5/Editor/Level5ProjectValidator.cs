@@ -278,15 +278,54 @@ public sealed class Level5ProjectValidator : IPreprocessBuildWithReport
             }
 
             string normalized = file.Replace('\\', '/');
-            int lineNumber = 0;
-            foreach (string line in File.ReadLines(file))
+            string[] lines = File.ReadAllLines(file);
+
+            // A YAML document is delimited by "--- !u!...". A missing user script always
+            // serializes as "m_Script: {fileID: 0}" with no other identity for the component.
+            // Unity's own built-in editor singletons (e.g. ProjectAuditorSettings) legitimately
+            // serialize the same fileID: 0, but carry a populated m_EditorClassIdentifier instead
+            // of a script GUID - that is not a missing reference, so a document is only flagged
+            // when no such identifier is present alongside it.
+            int documentStart = 0;
+            for (int i = 0; i <= lines.Length; i++)
             {
-                lineNumber++;
-                if (line.IndexOf("m_Script: {fileID: 0}", StringComparison.Ordinal) >= 0)
+                bool isBoundary = i == lines.Length || lines[i].StartsWith("--- ", StringComparison.Ordinal);
+                if (!isBoundary)
                 {
-                    errors.Add(normalized + ":" + lineNumber + " has a missing MonoBehaviour script reference.");
+                    continue;
                 }
+
+                AddDocumentMissingScriptErrors(errors, normalized, lines, documentStart, i);
+                documentStart = i;
             }
+        }
+    }
+
+    private static void AddDocumentMissingScriptErrors(
+        List<string> errors, string normalizedFile, string[] lines, int start, int end)
+    {
+        int missingScriptLine = -1;
+        bool hasEditorClassIdentifier = false;
+
+        for (int i = start; i < end; i++)
+        {
+            string line = lines[i];
+            if (missingScriptLine < 0 && line.IndexOf("m_Script: {fileID: 0}", StringComparison.Ordinal) >= 0)
+            {
+                missingScriptLine = i + 1;
+            }
+
+            int identifierIndex = line.IndexOf("m_EditorClassIdentifier:", StringComparison.Ordinal);
+            if (identifierIndex >= 0
+                && !string.IsNullOrWhiteSpace(line.Substring(identifierIndex + "m_EditorClassIdentifier:".Length)))
+            {
+                hasEditorClassIdentifier = true;
+            }
+        }
+
+        if (missingScriptLine >= 0 && !hasEditorClassIdentifier)
+        {
+            errors.Add(normalizedFile + ":" + missingScriptLine + " has a missing MonoBehaviour script reference.");
         }
     }
 

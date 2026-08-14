@@ -26,20 +26,34 @@ public class PlayerController : MonoBehaviour
     [SerializeField]
     bool isPlayer4;
     [SerializeField] public bool isShrunk;
-    // components 
-    private Animator anim;
+    // components
+    // AUD-002: internal rather than private so PlayerDamageReactions - a same-assembly, same-file-
+    // group helper the coroutines below were extracted into - can reach them without a wider public
+    // surface. Nothing outside Assets/Scripts can see these either way.
+    internal Animator anim;
     private AnimatorStateInfo currentStateInfo;
     private GameObject dropShadow;
-    private Rigidbody rigidBody;
+    internal Rigidbody rigidBody;
     private CharacterProfile characterProfile;
     [SerializeField]
     private BasketBall basketball;
     private ShotMeter shotmeter;
     private PlayerSwapAttack playerSwapAttack;
-    private PlayerHealth playerHealth;
+    internal PlayerHealth playerHealth;
     private CallBallToPlayer callBallToPlayer;
     private PlayerAttackQueue playerAttackQueue;
     private PlayerDunk playerDunk;
+
+    // AUD-002: the damage/knockdown/lightning/shrink reaction coroutines live here now - see
+    // PlayerDamageReactions. A plain object, not a component: it runs under this MonoBehaviour's
+    // own StartCoroutine exactly as before, so no prefab, lifecycle, or GetComponent wiring changes.
+    private readonly PlayerDamageReactions damageReactions;
+
+    public PlayerController()
+    {
+        damageReactions = new PlayerDamageReactions(this);
+    }
+
 
     // walk speed #review can potentially remove
     [SerializeField]
@@ -837,135 +851,37 @@ public class PlayerController : MonoBehaviour
     // ------------------------------- take damage -------------------------------------------------------
     public IEnumerator PlayerTakeDamage()
     {
-        //Debug.Log("PlayerTakeDamage");
-        rigidBody.constraints =
-        RigidbodyConstraints.FreezePositionX | RigidbodyConstraints.FreezePositionZ | RigidbodyConstraints.FreezeRotation;
-
-        anim.SetBool("takeDamage", true);
-        anim.Play("takeDamage");
-
-        float startTime = Time.time;
-        float endTime = startTime + _takeDamageTime;
-        yield return new WaitUntil(() => Time.time > endTime);
-        anim.SetBool("takeDamage", false);
-        yield return new WaitUntil(() => currentState != takeDamageState);
-
-        TakeDamage = false;
-        KnockedDown = false;
-        Locked = false;
-
-        rigidBody.constraints = RigidbodyConstraints.FreezeRotation;
+        return damageReactions.PlayerTakeDamage(_takeDamageTime);
     }
 
     public IEnumerator PlayerFreezeForXSeconds(float time)
     {
-        Debug.Log("freeze player");
-        rigidBody.constraints =
-        RigidbodyConstraints.FreezePositionX | RigidbodyConstraints.FreezePositionZ | RigidbodyConstraints.FreezeRotation;
-
-        anim.SetBool("takeDamage", true);
-        anim.Play("takeDamage");
-
-        float startTime = Time.time;
-        float endTime = startTime + time;
-        yield return new WaitUntil(() => Time.time > endTime);
-        anim.SetBool("takeDamage", false);
-        yield return new WaitUntil(() => currentState != takeDamageState);
-
-        rigidBody.constraints = RigidbodyConstraints.FreezeRotation;
+        return damageReactions.PlayerFreezeForXSeconds(time);
     }
 
     public IEnumerator PlayerKnockedDown()
     {
-        //Debug.Log("PlayerKnockedDown");
-        rigidBody.constraints =
-        RigidbodyConstraints.FreezePositionX | RigidbodyConstraints.FreezePositionZ | RigidbodyConstraints.FreezeRotation;
-
-        anim.SetBool("knockedDown", true);
-        anim.Play("knockedDown");
-        //yield return new WaitUntil(() => currentState == knockedDownState); // anim started
-
-        float startTime = Time.time;
-        float endTime = startTime + _knockDownTime;
-        yield return new WaitUntil(() => Time.time > endTime);
-        anim.SetBool("knockedDown", false);
-        yield return new WaitUntil(() => currentState != knockedDownState);
-
-        KnockedDown = false;
-        TakeDamage = false;
-        Locked = false;
-
-        rigidBody.constraints = RigidbodyConstraints.FreezeRotation;
+        return damageReactions.PlayerKnockedDown(_knockDownTime);
     }
 
     public IEnumerator PlayerDisintegrated()
     {
-        Locked = true;
-        rigidBody.constraints =
-        RigidbodyConstraints.FreezePositionX | RigidbodyConstraints.FreezePositionZ| RigidbodyConstraints.FreezePositionZ | RigidbodyConstraints.FreezeRotation;
-        anim.Play("disintegrated");
-        yield return new WaitUntil(() => currentState == disintegratedState);
-        yield return new WaitForSeconds(2);
-        playerHealth.IsDead = true;
-        rigidBody.constraints = RigidbodyConstraints.FreezeRotation;
-
+        return damageReactions.PlayerDisintegrated();
     }
 
     public IEnumerator PlayerStruckByLightning()
     {
-        rigidBody.constraints =
-        RigidbodyConstraints.FreezePositionX | RigidbodyConstraints.FreezePositionZ | RigidbodyConstraints.FreezeRotation;
-        anim.Play("lightning");
-        yield return new WaitUntil(() => currentState == lightningState);
-        yield return new WaitUntil(() => currentState != lightningState);
-        KnockedDown = true;
-        rigidBody.constraints = RigidbodyConstraints.FreezeRotation;
+        return damageReactions.PlayerStruckByLightning();
     }
 
     public IEnumerator ShrinkPlayer()
     {
-        isShrunk = true;
-        rigidBody.constraints =
-        RigidbodyConstraints.FreezePositionX | RigidbodyConstraints.FreezePositionZ | RigidbodyConstraints.FreezeRotation;
-        anim.Play("lightning");
-        yield return new WaitUntil(() => currentState == lightningState);
-        yield return new WaitUntil(() => currentState != lightningState);
-        KnockedDown = true;
-        rigidBody.constraints = RigidbodyConstraints.FreezeRotation;
-        //Vector3 newScale = new Vector3(transform.localScale.x/2,transform.localScale.y/2,transform.localScale.z/2);
-        Vector3 originalScale = transform.localScale;
-        Vector3 newScale = transform.localScale/2;
-
-        // AUD-054: the restore below used the literal 50 rather than the value captured here, so a
-        // camera at any other FOV was permanently retuned by shrinking once.
-        Camera shrinkCamera = CameraManager.instance != null && CameraManager.instance.Cameras != null
-            && CameraManager.instance.Cameras.Length > 0 && CameraManager.instance.Cameras[0] != null
-            ? CameraManager.instance.Cameras[0].GetComponent<Camera>()
-            : null;
-        float camFOV = shrinkCamera != null ? shrinkCamera.fieldOfView : 0f;
-
-        gameObject.transform.localScale = newScale;
-        if (shrinkCamera != null)
-        {
-            shrinkCamera.fieldOfView = camFOV / 2;
-        }
-
-        yield return new WaitForSeconds(10);
-
-        gameObject.transform.localScale = originalScale;
-        FacingRight = transform.localScale.x > 0 ? true : false;
-        if (shrinkCamera != null)
-        {
-            shrinkCamera.fieldOfView = camFOV;
-        }
-        isShrunk = false;
+        return damageReactions.ShrinkPlayer();
     }
 
     public void PlayerAvoidKnockedDown()
     {
-        anim.Play("knockedDown");
-        AvoidedKnockDown = false;
-        Locked = false;
+        damageReactions.PlayerAvoidKnockedDown();
     }
 
     //------------------------- set animator parameters -----------------------
@@ -989,20 +905,12 @@ public class PlayerController : MonoBehaviour
     // ----------------------- freeze player postion ------------------------
     public void FreezePlayerPosition()
     {
-        //Debug.Log("FreezePlayerPosition");
-        //rigidBody.velocity = Vector3.zero;
-        rigidBody.constraints = RigidbodyConstraints.FreezeRotationX
-        | RigidbodyConstraints.FreezeRotationY
-        | RigidbodyConstraints.FreezeRotationZ
-        | RigidbodyConstraints.FreezePositionX
-        | RigidbodyConstraints.FreezePositionY
-        | RigidbodyConstraints.FreezePositionZ;
+        RigidbodyFreezeHelper.FreezePosition(rigidBody);
     }
 
     public void UnFreezePlayerPosition()
     {
-        //Debug.Log("UnFreezePlayerPosition");
-        rigidBody.constraints = RigidbodyConstraints.FreezeRotation;
+        RigidbodyFreezeHelper.UnfreezeRotationOnly(rigidBody);
     }
 
     // #todo find all these messageDisplay coroutines and move to seprate generic class MessageLog od something

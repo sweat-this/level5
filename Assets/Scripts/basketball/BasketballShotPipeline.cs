@@ -1,0 +1,307 @@
+using System;
+using UnityEngine;
+using UnityEngine.UI;
+using Assets.Scripts.Utility;
+using Level5.Core.Match;
+using Random = UnityEngine.Random;
+
+/// <summary>
+/// AUD-017: the shot-launch modifier computation and the score/profile text formatting were
+/// byte-identical between <see cref="BasketBall"/> (human) and <see cref="BasketBallAuto"/> (CPU),
+/// apart from which controller supplied the shot-meter slider value. Extracted here so a fix only
+/// has to be made once, the same reasoning that already moved the three accuracy-modifier formulas
+/// into <see cref="ShotModifiers"/>.
+///
+/// <c>shootBasketBall</c>'s marker/money-ball block (present on the human path, commented out on
+/// the CPU path) was originally left alone here as already-diverged behavior needing a product
+/// decision. 2026-08-13: confirmed CPU shots should carry marker/money-ball credit the same as
+/// human shots, so <see cref="ApplyMarkerAndMoneyBallOnShoot"/> now covers it too - built from
+/// <c>BasketBall</c>'s current live block, not <c>BasketBallAuto</c>'s stale commented copy, which
+/// had already drifted (missing the seven-point-contest clause).
+///
+/// Still deliberately not touched: <c>LaunchBasketBall</c>'s shot-meter wait condition (the two
+/// files wait on opposite <c>MeterEnded</c> values) - confirmed intentional, left as-is.
+/// </summary>
+public static class BasketballShotPipeline
+{
+    /// <summary>
+    /// Credits the current shot toward its marker's attempt count and money-ball bonus when the
+    /// shooter is standing on an enabled marker in a mode that requires them. Mirrors
+    /// <c>BasketBall.shootBasketBall</c>'s block exactly; both human and CPU shots call this now.
+    /// </summary>
+    public static void ApplyMarkerAndMoneyBallOnShoot(BasketBallState basketBallState, GameStats gameStats)
+    {
+        if (!basketBallState.PlayerOnMarker || !GameRules.instance.PositionMarkersRequired)
+        {
+            return;
+        }
+
+        basketBallState.PlayerOnMarkerOnShoot = true;
+        basketBallState.OnShootShotMarkerId = basketBallState.CurrentShotMarkerId;
+        GameRules.instance.BasketBallShotMarkersList[basketBallState.OnShootShotMarkerId].ShotAttempt++;
+
+        if (GameRules.instance.BasketBallShotMarkersList[basketBallState.OnShootShotMarkerId].ShotAttempt == 5
+            && (MatchRuntime.Rules.IsThreePointContest || MatchRuntime.Rules.IsFourPointContest || MatchRuntime.Rules.IsSevenPointContest))
+        {
+            gameStats.MoneyBallAttempts++;
+        }
+
+        if (GameRules.instance.MoneyBallEnabled)
+        {
+            basketBallState.MoneyBallEnabledOnShoot = true;
+            gameStats.MoneyBallAttempts++;
+        }
+    }
+
+    public struct LaunchComputation
+    {
+        public Vector3 GlobalVelocity;
+        public bool Critical;
+        public bool IsSwish;
+        public string ShotMeterMessage;
+    }
+
+    /// <summary>
+    /// Everything the original <c>Launch()</c> computed before touching the Rigidbody: the
+    /// critical/accuracy/range/release rolls, the shot-meter message, and the resulting launch
+    /// velocity in world space. Rolls happen in the same order the original did - direction is
+    /// drawn before the release roll, and the in-range check short-circuits before any range roll -
+    /// because swapping either shifts the whole random sequence for the rest of the shot.
+    /// </summary>
+    public static LaunchComputation ComputeLaunch(
+        Transform ballTransform,
+        Vector3 ballPositionAtLaunch,
+        Vector3 targetPosition,
+        CharacterProfile characterProfile,
+        BasketBallState basketBallState,
+        GameStats gameStats,
+        float lastShotDistance,
+        float shotMeterSliderValue)
+    {
+        // rotate the object to face the target
+        ballTransform.LookAt(targetPosition);
+
+        // shorthands for the formula
+        float R = Vector3.Distance(ballPositionAtLaunch, targetPosition);
+        float G = Physics.gravity.y;
+        float tanAlpha;
+        // check last shot distance. if > 500, angle = 55 degrees. almost impossible to make shot
+        // >500ft with shoot angle 45-52 that most characters have
+        if (lastShotDistance >= 500)
+        {
+            tanAlpha = Mathf.Tan(55 * Mathf.Deg2Rad);
+        }
+        else
+        {
+            tanAlpha = Mathf.Tan(characterProfile.ShootAngle * Mathf.Deg2Rad);
+        }
+        float H = targetPosition.y - ballPositionAtLaunch.y;
+        float Vz = Mathf.Sqrt(G * R * R / (2.0f * (H - R * tanAlpha)));
+        float Vy = tanAlpha * Vz;
+
+        bool critical = RollForCriticalShotChance(characterProfile.Luck, gameStats);
+
+        float accuracyModifierX = 0f;
+        float accuracyModifierY = 0f;
+        float accuracyModifierZ;
+
+        string shotMeterMessage = "";
+        string shotMeterMessageX = "";
+        string shotMeterMessageY = "";
+        string shotMeterMessageZ = "";
+
+        // if rolled critical
+        if (critical)
+        {
+            accuracyModifierX = 0;
+            accuracyModifierY = 0;
+            shotMeterMessage = "critical";
+        }
+        // if >= 95 and NOT critical (release stat factored in)
+        if (shotMeterSliderValue >= 95 && !critical)
+        {
+            accuracyModifierX = 0;
+            accuracyModifierY = GetReleaseModifier(characterProfile);
+            accuracyModifierZ = 0;
+            shotMeterMessage = ">= 95";
+            shotMeterMessageY = "+ release modifier";
+        }
+        // NOT critical and NOT >= 95 (get X, Y modifiers)
+        if (shotMeterSliderValue < 95 && !critical)
+        {
+            accuracyModifierX = GetAccuracyModifier(characterProfile, basketBallState, shotMeterSliderValue);
+            accuracyModifierY = GetReleaseModifier(characterProfile);
+
+            shotMeterMessage = "< 95";
+            shotMeterMessageX = "+ accuracy modifier";
+            shotMeterMessageY = "+ release modifier";
+        }
+
+        // range modifier always factors in
+        accuracyModifierZ = GetRangeModifier(characterProfile, lastShotDistance);
+
+        if (accuracyModifierZ != 0)
+        {
+            shotMeterMessageZ = "+ range modifer";
+        }
+
+        // set shot meter message
+        if (shotMeterMessage != null)
+        {
+            shotMeterMessage = shotMeterMessage + "\n" + shotMeterMessageX + "\n" + shotMeterMessageY + "\n" + shotMeterMessageZ;
+        }
+        else
+        {
+            shotMeterMessage = shotMeterMessageX + "\n" + shotMeterMessageY + "\n" + shotMeterMessageZ;
+        }
+
+        bool isSwish = accuracyModifierX == 0 && accuracyModifierY == 0 && accuracyModifierZ == 0;
+        if (isSwish)
+        {
+            shotMeterMessage = critical ? "swish + critical" : "swish";
+        }
+
+        float xVector = 0 + accuracyModifierX;
+        float yVector = Vy + accuracyModifierY;
+        float zVector = Vz - accuracyModifierZ;
+
+        Vector3 localVelocity = new Vector3(xVector, yVector, zVector);
+        Vector3 globalVelocity = ballTransform.TransformDirection(localVelocity);
+
+        return new LaunchComputation
+        {
+            GlobalVelocity = globalVelocity,
+            Critical = critical,
+            IsSwish = isSwish,
+            ShotMeterMessage = shotMeterMessage,
+        };
+    }
+
+    // ========================== shot accuracy functions ==========================================
+    // all three roll a plain percentage chance through the shared helper, so a 0 stat
+    // never succeeds and a 100 stat always does.
+    private static bool RollForCriticalShotChance(float maxPercent, GameStats gameStats)
+    {
+        if (UtilityFunctions.RollPercent(maxPercent))
+        {
+            gameStats.CriticalRolled++;
+            return true;
+        }
+        return false;
+    }
+
+    private static float GetAccuracyModifier(CharacterProfile characterProfile, BasketBallState basketBallState, float shotMeterSliderValue)
+    {
+        // drawn first, as the original did
+        int direction = GetRandomPositiveOrNegative();
+        ResolveShotAccuracy(basketBallState, characterProfile, out float shotTypeAccuracy, out bool threePoints);
+
+        return ShotModifiers.AccuracyModifier(shotMeterSliderValue, shotTypeAccuracy, threePoints, direction);
+    }
+
+    /// <summary>
+    /// Picks the accuracy stat for the shot being taken, preserving the original's precedence.
+    ///
+    /// The original was four independent (not else-if) assignments in the order two, three, four,
+    /// seven, so when more than one flag was set the *last* one won. That order is reversed here to
+    /// get the same answer with a single branch. When no flag is set the original left the accuracy
+    /// term at 0, which an accuracy of 100 reproduces exactly.
+    /// </summary>
+    private static void ResolveShotAccuracy(BasketBallState basketBallState, CharacterProfile characterProfile, out float shotTypeAccuracy, out bool threePoints)
+    {
+        threePoints = false;
+
+        if (basketBallState.SevenPoints) { shotTypeAccuracy = characterProfile.Accuracy7Pt; }
+        else if (basketBallState.FourPoints) { shotTypeAccuracy = characterProfile.Accuracy4Pt; }
+        else if (basketBallState.ThreePoints) { shotTypeAccuracy = characterProfile.Accuracy3Pt; threePoints = true; }
+        else if (basketBallState.TwoPoints) { shotTypeAccuracy = characterProfile.Accuracy2Pt; }
+        else { shotTypeAccuracy = 100f; }
+    }
+
+    private static float GetRangeModifier(CharacterProfile characterProfile, float lastShotDistance)
+    {
+        // range divided by distance to get %
+        // ex. range 50 ft / shot distance 100 = 50% chance of reaching rim
+        // the in-range check comes first and returns without rolling - the original's `||`
+        // short-circuited, so an in-range shot must not consume a random value
+        if (ShotModifiers.ReachesRim(characterProfile.Range, lastShotDistance))
+        {
+            return 0f;
+        }
+
+        bool rolledClean = UtilityFunctions.RollPercent(
+            ShotModifiers.MaxCleanChance(characterProfile.Range, lastShotDistance));
+
+        return ShotModifiers.RangeModifier(characterProfile.Range, lastShotDistance, rolledClean);
+    }
+
+    private static float GetReleaseModifier(CharacterProfile characterProfile)
+    {
+        // direction is drawn before the roll, matching the original's order - swapping them would
+        // shift every subsequent random value
+        int direction = GetRandomPositiveOrNegative();
+
+        // the release stat IS the chance to shoot clean.
+        // ex if release = 85, 85% chance to remove the modifier entirely.
+        bool rolledClean = UtilityFunctions.RollPercent(characterProfile.Release);
+
+        return ShotModifiers.ReleaseModifier(characterProfile.Release, direction, rolledClean);
+    }
+
+    private static int GetRandomPositiveOrNegative()
+    {
+        return Random.value < 0.5f ? 1 : -1;
+    }
+
+    // ========================== ui text formatting ==========================================
+
+    public static void UpdateShooterProfileText(Text shootProfileText, CharacterProfile characterProfile)
+    {
+        shootProfileText.text = characterProfile.PlayerDisplayName + "\n"
+                                + "2 point : " + (characterProfile.Accuracy2Pt) + "\n"
+                                + "3 point : " + (characterProfile.Accuracy3Pt) + "\n"
+                                + "4 point : " + (characterProfile.Accuracy4Pt) + "\n"
+                                + "7 point : " + (characterProfile.Accuracy7Pt) + "\n"
+                                + "release : " + characterProfile.Release + "\n"
+                                + "range : " + characterProfile.Range + "\n"
+                                + "speed : " + characterProfile.RunSpeed + "\n"
+                                + "jump : " + characterProfile.JumpForce + "\n"
+                                + "luck : " + characterProfile.Luck;
+    }
+
+    public static void UpdateScoreText(Text scoreText, GameStats gameStats, float lastShotDistance)
+    {
+        scoreText.text = "shots  : " + gameStats.ShotMade + " / " + gameStats.ShotAttempt + "  " +
+                         gameStats.getTotalPointAccuracy().ToString("0.00") + "\n"
+                         + "points : " + gameStats.TotalPoints + "\n"
+                         + "2 pointers : " + gameStats.TwoPointerMade + " / " +
+                         gameStats.TwoPointerAttempts + "  " + GetPercentage(gameStats.TwoPointerMade, gameStats.TwoPointerAttempts).ToString("0.00") + "%\n"
+                         + "3 pointers : " + gameStats.ThreePointerMade + " / " +
+                         gameStats.ThreePointerAttempts + "  " + GetPercentage(gameStats.ThreePointerMade, gameStats.ThreePointerAttempts).ToString("0.00") + "%\n"
+                         + "4 pointers : " + gameStats.FourPointerMade + " / " +
+                         gameStats.FourPointerAttempts + "  : " + GetPercentage(gameStats.FourPointerMade, gameStats.FourPointerAttempts).ToString("0.00") + "%\n"
+                         + "7 pointers : " + gameStats.SevenPointerMade + " / " +
+                         gameStats.SevenPointerAttempts + "  " + GetPercentage(gameStats.SevenPointerMade, gameStats.SevenPointerAttempts).ToString("0.00") + "%\n"
+                         + "last shot distance : " + (Math.Round(lastShotDistance, 2) * 6f).ToString("0.00") + " ft." +
+                         "\n"
+                         + "longest shot distance : " +
+                         (Math.Round(gameStats.LongestShotMade, 2)).ToString("0.00") + " ft." + "\n" +
+                         "criticals rolled : " + gameStats.CriticalRolled + " / " + gameStats.ShotAttempt
+                         + "  " + GetPercentage(gameStats.CriticalRolled, gameStats.ShotAttempt).ToString("0.00") + "%\n"
+                         + "consecutive shots made : " + gameStats.ConsecutiveShotsMade + "\n"
+                         + "current exp : " + gameStats.getExperienceGainedFromSession();
+    }
+
+    // * NOTE : cast to float has to be (float) num1 / num2 to work;
+    //  this format will not work for some reason -- (float)(num1 / num2 to work);
+    private static float GetPercentage(int made, int attempts)
+    {
+        if (attempts <= 0)
+        {
+            return 0f;
+        }
+
+        float accuracy = (float)made / attempts;
+        return accuracy * 100;
+    }
+}

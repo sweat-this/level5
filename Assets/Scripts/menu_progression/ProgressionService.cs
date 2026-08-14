@@ -10,6 +10,19 @@ public class ProgressionService
         return safePrefix + "-" + Guid.NewGuid().ToString("N");
     }
 
+    /// <summary>
+    /// AUD-011: convenience overload so callers don't each build a <see cref="MatchProgressionResult"/>
+    /// by hand - <see cref="GameRules"/> and <see cref="Pause"/> both used to. Safe regardless of how
+    /// many callers reach the same session's result: <paramref name="resultId"/> normally comes from
+    /// the shared, per-session <c>MatchSession.EnsureCurrentMatch()</c>, and <see cref="ApplyMatchResult(MatchProgressionResult)"/>
+    /// is already idempotent per result id at the database layer, so a second application for the
+    /// same id is reported as <see cref="MatchProgressionResult.Duplicate"/> rather than double-granted.
+    /// </summary>
+    public MatchProgressionResult ApplyMatchResult(string resultId, int characterId, float experienceGained)
+    {
+        return ApplyMatchResult(new MatchProgressionResult(resultId, characterId, experienceGained));
+    }
+
     public MatchProgressionResult ApplyMatchResult(MatchProgressionResult result)
     {
         if (result == null)
