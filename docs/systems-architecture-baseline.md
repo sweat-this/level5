@@ -1,6 +1,6 @@
 # Systems and Architecture Baseline
 
-Last updated: 2026-08-02
+Last updated: 2026-08-11
 
 This baseline documents the current runtime systems in the Unity project and the architectural direction we should use when making future changes. It is intentionally practical: enough detail to orient engineers, avoid duplicate systems, and make refactors safer without turning the docs into stale ceremony.
 
@@ -95,7 +95,7 @@ Traced lifecycle: `PlayerController.PlayerShoot()` calls `BasketBall.shootBasket
 
 This tracing surfaced concrete bugs, not just structural risk: shot-type attempt flags were not reset on a miss, so a miss-then-make across two shot categories could double-score (AUD-015, fixed); `GameRules.GetStatsTotals` could pair one player's made/attempt counts with a different player's accuracy percentage in local-multiplayer modes because `BasketBall.instance.gameStats` is a reassignable shared reference (AUD-016, fixed); and the full shot pipeline is copy-pasted between `BasketBall`/`BasketBallAuto` (AUD-017, still open).
 
-Target direction: move toward a single shot result event that UI, stats, audio, progression, and game rules can consume, replacing direct cross-system reads. Add regression coverage for AUD-014/AUD-015/AUD-016 before deeper basketball refactors.
+Target direction: continue the `MadeShotResult` migration so UI, stats, audio, progression, and game rules consume one result event rather than direct cross-system reads. Regression coverage now exists for the extracted scoring and modifier arithmetic; add more scene-facing coverage before deeper basketball refactors.
 
 ### Progression and Persistence
 

@@ -1,7 +1,7 @@
 # Versus and Correspondence Multiplayer
 
-Status: implemented, 141 edit-mode tests
-Last reviewed: 2026-08-08
+Status: implemented, with edit-mode and play-mode coverage
+Last reviewed: 2026-08-11
 
 Two people can keep a competitive rivalry going without ever being online at the same time. One
 plays their turn tonight; the other answers on Thursday; the game resolves and the series moves on.
@@ -350,6 +350,8 @@ coordinator a real screen would call. It is also the correspondence simulation: 
 player B answers later" is *Take turn as A*, then anything at all, then *Take turn as B*, including
 quitting the game in between.
 
+For step-by-step use, see [Versus Dev Console Guide](versus-dev-console-guide.md).
+
 ---
 
 ## 12. Known limitations
@@ -377,7 +379,8 @@ quitting the game in between.
 
 ## 13. Tests
 
-141 edit-mode tests in `Assets/Tests/Editor`:
+The versus suite lives in `Assets/Tests/Editor`, with runtime smoke coverage in
+`Assets/Tests/PlayModeGameplay`:
 
 | File | Covers |
 | --- | --- |
