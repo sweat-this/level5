@@ -55,24 +55,11 @@ public class PlayerAttackQueue : MonoBehaviour
         UpdateQueueState();
     }
 
+    // ENM-2: the branch chain that used to live here is now one of the two answers in
+    // EnemyPopulationRules, alongside the spawner's. Same numbers, one place.
     private int GetMaxEnemiesQueued()
     {
-        if (MatchRuntime.Rules.IsBattleRoyal)
-        {
-            return 20;
-        }
-
-        if (MatchRuntime.Rules.EnemiesOnly && MatchRuntime.Rules.Hardcore)
-        {
-            return 8;
-        }
-
-        if (!MatchRuntime.Rules.EnemiesOnly && MatchRuntime.Rules.Hardcore)
-        {
-            return 6;
-        }
-
-        return 4;
+        return EnemyPopulationRules.MaxQueued(MatchRuntime.Rules);
     }
 
     private void CacheAttackPositions()

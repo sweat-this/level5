@@ -91,14 +91,23 @@ public class CharacterProfile : MonoBehaviour
         //}
     }
 
-    public void intializeShooterStatsFromProfile()
+    /// <summary>
+    /// Rebuilds this profile from the saved data for <paramref name="characterId"/>, plus the
+    /// match cheerleader's bonuses.
+    ///
+    /// The character id is a parameter rather than <see cref="MatchRuntime.PrimaryCharacterId"/>
+    /// read in here: this runs for every human in the match, and reading slot zero's id meant a
+    /// second local human was rebuilt as - and credited as - the first one. The cheerleader is
+    /// still match-wide, because the match configuration only carries one.
+    /// </summary>
+    public void intializeShooterStatsFromProfile(int characterId)
     {
         CharacterProfile temp = LoadedData.instance != null
-            ? LoadedData.instance.getSelectedCharacterProfile(MatchRuntime.PrimaryCharacterId)
+            ? LoadedData.instance.getSelectedCharacterProfile(characterId)
             : null;
         if (temp == null)
         {
-            Debug.LogError("CharacterProfile could not resolve the selected player profile.");
+            Debug.LogError($"CharacterProfile could not resolve the selected player profile for character id {characterId}.");
             return;
         }
 

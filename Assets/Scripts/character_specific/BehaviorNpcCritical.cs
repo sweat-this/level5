@@ -8,7 +8,11 @@ public class BehaviorNpcCritical : MonoBehaviour
     Animator anim;
     AudioSource audioSource;
     //bool shotMade;
-    public float percentChanceOfCritical;
+    // CHR-3: `percentChanceOfCritical` and the rollForCritical/rollForPhotoChance pair that read it
+    // are gone. Nothing called them, and the field was authored as 0 on every cheerleader prefab -
+    // an inspector-visible tuning value that looked live and controlled nothing. The flourish is
+    // driven by direct playAnimationCriticalSuccesful() calls from BasketBall, BasketBallAuto and
+    // EnemyController, which decide for themselves what deserves one.
     public Animator animOnCamera;
     //PlayerController playerState;
 
@@ -49,14 +53,6 @@ public class BehaviorNpcCritical : MonoBehaviour
     }
 
 
-    public void rollForCritical()
-    {
-        if (rollForPhotoChance(percentChanceOfCritical))// && playerState.playerDistanceFromRim < 10)
-        {
-            playCriticalSuccessfulAnim();
-        }
-    }
-
     public void playAnimationCriticalSuccesful()
     {
         playCriticalSuccessfulAnim();
@@ -75,11 +71,9 @@ public class BehaviorNpcCritical : MonoBehaviour
         anim.Play("critical_success");
     }
 
-
-    public bool rollForPhotoChance(float maxPercent)
-    {
-        return UtilityFunctions.RollPercent(maxPercent);
-    }
+    /// <summary>
+    /// Animation event on jessica_critical_success.anim. Not called from C#.
+    /// </summary>
     private void playAnimationCameraFlash()
     {
         if (animOnCamera == null)

@@ -76,6 +76,19 @@ public class BehaviorNpcAutonomous : MonoBehaviour
         returnPositions = GameObject.FindGameObjectsWithTag("flash_return_position");
         locked = false;
 
+        // NPC-3: checkNPCState indexes returnPositions[0] on its first line, and this invoke fires
+        // immediately and then once a second forever. A scene holding an auto_npc but no tagged
+        // return positions threw once a second for the lifetime of the object, from a repeating
+        // invoke nothing cancelled. Without somewhere to retreat to there is no state to check.
+        if (returnPositions == null || returnPositions.Length == 0)
+        {
+            Debug.LogError(
+                $"BehaviorNpcAutonomous on {name} found no 'flash_return_position' objects; "
+                + "range checks and retreats are disabled for this NPC.",
+                this);
+            return;
+        }
+
         InvokeRepeating("checkNPCState", 0, 1f);
     }
 
@@ -153,69 +166,59 @@ public class BehaviorNpcAutonomous : MonoBehaviour
             && (other.CompareTag("Player") || other.CompareTag("enemy") || other.CompareTag("basketball") || other.CompareTag("knock_down_attack"))
             && !ignoreCollision && !movingToTarget)
         {
-            if (!canAttack || !other.CompareTag("Player"))
-            {
-                movingToTarget = true;
-
-                Vector3 newVector = getRandomTransformFromPlayerPosition();
-                Vector3 oldVector = transform.position;
-                Vector3 relativePosition = newVector - oldVector;
-
-                if (relativePosition.x < 0 && facingRight)
-                {
-                    Flip();
-                }
-                if (relativePosition.x > 0 && !facingRight)
-                {
-                    Flip();
-                }
-                if (navmeshAgent != null)
-                {
-                    navmeshAgent.SetDestination(newVector);
-                    //disable rotation
-                    navmeshAgent.updateRotation = false;
-                }
-            }
+            // NPC-4: these two were separate `if`s whose conditions overlap - an attacking NPC
+            // colliding with an "enemy" satisfied both, and the second was otherwise a verbatim
+            // copy of the first. Both ran, so SetDestination was called twice with two different
+            // random targets and Flip could fire twice, in one frame. The attack is the only real
+            // difference, so it is now a branch on the shared retreat rather than a duplicate.
             if (canAttack && (other.CompareTag("Player") || other.CompareTag("enemy")))
             {
-                Debug.Log("play attack anim");
-
                 anim.Play("attack");
-                // play anim then move
-
-                movingToTarget = true;
-
-                Vector3 newVector = getRandomTransformFromPlayerPosition();
-                Vector3 oldVector = transform.position;
-                Vector3 relativePosition = newVector - oldVector;
-
-                if (relativePosition.x < 0 && facingRight)
-                {
-                    Flip();
-                }
-                if (relativePosition.x > 0 && !facingRight)
-                {
-                    Flip();
-                }
-                navmeshAgent.SetDestination(newVector);
-                //disable rotation
-                navmeshAgent.updateRotation = false;
-
             }
+
+            RetreatToRandomNearbyPosition();
         }
-        //if ((gameObject.name.Contains("flash") || gameObject.name.Contains("mouse") || gameObject.name.Contains("ghost")) 
-        if (gameObject.CompareTag("auto_npc")
-            && other.CompareTag("basketball")
-            && other.GetComponent<PlayerIdentifier>().isCpu
-            && other.GetComponent<PlayerIdentifier>().autoPlayer.GetComponent<AutoPlayerController>().Locked)
+        // NPC-1: an ambient crowd NPC used to clear AutoPlayerController.Locked here whenever it
+        // brushed a CPU's basketball - reaching through an unchecked
+        // PlayerIdentifier -> autoPlayer -> AutoPlayerController chain to write another actor's
+        // state machine. It was a recovery hack for a CPU stuck mid-shoot; the CPU now bounds and
+        // recovers its own shoot cycle (see AutoPlayerController.ShootCycleActive), so nothing
+        // outside the CPU needs to unlock it.
+    }
+
+    /// <summary>
+    /// Backs away to a random spot nearby, facing the way it is about to move. Shared by both
+    /// collision responses (NPC-4) - the attacking one only adds the attack animation.
+    /// </summary>
+    private void RetreatToRandomNearbyPosition()
+    {
+        movingToTarget = true;
+
+        Vector3 newVector = getRandomTransformFromPlayerPosition();
+        Vector3 relativePosition = newVector - transform.position;
+
+        if (relativePosition.x < 0 && facingRight)
         {
-            other.GetComponent<PlayerIdentifier>().autoPlayer.GetComponent<AutoPlayerController>().Locked = false;
+            Flip();
+        }
+        if (relativePosition.x > 0 && !facingRight)
+        {
+            Flip();
+        }
+        if (navmeshAgent != null)
+        {
+            navmeshAgent.SetDestination(newVector);
+            //disable rotation
+            navmeshAgent.updateRotation = false;
         }
     }
 
     IEnumerator waitOutsideRangeForXSeconds(float seconds)
     {
-        yield return new WaitForSecondsRealtime(seconds);
+        // NPC-5: WaitForSecondsRealtime ignores Time.timeScale, which Pause sets to 0, so this
+        // kept counting down while the game was paused and the NPC repathed the moment play
+        // resumed - or mid-pause. Scaled time keeps NPC movement inside the paused world.
+        yield return new WaitForSeconds(seconds);
 
         int finder = Random.Range(0, returnPositions.Length); //Then you just use this; nameDisplayString = names[finder];
         GameObject randPos = returnPositions[finder];

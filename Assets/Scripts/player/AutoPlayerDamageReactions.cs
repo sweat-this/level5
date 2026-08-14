@@ -102,9 +102,16 @@ public sealed class AutoPlayerDamageReactions
     /// </summary>
     public IEnumerator PlayerDisintegrated()
     {
+        // Death is terminal here, and deliberately so: `Locked` is never cleared and the actor is
+        // not despawned, exactly as in PlayerDamageReactions.PlayerDisintegrated. PlayerHealth.IsDead
+        // below is the signal other systems read. Do not "fix" the missing unlock without changing
+        // the human path in the same way.
         controller.Locked = true;
+        // FreezePositionZ was listed twice here (and still is in the human twin). Deduplicated -
+        // `A | B | B` is `A | B`, so this changes no constraint. Y stays free on purpose: the body
+        // falls during the disintegrate animation.
         controller.rigidBody.constraints =
-            RigidbodyConstraints.FreezePositionX | RigidbodyConstraints.FreezePositionZ | RigidbodyConstraints.FreezePositionZ | RigidbodyConstraints.FreezeRotation;
+            RigidbodyConstraints.FreezePositionX | RigidbodyConstraints.FreezePositionZ | RigidbodyConstraints.FreezeRotation;
         controller.anim.Play("disintegrated");
         yield return new WaitUntil(() => controller.currentState == controller.disintegratedState);
         yield return new WaitForSeconds(2);

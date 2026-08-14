@@ -91,7 +91,13 @@ public class BehaviorPrimo : MonoBehaviour
             ignoreCollision = false;
         }
         // arrived and not sleeping
-        if (reachedDestination && !isSleeping)
+        // NPC-2: `!locked` was missing here, and it is the only thing that closes the window.
+        // PrimoSleepInRandomXSeconds waits 7-20 seconds before setting isSleeping, so the guard
+        // could not become false on its own - Update started another coroutine on every frame in
+        // between. Each of those then set the sleep bool and cleared `locked`, so `locked` was
+        // repeatedly reopened for the whole sleep, defeating the lock the retreat path also reads.
+        // The sibling guard below already gates on `locked` the same way.
+        if (reachedDestination && !isSleeping && !locked)
         {
             locked = true;
             StartCoroutine(PrimoSleepInRandomXSeconds());
@@ -133,7 +139,8 @@ public class BehaviorPrimo : MonoBehaviour
     IEnumerator PrimoSleepInRandomXSeconds()
     {
         int randomTimeToSleep = RandomNumber(7, 20);
-        yield return new WaitForSecondsRealtime(randomTimeToSleep);
+        // NPC-5: scaled time, so the sleep timer stops with the rest of the world while paused.
+        yield return new WaitForSeconds(randomTimeToSleep);
         isSleeping = true;
         anim.SetBool("sleep", true);
         locked = false;
@@ -168,7 +175,8 @@ public class BehaviorPrimo : MonoBehaviour
 
     IEnumerator waitOutsideRangeForXSeconds(float seconds)
     {
-        yield return new WaitForSecondsRealtime(seconds);
+        // NPC-5: scaled time - see PrimoSleepInRandomXSeconds.
+        yield return new WaitForSeconds(seconds);
         Vector3 relativePosition = pos1.transform.position - transform.position;
 
         if (relativePosition.x < 0 && facingRight)

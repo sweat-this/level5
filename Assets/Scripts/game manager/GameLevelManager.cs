@@ -182,11 +182,10 @@ public class GameLevelManager : MonoBehaviour
         {
             _autoPlayer = GameObject.FindWithTag("autoPlayer");
 
+            // CPU-6: the `_autoPlayerController.isCPU = true` that used to follow is gone with the
+            // field. It was the only writer of a value nothing read - PlayerIdentifier.isCpu on
+            // this same GameObject already says the same thing, and is what callers use.
             _autoPlayerController = _autoPlayer.GetComponent<PlayerIdentifier>().isDefensivePlayer ? null : _autoPlayer.GetComponent<AutoPlayerController>();
-            if (!_autoPlayer.GetComponent<PlayerIdentifier>().isDefensivePlayer)
-            {
-                _autoPlayerController.isCPU = true;
-            }
         }
 
         ArenaBootstrap.Apply(_rules, MatchRuntime.HasConfiguration);
