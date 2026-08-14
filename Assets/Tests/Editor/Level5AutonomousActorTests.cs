@@ -1,5 +1,8 @@
+using System.Collections.Generic;
 using Level5.Core.Match;
 using NUnit.Framework;
+using UnityEditor;
+using UnityEngine;
 
 /// <summary>
 /// Regression coverage for the autonomous-actor audit fixes: CPU shooters, the lockdown defender,
@@ -133,5 +136,126 @@ public class Level5AutonomousActorTests
             enemiesEnabled: true,
             hardcore: hardcore,
             enemiesOnly: enemiesOnly);
+    }
+
+    // ---------------------------------------------------------------- BG-2
+
+    [Test]
+    public void ABodyGuardOnlySightsEnemiesWithinItsOwnReach()
+    {
+        // The regression: detection was `queue.HasQueuedEnemies()` - one scene-wide boolean, the
+        // same answer for every bodyguard regardless of where it stood. A bodyguard across the
+        // level "sighted" an enemy the instant anything anywhere engaged.
+        Vector3 bodyGuard = new Vector3(0f, 0f, 0f);
+        List<Vector3> farAwayEnemy = new List<Vector3> { new Vector3(50f, 0f, 0f) };
+
+        Assert.IsFalse(
+            BodyGuardDetection.AnyEnemyWithinSight(bodyGuard, farAwayEnemy, 6f),
+            "an enemy 50 units away is not sighted by a bodyguard with a 6 unit reach");
+
+        List<Vector3> nearbyEnemy = new List<Vector3> { new Vector3(3f, 0f, 0f) };
+        Assert.IsTrue(
+            BodyGuardDetection.AnyEnemyWithinSight(bodyGuard, nearbyEnemy, 6f),
+            "an enemy 3 units away is sighted by a bodyguard with a 6 unit reach");
+    }
+
+    [Test]
+    public void ABodyGuardSightsWhenAnyQueuedEnemyIsInReachAndNotWhenTheQueueIsEmpty()
+    {
+        Vector3 bodyGuard = Vector3.zero;
+
+        Assert.IsFalse(
+            BodyGuardDetection.AnyEnemyWithinSight(bodyGuard, new List<Vector3>(), 6f),
+            "no queued enemies means nothing is sighted");
+
+        List<Vector3> mixed = new List<Vector3>
+        {
+            new Vector3(40f, 0f, 0f),
+            new Vector3(0f, 0f, 2f),
+        };
+        Assert.IsTrue(
+            BodyGuardDetection.AnyEnemyWithinSight(bodyGuard, mixed, 6f),
+            "one enemy in reach is enough, even when others are far away");
+    }
+
+    [Test]
+    public void ABodyGuardNeverGoesBlindInsideItsOwnInterceptionRange()
+    {
+        // The invariant: BodyGuardController breaks formation to intercept a threat within
+        // maximumInterceptionDistance. If detection reported "unsighted" inside that range,
+        // CheckReturnToPatrolStatus would send the bodyguard back to patrol mid-charge.
+        // The only authored enemySightDistance in the project is 4, against a leash of 6.
+        Assert.AreEqual(
+            6f,
+            BodyGuardDetection.EffectiveSightDistance(4f, 6f),
+            "an authored reach below the interception leash is raised to it");
+
+        Assert.AreEqual(
+            20f,
+            BodyGuardDetection.EffectiveSightDistance(20f, 6f),
+            "an authored reach above the interception leash is left alone");
+    }
+
+    [Test]
+    public void ADestroyedEnemyIsNotSightedAndAZeroReachSightsNothing()
+    {
+        Assert.IsFalse(
+            BodyGuardDetection.AnyEnemyWithinSight(Vector3.zero, null, 6f),
+            "a null position list is not a sighting");
+
+        Assert.IsFalse(
+            BodyGuardDetection.AnyEnemyWithinSight(Vector3.zero, new List<Vector3> { Vector3.zero }, 0f),
+            "a zero reach sights nothing, even an enemy standing on top of the bodyguard");
+    }
+
+    // ---------------------------------------------------------------- DEF-1
+
+    [Test]
+    public void TheLockdownDefenderOutrunsEveryAuthoredPlayerSpeed()
+    {
+        // DEF-1 made AutoPlayerDefense.speed literally units/second. The old spring form had no
+        // cap and self-corrected at any separation; this one cannot exceed `speed`, so a defender
+        // slower than the player it guards falls behind without bound. The authored 6 tied the
+        // fastest runSpeedHasBall and lost to the fastest runSpeed, leaving it unable to close a
+        // gap or hold one. Read from the authored assets so retuning either side re-checks this.
+        const string defenderPrefabPath =
+            "Assets/Resources/Prefabs/characters/cpu_players_defense/cpu_player_defense_oldreal.prefab";
+
+        GameObject defenderPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(defenderPrefabPath);
+        Assert.IsNotNull(defenderPrefab, $"lockdown defender prefab missing at {defenderPrefabPath}");
+
+        AutoPlayerDefense defense = defenderPrefab.GetComponentInChildren<AutoPlayerDefense>(true);
+        Assert.IsNotNull(defense, "lockdown defender prefab has no AutoPlayerDefense");
+
+        SerializedProperty speedProperty = new SerializedObject(defense).FindProperty("speed");
+        Assert.IsNotNull(speedProperty, "AutoPlayerDefense.speed is no longer a serialized field");
+        float defenderSpeed = speedProperty.floatValue;
+
+        float fastestPlayerSpeed = 0f;
+        string fastestCharacter = "none";
+        foreach (string guid in AssetDatabase.FindAssets("t:Prefab", new[] { "Assets/Resources/Prefabs/characters" }))
+        {
+            string path = AssetDatabase.GUIDToAssetPath(guid);
+            GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(path);
+            CharacterProfile profile = prefab != null ? prefab.GetComponentInChildren<CharacterProfile>(true) : null;
+            if (profile == null)
+            {
+                continue;
+            }
+
+            float fastest = Mathf.Max(profile.Speed, Mathf.Max(profile.RunSpeed, profile.RunSpeedHasBall));
+            if (fastest > fastestPlayerSpeed)
+            {
+                fastestPlayerSpeed = fastest;
+                fastestCharacter = System.IO.Path.GetFileNameWithoutExtension(path);
+            }
+        }
+
+        Assert.Greater(fastestPlayerSpeed, 0f, "found no authored character speeds to compare against");
+        Assert.Greater(
+            defenderSpeed,
+            fastestPlayerSpeed,
+            $"lockdown defender speed {defenderSpeed} does not beat the fastest authored character "
+                + $"({fastestCharacter} at {fastestPlayerSpeed}); it cannot close a gap or hold one");
     }
 }
