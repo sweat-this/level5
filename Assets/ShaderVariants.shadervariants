@@ -138,11 +138,6 @@ ShaderVariantCollection:
         passType: 0
       - keywords: COLOR_GRADING_HDR_3D FINALPASS VIGNETTE
         passType: 0
-  - first: {fileID: 4800000, guid: 406a976191e8366459222b654c60e1f8, type: 3}
-    second:
-      variants:
-      - keywords: 
-        passType: 11
   - first: {fileID: 4800000, guid: 4bf4cff0d0bac3d43894e2e8839feb40, type: 3}
     second:
       variants:
