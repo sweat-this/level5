@@ -1,4 +1,5 @@
-﻿using UnityEngine;
+﻿using Assets.Scripts.Utility;
+using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
@@ -164,13 +165,16 @@ public class TouchInputProgressionScreenController : MonoBehaviour
         }
 
         //check if startmanager is empty and find correct GraphicRaycaster and EventSystem
-        if (UnityEngine.Object.FindAnyObjectByType<ProgressionManager>() != null)
+        GameObject progressionScreen = UnityEngine.Object.FindAnyObjectByType<ProgressionManager>() != null
+            ? SceneObjects.Find("progressionScreen", this)
+            : null;
+        if (progressionScreen != null)
         {
             //Fetch the Raycaster from the GameObject (the Canvas)
             //m_Raycaster = StartManager.instance.gameObject.GetComponentInChildren<GraphicRaycaster>();
-            m_Raycaster = GameObject.Find("progressionScreen").GetComponentInChildren<GraphicRaycaster>();
+            m_Raycaster = progressionScreen.GetComponentInChildren<GraphicRaycaster>();
             //Fetch the Event System from the Scene
-            m_EventSystem = GameObject.Find("progressionScreen").GetComponentInChildren<EventSystem>();
+            m_EventSystem = progressionScreen.GetComponentInChildren<EventSystem>();
         }
         // else, this is not the startscreen and disable object
         else

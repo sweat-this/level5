@@ -1,4 +1,5 @@
 ﻿using System.Collections;
+using Assets.Scripts.Utility;
 using UnityEngine;
 using UnityEngine.UI;
 using Level5.Core.Match;
@@ -27,24 +28,41 @@ public class PlayerHealthBar : MonoBehaviour
     void Start()
     {
         //GameOptions.sniperEnabled = true; // test flag
-        if (MatchRuntime.Rules.EnemiesEnabled 
-            || MatchRuntime.Rules.SniperEnabled 
+        if (MatchRuntime.Rules.EnemiesEnabled
+            || MatchRuntime.Rules.SniperEnabled
             || MatchRuntime.Rules.EnemiesOnly
             || MatchRuntime.Rules.ObstaclesEnabled
             || MatchRuntime.Rules.IsBattleRoyal)
         {
-            instance = this;
             playerHealth = GameLevelManager.instance.Player1.GetComponentInChildren<PlayerHealth>();
-            healthSlider = transform.Find("health_bar").GetComponent<Slider>();
-            blockSlider = transform.Find("block_bar").GetComponent<Slider>();
-            specialSlider = transform.Find("special_bar").GetComponent<Slider>();
+            Transform healthBarTransform = transform.Find("health_bar");
+            Transform blockBarTransform = transform.Find("block_bar");
+            Transform specialBarTransform = transform.Find("special_bar");
+            GameObject characterNameObject = SceneObjects.Find(characterNameName, this);
+            GameObject healthSliderValueObject = SceneObjects.Find(healthSliderValueName, this);
 
+            healthSlider = healthBarTransform != null ? healthBarTransform.GetComponent<Slider>() : null;
+            blockSlider = blockBarTransform != null ? blockBarTransform.GetComponent<Slider>() : null;
+            specialSlider = specialBarTransform != null ? specialBarTransform.GetComponent<Slider>() : null;
+            characterNameText = characterNameObject != null ? characterNameObject.GetComponent<Text>() : null;
+            healthSliderValueText = healthSliderValueObject != null ? healthSliderValueObject.GetComponent<Text>() : null;
+
+            // All five are required - setHealthSliderValue/setBlockSliderValue/setSpecialSliderValue
+            // dereference them unconditionally, and stay subscribed to playerHealth's change events for
+            // this component's whole lifetime, so a partial resolution here would crash later instead
+            // of now. Bail out the same way the mode-gate's else branch already does.
+            if (playerHealth == null || healthSlider == null || blockSlider == null || specialSlider == null
+                || characterNameText == null || healthSliderValueText == null)
+            {
+                Debug.LogError("PlayerHealthBar could not resolve its required scene objects and has been disabled.", this);
+                gameObject.SetActive(false);
+                return;
+            }
+
+            instance = this;
             healthSlider.maxValue = playerHealth.MaxHealth;
             blockSlider.maxValue = playerHealth.MaxBlock;
             specialSlider.maxValue = playerHealth.MaxSpecial;
-
-            characterNameText = GameObject.Find(characterNameName).GetComponent<Text>();
-            healthSliderValueText = GameObject.Find(healthSliderValueName).GetComponent<Text>();
 
             characterNameText.text = GameLevelManager.instance.Player1.GetComponent<CharacterProfile>().PlayerDisplayName;
             playerHealth.OnHealthChanged += setHealthSliderValue;

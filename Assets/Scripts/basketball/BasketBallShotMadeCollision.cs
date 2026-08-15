@@ -15,14 +15,9 @@ public class BasketBallShotMadeCollision : MonoBehaviour
         {
             PlayerIdentifier pi = other.GetComponent<PlayerIdentifier>();
             basketBallShotMade.ShotMade2 = true;
+            // Consecutive-shot tracking (AUD-065) now happens inside shotMade(), before scoring
+            // reads it, so the streak bonus reflects the shot that was just made.
             basketBallShotMade.shotMade(pi.gameStats, pi);
-            pi.gameStats.calculateConsecutiveShot(pi.basketBallState);
-            //todo:  deal with consecutive shots logic here
-            // add to gamestats on basketball
-            // define shot made/ missed logic
-            // this is a made shot = true
-            // save previous shot status variable, previousShotMade.
-            // put consecutive shots logic in a function call
         }
     }
 }

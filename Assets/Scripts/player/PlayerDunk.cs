@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections;
+using Assets.Scripts.Utility;
 using UnityEngine;
 
 public class PlayerDunk : MonoBehaviour
@@ -20,13 +21,24 @@ public class PlayerDunk : MonoBehaviour
 
     private void Start()
     {
-        dunkPositionLeft = GameObject.Find("dunk_position_left").transform.position;
-        dunkPositionRight = GameObject.Find("dunk_position_right").transform.position;
-        //if (GameObject.Find("basketball_goal") != null)
-        //{
-        //    dunkPositionLeft = GameObject.Find("dunk_position_left").transform.position;
-        //    dunkPositionRight = GameObject.Find("dunk_position_right").transform.position;
-        //}
+        GameObject dunkPositionLeftObject = SceneObjects.Find("dunk_position_left", this);
+        GameObject dunkPositionRightObject = SceneObjects.Find("dunk_position_right", this);
+
+        // Launch() divides by (H - R * tanAlpha) and takes its Sqrt - a degenerate target (the
+        // Vector3.zero default that a missing marker would otherwise silently leave in place) can
+        // send Vz/Vy to NaN or fling the player toward the world origin instead of the rim. Disabling
+        // dunking through the same PlayerCanDunk gate PlayerController already checks before ever
+        // triggering a dunk is safer than letting Launch() run against a position that was never real.
+        if (dunkPositionLeftObject == null || dunkPositionRightObject == null)
+        {
+            playerCanDunk = false;
+        }
+        else
+        {
+            dunkPositionLeft = dunkPositionLeftObject.transform.position;
+            dunkPositionRight = dunkPositionRightObject.transform.position;
+        }
+
         PlayerIdentifier pi = GetComponent<PlayerIdentifier>();
         playerController = pi.playerController;
         basketBall = pi.basketBallController;

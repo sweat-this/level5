@@ -1,4 +1,5 @@
 ﻿using System.Collections.Generic;
+using Assets.Scripts.Utility;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
@@ -159,13 +160,16 @@ public class TouchInputStartScreenController : MonoBehaviour
         }
 
         //check if StartManager is empty and find correct GraphicRaycaster and EventSystem
-        if (UnityEngine.Object.FindAnyObjectByType<StartManager>() != null)
+        GameObject startScreen = UnityEngine.Object.FindAnyObjectByType<StartManager>() != null
+            ? SceneObjects.Find("startScreen", this)
+            : null;
+        if (startScreen != null)
         {
             //Fetch the Raycaster from the GameObject (the Canvas)
             //m_Raycaster = StartManager.instance.gameObject.GetComponentInChildren<GraphicRaycaster>();
-            m_Raycaster = GameObject.Find("startScreen").GetComponentInChildren<GraphicRaycaster>();
+            m_Raycaster = startScreen.GetComponentInChildren<GraphicRaycaster>();
             //Fetch the Event System from the Scene
-            m_EventSystem = GameObject.Find("startScreen").GetComponentInChildren<EventSystem>();
+            m_EventSystem = startScreen.GetComponentInChildren<EventSystem>();
         }
         // else, this is not the startscreen and disable object
         else
