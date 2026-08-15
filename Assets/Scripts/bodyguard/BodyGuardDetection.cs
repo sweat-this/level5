@@ -1,9 +1,19 @@
 ﻿using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 
 public class BodyGuardDetection : MonoBehaviour, ICombatDetection
 {
+    /// <summary>
+    /// BG-2: the reach a bodyguard falls back to when its prefab never authored one. This is the
+    /// value <see cref="Start"/> used to force on every bodyguard unconditionally.
+    /// </summary>
+    public const float DefaultEnemySightDistance = 20f;
+
     BodyGuardController bodyGuardController;
+
+    // BG-2: reused so the per-tick sweep does not allocate.
+    private readonly List<Vector3> queuedEnemyPositions = new List<Vector3>();
     [SerializeField]
     bool enemySighted;
     bool enemyDetectionEnabled = true;
@@ -35,13 +45,16 @@ public class BodyGuardDetection : MonoBehaviour, ICombatDetection
         //    enemySightDistance = 20;
         //}
 
-        // BG-2: enemySightDistance is assigned here and read by nothing. CheckPlayerDistance below
-        // no longer measures a distance at all - it asks the queue whether any enemy is engaged
-        // anywhere, which is the same answer for every bodyguard in the scene regardless of where
-        // it is standing. The field is left in place because it is public and serialized on
-        // existing prefabs; giving this component real per-bodyguard detection is a behaviour
-        // change that belongs with the threat-scoring work in BodyGuardController, not here.
-        enemySightDistance = 20;
+        // BG-2: enemySightDistance used to be overwritten with a hard 20 here and then read by
+        // nothing, because CheckPlayerDistance measured no distance at all - it asked the queue
+        // whether any enemy was engaged anywhere, which is the same answer for every bodyguard in
+        // the scene regardless of where it is standing. The authored value is now honoured and
+        // actually used. Prefabs that never authored one (0) keep the previous effective reach so
+        // this is not a silent nerf on existing content.
+        if (enemySightDistance <= 0)
+        {
+            enemySightDistance = DefaultEnemySightDistance;
+        }
 
         InvokeRepeating("CheckPlayerDistance", 0, 0.5f);
         InvokeRepeating("CheckReturnToPatrolStatus", 0, 3f);
@@ -55,29 +68,81 @@ public class BodyGuardDetection : MonoBehaviour, ICombatDetection
 
     void CheckPlayerDistance()
     {
-        //// if player within enemy sight distance
-        //if (bodyGuardController.DistanceFromPlayer < enemySightDistance
-        //    && enemyDetectionEnabled)
-        //{
-        //    //PlayerAttackQueue.instance.CurrentEnemiesQueued
-        //    if(PlayerAttackQueue.instance.CurrentEnemiesQueued > 0)
-        //    {
-        //        //StartCoroutine(PlayerAttackQueue.instance.RequestAddToQueue(gameObject));
-        //        // attack enemies[0]
-        //    }
-        //}
-        //// if player NOT within enemy sight distance
-        //if (bodyGuardController.DistanceFromPlayer >= enemySightDistance
-        //    && enemyDetectionEnabled)
-        //{
-        //    enemySighted = false;
-        //    // move towards player
-        //}
+        // BG-2: this used to be `enemySighted = queue != null && queue.HasQueuedEnemies()` - one
+        // scene-wide boolean, so a bodyguard on the far side of the level "sighted" an enemy the
+        // instant anything anywhere engaged, and the only consumer (CheckReturnToPatrolStatus)
+        // held every bodyguard off patrol for the whole fight. Detection is now measured from this
+        // bodyguard against its own authored reach.
+        if (!enemyDetectionEnabled)
+        {
+            enemySighted = false;
+            return;
+        }
 
         PlayerAttackQueue playerAttackQueue = bodyGuardController != null ? bodyGuardController.TargetQueue : null;
-        enemySighted = playerAttackQueue != null && playerAttackQueue.HasQueuedEnemies();
-        // stay within certain distance of player
+        if (playerAttackQueue == null || !playerAttackQueue.HasQueuedEnemies())
+        {
+            enemySighted = false;
+            return;
+        }
 
+        // HasQueuedEnemies above ran the queue's stale-entry cleanup, so EnemiesQueued holds live
+        // entries; a destroyed GameObject can still surface as a null element, hence the guard.
+        queuedEnemyPositions.Clear();
+        IReadOnlyList<GameObject> enemiesQueued = playerAttackQueue.EnemiesQueued;
+        for (int i = 0; i < enemiesQueued.Count; i++)
+        {
+            GameObject enemy = enemiesQueued[i];
+            if (enemy != null)
+            {
+                queuedEnemyPositions.Add(enemy.transform.position);
+            }
+        }
+
+        // Read the controller's leash per tick rather than in Start: BodyGuardController applies
+        // its own defaults in Start, and component start order is not guaranteed.
+        float reach = EffectiveSightDistance(enemySightDistance, bodyGuardController.MaximumInterceptionDistance);
+        enemySighted = AnyEnemyWithinSight(transform.position, queuedEnemyPositions, reach);
+    }
+
+    /// <summary>
+    /// BG-2: how far this bodyguard actually looks. The authored <c>enemySightDistance</c> is the
+    /// designer's dial, but it cannot sit below the range at which
+    /// <see cref="BodyGuardController.MaximumInterceptionDistance"/> would already send the
+    /// bodyguard in - otherwise the controller breaks formation to intercept a threat that
+    /// detection simultaneously reports as unsighted, and
+    /// <see cref="CheckReturnToPatrolStatus"/> sends it back to patrol mid-charge. The only
+    /// authored value in the project is 4, against an interception leash of 6, so this invariant
+    /// is load-bearing rather than theoretical.
+    /// </summary>
+    public static float EffectiveSightDistance(float authoredSightDistance, float maximumInterceptionDistance)
+    {
+        return Mathf.Max(authoredSightDistance, maximumInterceptionDistance);
+    }
+
+    /// <summary>
+    /// BG-2: true when any of <paramref name="enemyPositions"/> lies within
+    /// <paramref name="sightDistance"/> of <paramref name="bodyGuardPosition"/>. Kept pure and
+    /// static so the reach rule can be covered without standing a scene up.
+    /// </summary>
+    public static bool AnyEnemyWithinSight(
+        Vector3 bodyGuardPosition, IReadOnlyList<Vector3> enemyPositions, float sightDistance)
+    {
+        if (enemyPositions == null || sightDistance <= 0f)
+        {
+            return false;
+        }
+
+        float sightDistanceSquared = sightDistance * sightDistance;
+        for (int i = 0; i < enemyPositions.Count; i++)
+        {
+            if ((enemyPositions[i] - bodyGuardPosition).sqrMagnitude <= sightDistanceSquared)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     IEnumerator DelayEnemySight(float seconds)

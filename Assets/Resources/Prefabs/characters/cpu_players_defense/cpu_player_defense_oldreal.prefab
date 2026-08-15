@@ -651,7 +651,7 @@ MonoBehaviour:
   targetPosition: {x: 0, y: 0, z: 0}
   movement: {x: 0, y: 0, z: 0}
   playerGuardingDistance: 0.35
-  speed: 6
+  speed: 10
   inAirSpeed: 4
   jumpForce: 5
   jumpDelay: 0.3
