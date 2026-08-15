@@ -1,5 +1,6 @@
 ﻿using Assets.Scripts.Utility;
 using UnityEngine;
+using Level5.Core;
 using Level5.Core.Match;
 
 public class GameStats : MonoBehaviour
@@ -97,6 +98,48 @@ public class GameStats : MonoBehaviour
         {
             MostConsecutiveShots = _consecutiveShotsMade;
         }
+    }
+
+    /// <summary>
+    /// Scores one made shot and updates the made-shot counters and consecutive-streak state behind
+    /// it, in the one order both require (AUD-065). <paramref name="input"/>'s <c>ConsecutiveShotsMade</c>
+    /// is overwritten with this shot's own contribution before the final score is computed - the
+    /// caller's value is only a placeholder.
+    ///
+    /// <c>CountedAs</c>/<c>MoneyBallMade</c> never depend on <c>ConsecutiveShotsMade</c> (see
+    /// <see cref="ShotScoring.Score"/>), so scoring twice - once to learn which counter this shot
+    /// moves, again after the streak is updated - changes only <c>Points</c>, and only in the
+    /// open-play streak-bonus mode. Every other mode gets an identical result both times.
+    /// </summary>
+    public ShotScore ApplyMadeShot(BasketBallState basketBallState, ShotScoringInput input)
+    {
+        ShotScore provisional = ShotScoring.Score(input);
+
+        switch (provisional.CountedAs)
+        {
+            case ShotKind.Two:
+                TwoPointerMade++;
+                break;
+            case ShotKind.Three:
+                ThreePointerMade++;
+                break;
+            case ShotKind.Four:
+                FourPointerMade++;
+                break;
+            case ShotKind.Seven:
+                SevenPointerMade++;
+                break;
+        }
+
+        ShotMade = TwoPointerMade + ThreePointerMade + FourPointerMade + SevenPointerMade;
+
+        // Must run after ShotMade is finalized above (calculateConsecutiveShot compares it against
+        // the total it predicted last time) and before BasketballState.ResetShotAttemptSnapshot
+        // clears TwoAttempt (called by the shotMade() caller once this method returns) - AUD-065.
+        calculateConsecutiveShot(basketBallState);
+        input.ConsecutiveShotsMade = ConsecutiveShotsMade;
+
+        return ShotScoring.Score(input);
     }
 
     public float getTotalPointAccuracy()

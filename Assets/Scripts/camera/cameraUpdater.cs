@@ -145,6 +145,17 @@ public class cameraUpdater : MonoBehaviour
             playerDistanceFromRimZ = Math.Abs(player.transform.position.z);
         }
 
+        // CameraManager.switchCamera() can force the goal camera off directly (it always excludes
+        // the goal camera from the regular switch cycle), without going through toggleCameraOnGoal -
+        // AUD-070. Re-sync the tracked flag to the camera's real active state before trusting it, the
+        // same self-healing the CameraOnGoalAllowed check below already does for the other case.
+        bool goalCameraActuallyActive =
+            CameraManager.instance.Cameras[CameraManager.instance.CameraOnGoalIndex].activeSelf;
+        if (onGoalCameraEnabled != goalCameraActuallyActive)
+        {
+            onGoalCameraEnabled = goalCameraActuallyActive;
+        }
+
         if (!CameraManager.instance.CameraOnGoalAllowed && onGoalCameraEnabled)
         {
             CameraManager.instance.Cameras[CameraManager.instance.CameraOnGoalIndex].SetActive(false);

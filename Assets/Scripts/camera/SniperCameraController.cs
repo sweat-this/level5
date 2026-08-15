@@ -76,7 +76,7 @@ public class SniperCameraController : MonoBehaviour
             return;
         }
 
-        if (gamepad.buttonSouth.wasPressedThisFrame && !isPressed)
+        if (gamepad.buttonSouth.wasPressedThisFrame && !isPressed && SniperManager.instance != null)
         {
             isPressed = true;
             Debug.Log("button pressed");

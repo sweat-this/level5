@@ -1,5 +1,6 @@
 ﻿
 using System.Collections.Generic;
+using Assets.Scripts.Utility;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
@@ -150,14 +151,17 @@ public class TouchInputStatsScreenController : MonoBehaviour
         }
 
         //check if startmanager is empty and find correct GraphicRaycaster and EventSystem
-        if (UnityEngine.Object.FindAnyObjectByType<StatsManager>() != null)
+        GameObject statsManager = UnityEngine.Object.FindAnyObjectByType<StatsManager>() != null
+            ? SceneObjects.Find("stats_manager", this)
+            : null;
+        if (statsManager != null)
         {
             //Fetch the Raycaster from the GameObject (the Canvas)
             //m_Raycaster = StatsManager.instance.gameObject.GetComponentInChildren<GraphicRaycaster>();
-            m_Raycaster = GameObject.Find("stats_manager").GetComponentInChildren<GraphicRaycaster>();
+            m_Raycaster = statsManager.GetComponentInChildren<GraphicRaycaster>();
             //Fetch the Event System from the Scene
             //m_EventSystem = StatsManager.instance.gameObject.GetComponentInChildren<EventSystem>();
-            m_EventSystem = GameObject.Find("stats_manager").GetComponentInChildren<EventSystem>();
+            m_EventSystem = statsManager.GetComponentInChildren<EventSystem>();
         }
         // else, this is not the startscreen and disable object
         else

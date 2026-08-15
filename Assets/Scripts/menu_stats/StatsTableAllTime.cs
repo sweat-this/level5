@@ -1,4 +1,5 @@
 ﻿using System;
+using Assets.Scripts.Utility;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -51,17 +52,40 @@ public class StatsTableAllTime : MonoBehaviour
         // find object, get second child objects text.
         // 1st child : score description, 2nd : actual score
 
-        twoText = GameObject.Find(twoName).transform.GetChild(1).GetComponent<Text>();
-        threeText = GameObject.Find(threeName).transform.GetChild(1).GetComponent<Text>();
-        fourText = GameObject.Find(fourName).transform.GetChild(1).GetComponent<Text>();
-        sevenText = GameObject.Find(sevenName).transform.GetChild(1).GetComponent<Text>();
-        moneyBallText = GameObject.Find(moneyballName).transform.GetChild(1).GetComponent<Text>();
-        sniperText = GameObject.Find(sniperName).transform.GetChild(1).GetComponent<Text>();
-        totalDistanceText = GameObject.Find(totalDistanceName).transform.GetChild(1).GetComponent<Text>();
-        totalShotsText = GameObject.Find(totalShotsName).transform.GetChild(1).GetComponent<Text>();
-        consecutiveShotsText = GameObject.Find(consecutiveShotsName).transform.GetChild(1).GetComponent<Text>();
-        totalPointsText = GameObject.Find(totalPointsName).transform.GetChild(1).GetComponent<Text>();
-        timePlayedText = GameObject.Find(timePlayedName).transform.GetChild(1).GetComponent<Text>();
+        twoText = ResolveStatText(twoName);
+        threeText = ResolveStatText(threeName);
+        fourText = ResolveStatText(fourName);
+        sevenText = ResolveStatText(sevenName);
+        moneyBallText = ResolveStatText(moneyballName);
+        sniperText = ResolveStatText(sniperName);
+        totalDistanceText = ResolveStatText(totalDistanceName);
+        totalShotsText = ResolveStatText(totalShotsName);
+        consecutiveShotsText = ResolveStatText(consecutiveShotsName);
+        totalPointsText = ResolveStatText(totalPointsName);
+        timePlayedText = ResolveStatText(timePlayedName);
+
+        // loadAllTimeStats() (called from Start(), and only from Start()) dereferences all eleven
+        // unconditionally - a partial resolution here would crash there instead of here.
+        if (twoText == null || threeText == null || fourText == null || sevenText == null
+            || moneyBallText == null || sniperText == null || totalDistanceText == null
+            || totalShotsText == null || consecutiveShotsText == null || totalPointsText == null
+            || timePlayedText == null)
+        {
+            Debug.LogError("StatsTableAllTime could not resolve its required scene objects and has been disabled.", this);
+            gameObject.SetActive(false);
+        }
+    }
+
+    /// <summary>The named object's second child holds the value text; both are required.</summary>
+    private Text ResolveStatText(string objectName)
+    {
+        GameObject found = SceneObjects.Find(objectName, this);
+        if (found == null || found.transform.childCount < 2)
+        {
+            return null;
+        }
+
+        return found.transform.GetChild(1).GetComponent<Text>();
     }
 
     // Update is called once per frame

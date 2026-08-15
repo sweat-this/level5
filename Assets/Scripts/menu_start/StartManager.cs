@@ -1829,6 +1829,14 @@ public class StartManager : MonoBehaviour
         // zero continues left, silently.
         EndRoundData.numberOfContinues = configuration.Rules.Hardcore ? 0 : EndRoundData.DefaultContinues;
 
+        // AUD-068: same shape as numberOfContinues above. tipDialogueLoadedOnStart only ever gets
+        // set true (by StartScreenTipDialogueManager/StartScreenCpuSelectManager, once either has
+        // shown), never reset, so without this it would show at most once per application process
+        // instead of once per pass through the start flow. Reset here (launch time, not mid-flow)
+        // so it's correct the *next* time a player re-enters the start flow, without disturbing
+        // whichever of those two screens already ran during the flow that is launching right now.
+        GameOptions.tipDialogueLoadedOnStart = false;
+
         // load hardcore mode highscores (for ui display) for game mode if hardcore mode enabled
         PlayerData.instance.loadStatsFromDatabase();
     }

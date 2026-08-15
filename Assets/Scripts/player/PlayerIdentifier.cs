@@ -6,8 +6,6 @@ using Level5.Core.Match;
 public class PlayerIdentifier : MonoBehaviour
 {
     public int pid;
-    public int bid;
-    public int bsid;
     public bool isCpu;
     public bool isDefensivePlayer;
     [SerializeField]
@@ -27,11 +25,9 @@ public class PlayerIdentifier : MonoBehaviour
     public GameStats gameStats;
 
 
-    public void setIds(int pid, int bid, int bsid, bool isCpu)
+    public void setIds(int pid, bool isCpu)
     {
         this.pid = pid;
-        this.bid = bid;
-        this.bsid = bsid;
         this.isCpu = isCpu;
     }
     /// <summary>

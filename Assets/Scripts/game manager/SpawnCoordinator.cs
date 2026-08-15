@@ -321,7 +321,7 @@ public sealed class SpawnCoordinator
             return;
         }
 
-        identifier.setIds(pid, pid, pid, false);
+        identifier.setIds(pid, false);
         identifier.player = spawned;
         identifier.setPlayer(identifier.player);
         InitializeHumanProfile(identifier, slot);
@@ -378,7 +378,7 @@ public sealed class SpawnCoordinator
             return;
         }
 
-        identifier.setIds(pid, pid, pid, true);
+        identifier.setIds(pid, true);
         identifier.autoPlayer = spawned;
         identifier.setAutoPlayer(identifier.autoPlayer);
         registry.Add(identifier);
@@ -400,7 +400,7 @@ public sealed class SpawnCoordinator
             return;
         }
 
-        ballIdentifier.setIds(owner.pid, owner.pid, owner.pid, forCpu);
+        ballIdentifier.setIds(owner.pid, forCpu);
         if (forCpu)
         {
             ballIdentifier.setAutoBasketball(ball);

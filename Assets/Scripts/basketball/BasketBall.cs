@@ -368,8 +368,6 @@ public class BasketBall : MonoBehaviour
             LastShotDistance,
             playerController.Shotmeter.SliderValueOnButtonPress);
 
-        // PlayerIdentifier.isCpu is the source of truth for CPU/human identity (AUD-013) -
-        // playerController.isCPU is a separate, independently-set field on the same slot.
         if (computation.IsSwish && BehaviorNpcCritical.instance != null && !playerIdentifier.isCpu)
         {
             BehaviorNpcCritical.instance.playAnimationCriticalSuccesful();

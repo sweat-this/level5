@@ -34,12 +34,13 @@ public class StartScreenCpuSelectManager : MonoBehaviour
 
     private void OnEnable()
     {
-        if (!GameOptions.tipDialogueLoadedOnStart)
-        {
-            controls = PlayerControlsProvider.Controls;
-            PlayerControlsProvider.EnableMenuMaps();
-            menuMapsEnabled = true;
-        }
+        // AUD-068: Awake() below always wires this screen's cancel button now (its own
+        // tipDialogueLoadedOnStart guard was removed), so gate this the same way - otherwise, once
+        // any tip screen had shown once in the current pass through the start flow, this screen kept
+        // wiring its button in Awake() while never enabling the input maps that button needs here.
+        controls = PlayerControlsProvider.Controls;
+        PlayerControlsProvider.EnableMenuMaps();
+        menuMapsEnabled = true;
     }
     private void OnDisable()
     {

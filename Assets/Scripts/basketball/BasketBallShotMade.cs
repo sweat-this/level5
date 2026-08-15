@@ -288,29 +288,14 @@ public class BasketBallShotMade : MonoBehaviour
             ShotDistance = shotDistance
         };
 
-        ShotScore score = ShotScoring.Score(input);
+        // AUD-065: scores the shot and updates the made-shot/streak state it depends on, in the one
+        // order both require. Covered directly by Level5GameStatsApplyMadeShotTests - see that file
+        // for why the regression this guards against needs GameStats/BasketballState only, not a
+        // running GameRules/MatchRuntime.
+        ShotScore score = gameStats.ApplyMadeShot(basketBallState, input);
 
         gameStats.TotalPoints += score.Points;
         gameStats.MoneyBallMade += score.MoneyBallMade;
-
-        switch (score.CountedAs)
-        {
-            case ShotKind.Two:
-                gameStats.TwoPointerMade++;
-                break;
-            case ShotKind.Three:
-                gameStats.ThreePointerMade++;
-                break;
-            case ShotKind.Four:
-                gameStats.FourPointerMade++;
-                break;
-            case ShotKind.Seven:
-                gameStats.SevenPointerMade++;
-                break;
-        }
-
-        gameStats.ShotMade = gameStats.TwoPointerMade + gameStats.ThreePointerMade
-            + gameStats.FourPointerMade + gameStats.SevenPointerMade;
 
         // ==================== requires position markers logic ==============================
         if (basketBallState.PlayerOnMarkerOnShoot 

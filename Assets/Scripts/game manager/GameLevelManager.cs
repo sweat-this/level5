@@ -170,10 +170,6 @@ public class GameLevelManager : MonoBehaviour
             _characterProfile = player1.GetComponent<CharacterProfile>();
             _playerAttackQueue = player1.GetComponent<PlayerAttackQueue>();
             _playerHealth = player1.GetComponentInChildren<PlayerHealth>();
-            if (_playerController1 != null)
-            {
-                _playerController1.isCPU = false;
-            }
 
             terrainHeight = player1.transform.position.y;
         }

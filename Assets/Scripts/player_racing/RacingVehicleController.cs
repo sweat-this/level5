@@ -553,7 +553,8 @@ public class RacingVehicleController : MonoBehaviour
         thisScale.x *= -1;
         transform.localScale = thisScale;
 
-        if (MatchRuntime.Rules.EnemiesEnabled || MatchRuntime.Rules.EnemiesOnly || MatchRuntime.Rules.SniperEnabled)
+        if (damageDisplayObject != null
+            && (MatchRuntime.Rules.EnemiesEnabled || MatchRuntime.Rules.EnemiesOnly || MatchRuntime.Rules.SniperEnabled))
         {
             Vector3 damageScale = damageDisplayObject.transform.localScale;
             damageScale.x *= -1;
