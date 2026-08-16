@@ -96,6 +96,16 @@ public static class AnaylticsManager
     public static void PointsScoredEnemiesDisabled(GameStats basketBallStats)
     {
         string eventName = "points scored : enemies disabled";
+
+        // AUD-077: the sibling PointsScoredEnemiesEnabled above already guards this identical
+        // division - int / int with a zero divisor throws DivideByZeroException in C#, unlike
+        // float division's NaN.
+        int accuracy = 0;
+        if (basketBallStats.ShotAttempt != 0)
+        {
+            accuracy = basketBallStats.ShotMade / basketBallStats.ShotAttempt;
+        }
+
         AnalyticsResult analyticsResult =
             Analytics.CustomEvent(eventName,
             new Dictionary<string, object>
@@ -104,7 +114,7 @@ public static class AnaylticsManager
                 {"player", MatchRuntime.PrimaryCharacterDisplayName },
                 {"cheerleader", MatchRuntime.Cheerleader.DisplayName },
                 {"points", basketBallStats.TotalPoints },
-                {"accuracy", (basketBallStats.ShotMade / basketBallStats.ShotAttempt).ToString("##.####") },
+                {"accuracy", accuracy.ToString("##.####") },
                 {"deviceType", SystemInfo.deviceType },
                 {"deviceModel", SystemInfo.deviceModel },
                 {"OperatingSystem", SystemInfo.operatingSystem }

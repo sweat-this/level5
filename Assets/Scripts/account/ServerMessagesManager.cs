@@ -21,7 +21,9 @@ public class ServerMessagesManager : MonoBehaviour
     {
         ApiResult<List<ServerMessageModel>> result = null;
         yield return APIHelper.GetServerMessages(value => result = value);
-        serverMessagesModels = result.Success && result.Value != null
+        // AUD-078: same null-result guard UserAccountManager.LoginGuestCoroutine already uses after
+        // the identical APIHelper callback pattern.
+        serverMessagesModels = result != null && result.Success && result.Value != null
             ? result.Value
             : new List<ServerMessageModel>();
         SetUiMessages();

@@ -57,10 +57,22 @@ public class BehaviorPrimo : MonoBehaviour
         canMove = true;
         followPlayer = false;
         movementSpeed = walkMovementSpeed;
-        currentSprite = transform.Find("sprite").GetComponent<SpriteRenderer>();
+
+        // AUD-081: same unguarded "sprite" child lookup shape AUD-075 fixed in
+        // BehaviorVehicleLawnmower - resolve once, disable rather than let either throw partway
+        // through Start() and leave Update() to NRE on anim every frame.
+        Transform spriteTransform = transform.Find("sprite");
+        if (spriteTransform == null)
+        {
+            Debug.LogError("BehaviorPrimo on " + name + " is disabled: missing a 'sprite' child.", this);
+            enabled = false;
+            return;
+        }
+
+        currentSprite = spriteTransform.GetComponent<SpriteRenderer>();
         rigidBody = GetComponent<Rigidbody>();
         navmeshAgent = GetComponent<NavMeshAgent>();
-        anim = transform.Find("sprite").GetComponent<Animator>();
+        anim = spriteTransform.GetComponent<Animator>();
         locked = false;
     }
 

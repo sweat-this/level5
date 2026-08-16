@@ -1,4 +1,5 @@
-﻿using UnityEngine;
+﻿using System.Collections.Generic;
+using UnityEngine;
 using UnityEngine.AI;
 
 public class BehaviorVehicleLawnmower : MonoBehaviour
@@ -62,13 +63,35 @@ public class BehaviorVehicleLawnmower : MonoBehaviour
         facingRight = true;
         canMove = true;
         //movementSpeed = walkMovementSpeed;
-        currentSprite = transform.Find("sprite").GetComponent<SpriteRenderer>();
+
+        // AUD-075: transform.Find("sprite") and the returnPositions[0] index below both threw
+        // unconditionally - resolve everything Update() depends on first, and disable rather than
+        // let either throw partway through Start() and leave Update() to NRE every frame.
+        Transform spriteTransform = transform.Find("sprite");
+        returnPositions = GameObject.FindGameObjectsWithTag("vehicle_position_marker");
+
+        List<string> missing = new List<string>();
+        if (spriteTransform == null)
+        {
+            missing.Add("a 'sprite' child object");
+        }
+        if (returnPositions.Length == 0)
+        {
+            missing.Add("any 'vehicle_position_marker'-tagged object");
+        }
+
+        if (missing.Count > 0)
+        {
+            Debug.LogError("BehaviorVehicleLawnmower on " + name + " is disabled: missing " +
+                string.Join(", ", missing) + ".", this);
+            enabled = false;
+            return;
+        }
+
+        currentSprite = spriteTransform.GetComponent<SpriteRenderer>();
         rigidBody = GetComponent<Rigidbody>();
         navmeshAgent = GetComponent<NavMeshAgent>();
-        anim = transform.Find("sprite").GetComponent<Animator>();
-
-        // positions flash will retreat to
-        returnPositions = GameObject.FindGameObjectsWithTag("vehicle_position_marker");
+        anim = spriteTransform.GetComponent<Animator>();
 
         //locked = false;
         currentTargetIndex = 0;

@@ -70,7 +70,19 @@ public class BehaviorNpcAutonomous : MonoBehaviour
         movementSpeed = walkMovementSpeed;
         rigidBody = GetComponent<Rigidbody>();
         navmeshAgent = GetComponent<NavMeshAgent>();
-        anim = transform.Find("sprite").GetComponent<Animator>();
+
+        // AUD-081: same unguarded "sprite" child lookup shape AUD-075 fixed in
+        // BehaviorVehicleLawnmower - anim is dereferenced unconditionally in Update() every frame,
+        // so a missing child used to NRE from the first frame instead of failing loudly once here.
+        Transform spriteTransform = transform.Find("sprite");
+        if (spriteTransform == null)
+        {
+            Debug.LogError("BehaviorNpcAutonomous on " + name + " is disabled: missing a 'sprite' child.", this);
+            enabled = false;
+            return;
+        }
+
+        anim = spriteTransform.GetComponent<Animator>();
 
         // positions flash will retreat to
         returnPositions = GameObject.FindGameObjectsWithTag("flash_return_position");

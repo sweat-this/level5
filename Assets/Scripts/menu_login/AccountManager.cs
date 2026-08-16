@@ -511,10 +511,12 @@ public class AccountManager : MonoBehaviour
         SetMessage("checking username...");
         ApiResult<bool> result = null;
         yield return APIHelper.UserNameExists(userNameInput, value => result = value);
-        if (!result.Success)
+        // AUD-078: same null-result guard UserAccountManager.LoginGuestCoroutine already uses after
+        // the identical APIHelper callback pattern.
+        if (result == null || !result.Success)
         {
             userNameIsValid = false;
-            SetMessage(result.Error);
+            SetMessage(result != null ? result.Error : "Could not check the username.");
             yield break;
         }
 
@@ -537,9 +539,11 @@ public class AccountManager : MonoBehaviour
         SetMessage("checking username...");
         ApiResult<bool> existsResult = null;
         yield return APIHelper.UserNameExists(userNameInput, value => existsResult = value);
-        if (!existsResult.Success)
+        // AUD-078: same null-result guard UserAccountManager.LoginGuestCoroutine already uses after
+        // the identical APIHelper callback pattern.
+        if (existsResult == null || !existsResult.Success)
         {
-            SetMessage(existsResult.Error);
+            SetMessage(existsResult != null ? existsResult.Error : "Could not check the username.");
             yield break;
         }
 
@@ -565,9 +569,13 @@ public class AccountManager : MonoBehaviour
         SetMessage("creating account...");
         ApiResult<UserModel> createResult = null;
         yield return APIHelper.PostUser(newUser, value => createResult = value);
-        if (!createResult.Success)
+        // AUD-078: same null-result guard UserAccountManager.LoginGuestCoroutine already uses after
+        // the identical APIHelper callback pattern.
+        if (createResult == null || !createResult.Success)
         {
-            SetMessage(createResult.StatusCode == 409 ? "username already exists" : createResult.Error);
+            SetMessage(createResult != null
+                ? (createResult.StatusCode == 409 ? "username already exists" : createResult.Error)
+                : "Could not create the account.");
             yield break;
         }
 
@@ -609,9 +617,13 @@ public class AccountManager : MonoBehaviour
         {
             ApiResult<UserModel> userResult = null;
             yield return APIHelper.GetUserByUserName(username, value => userResult = value);
-            if (!userResult.Success || userResult.Value == null)
+            // AUD-078: same null-result guard UserAccountManager.LoginGuestCoroutine already uses
+            // after the identical APIHelper callback pattern.
+            if (userResult == null || !userResult.Success || userResult.Value == null)
             {
-                SetMessage(userResult.StatusCode == 404 ? "username does not exist" : userResult.Error);
+                SetMessage(userResult != null
+                    ? (userResult.StatusCode == 404 ? "username does not exist" : userResult.Error)
+                    : "Could not sign in.");
                 yield break;
             }
 
@@ -621,9 +633,11 @@ public class AccountManager : MonoBehaviour
         loginUser.Password = password;
         ApiResult<string> tokenResult = null;
         yield return APIHelper.PostToken(loginUser, value => tokenResult = value, false);
-        if (!tokenResult.Success)
+        // AUD-078: same null-result guard UserAccountManager.LoginGuestCoroutine already uses after
+        // the identical APIHelper callback pattern.
+        if (tokenResult == null || !tokenResult.Success)
         {
-            SetMessage(tokenResult.Error);
+            SetMessage(tokenResult != null ? tokenResult.Error : "Could not sign in.");
             yield break;
         }
 

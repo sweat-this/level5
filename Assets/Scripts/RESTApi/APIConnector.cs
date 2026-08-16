@@ -20,11 +20,13 @@ public class APIConnector : MonoBehaviour
 
     private System.Collections.IEnumerator CreateNewUserCoroutine(UserModel user)
     {
+        // AUD-078: same null-result guard UserAccountManager.LoginGuestCoroutine already uses after
+        // the identical APIHelper callback pattern.
         ApiResult<bool> existsResult = null;
         yield return APIHelper.UserNameExists(user.UserName, result => existsResult = result);
-        if (!existsResult.Success)
+        if (existsResult == null || !existsResult.Success)
         {
-            Debug.LogWarning(existsResult.Error);
+            Debug.LogWarning(existsResult != null ? existsResult.Error : "Could not check the username.");
             yield break;
         }
 
@@ -36,9 +38,9 @@ public class APIConnector : MonoBehaviour
 
         ApiResult<UserModel> createResult = null;
         yield return APIHelper.PostUser(user, result => createResult = result);
-        if (!createResult.Success)
+        if (createResult == null || !createResult.Success)
         {
-            Debug.LogWarning(createResult.Error);
+            Debug.LogWarning(createResult != null ? createResult.Error : "Could not create the account.");
         }
     }
 }

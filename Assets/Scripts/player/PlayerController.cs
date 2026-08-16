@@ -249,7 +249,19 @@ public class PlayerController : MonoBehaviour
         // bball rim vector, used for relative positioning
         bballRimVector = GameLevelManager.instance.BasketballRimVector;
 
-        dropShadow = transform.root.transform.Find("drop_shadow").gameObject;
+        // AUD-081: same unguarded-lookup shape AUD-079 fixed in RacingVehicleController - this
+        // used to dereference Find's result directly, so a player root without a "drop_shadow"
+        // child threw here and aborted the rest of Start().
+        Transform dropShadowTransform = transform.root.transform.Find("drop_shadow");
+        if (dropShadowTransform == null)
+        {
+            Debug.LogError("PlayerController on " + name + " found no 'drop_shadow' child on its root.", this);
+        }
+        else
+        {
+            dropShadow = dropShadowTransform.gameObject;
+        }
+
         FacingRight = true;
 
         movementSpeed = characterProfile.Speed;
@@ -379,12 +391,12 @@ public class PlayerController : MonoBehaviour
         }
 
         // keep drop shadow on ground at all times
-        if (Grounded)
+        if (dropShadow != null && Grounded)
         {
             dropShadow.transform.position = new Vector3(transform.root.position.x, transform.position.y + 0.015f,
                 transform.root.position.z);
         }
-        if (!Grounded) // player in air
+        if (dropShadow != null && !Grounded) // player in air
         {
             terrainYHeight = Terrain.activeTerrain != null
                 ? Terrain.activeTerrain.SampleHeight(transform.position) + 0.02f
