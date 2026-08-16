@@ -1269,7 +1269,9 @@ public class StartManager : MonoBehaviour
         versionText.text = "current version : " + Application.version;
         ApiResult<string> versionResult = null;
         yield return APIHelper.GetLatestBuildVersion(result => versionResult = result);
-        latestVersionText.text = versionResult.Success
+        // AUD-078: same null-result guard UserAccountManager.LoginGuestCoroutine already uses after
+        // the identical APIHelper callback pattern.
+        latestVersionText.text = versionResult != null && versionResult.Success
             ? "latest version: " + versionResult.Value.Trim().Trim('"')
             : "latest version: unavailable";
     }

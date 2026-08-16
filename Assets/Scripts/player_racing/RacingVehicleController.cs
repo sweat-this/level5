@@ -102,7 +102,18 @@ public class RacingVehicleController : MonoBehaviour
         vehicleProfile = GetComponent<RacingVehicleProfile>();
         rigidBody = GetComponent<Rigidbody>();
 
-        dropShadow = transform.root.transform.Find("drop_shadow").gameObject;
+        // AUD-079: this used to dereference Find's result directly, so any vehicle instance
+        // without a "drop_shadow" child threw here and aborted the rest of Start().
+        Transform dropShadowTransform = transform.root.transform.Find("drop_shadow");
+        if (dropShadowTransform == null)
+        {
+            Debug.LogError("RacingVehicleController on " + name + " found no 'drop_shadow' child on its root.", this);
+        }
+        else
+        {
+            dropShadow = dropShadowTransform.gameObject;
+        }
+
         FacingRight = true;
 
         movementSpeed = vehicleProfile.Speed;
@@ -286,12 +297,12 @@ public class RacingVehicleController : MonoBehaviour
         }
 
         // keep drop shadow on ground at all times
-        if (Grounded)
+        if (dropShadow != null && Grounded)
         {
             dropShadow.transform.position = new Vector3(transform.root.position.x, transform.position.y + 0.01f,
                 transform.root.position.z);
         }
-        if (!Grounded) // player in air
+        if (dropShadow != null && !Grounded) // player in air
         {
             //float terrainYHeight = Terrain.activeTerrain.SampleHeight(transform.position) + 0.02f;
             //Debug.Log("terrainYHeight : " + terrainYHeight);

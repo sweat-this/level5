@@ -89,7 +89,19 @@ public class AutoPlayerDefense : MonoBehaviour
         movementSpeed = speed;
         anim = gameObject.GetComponentInChildren<Animator>();
         FacingRight = true;
-        dropShadow = transform.Find("drop_shadow").gameObject;
+        // AUD-081: same unguarded-lookup shape AUD-079 fixed in RacingVehicleController - this
+        // used to dereference Find's result directly, so a root without a "drop_shadow" child
+        // threw here and aborted the rest of Start().
+        Transform dropShadowTransform = transform.Find("drop_shadow");
+        if (dropShadowTransform == null)
+        {
+            Debug.LogError("AutoPlayerDefense on " + name + " found no 'drop_shadow' child.", this);
+        }
+        else
+        {
+            dropShadow = dropShadowTransform.gameObject;
+        }
+
         getAnimatorStateHashes();
 #if UNITY_ANDROID || UNITY_IOS
         inAirSpeed = 0;
@@ -123,7 +135,10 @@ public class AutoPlayerDefense : MonoBehaviour
         float shadowHeight = Terrain.activeTerrain != null
             ? Terrain.activeTerrain.SampleHeight(transform.position) + 0.02f
             : GameLevelManager.instance.TerrainHeight + 0.02f;
-        dropShadow.transform.position = new Vector3(transform.root.position.x, shadowHeight, transform.root.position.z);
+        if (dropShadow != null)
+        {
+            dropShadow.transform.position = new Vector3(transform.root.position.x, shadowHeight, transform.root.position.z);
+        }
         distanceToTarget = Vector3.Distance(transform.position, targetPosition);
         playerDistanceToGoal = Vector3.Distance(playerPosition, GameLevelManager.instance.BasketballRimVector);
 

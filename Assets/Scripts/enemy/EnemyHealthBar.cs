@@ -1,4 +1,5 @@
 ﻿using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -20,9 +21,29 @@ public class EnemyHealthBar : MonoBehaviour
     // Start is called before the first frame update
     void Start()
     {
-
-        enemyHealth = transform.parent.GetComponentInChildren<EnemyHealth>();
+        // AUD-074: resolve both lookups before touching either, same shape AUD-071 fixed for
+        // PlayerHealthBar - a partial wire-up (e.g. enemyHealth found but no Slider child) used
+        // to NRE on healthSlider.maxValue before enemyHealth.OnHealthChanged was ever subscribed.
+        enemyHealth = transform.parent != null ? transform.parent.GetComponentInChildren<EnemyHealth>() : null;
         healthSlider = GetComponentInChildren<Slider>();
+        if (enemyHealth == null || healthSlider == null)
+        {
+            List<string> missing = new List<string>();
+            if (enemyHealth == null)
+            {
+                missing.Add("EnemyHealth");
+            }
+            if (healthSlider == null)
+            {
+                missing.Add("Slider");
+            }
+
+            Debug.LogError("EnemyHealthBar is disabled: missing " +
+                string.Join(", ", missing) + " on " + gameObject.name, this);
+            gameObject.SetActive(false);
+            return;
+        }
+
         healthSlider.maxValue = enemyHealth.MaxHealth;
         enemyHealth.OnHealthChanged += setHealthSliderValue;
         setHealthSliderValue();

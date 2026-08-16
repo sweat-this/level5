@@ -477,9 +477,17 @@ public class EnemyController : MonoBehaviour, ICombatAgent, IPooledSpawnReset
 
     public IEnumerator struckByLighning(int damage)
     {
-        bool enemyKilledByHit = !enemyHealth.IsDead && enemyHealth.ApplyDamage(new DamageInfo(damage));
+        // enemyHealth is legitimately null here too (see CanAct's null check below) - a null
+        // enemyHealth enemy is never "dead" and can't be killed by this hit either.
+        bool enemyKilledByHit = enemyHealth != null && !enemyHealth.IsDead && enemyHealth.ApplyDamage(new DamageInfo(damage));
 
-        StartCoroutine(enemyHealthBar.DisplayCustomMessageOnDamageDisplay("-"+damage.ToString()));
+        // AUD-074: enemyHealthBar is legitimately null for some enemy types (this class already
+        // guards it elsewhere, e.g. the custom-camera rotation above) - matches the guard
+        // EnemyCollisions already uses for the same coroutine call.
+        if (enemyHealthBar != null)
+        {
+            StartCoroutine(enemyHealthBar.DisplayCustomMessageOnDamageDisplay("-"+damage.ToString()));
+        }
 
         stateKnockDown = true;
         FreezeEnemyPosition();

@@ -16,8 +16,11 @@ public class BodyGuardAnimationEvents : MonoBehaviour
     GameObject projectileFlameThrower;
     [SerializeField]
     GameObject projectileSpawn;
+    // AUD-082: was typed EnemyController, a copy-paste leftover from EnemyAnimationEvents.cs - no
+    // bodyguard object ever has an EnemyController component, so the Start() lookup below always
+    // failed and every unguarded use of this field (applyForceToDirectionFacingXAndY) NRE'd.
     [SerializeField]
-    EnemyController enemyController;
+    BodyGuardController enemyController;
     [SerializeField]
     bool attackBoxAlwaysOn;
     [SerializeField]
@@ -36,9 +39,9 @@ public class BodyGuardAnimationEvents : MonoBehaviour
             projectileFlameThrower = LoadProjectilePrefab(projectileFlameThrower, "Prefabs/projectile/projectile_flamethrower");
             projectileSpawn = projectileSpawnTransform.gameObject;
         }
-        if (transform.parent.GetComponent<EnemyController>() != null)
+        if (transform.parent.GetComponent<BodyGuardController>() != null)
         {
-            enemyController = transform.parent.GetComponent<EnemyController>();
+            enemyController = transform.parent.GetComponent<BodyGuardController>();
         }
 
         Transform attackBoxTransform = transform.Find("attackBox");

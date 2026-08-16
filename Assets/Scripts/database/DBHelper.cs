@@ -394,6 +394,17 @@ public class DBHelper : MonoBehaviour
 
     internal bool UpdatePlayerProfileProgression(float expGained, int characterId)
     {
+        // AUD-075: every sibling method in this class acquires databaseLocked before opening its
+        // own SqliteConnection - this one never did, so it could run concurrently with a locked
+        // call and wasn't respected by the callers that wait on !databaseLocked. Matches the
+        // check-then-lock-then-finally shape EnsureCharacterProfilesForAccount/
+        // HasCharacterProfilesForAccount already use for the same synchronous, bool-returning shape.
+        if (databaseLocked)
+        {
+            return false;
+        }
+
+        databaseLocked = true;
         try
         {
             string accountId = CurrentAccountId();
@@ -459,9 +470,12 @@ public class DBHelper : MonoBehaviour
         }
         catch (Exception e)
         {
-            DatabaseLocked = false;
             Debug.Log("ERROR : " + e);
             return false;
+        }
+        finally
+        {
+            databaseLocked = false;
         }
     }
 
@@ -949,6 +963,10 @@ public class DBHelper : MonoBehaviour
     // get All time stats. Used to update all time stats after a game session
     internal GameStats getAllTimeStats()
     {
+        // AUD-076: same missing-lock gap as UpdatePlayerProfileProgression - this method opened
+        // its own SqliteConnection without ever acquiring databaseLocked, even though its own
+        // catch block already reset it.
+        databaseLocked = true;
         try
         {
             GameStats prevStats = gameObject.AddComponent<GameStats>();
@@ -1001,9 +1019,12 @@ public class DBHelper : MonoBehaviour
         }
         catch (Exception e)
         {
-            DatabaseLocked = false;
             Debug.Log("ERROR : " + e);
             return null;
+        }
+        finally
+        {
+            databaseLocked = false;
         }
     }
 

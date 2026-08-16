@@ -94,7 +94,10 @@ public class LocalAccount : MonoBehaviour
     {
         ApiResult<string> result = null;
         yield return APIHelper.PostToken(user, value => result = value, false);
-        if (!result.Success)
+        // AUD-078: APIHelper.SendJson's completed callback fires outside its own try/finally, so an
+        // exception mid-request would leave result null here - UserAccountManager.LoginGuestCoroutine
+        // already guards the identical call this way.
+        if (result == null || !result.Success)
         {
             // offline guest: drop any stale session, then keep the guest identity locally so saves
             // and character progress are scoped to "guest" rather than to nothing. Deliberately

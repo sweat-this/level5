@@ -812,8 +812,11 @@ public class StatsManager : MonoBehaviour
         submittedHighscoresText.text = "submitting...";
         ApiResult<int> result = null;
         yield return APIHelper.PostUnsubmittedHighscores(unsubmittedHighScores, value => result = value);
-        submittedHighscoresText.text = result.Success ? "scores submitted" : "submission failed";
-        numUnsubmittedHighscoresText.text = result.Success ? string.Empty : "+" + numUnsubmittedHighscores;
+        // AUD-078: same null-result guard UserAccountManager.LoginGuestCoroutine already uses after
+        // the identical APIHelper callback pattern.
+        bool submitted = result != null && result.Success;
+        submittedHighscoresText.text = submitted ? "scores submitted" : "submission failed";
+        numUnsubmittedHighscoresText.text = submitted ? string.Empty : "+" + numUnsubmittedHighscores;
     }
 
     private void getUnsubmittedHighscores()
@@ -948,8 +951,10 @@ public class StatsManager : MonoBehaviour
             yield break;
         }
 
-        numOnlineResults = countResult.Success ? countResult.Value : 0;
-        List<StatsTableHighScoreRow> rows = rowsResult.Success && rowsResult.Value != null
+        // AUD-078: same null-result guard UserAccountManager.LoginGuestCoroutine already uses after
+        // the identical APIHelper callback pattern.
+        numOnlineResults = countResult != null && countResult.Success ? countResult.Value : 0;
+        List<StatsTableHighScoreRow> rows = rowsResult != null && rowsResult.Success && rowsResult.Value != null
             ? rowsResult.Value
             : new List<StatsTableHighScoreRow>();
         int displayedRows = modeId == 99 ? 0 : Math.Min(rows.Count, highScoreRowsObjectsList.Count);
