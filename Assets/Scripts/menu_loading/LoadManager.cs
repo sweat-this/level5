@@ -167,11 +167,25 @@ public class LoadManager : MonoBehaviour
         {
             Debug.LogWarning("The local database was not ready in time. Loading default catalogs.");
         }
+
+        // AUD-085 code-review follow-up: DBConnector.tableExists() now reads DBHelper's shared
+        // connection but (deliberately - see the note on tableExists() itself) never acquires
+        // DatabaseLocked, since a "the connection is busy" answer would be indistinguishable from
+        // a real "table doesn't exist" to every caller and could trigger unwanted re-seeding.
+        // Waiting here instead, once, before the try block (a yield cannot appear inside a
+        // try/catch), keeps the whole synchronous block below - which nothing yields inside of,
+        // so nothing else can interleave once the wait clears - from ever running concurrently
+        // with a locked operation elsewhere.
+        if (databaseReady)
+        {
+            yield return new WaitUntil(() => !DBHelper.instance.DatabaseLocked);
+        }
+
         try
         {
             if (databaseReady)
             {
-                bool characterTableExists = DBConnector.instance.tableExists("CharacterProfile");
+                bool characterTableExists = DBConnector.instance.tableExists(Constants.LOCAL_DATABASE_tableName_characterProfile);
                 if (characterTableExists)
                 {
                     databaseReady = DBHelper.instance.EnsureCharacterProfilesForAccount(
@@ -181,8 +195,8 @@ public class LoadManager : MonoBehaviour
                 CharacterProfileTableExists = databaseReady
                     && characterTableExists
                     && DBHelper.instance.HasCharacterProfilesForAccount(CharacterProgressAccountId.GetCurrent());
-                CheerleaderProfileTableExists = DBConnector.instance.tableExists("CheerleaderProfile")
-                    && !DBHelper.instance.isTableEmpty("CheerleaderProfile");
+                CheerleaderProfileTableExists = DBConnector.instance.tableExists(Constants.LOCAL_DATABASE_tableName_cheerleaderProfile)
+                    && !DBHelper.instance.isTableEmpty(Constants.LOCAL_DATABASE_tableName_cheerleaderProfile);
 
                 if (databaseReady)
                 {

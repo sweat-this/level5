@@ -11,7 +11,6 @@ using UnityEngine.UI;
 
 public class DBConnector : MonoBehaviour
 {
-    private String connection;
     private String databaseNamePath = "/level5.db";
     private String filepath;
 
@@ -55,7 +54,6 @@ public class DBConnector : MonoBehaviour
         DontDestroyOnLoad(gameObject);
 
         filepath = Application.persistentDataPath + databaseNamePath;
-        connection = "URI=file:" + Application.persistentDataPath + databaseNamePath; //Path to database
 
         dbHelper = gameObject.GetComponent<DBHelper>();
     }
@@ -260,15 +258,155 @@ public class DBConnector : MonoBehaviour
         new KeyValuePair<string, string>("bearerToken", "TEXT"),
     };
 
+    // Single source of truth for each table's CREATE TABLE statement. These used to be defined a
+    // second time in standalone createTableUser()/createTableAllTimeStats() methods (both dead -
+    // grepped, never called - now deleted) and a third time, with a real schema drift
+    // (playerName/objectName NOT NULL), in CreateTableCharacterProfile() below. createDatabase()
+    // runs first for every install, so that NOT NULL version's own CREATE TABLE IF NOT EXISTS was
+    // a permanent no-op - dead intent, not dead code. Standardized on the constraint that has
+    // actually been live (no NOT NULL), since nothing has ever enforced the stricter one.
+    private static readonly string HighScoresCreateTableSql =
+        $"CREATE TABLE if not exists {Constants.LOCAL_DATABASE_tableName_highscores}(" +
+        "scoreid   INTEGER PRIMARY KEY AUTOINCREMENT," +
+        "scoreidUnique   TEXT," +
+        "modeid    INTEGER, " +
+        "characterid   INTEGER, " +
+        "character   TEXT, " +
+        "levelid   INTEGER, " +
+        "level    TEXT, " +
+        "os    TEXT, " +
+        "version   TEXT, " +
+        "date  TEXT, " +
+        "time  REAL, " +
+        "totalPoints   INTEGER, " +
+        "longestShot   REAL, " +
+        "totalDistance REAL, " +
+        "maxShotMade   INTEGER, " +
+        "maxShotAtt    INTEGER, " +
+        "consecutiveShots   INTEGER," +
+        "trafficEnabled	INTEGER DEFAULT 0," +
+        "hardcoreEnabled INTEGER DEFAULT 0, " +
+        "enemiesEnabled INTEGER DEFAULT 0, " +
+        "enemiesKilled INTEGER DEFAULT 0," +
+        "platform    TEXT," +
+        "device    TEXT," +
+        "ipaddress   TEXT," +
+        "twoMade   INTEGER, " +
+        "twoAtt    INTEGER, " +
+        "threeMade INTEGER, " +
+        "threeAtt  INTEGER, " +
+        "fourMade  INTEGER, " +
+        "fourAtt   INTEGER, " +
+        "sevenMade INTEGER, " +
+        "sevenAtt  INTEGER, " +
+        "bonusPoints  INTEGER, " +
+        "moneyBallMade  INTEGER, " +
+        "moneyBallAtt  INTEGER, " +
+        "submittedToApi  INTEGER, " +
+        "userName  TEXT DEFAULT NULL, " +
+        "sniperEnabled  INTEGER DEFAULT 0, " +
+        "sniperMode  INTEGER DEFAULT 0, " +
+        "sniperModeName  TEXT DEFAULT 'none', " +
+        "sniperHits  INTEGER DEFAULT 0, " +
+        "sniperShots  INTEGER DEFAULT 0," +
+        "p1TotalPoints INTEGER DEFAULT 0," +
+        "p2TotalPoints INTEGER DEFAULT 0," +
+        "p3TotalPoints INTEGER DEFAULT 0," +
+        "p4TotalPoints INTEGER DEFAULT 0," +
+        "first  TEXT DEFAULT NULL, " +
+        "second  TEXT DEFAULT NULL, " +
+        "third  TEXT DEFAULT NULL, " +
+        "fourth  TEXT DEFAULT NULL, " +
+        "p1IsCpu  INTEGER DEFAULT 0," +
+        "p2IsCpu  INTEGER DEFAULT 0," +
+        "p3IsCpu  INTEGER DEFAULT 0," +
+        "p4IsCpu  INTEGER DEFAULT 0," +
+        "numPlayers  INTEGER DEFAULT 0," +
+        "difficulty  INTEGER DEFAULT 0," +
+        "campaignWins  INTEGER DEFAULT 0," +
+        "campaignLosses  INTEGER DEFAULT 0," +
+        "campaignTies  INTEGER DEFAULT 0);";
+
+    private static readonly string AllTimeStatsCreateTableSql =
+        $"CREATE TABLE if not exists {Constants.LOCAL_DATABASE_tableName_allTimeStats}(" +
+        "userid INTEGER UNIQUE," +
+        "twoMade   INTEGER, " +
+        "twoAtt    INTEGER, " +
+        "threeMade INTEGER, " +
+        "threeAtt  INTEGER, " +
+        "fourMade  INTEGER, " +
+        "fourAtt   INTEGER, " +
+        "sevenMade INTEGER, " +
+        "sevenAtt  INTEGER, " +
+        "moneyBallMade INTEGER, " +
+        "moneyBallAtt  INTEGER, " +
+        "totalPoints  INTEGER, " +
+        "totalDistance REAL, " +
+        "longestShot REAL, " +
+        "timePlayed   REAL," +
+        "enemiesKilled INTEGER DEFAULT 0," +
+        "sniperHits INTEGER DEFAULT 0," +
+        "sniperShots INTEGER DEFAULT 0); ";
+
+    private static readonly string CharacterProfileCreateTableSql =
+        $"CREATE TABLE if not exists {Constants.LOCAL_DATABASE_tableName_characterProfile}(" +
+        "id   INTEGER PRIMARY KEY, " +
+        "accountId TEXT NOT NULL DEFAULT 'legacy', " +
+        "charid   INTEGER, " +
+        "playerName   TEXT," +
+        "objectName   TEXT," +
+        "accuracy2   INTEGER," +
+        "accuracy3   INTEGER," +
+        "accuracy4   INTEGER," +
+        "accuracy7   INTEGER," +
+        "jump   float," +
+        "speed   float," +
+        "runSpeed   float," +
+        "runSpeedHasBall   float," +
+        "luck   INTEGER," +
+        "shootAngle   INTEGER," +
+        "experience   INTEGER DEFAULT 0," +
+        "level   INTEGER DEFAULT 0," +
+        "pointsAvailable   INTEGER DEFAULT 0," +
+        "pointsUsed   INTEGER DEFAULT 0," +
+        "range   INTEGER DEFAULT 0," +
+        "release   INTEGER DEFAULT 0," +
+        "isLocked   INTEGER DEFAULT 0);";
+
+    private static readonly string UserCreateTableSql =
+        $"CREATE TABLE if not exists {Constants.LOCAL_DATABASE_tableName_user}( " +
+        "id INTEGER PRIMARY KEY AUTOINCREMENT, " +
+        "userid INTEGER UNIQUE," +
+        "username  TEXT UNIQUE, " +
+        "firstname TEXT, " +
+        "lastname  TEXT, " +
+        "email TEXT, " +
+        "ipaddress TEXT, " +
+        "signupdate TEXT, " +
+        "lastlogin TEXT, " +
+        "password TEXT, " +
+        "bearerToken TEXT);";
+
+    private static readonly string CheerleaderProfileCreateTableSql =
+        $"CREATE TABLE if not exists {Constants.LOCAL_DATABASE_tableName_cheerleaderProfile}(" +
+        "cid   INTEGER PRIMARY KEY, " +
+        "name   TEXT NOT NULL," +
+        "objectName   TEXT NOT NULL," +
+        "unlockText   TEXT NOT NULL," +
+        "islocked  INTEGER DEFAULT 0);";
+
+    // Runs on DBHelper's shared connection without acquiring DatabaseLocked itself - safe because
+    // its only caller, createDatabase(), already holds the lock for the whole call chain this
+    // method is part of. Adding a check-first guard here would be wrong, not just redundant: it
+    // would see the lock its own caller is holding and refuse to run.
     private void VerifyDatabase()
     {
         string version = "";
 
         try
         {
-            using (IDbConnection dbconn = new SqliteConnection(connection))
             {
-                dbconn.Open();
+                IDbConnection dbconn = dbHelper.Connection;
                 using (IDbCommand dbcmd = dbconn.CreateCommand())
                 {
                     dbcmd.CommandText = verifyDatabaseSqlQuery;
@@ -422,131 +560,15 @@ public class DBConnector : MonoBehaviour
         dbHelper.DatabaseLocked = true;
         try
         {
-            using (IDbConnection dbconn = new SqliteConnection(connection))
             {
-                dbconn.Open();
+                IDbConnection dbconn = dbHelper.Connection;
 
-                string sqlQuery = String.Format(
-
-                    "CREATE TABLE if not exists HighScores(" +
-                    "scoreid   INTEGER PRIMARY KEY AUTOINCREMENT," +
-                    "scoreidUnique   TEXT," +
-                    "modeid    INTEGER, " +
-                    "characterid   INTEGER, " +
-                    "character   TEXT, " +
-                    "levelid   INTEGER, " +
-                    "level    TEXT, " +
-                    "os    TEXT, " +
-                    "version   TEXT, " +
-                    "date  TEXT, " +
-                    "time  REAL, " +
-                    "totalPoints   INTEGER, " +
-                    "longestShot   REAL, " +
-                    "totalDistance REAL, " +
-                    "maxShotMade   INTEGER, " +
-                    "maxShotAtt    INTEGER, " +
-                    "consecutiveShots   INTEGER," +
-                    "trafficEnabled	INTEGER DEFAULT 0," +
-                    "hardcoreEnabled INTEGER DEFAULT 0, " +
-                    "enemiesEnabled INTEGER DEFAULT 0, " +
-                    "enemiesKilled INTEGER DEFAULT 0," +
-                    "platform    TEXT," +
-                    "device    TEXT," +
-                    "ipaddress   TEXT," +
-                    "twoMade   INTEGER, " +
-                    "twoAtt    INTEGER, " +
-                    "threeMade INTEGER, " +
-                    "threeAtt  INTEGER, " +
-                    "fourMade  INTEGER, " +
-                    "fourAtt   INTEGER, " +
-                    "sevenMade INTEGER, " +
-                    "sevenAtt  INTEGER, " +
-                    "bonusPoints  INTEGER, " +
-                    "moneyBallMade  INTEGER, " +
-                    "moneyBallAtt  INTEGER, " +
-                    "submittedToApi  INTEGER, " +
-                    "userName  TEXT DEFAULT NULL, " +
-                    "sniperEnabled  INTEGER DEFAULT 0, " +
-                    "sniperMode  INTEGER DEFAULT 0, " +
-                    "sniperModeName  TEXT DEFAULT 'none', " +
-                    "sniperHits  INTEGER DEFAULT 0, " +
-                    "sniperShots  INTEGER DEFAULT 0," +
-                    "p1TotalPoints INTEGER DEFAULT 0," +
-                    "p2TotalPoints INTEGER DEFAULT 0," +
-                    "p3TotalPoints INTEGER DEFAULT 0," +
-                    "p4TotalPoints INTEGER DEFAULT 0," +
-                    "first  TEXT DEFAULT NULL, " +
-                    "second  TEXT DEFAULT NULL, " +
-                    "third  TEXT DEFAULT NULL, " +
-                    "fourth  TEXT DEFAULT NULL, " +
-                    "p1IsCpu  INTEGER DEFAULT 0," +
-                    "p2IsCpu  INTEGER DEFAULT 0," +
-                    "p3IsCpu  INTEGER DEFAULT 0," +
-                    "p4IsCpu  INTEGER DEFAULT 0," +
-                    "numPlayers  INTEGER DEFAULT 0," +
-                    "difficulty  INTEGER DEFAULT 0," +
-                    "campaignWins  INTEGER DEFAULT 0," +
-                    "campaignLosses  INTEGER DEFAULT 0," +
-                    "campaignTies  INTEGER DEFAULT 0);" +
-
+                string sqlQuery =
+                    HighScoresCreateTableSql +
                     "DROP TABLE if exists Achievements; " +
-
-                    "CREATE TABLE if not exists AllTimeStats(" +
-                    "userid INTEGER UNIQUE," +
-                    "twoMade   INTEGER, " +
-                    "twoAtt    INTEGER, " +
-                    "threeMade INTEGER, " +
-                    "threeAtt  INTEGER, " +
-                    "fourMade  INTEGER, " +
-                    "fourAtt   INTEGER, " +
-                    "sevenMade INTEGER, " +
-                    "sevenAtt  INTEGER, " +
-                    "moneyBallMade INTEGER, " +
-                    "moneyBallAtt  INTEGER, " +
-                    "totalPoints  INTEGER, " +
-                    "totalDistance REAL, " +
-                    "longestShot REAL, " +
-                    "timePlayed   REAL," +
-                    "enemiesKilled INTEGER DEFAULT 0," +
-                    "sniperHits INTEGER DEFAULT 0," +
-                    "sniperShots INTEGER DEFAULT 0); " +
-
-                    "CREATE TABLE if not exists CharacterProfile(" +
-                    "id   INTEGER PRIMARY KEY, " +
-                    "accountId TEXT NOT NULL DEFAULT 'legacy', " +
-                    "charid   INTEGER, " +
-                    "playerName   TEXT," +
-                    "objectName   TEXT," +
-                    "accuracy2   INTEGER," +
-                    "accuracy3   INTEGER," +
-                    "accuracy4   INTEGER," +
-                    "accuracy7   INTEGER," +
-                    "jump   float," +
-                    "speed   float," +
-                    "runSpeed   float," +
-                    "runSpeedHasBall   float," +
-                    "luck   INTEGER," +
-                    "shootAngle   INTEGER," +
-                    "experience   INTEGER DEFAULT 0," +
-                    "level   INTEGER DEFAULT 0," +
-                    "pointsAvailable   INTEGER DEFAULT 0," +
-                    "pointsUsed   INTEGER DEFAULT 0," +
-                    "range   INTEGER DEFAULT 0," +
-                    "release   INTEGER DEFAULT 0," +
-                    "isLocked   INTEGER DEFAULT 0);" +
-
-                    "CREATE TABLE if not exists User( " +
-                    "id INTEGER PRIMARY KEY AUTOINCREMENT, " +
-                    "userid INTEGER UNIQUE," +
-                    "username  TEXT UNIQUE, " +
-                    "firstname TEXT, " +
-                    "lastname  TEXT, " +
-                    "email TEXT, " +
-                    "ipaddress TEXT, " +
-                    "signupdate TEXT, " +
-                    "lastlogin TEXT, " +
-                    "password TEXT, " +
-                    "bearerToken TEXT);");
+                    AllTimeStatsCreateTableSql +
+                    CharacterProfileCreateTableSql +
+                    UserCreateTableSql;
 
                 using (IDbCommand dbcmd = dbconn.CreateCommand())
                 {
@@ -557,10 +579,10 @@ public class DBConnector : MonoBehaviour
                 // bring pre-existing local databases (from older app versions) up to date with
                 // any columns added since they were first created - CREATE TABLE IF NOT EXISTS
                 // above does nothing for a table that already exists but is missing new columns.
-                EnsureTableColumns(dbconn, "HighScores", HighScoresExpectedColumns);
-                EnsureTableColumns(dbconn, "AllTimeStats", AllTimeStatsExpectedColumns);
-                EnsureTableColumns(dbconn, "CharacterProfile", CharacterProfileExpectedColumns);
-                EnsureTableColumns(dbconn, "User", UserExpectedColumns);
+                EnsureTableColumns(dbconn, Constants.LOCAL_DATABASE_tableName_highscores, HighScoresExpectedColumns);
+                EnsureTableColumns(dbconn, Constants.LOCAL_DATABASE_tableName_allTimeStats, AllTimeStatsExpectedColumns);
+                EnsureTableColumns(dbconn, Constants.LOCAL_DATABASE_tableName_characterProfile, CharacterProfileExpectedColumns);
+                EnsureTableColumns(dbconn, Constants.LOCAL_DATABASE_tableName_user, UserExpectedColumns);
 
                 // local password comparison is never performed (login is authenticated against
                 // the server); scrub any plaintext password persisted by older app versions.
@@ -575,14 +597,14 @@ public class DBConnector : MonoBehaviour
                 using (IDbCommand scrubCmd = dbconn.CreateCommand())
                 {
                     scrubCmd.CommandText =
-                        "UPDATE User SET password = NULL WHERE password IS NOT NULL";
+                        $"UPDATE {Constants.LOCAL_DATABASE_tableName_user} SET password = NULL WHERE password IS NOT NULL";
                     scrubCmd.ExecuteNonQuery();
                 }
 
                 using (IDbCommand scrubTokenCmd = dbconn.CreateCommand())
                 {
                     scrubTokenCmd.CommandText =
-                        "UPDATE User SET bearerToken = NULL WHERE bearerToken IS NOT NULL";
+                        $"UPDATE {Constants.LOCAL_DATABASE_tableName_user} SET bearerToken = NULL WHERE bearerToken IS NOT NULL";
                     scrubTokenCmd.ExecuteNonQuery();
                 }
             }
@@ -605,9 +627,8 @@ public class DBConnector : MonoBehaviour
 
         try
         {
-            using (IDbConnection dbconn = new SqliteConnection(connection))
             {
-                dbconn.Open();
+                IDbConnection dbconn = dbHelper.Connection;
                 using (IDbCommand dbcmd = dbconn.CreateCommand())
                 {
                     // DROP TABLE [IF EXISTS] [schema_name.]table_name;
@@ -615,8 +636,8 @@ public class DBConnector : MonoBehaviour
                         //"DROP TABLE if exists AllTimeStats; " +
                         "DROP TABLE if exists Achievements; " +
                         //"DROP TABLE if exists CharacterProfile; " +
-                        "DROP TABLE if exists CheerleaderProfile; " +
-                        "DROP TABLE if exists HighScores; ";
+                        $"DROP TABLE if exists {Constants.LOCAL_DATABASE_tableName_cheerleaderProfile}; " +
+                        $"DROP TABLE if exists {Constants.LOCAL_DATABASE_tableName_highscores}; ";
                     //"DROP TABLE if exists User; ";
 
                     dbcmd.CommandText = sqlQuery;
@@ -641,9 +662,8 @@ public class DBConnector : MonoBehaviour
 
         try
         {
-            using (IDbConnection dbconn = new SqliteConnection(connection))
             {
-                dbconn.Open();
+                IDbConnection dbconn = dbHelper.Connection;
                 using (IDbCommand dbcmd = dbconn.CreateCommand())
                 {
                     // DROP TABLE [IF EXISTS] [schema_name.]table_name;
@@ -661,6 +681,15 @@ public class DBConnector : MonoBehaviour
         }
     }
 
+    /// <summary>
+    /// Runs on DBHelper's shared connection but deliberately does not check or acquire
+    /// DatabaseLocked itself. A "busy" answer here would be indistinguishable from a genuine
+    /// "table doesn't exist" to every caller, and returning it during a real lock-contention
+    /// window could trigger unwanted re-seeding of existing data - worse than the caller waiting.
+    /// LoadManager, the only current caller, waits for the lock to clear before calling this and
+    /// the synchronous block around it, rather than this method guessing at what an unavailable
+    /// answer should mean.
+    /// </summary>
     public bool tableExists(string tableName)
     {
         int count = 0;
@@ -668,9 +697,8 @@ public class DBConnector : MonoBehaviour
 
         try
         {
-            using (IDbConnection dbconn = new SqliteConnection(connection))
             {
-                dbconn.Open(); //Open connection to the database.
+                IDbConnection dbconn = dbHelper.Connection;
                 using (IDbCommand dbcmd = dbconn.CreateCommand())
                 {
                     dbcmd.CommandText = "SELECT name FROM sqlite_master WHERE type = 'table' AND name = @tableName;";
@@ -704,35 +732,11 @@ public class DBConnector : MonoBehaviour
 
         try
         {
-            using (IDbConnection dbconn = new SqliteConnection(connection))
             {
-                dbconn.Open();
+                IDbConnection dbconn = dbHelper.Connection;
                 using (IDbCommand dbcmd = dbconn.CreateCommand())
                 {
-                    dbcmd.CommandText =
-                        "CREATE TABLE if not exists CharacterProfile(" +
-                        "id   INTEGER PRIMARY KEY, " +
-                        "accountId TEXT NOT NULL DEFAULT 'legacy', " +
-                        "charid   INTEGER," +
-                        "playerName   TEXT NOT NULL," +
-                        "objectName   TEXT NOT NULL," +
-                        "accuracy2   INTEGER," +
-                        "accuracy3   INTEGER," +
-                        "accuracy4   INTEGER," +
-                        "accuracy7   INTEGER," +
-                        "jump   float," +
-                        "speed   float," +
-                        "runSpeed   float," +
-                        "runSpeedHasBall   float," +
-                        "luck   INTEGER," +
-                        "shootAngle   INTEGER," +
-                        "experience   INTEGER DEFAULT 0," +
-                        "level   INTEGER DEFAULT 0," +
-                        "pointsAvailable   INTEGER DEFAULT 0," +
-                        "pointsUsed   INTEGER DEFAULT 0," +
-                        "range   INTEGER DEFAULT 0," +
-                        "release   INTEGER DEFAULT 0," +
-                        "isLocked   INTEGER DEFAULT 0);";
+                    dbcmd.CommandText = CharacterProfileCreateTableSql;
                     dbcmd.ExecuteNonQuery();
                 }
             }
@@ -753,101 +757,11 @@ public class DBConnector : MonoBehaviour
 
         try
         {
-            using (IDbConnection dbconn = new SqliteConnection(connection))
             {
-                dbconn.Open(); //Open connection to the database.
+                IDbConnection dbconn = dbHelper.Connection;
                 using (IDbCommand dbcmd = dbconn.CreateCommand())
                 {
-                    dbcmd.CommandText =
-                        "CREATE TABLE if not exists CheerleaderProfile(" +
-                        "cid   INTEGER PRIMARY KEY, " +
-                        "name   TEXT NOT NULL," +
-                        "objectName   TEXT NOT NULL," +
-                        "unlockText   TEXT NOT NULL," +
-                        "islocked  INTEGER DEFAULT 0);";
-                    dbcmd.ExecuteNonQuery();
-                }
-            }
-
-            dbHelper.DatabaseLocked = false;
-        }
-        catch (Exception e)
-        {
-            dbHelper.DatabaseLocked = false;
-            Debug.Log("ERROR : " + e);
-        }
-    }
-
-    public IEnumerator createTableUser()
-    {
-        yield return new WaitUntil(() => !dbHelper.DatabaseLocked);
-
-        dbHelper.DatabaseLocked = true;
-        try
-        {
-            using (IDbConnection dbconn = new SqliteConnection(connection))
-            {
-                dbconn.Open();
-                using (IDbCommand dbcmd = dbconn.CreateCommand())
-                {
-                    dbcmd.CommandText =
-                        "CREATE TABLE if not exists User( " +
-                        "id INTEGER PRIMARY KEY AUTOINCREMENT, " +
-                        "userid INTEGER UNIQUE," +
-                        "username  TEXT UNIQUE, " +
-                        "firstname TEXT, " +
-                        "lastname  TEXT, " +
-                        "email TEXT, " +
-                        "ipaddress TEXT, " +
-                        "signupdate TEXT, " +
-                        "lastlogin TEXT, " +
-                        "password TEXT, " +
-                        "bearerToken TEXT);";
-                    dbcmd.ExecuteNonQuery();
-                }
-            }
-
-            dbHelper.DatabaseLocked = false;
-        }
-        catch (Exception e)
-        {
-            dbHelper.DatabaseLocked = false;
-            Debug.Log("ERROR : " + e);
-        }
-    }
-
-    public IEnumerator createTableAllTimeStats()
-    {
-        yield return new WaitUntil(() => !dbHelper.DatabaseLocked);
-
-        dbHelper.DatabaseLocked = true;
-        try
-        {
-            using (IDbConnection dbconn = new SqliteConnection(connection))
-            {
-                dbconn.Open();
-                using (IDbCommand dbcmd = dbconn.CreateCommand())
-                {
-                    dbcmd.CommandText =
-                        "CREATE TABLE if not exists AllTimeStats(" +
-                        "userid INTEGER UNIQUE," +
-                        "twoMade   INTEGER, " +
-                        "twoAtt    INTEGER, " +
-                        "threeMade INTEGER, " +
-                        "threeAtt  INTEGER, " +
-                        "fourMade  INTEGER, " +
-                        "fourAtt   INTEGER, " +
-                        "sevenMade INTEGER, " +
-                        "sevenAtt  INTEGER, " +
-                        "moneyBallMade INTEGER, " +
-                        "moneyBallAtt  INTEGER, " +
-                        "totalPoints  INTEGER, " +
-                        "totalDistance REAL, " +
-                        "longestShot REAL, " +
-                        "timePlayed   REAL," +
-                        "enemiesKilled INTEGER DEFAULT 0," +
-                        "sniperHits INTEGER DEFAULT 0," +
-                        "sniperShots INTEGER DEFAULT 0); ";
+                    dbcmd.CommandText = CheerleaderProfileCreateTableSql;
                     dbcmd.ExecuteNonQuery();
                 }
             }
