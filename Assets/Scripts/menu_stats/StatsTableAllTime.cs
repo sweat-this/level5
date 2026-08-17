@@ -98,7 +98,7 @@ public class StatsTableAllTime : MonoBehaviour
             }
             catch (Exception e)
             {
-                Debug.Log("ERROR : " + e);
+                Debug.LogError("ERROR : " + e);
                 return;
             }
     }

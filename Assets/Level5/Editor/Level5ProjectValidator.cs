@@ -249,6 +249,270 @@ public sealed class Level5ProjectValidator : IPreprocessBuildWithReport
             || fileName.IndexOf("_dev_", StringComparison.OrdinalIgnoreCase) >= 0;
     }
 
+    /// <summary>
+    /// Folders whose assets are third party or imported and are not ours to reserialize.
+    /// </summary>
+    private static readonly string[] BinaryAssetScanExclusions =
+    {
+        "Assets/Plugins/",
+        "Assets/Standard Assets/",
+        "Assets/OmniSARTechnologies/",
+        "Assets/TextMesh Pro/",
+        "Assets/LevelPlay/",
+        "Assets/MobileDependencyResolver/",
+        "Assets/Joystick Pack/",
+    };
+
+    /// <summary>
+    /// Prefabs Unity refuses to reserialize because they contain a missing MonoBehaviour script:
+    /// "You are trying to save a Prefab with a missing script. This is not allowed."
+    ///
+    /// Being binary is why nothing caught this earlier - <see cref="CollectMissingScriptReferenceErrors"/>
+    /// parses YAML, so it could not see inside them. Three of these are live
+    /// (<c>Cameras _Mobile</c> is referenced by 22 assets, <c>Sunglasses</c> by 26, <c>NavMesh</c> by
+    /// one); the other four are referenced by nothing. Repairing the missing scripts is gameplay-asset
+    /// work, not menu work, so they are recorded here rather than fixed alongside AUD-088 - this list
+    /// is the outstanding item, and shrinking it to empty is the follow-up.
+    /// </summary>
+    private static readonly string[] BinaryAssetsBlockedByMissingScripts =
+    {
+        "Assets/Resources/Prefabs/menu_start/StartManager.prefab",
+        "Assets/Resources/Prefabs/camera/Cameras.prefab",
+        "Assets/Resources/Prefabs/camera/Cameras _Mobile.prefab",
+        "Assets/Resources/Prefabs/critical/NavMesh.prefab",
+        "Assets/Resources/Prefabs/enemy_misc/enemyShotMarker.prefab",
+        "Assets/Resources/Prefabs/auto_players/enemy_executioner_auto.prefab",
+        "Assets/Resources/Prefabs/they_live/Sunglasses.prefab",
+    };
+
+    /// <summary>
+    /// AUD-088: the project is on Force Text, and .gitattributes declares
+    /// <c>*.prefab text eol=lf merge=unityyamlmerge</c>, but a set of assets - including every menu
+    /// screen's UI except the start menu - were still Unity 2020/2021 binary because they were never
+    /// reserialized after the switch. Nothing could review, diff or merge a change to them.
+    ///
+    /// Scenes and prefabs only. Baked data (LightingData, NavMesh, Terrain) is written binary by
+    /// Unity whatever the serialization mode says, so it is not ours to enforce.
+    ///
+    /// This fails once they regress, so the reserialization does not have to be re-done later.
+    /// Run <c>Level5/Reserialize Binary Assets</c> to fix any file this reports.
+    /// </summary>
+    public static List<string> CollectBinarySerializedAssetErrors()
+    {
+        List<string> errors = new List<string>();
+        if (!Directory.Exists("Assets"))
+        {
+            return errors;
+        }
+
+        foreach (string file in Directory.GetFiles("Assets", "*.*", SearchOption.AllDirectories))
+        {
+            string extension = Path.GetExtension(file);
+            if (extension != ".prefab" && extension != ".unity")
+            {
+                continue;
+            }
+
+            string normalized = file.Replace('\\', '/');
+            if (IsExcludedFromBinaryAssetScan(normalized)
+                || Array.IndexOf(BinaryAssetsBlockedByMissingScripts, normalized) >= 0
+                || IsTextSerialized(file))
+            {
+                continue;
+            }
+
+            errors.Add(
+                normalized
+                    + " is binary-serialized while the project is Force Text. Run"
+                    + " Level5/Reserialize Binary Assets.");
+        }
+
+        return errors;
+    }
+
+    private static bool IsExcludedFromBinaryAssetScan(string normalizedPath)
+    {
+        foreach (string excluded in BinaryAssetScanExclusions)
+        {
+            if (normalizedPath.StartsWith(excluded, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// A text-serialized Unity asset always opens with the YAML directive. Binary assets start with
+    /// their own header, so the first bytes are enough to tell them apart without parsing.
+    /// </summary>
+    private static bool IsTextSerialized(string path)
+    {
+        try
+        {
+            using (FileStream stream = File.OpenRead(path))
+            {
+                byte[] header = new byte[5];
+                int read = stream.Read(header, 0, header.Length);
+                if (read < header.Length)
+                {
+                    return true;
+                }
+
+                // tolerate a UTF-8 BOM
+                int offset = header[0] == 0xEF ? 3 : 0;
+                if (offset > 0)
+                {
+                    stream.Position = 3;
+                    read = stream.Read(header, 0, header.Length);
+                    if (read < header.Length)
+                    {
+                        return true;
+                    }
+                }
+
+                return header[0] == (byte)'%'
+                    && header[1] == (byte)'Y'
+                    && header[2] == (byte)'A'
+                    && header[3] == (byte)'M'
+                    && header[4] == (byte)'L';
+            }
+        }
+        catch (IOException)
+        {
+            return true;
+        }
+    }
+
+    /// <summary>
+    /// Reserializes every asset <see cref="CollectBinarySerializedAssetErrors"/> reports, in place,
+    /// preserving GUIDs. This is the editor half of AUD-088 - it cannot run from a headless tool.
+    /// </summary>
+    [MenuItem("Level5/Reserialize Binary Assets")]
+    public static void ReserializeBinaryAssets()
+    {
+        List<string> errors = CollectBinarySerializedAssetErrors();
+        if (errors.Count == 0)
+        {
+            Debug.Log("No binary-serialized assets found.");
+            return;
+        }
+
+        List<string> paths = new List<string>(errors.Count);
+        foreach (string error in errors)
+        {
+            int end = error.IndexOf(" is binary-serialized", StringComparison.Ordinal);
+            if (end > 0)
+            {
+                paths.Add(error.Substring(0, end));
+            }
+        }
+
+        AssetDatabase.ForceReserializeAssets(paths, ForceReserializeAssetsOptions.ReserializeAssetsAndMetadata);
+        AssetDatabase.SaveAssets();
+        Debug.Log("Reserialized " + paths.Count + " binary assets to text:\n- " + string.Join("\n- ", paths.ToArray()));
+    }
+
+    /// <summary>The one scaling contract every menu canvas follows (AUD-091).</summary>
+    public const float MenuCanvasReferenceWidth = 1920f;
+    public const float MenuCanvasReferenceHeight = 1080f;
+    public const float MenuCanvasMatchWidthOrHeight = 0.5f;
+
+    /// <summary>
+    /// AUD-091: the start menu carried three canvases with three different CanvasScaler settings -
+    /// 800x400 at scale 0.9, 800x600, and 1920x1080 - all matching on width only. Three co-displayed
+    /// layers scaling at three different rates hold together only at the aspect they were authored
+    /// on. One contract, asserted here.
+    ///
+    /// Canvases inside assets that are still binary-serialized cannot be inspected, so they are
+    /// reported by <see cref="CollectBinarySerializedAssetErrors"/> instead of silently passing.
+    /// </summary>
+    public static List<string> CollectMenuCanvasContractErrors()
+    {
+        List<string> errors = new List<string>();
+        foreach (EditorBuildSettingsScene buildScene in EditorBuildSettings.scenes)
+        {
+            if (!buildScene.enabled
+                || string.IsNullOrWhiteSpace(buildScene.path)
+                || !File.Exists(buildScene.path)
+                || !IsMenuScenePath(buildScene.path))
+            {
+                continue;
+            }
+
+            Scene existing = SceneManager.GetSceneByPath(buildScene.path);
+            bool alreadyOpen = existing.IsValid() && existing.isLoaded;
+            Scene scene = alreadyOpen
+                ? existing
+                : EditorSceneManager.OpenScene(buildScene.path, OpenSceneMode.Additive);
+            try
+            {
+                foreach (GameObject root in scene.GetRootGameObjects())
+                {
+                    foreach (UnityEngine.UI.CanvasScaler scaler in
+                        root.GetComponentsInChildren<UnityEngine.UI.CanvasScaler>(true))
+                    {
+                        AddCanvasScalerErrors(errors, buildScene.path, scaler);
+                    }
+                }
+            }
+            finally
+            {
+                if (!alreadyOpen)
+                {
+                    EditorSceneManager.CloseScene(scene, true);
+                }
+            }
+        }
+
+        return errors;
+    }
+
+    private static void AddCanvasScalerErrors(
+        List<string> errors,
+        string scenePath,
+        UnityEngine.UI.CanvasScaler scaler)
+    {
+        string where = scenePath + " -> " + scaler.gameObject.name;
+
+        if (scaler.uiScaleMode != UnityEngine.UI.CanvasScaler.ScaleMode.ScaleWithScreenSize)
+        {
+            errors.Add(where + " must use ScaleWithScreenSize, not " + scaler.uiScaleMode + ".");
+            return;
+        }
+
+        if (!Mathf.Approximately(scaler.referenceResolution.x, MenuCanvasReferenceWidth)
+            || !Mathf.Approximately(scaler.referenceResolution.y, MenuCanvasReferenceHeight))
+        {
+            errors.Add(
+                where + " reference resolution is " + scaler.referenceResolution
+                    + ", expected " + MenuCanvasReferenceWidth + "x" + MenuCanvasReferenceHeight + ".");
+        }
+
+        if (scaler.screenMatchMode != UnityEngine.UI.CanvasScaler.ScreenMatchMode.MatchWidthOrHeight)
+        {
+            errors.Add(where + " must use ScreenMatchMode.MatchWidthOrHeight.");
+        }
+        else if (!Mathf.Approximately(scaler.matchWidthOrHeight, MenuCanvasMatchWidthOrHeight))
+        {
+            errors.Add(
+                where + " matchWidthOrHeight is " + scaler.matchWidthOrHeight
+                    + ", expected " + MenuCanvasMatchWidthOrHeight + ".");
+        }
+
+        if (!Mathf.Approximately(scaler.scaleFactor, 1f))
+        {
+            errors.Add(where + " scaleFactor is " + scaler.scaleFactor + ", expected 1.");
+        }
+    }
+
+    private static bool IsMenuScenePath(string path)
+    {
+        return Path.GetFileNameWithoutExtension(path)
+            .StartsWith("level_00_", StringComparison.OrdinalIgnoreCase);
+    }
+
     public static List<string> CollectMissingScriptReferenceErrors()
     {
         List<string> errors = new List<string>();
@@ -436,7 +700,10 @@ public sealed class Level5ProjectValidator : IPreprocessBuildWithReport
                 // scenes with none of these managers have nothing to satisfy
                 if (!SceneContainsComponent<GameRules>(scene)
                     && !SceneContainsComponent<Pause>(scene)
-                    && !SceneContainsComponent<ProgressionManager>(scene))
+                    && !SceneContainsComponent<ProgressionManager>(scene)
+                    && !SceneContainsComponent<StartManager>(scene)
+                    && !SceneContainsComponent<OptionsManager>(scene)
+                    && !SceneContainsComponent<StatsManager>(scene))
                 {
                     continue;
                 }
@@ -467,6 +734,38 @@ public sealed class Level5ProjectValidator : IPreprocessBuildWithReport
                         buildScene.path,
                         "ProgressionManager",
                         ProgressionManager.RequiredProgressionObjectNames,
+                        objectNames);
+                }
+
+                // AUD-112: the menu screens name-resolve more objects than the gameplay scenes do,
+                // and were outside this contract entirely.
+                if (SceneContainsComponent<StartManager>(scene))
+                {
+                    AddMissingObjectErrors(
+                        errors,
+                        buildScene.path,
+                        "StartManager",
+                        StartManager.RequiredSceneObjectNames,
+                        objectNames);
+                }
+
+                if (SceneContainsComponent<OptionsManager>(scene))
+                {
+                    AddMissingObjectErrors(
+                        errors,
+                        buildScene.path,
+                        "OptionsManager",
+                        OptionsManager.RequiredSceneObjectNames,
+                        objectNames);
+                }
+
+                if (SceneContainsComponent<StatsManager>(scene))
+                {
+                    AddMissingObjectErrors(
+                        errors,
+                        buildScene.path,
+                        "StatsManager",
+                        StatsManager.RequiredSceneObjectNames,
                         objectNames);
                 }
             }

@@ -1,4 +1,4 @@
-using Assets.Scripts.database;
+﻿using Assets.Scripts.database;
 using Assets.Scripts.restapi;
 using Assets.Scripts.Utility;
 using System;
@@ -223,8 +223,8 @@ public class AccountManager : MonoBehaviour
         UiSelectionAdapter.RegisterButton(createNewButton, LoadCreateNewAccount);
         UiSelectionAdapter.RegisterButton(loginExistingButton, LoadLoginExisting);
         UiSelectionAdapter.RegisterButton(loginLocalButton, LoadLoginLocal);
-        RegisterRequiredButtonCallback(checkEmailButton, SelectEmailInput);
-        RegisterRequiredButtonCallback(checkUserNameButton, SelectUsernameInput);
+        UiSelectionAdapter.RegisterButton(checkEmailButton, SelectEmailInput);
+        UiSelectionAdapter.RegisterButton(checkUserNameButton, SelectUsernameInput);
     }
 
     private void UnregisterButtonCallbacks()
@@ -239,17 +239,6 @@ public class AccountManager : MonoBehaviour
         UiSelectionAdapter.UnregisterButton(loginLocalButton, LoadLoginLocal);
         UiSelectionAdapter.UnregisterButton(checkEmailButton, SelectEmailInput);
         UiSelectionAdapter.UnregisterButton(checkUserNameButton, SelectUsernameInput);
-    }
-
-    private void RegisterRequiredButtonCallback(Button button, UnityEngine.Events.UnityAction action)
-    {
-        if (button == null || action == null)
-        {
-            return;
-        }
-
-        button.onClick.RemoveListener(action);
-        button.onClick.AddListener(action);
     }
 
     private void RegisterInputSubmitCallbacks()

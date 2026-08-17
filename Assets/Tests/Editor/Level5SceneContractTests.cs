@@ -52,6 +52,45 @@ public class Level5SceneContractTests
                 + string.Join("\n- ", errors.ToArray()));
     }
 
+    /// <summary>
+    /// AUD-088: the project is on Force Text and `.gitattributes` treats `*.prefab` as text, but
+    /// eighteen assets were still Unity 2021.1 binary - including every menu screen's UI except the
+    /// start menu. A change to any of them was unreviewable and unmergeable.
+    ///
+    /// Fixing this needs the editor: run `Level5/Reserialize Binary Assets`. This test is what tells
+    /// you it has not been run, or has regressed. It is deliberately not part of
+    /// `Level5ProjectValidator.ValidateOrThrow` yet - promoting it to the build preprocessor is the
+    /// follow-up once the reserialized assets are committed, so builds are not blocked in between.
+    /// </summary>
+    [Test]
+    public void UnityAssetsAreTextSerialized()
+    {
+        List<string> errors = Level5ProjectValidator.CollectBinarySerializedAssetErrors();
+
+        Assert.That(
+            errors,
+            Is.Empty,
+            "Assets are binary-serialized while the project is Force Text:\n- "
+                + string.Join("\n- ", errors.ToArray()));
+    }
+
+    /// <summary>
+    /// AUD-091: the start menu had three canvases scaling at three different rates - 800x400 at
+    /// 0.9, 800x600, and 1920x1080, all matching on width only - so the layers only lined up at the
+    /// aspect they were authored on.
+    /// </summary>
+    [Test]
+    public void MenuCanvasesShareOneScalingContract()
+    {
+        List<string> errors = Level5ProjectValidator.CollectMenuCanvasContractErrors();
+
+        Assert.That(
+            errors,
+            Is.Empty,
+            "Menu canvases do not follow the shared scaling contract:\n- "
+                + string.Join("\n- ", errors.ToArray()));
+    }
+
     [Test]
     public void UnityAssetsDoNotHaveMissingScriptReferences()
     {

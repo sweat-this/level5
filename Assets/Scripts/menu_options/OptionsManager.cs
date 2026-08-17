@@ -1,4 +1,4 @@
-
+﻿
 using System;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -25,6 +25,25 @@ public class OptionsManager : MonoBehaviour
     private const string gamepadMenuButtonName = "controls_gamepad";
     private const string touchMenuButtonName = "controls_touch";
 
+    /// <summary>
+    /// Objects this manager resolves by name. Level5ProjectValidator asserts they exist in any
+    /// scene carrying an OptionsManager (AUD-112).
+    /// </summary>
+    public static readonly string[] RequiredSceneObjectNames =
+    {
+        mainMenuButtonName,
+        statsMenuButtonName,
+        quitButtonName,
+        optionsMenuButtonName,
+        creditsMenuButtonName,
+        progressionMenuButtonName,
+        accountMenuButtonName,
+        keyboardOnlyMenuButtonName,
+        keyboardMouseMenuButtonName,
+        gamepadMenuButtonName,
+        touchMenuButtonName
+    };
+
     [SerializeField]
     GameObject keyboardOnlyObject;
     [SerializeField]
@@ -46,9 +65,17 @@ public class OptionsManager : MonoBehaviour
     [SerializeField] Button gamepadButton;
     [SerializeField] Button touchButton;
 
+    private bool initialized;
+
     private void OnEnable()
     {
         PlayerControlsProvider.EnableMenuMaps();
+        // AUD-102: OnDisable unregisters every onClick but this used to not register them again,
+        // so disabling and re-enabling this component left every button on the screen inert.
+        if (initialized)
+        {
+            RegisterButtonCallbacks();
+        }
     }
     private void OnDisable()
     {
@@ -74,8 +101,17 @@ public class OptionsManager : MonoBehaviour
         RegisterButtonCallbacks();
         DisplayKeyboardOnlyControls();
         UiSelectionAdapter.EnsureSelected(GetDefaultSelectedButton());
+        initialized = true;
     }
 
+    /// <summary>
+    /// Shows the control scheme for whichever control is selected.
+    ///
+    /// The four checks below used to run their Display* method on every frame the selection rested
+    /// on a controls button, so <see cref="DisplayControls"/> - four SetActive calls and four
+    /// string comparisons - ran every frame for as long as the player sat there (AUD-109). It now
+    /// only runs when the selection actually changes.
+    /// </summary>
     private void Update()
     {
         GameObject selectedObject = UiSelectionAdapter.EnsureSelected(GetDefaultSelectedButton());
@@ -84,7 +120,13 @@ public class OptionsManager : MonoBehaviour
             return;
         }
 
-        currentHighlightedButton = selectedObject.name;
+        string selectedName = selectedObject.name;
+        if (selectedName == currentHighlightedButton)
+        {
+            return;
+        }
+
+        currentHighlightedButton = selectedName;
         if (currentHighlightedButton.Equals(keyboardOnlyMenuButtonName))
         {
             DisplayKeyboardOnlyControls();

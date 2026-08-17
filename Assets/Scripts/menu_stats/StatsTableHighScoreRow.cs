@@ -1,21 +1,26 @@
-﻿using UnityEngine;
+using UnityEngine;
 using UnityEngine.UI;
 
+/// <summary>
+/// One row of the high score table.
+///
+/// The <see cref="Text"/> references are serialized on the prefab. They used to be bound in
+/// <c>Start</c> by <c>transform.GetChild(0..5)</c>, which silently reassigned every column if
+/// anyone reordered the row's children, and the six values used to be pushed into those fields
+/// from <c>Update</c> every frame whether or not anything had changed (AUD-108). The values are
+/// now written once, when the row is given data.
+///
+/// The child-index fallback is kept for rows whose references are not wired yet, so a prefab that
+/// has not been re-saved still renders instead of throwing. It logs, so the gap is visible.
+/// </summary>
 public class StatsTableHighScoreRow : MonoBehaviour
 {
-    const string scoreName = "score";
-    const string characterName = "character";
-    const string levelName = "level";
-    const string dateName = "date";
-    const string hardcoreName = "hardcore";
-    const string userName = "userName";
-
-    public Text userNameText;
-    public Text scoreText;
-    public Text characterText;
-    public Text levelText;
-    public Text dateText;
-    public Text hardcoreText;
+    [SerializeField] public Text userNameText;
+    [SerializeField] public Text scoreText;
+    [SerializeField] public Text characterText;
+    [SerializeField] public Text levelText;
+    [SerializeField] public Text dateText;
+    [SerializeField] public Text hardcoreText;
 
     [SerializeField]
     public string Score;
@@ -36,25 +41,70 @@ public class StatsTableHighScoreRow : MonoBehaviour
     [SerializeField]
     public string Platform;
 
-    // Start is called before the first frame update
-    void Start()
+    private bool textReferencesResolved;
+
+    // No Awake resolve on purpose. DBHelper carries query results as StatsTableHighScoreRow
+    // components added to its own GameObject, so most instances of this component are data only
+    // and have no Text children to find. Resolution happens the first time a row is actually
+    // bound to the table.
+
+    /// <summary>
+    /// Falls back to the old child-index binding for any reference the prefab does not supply.
+    /// Runs once.
+    /// </summary>
+    private void ResolveTextReferences()
     {
-        userNameText = transform.GetChild(0).GetComponent<Text>();
-        scoreText = transform.GetChild(1).GetComponent<Text>();
-        characterText = transform.GetChild(2).GetComponent<Text>();
-        levelText = transform.GetChild(3).GetComponent<Text>();
-        dateText = transform.GetChild(4).GetComponent<Text>();
-        hardcoreText = transform.GetChild(5).GetComponent<Text>();
+        if (textReferencesResolved)
+        {
+            return;
+        }
+
+        textReferencesResolved = true;
+
+        userNameText = userNameText != null ? userNameText : TextAtChild(0);
+        scoreText = scoreText != null ? scoreText : TextAtChild(1);
+        characterText = characterText != null ? characterText : TextAtChild(2);
+        levelText = levelText != null ? levelText : TextAtChild(3);
+        dateText = dateText != null ? dateText : TextAtChild(4);
+        hardcoreText = hardcoreText != null ? hardcoreText : TextAtChild(5);
     }
 
-    private void Update()
+    private Text TextAtChild(int index)
     {
-        scoreText.text = Score;
-        characterText.text = Character;
-        levelText.text = Level;
-        dateText.text = Date;
-        hardcoreText.text = HardcoreEnabled;
-        userNameText.text = UserName;
+        if (index < 0 || index >= transform.childCount)
+        {
+            Debug.LogWarning(
+                "StatsTableHighScoreRow has no serialized Text for column " + index
+                    + " and no child at that index.",
+                this);
+            return null;
+        }
+
+        return transform.GetChild(index).GetComponent<Text>();
+    }
+
+    /// <summary>
+    /// Pushes the current field values into the row's <see cref="Text"/> components. Called when
+    /// the row is given data, not every frame.
+    /// </summary>
+    public void Bind()
+    {
+        ResolveTextReferences();
+
+        SetText(userNameText, UserName);
+        SetText(scoreText, Score);
+        SetText(characterText, Character);
+        SetText(levelText, Level);
+        SetText(dateText, Date);
+        SetText(hardcoreText, HardcoreEnabled);
+    }
+
+    private static void SetText(Text target, string value)
+    {
+        if (target != null)
+        {
+            target.text = value;
+        }
     }
 
     public void setRowValues(string scor, string charact, string lvl, string dat, string hrdcor, string uname)

@@ -123,7 +123,6 @@ public class ProgressionManager : MonoBehaviour
         progression7AccuracyName
     };
 
-
     private int playerSelectedIndex;
 
     private PlayerControls controls;
@@ -263,69 +262,30 @@ public class ProgressionManager : MonoBehaviour
         }
 
         currentHighlightedButton = selectedObject.name; // + "_description";
-        HandleSelectedProgressionControl(selectedObject);
+        HandleSelectedProgressionControl();
     }
 
-    private void HandleSelectedProgressionControl(GameObject selectedObject)
+    /// <summary>
+    /// Handles the one progression input that has no button of its own.
+    ///
+    /// This used to also poll Right/Left to move selection - which the InputSystemUIInputModule
+    /// already does - Up/Down to cycle the selected character, and Submit to add a point (AUD-096).
+    /// Submit duplicated the onClick route that <see cref="RegisterButtonCallbacks"/> now provides,
+    /// and Up/Down fought the module for the same press: one press both moved the selection and
+    /// changed the character.
+    ///
+    /// Cancel is kept. It is the only route that removes a point, it is not a navigation axis, and
+    /// nothing else on this screen consumes it. Adding a point is a click; taking one back is
+    /// Cancel on the stat you want to reduce.
+    /// </summary>
+    private void HandleSelectedProgressionControl()
     {
         if (buttonPressed || string.IsNullOrEmpty(currentHighlightedButton))
         {
             return;
         }
 
-        HandleSelectionMovement(selectedObject);
-        HandleProgressionInput();
-    }
-
-    private void HandleSelectionMovement(GameObject selectedObject)
-    {
-        Button selectedButton = selectedObject.GetComponent<Button>();
-
-        // right, go to change options
-        if (controls.UINavigation.Right.triggered
-            && selectedButton != null
-            && selectedButton.FindSelectableOnRight() != null
-            && currentHighlightedButton.Equals(playerSelectButtonName))
-        {
-            UiSelectionAdapter.TrySelect(selectedButton.FindSelectableOnRight().gameObject);
-        }
-
-        // left, return to option select
-        if (controls.UINavigation.Left.triggered
-            && selectedButton != null
-            && currentHighlightedButton.Equals(playerSelectButtonName))
-        {
-            // check if button exists. if no selectable on left, throws null object exception
-            if (selectedButton.FindSelectableOnLeft() != null)
-            {
-                UiSelectionAdapter.TrySelect(selectedButton.FindSelectableOnLeft().gameObject);
-            }
-        }
-    }
-
-    private void HandleProgressionInput()
-    {
-        // ================================== change options =============================================================
-        // up, change options
-        if (controls.UINavigation.Up.triggered && currentHighlightedButton.Equals(playerSelectOptionButtonName))
-        {
-            changePlayerUp();
-        }
-        // down, change option
-        if (controls.UINavigation.Down.triggered && currentHighlightedButton.Equals(playerSelectOptionButtonName))
-        {
-            changePlayerDown();
-        }
-        // add a point to selected category
-        if (!buttonPressed && dataLoaded
-            && progressionState.PointsAvailable > 0
-            && controls.UINavigation.Submit.triggered
-            && IsProgressionStatButton(currentHighlightedButton))
-        {
-            addPoint();
-        }
-        // subtract a point
-        if (!buttonPressed && dataLoaded
+        if (dataLoaded
             && controls.UINavigation.Cancel.triggered
             && IsProgressionStatButton(currentHighlightedButton))
         {
@@ -384,15 +344,28 @@ public class ProgressionManager : MonoBehaviour
         return null;
     }
 
+    /// <summary>
+    /// The three progression stat buttons and the character stepper had no onClick route at all
+    /// (AUD-098), so points could only be spent with the Submit key and the character could only be
+    /// changed with Up/Down - neither reachable with a mouse or a touch.
+    ///
+    /// The stat buttons bind to explicit per-stat actions rather than to <see cref="addPoint"/>,
+    /// which dispatches on <c>currentHighlightedButton</c>. That field is refreshed in Update, so it
+    /// can still name the previous control on the frame a click arrives.
+    /// </summary>
     private void RegisterButtonCallbacks()
     {
-        RegisterRequiredButtonCallback(startButton, StartGame);
-        RegisterRequiredButtonCallback(statsMenuButton, LoadStatsMenu);
-        RegisterRequiredButtonCallback(quitButton, QuitGame);
-        RegisterRequiredButtonCallback(saveButton, saveChanges);
-        RegisterRequiredButtonCallback(resetButton, resetChanges);
-        RegisterRequiredButtonCallback(confirmButton, confirmChanges);
-        RegisterRequiredButtonCallback(cancelButton, cancelChanges);
+        UiSelectionAdapter.RegisterButton(startButton, StartGame);
+        UiSelectionAdapter.RegisterButton(statsMenuButton, LoadStatsMenu);
+        UiSelectionAdapter.RegisterButton(quitButton, QuitGame);
+        UiSelectionAdapter.RegisterButton(saveButton, saveChanges);
+        UiSelectionAdapter.RegisterButton(resetButton, resetChanges);
+        UiSelectionAdapter.RegisterButton(confirmButton, confirmChanges);
+        UiSelectionAdapter.RegisterButton(cancelButton, cancelChanges);
+        UiSelectionAdapter.RegisterButton(progression3AccuracyButton, AddThreeAccuracyPoint);
+        UiSelectionAdapter.RegisterButton(progression4AccuracyButton, AddFourAccuracyPoint);
+        UiSelectionAdapter.RegisterButton(progression7AccuracyButton, AddSevenAccuracyPoint);
+        UiSelectionAdapter.RegisterButton(playerSelectOptionButton, changePlayerDown);
     }
 
     private void UnregisterButtonCallbacks()
@@ -404,17 +377,64 @@ public class ProgressionManager : MonoBehaviour
         UiSelectionAdapter.UnregisterButton(resetButton, resetChanges);
         UiSelectionAdapter.UnregisterButton(confirmButton, confirmChanges);
         UiSelectionAdapter.UnregisterButton(cancelButton, cancelChanges);
+        UiSelectionAdapter.UnregisterButton(progression3AccuracyButton, AddThreeAccuracyPoint);
+        UiSelectionAdapter.UnregisterButton(progression4AccuracyButton, AddFourAccuracyPoint);
+        UiSelectionAdapter.UnregisterButton(progression7AccuracyButton, AddSevenAccuracyPoint);
+        UiSelectionAdapter.UnregisterButton(playerSelectOptionButton, changePlayerDown);
     }
 
-    private void RegisterRequiredButtonCallback(Button button, UnityEngine.Events.UnityAction action)
+    private void AddThreeAccuracyPoint()
     {
-        if (button == null || action == null)
-        {
-            return;
-        }
+        AddPointTo(UpdateThreeAccuracy);
+    }
 
-        button.onClick.RemoveListener(action);
-        button.onClick.AddListener(action);
+    private void AddFourAccuracyPoint()
+    {
+        AddPointTo(UpdateFourAccuracy);
+    }
+
+    private void AddSevenAccuracyPoint()
+    {
+        AddPointTo(UpdateSevenAccuracy);
+    }
+
+    private void UpdateThreeAccuracy()
+    {
+        updateThreeAccuracy(UpdateType.Add);
+    }
+
+    private void UpdateFourAccuracy()
+    {
+        updateFourAccuracy(UpdateType.Add);
+    }
+
+    private void UpdateSevenAccuracy()
+    {
+        updateSevenAccuracy(UpdateType.Add);
+    }
+
+    /// <summary>
+    /// Spends one available point on a stat. Mirrors the guards <see cref="addPoint"/> ran under
+    /// when it was driven from the Submit poll: data loaded, a character selected, and a point
+    /// available to spend.
+    /// </summary>
+    private void AddPointTo(Action applyPoint)
+    {
+        RunProgressionAction(() =>
+        {
+            if (!dataLoaded || progressionState == null || progressionState.PointsAvailable <= 0)
+            {
+                return;
+            }
+
+            if (!HasSelectedCharacterData())
+            {
+                return;
+            }
+
+            applyPoint();
+            initializePlayerDisplay();
+        });
     }
 
     private GameObject GetDefaultSelectedButton()
@@ -472,7 +492,7 @@ public class ProgressionManager : MonoBehaviour
         }
         catch (Exception e)
         {
-            Debug.Log("ERROR : " + e);
+            Debug.LogError("ERROR : " + e);
         }
         finally
         {
@@ -739,7 +759,6 @@ public class ProgressionManager : MonoBehaviour
         initializePlayerDisplay();
     }
 
-
     //private void loadScene()
     //{
     //    throw new NotImplementedException();
@@ -899,7 +918,6 @@ public class ProgressionManager : MonoBehaviour
         //modeSelectButton.enabled = false;
     }
 
-
     public void initializePlayerDisplay()
     {
         try
@@ -1010,7 +1028,7 @@ public class ProgressionManager : MonoBehaviour
         }
         catch (Exception e)
         {
-            Debug.Log("ERROR : " + e);
+            Debug.LogError("ERROR : " + e);
             return;
         }
     }
