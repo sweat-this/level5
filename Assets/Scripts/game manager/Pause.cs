@@ -167,6 +167,8 @@ public class Pause : MonoBehaviour
         EventSystem.current.firstSelectedGameObject = loadSceneButton.gameObject;
         // init current button
         currentHighlightedButton = EventSystem.current.firstSelectedGameObject.gameObject;
+        UiSelectionAdapter.EnsureInputSystemUiModule();
+        RegisterPauseButtonCallbacks();
         //disable joystick if active
     }
 
@@ -184,9 +186,33 @@ public class Pause : MonoBehaviour
         }
     }
 
+    private void OnEnable()
+    {
+        // Pause reads Controls.Player.submit (dismiss the start-on-pause screen) and
+        // Controls.Player.cancel (toggle the pause menu) off the shared PlayerControls instance -
+        // but nothing enabled that map. GameLevelManager only calls EnableOther(), and real player
+        // input runs on the separate per-player instances from AcquireGameplayControls, which enable
+        // Player on themselves. The only EnableGameplayMaps() caller in the project is
+        // SniperCameraController, so outside sniper levels both of these actions were permanently
+        // dead: every level started paused and the prompt could not be dismissed.
+        //
+        // Pause is a user of that map, so it acquires it for its own lifetime. The provider
+        // ref-counts, so this composes with SniperCameraController rather than fighting it.
+        PlayerControlsProvider.EnableGameplayMaps();
+
+        // symmetric with OnDisable, so re-enabling the component does not leave the pause buttons
+        // inert (the asymmetry AUD-102 found on the menu screens)
+        if (loadSceneButton != null)
+        {
+            RegisterPauseButtonCallbacks();
+        }
+    }
+
     private void OnDisable()
     {
+        UnregisterPauseButtonCallbacks();
         DisablePauseMenuNavigation();
+        PlayerControlsProvider.DisableGameplayMaps();
     }
 
     // Update is called once per frame
@@ -210,53 +236,92 @@ public class Pause : MonoBehaviour
         // ===================== pause checks =======================
         if ((Time.timeScale == 0 && !paused) || (Time.timeScale == 1 && paused))
         {
-            
+
             TogglePause();
         }
         //==========================================================
-        // if paused, show pause menu
+        // if paused, keep a selection so navigation and submit always have a target
+        //
+        // This block used to also call OnSelect(null) and Select() on the selected button every
+        // frame (AUD-099), which restarted the Selectable state transition on every frame the game
+        // was paused and took selection ownership away from the EventSystem, and it dispatched the
+        // four pause actions by comparing the selected object's name against each button under a
+        // polled Submit (AUD-098) - which is why clicking a pause button did nothing. The actions
+        // are registered on Button.onClick in RegisterPauseButtonCallbacks now.
         if (paused)
         {
-
             // check for some button not selected
             //*this is a hack but it works patch for v3.0.1 : clicking mouse causing game to crash
-            if (EventSystem.current.currentSelectedGameObject == null)
-            {
-                EventSystem.current.SetSelectedGameObject(EventSystem.current.firstSelectedGameObject); // + "_description";
-            }
-            currentHighlightedButton = EventSystem.current.currentSelectedGameObject; // + "_description";
-            currentHighlightedButton.GetComponent<Button>().OnSelect(null);
-            currentHighlightedButton.GetComponent<Button>().Select();
-
-            // ================== pause menu options ==============================================================
-            // reload scene
-            if (currentHighlightedButton.name.Equals(loadSceneButton.name)
-                && PlayerControlsProvider.MenuSubmitTriggered
-                && ( MatchRuntime.RawModeId != 26 ))
-            {
-                reloadScene();
-            }
-            //load start screen
-            if (currentHighlightedButton.name.Equals(loadStartScreenButton.name)
-                && PlayerControlsProvider.MenuSubmitTriggered)
-            {
-                StartCoroutine(loadstartScreen());
-            }
-            // cancel
-            bool gameOver = GameLevelManager.instance != null && GameLevelManager.instance.GameOver;
-            if (currentHighlightedButton.name.Equals(cancelMenuButton.name)
-                && PlayerControlsProvider.MenuSubmitTriggered
-                && !gameOver)
-            {
-                TogglePause();
-            }
-            // quit
-            if (currentHighlightedButton.name.Equals(quitGameButton.name)
-                && PlayerControlsProvider.MenuSubmitTriggered)
-            {
-                StartCoroutine(Quit());
-            }
+            UiSelectionAdapter.EnsureSelected(
+                EventSystem.current != null ? EventSystem.current.firstSelectedGameObject : null);
+            currentHighlightedButton = UiSelectionAdapter.CurrentSelected;
         }
+    }
+
+    /// <summary>
+    /// Wires the four pause actions to their buttons so pointer, touch, keyboard and gamepad all
+    /// reach them through the one route (AUD-098).
+    ///
+    /// setPauseScreen disables these buttons while the game is running, so onClick cannot fire when
+    /// the menu is hidden; each handler still checks <c>paused</c> because that is the invariant the
+    /// polled version relied on.
+    /// </summary>
+    private void RegisterPauseButtonCallbacks()
+    {
+        UiSelectionAdapter.RegisterButton(loadSceneButton, PressReloadScene);
+        UiSelectionAdapter.RegisterButton(loadStartScreenButton, PressLoadStartScreen);
+        UiSelectionAdapter.RegisterButton(cancelMenuButton, PressCancelMenu);
+        UiSelectionAdapter.RegisterButton(quitGameButton, PressQuitGame);
+    }
+
+    private void UnregisterPauseButtonCallbacks()
+    {
+        UiSelectionAdapter.UnregisterButton(loadSceneButton, PressReloadScene);
+        UiSelectionAdapter.UnregisterButton(loadStartScreenButton, PressLoadStartScreen);
+        UiSelectionAdapter.UnregisterButton(cancelMenuButton, PressCancelMenu);
+        UiSelectionAdapter.UnregisterButton(quitGameButton, PressQuitGame);
+    }
+
+    private void PressReloadScene()
+    {
+        // mode 26 has no reload, same guard the polled dispatch carried
+        if (!paused || MatchRuntime.RawModeId == 26)
+        {
+            return;
+        }
+
+        reloadScene();
+    }
+
+    private void PressLoadStartScreen()
+    {
+        if (!paused)
+        {
+            return;
+        }
+
+        StartCoroutine(loadstartScreen());
+    }
+
+    private void PressCancelMenu()
+    {
+        bool gameOver = GameLevelManager.instance != null && GameLevelManager.instance.GameOver;
+        if (!paused || gameOver)
+        {
+            return;
+        }
+
+        TogglePause();
+    }
+
+    private void PressQuitGame()
+    {
+        if (!paused)
+        {
+            return;
+        }
+
+        StartCoroutine(Quit());
     }
 
     public void StartGame()

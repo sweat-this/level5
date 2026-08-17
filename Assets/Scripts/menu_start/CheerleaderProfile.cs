@@ -3,6 +3,13 @@ using UnityEngine;
 
 public class CheerleaderProfile : MonoBehaviour
 {
+    /// <summary>
+    /// The authored <c>cheerleaderObjectName</c> for "no cheerleader" - see
+    /// <c>Resources/Prefabs/menu_start/cheerleader_default_objects/cheerleader_00_none.prefab</c>.
+    /// It is the default selection, so anything spawning by name has to recognise it rather than
+    /// look for a <c>cheerleader_none</c> prefab that deliberately does not exist.
+    /// </summary>
+    public const string NoneObjectName = "none";
 
     [SerializeField] private string cheerleaderDisplayName;
     [SerializeField] private string cheerleaderObjectName;
