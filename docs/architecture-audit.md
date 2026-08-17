@@ -72,6 +72,25 @@ needs a manual playtest** covering account creation/login, score submission, all
 character/cheerleader unlocks, and progression saves before shipping - none of that is exercised
 by the automated suite.
 
+AUD-088 through AUD-112 came out of a dedicated 2026-08-17 audit of the UI menu system and the ten
+menu scenes in build settings, requested as a review-twice pass and tracked, with its two review
+passes and its evidence, in [UI Menu System Audit 2026-08-17](ui-menu-audit-2026-08-17.md) rather
+than duplicated into the table below. **All twenty-five are open; nothing has been changed in code.**
+The headline is that six of the ten menu screens are authored in binary-serialized prefabs despite
+the project being on Force Text, so no change to them is reviewable (AUD-088) - which is why the
+phased plan in [UI and Menu Architecture](ui-input-architecture.md) starts with reserialization
+before anything behavioural. The rest cluster into one input route (the UI module runs Unity's
+default actions, not `PlayerControls.UINavigation`), one behaviour route (polled directional input
+racing the module; pause and progression controls a mouse cannot operate), one wiring route (three
+competing mechanisms, five copies of the footer), one scaling contract (three canvases at three
+reference resolutions in a single screen), and the stats table's shared-prefab mutation and
+undefined row order - the latter being the same defect class as the closed AUD-020. The
+implementation prompt is [here](ui-menu-overhaul-implementation-prompt.md). The second review pass
+withdrew three Pass 1 candidates (a start-menu double-invoke that turned out to be frame-guarded, a
+`StandaloneInputModule` crash that `activeInputHandler: 2` prevents, and active git corruption of
+the binary prefabs that `git ls-files --eol` disproves); those are recorded in the audit so they are
+not re-raised.
+
 ## Audit Status Legend
 
 - Open: Known issue with no durable fix yet.

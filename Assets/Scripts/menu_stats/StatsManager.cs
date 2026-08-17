@@ -4,7 +4,6 @@ using Assets.Scripts.restapi;
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Linq;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.SceneManagement;
@@ -33,12 +32,31 @@ public class StatsManager : MonoBehaviour
     const string highScoreTableName = "high_scores_table";
     const string allTimeTableName = "all_time_table";
 
-    // tag find high score rows that are instantiated
-    const string highScoreRowTag = "high_score_row";
     // page size lives in StatsPaging so the row count, the page arithmetic, and the SQL LIMIT
     // cannot drift apart
     const int ResultsPerPage = StatsPaging.ResultsPerPage;
     //const string mainMenuSceneName = "level_00_start";
+
+    /// <summary>
+    /// Objects this manager resolves by name. Level5ProjectValidator asserts they exist in any
+    /// scene carrying a StatsManager (AUD-112).
+    /// </summary>
+    public static readonly string[] RequiredSceneObjectNames =
+    {
+        highScoreTableName,
+        allTimeTableName,
+        highScoresRowsName,
+        modeSelectButtonName,
+        modeSelectButtonOnlineName,
+        alltimeSelectButtonName,
+        mainMenuButtonName,
+        pageNumberLocalButtonName,
+        pageNumberOnlineButtonName,
+        trafficOptionButtonName,
+        hardcoreOptionButtonName,
+        enemiesOptionButtonName,
+        sniperOptionButtonName
+    };
 
     GameObject allTimeTableObject;
     GameObject highScoreTableObject;
@@ -132,9 +150,9 @@ public class StatsManager : MonoBehaviour
     public int numLocalResults;
     public int numOnlineResults;
 
-    PlayerControls controls;
     private bool initialized;
     private int onlineRequestVersion;
+    private int lastActionFrame = -1;
 
     public static StatsManager instance;
 
@@ -156,7 +174,6 @@ public class StatsManager : MonoBehaviour
     // for input system
     private void OnEnable()
     {
-        controls = PlayerControlsProvider.Controls;
         PlayerControlsProvider.EnableMenuMaps();
         if (initialized)
         {
@@ -189,7 +206,6 @@ public class StatsManager : MonoBehaviour
     {
 
         instance = this;
-        controls = PlayerControlsProvider.Controls;
 
         // table objects
         highScoreTableObject = GameObject.Find(highScoreTableName);
@@ -228,7 +244,7 @@ public class StatsManager : MonoBehaviour
             }
             catch (Exception e)
             {
-                Debug.Log("ERROR : " + e);
+                Debug.LogError("ERROR : " + e);
                 return;
             }
         }
@@ -258,16 +274,31 @@ public class StatsManager : MonoBehaviour
         }
 
         int initialRowCount = Mathf.Max(ResultsPerPage, highScoreRowsDataList.Count);
+
+        // AUD-106: the row values used to be written into the shared Resources prefab and then
+        // copied out by instantiating it. That mutated the asset itself - in the editor it dirtied
+        // highScoreRow.prefab on disk - and it is the same defect class as AUD-020. Instantiate
+        // first, then write into the instance.
+        //
+        // AUD-107: the list is now built in creation order. It used to be re-derived from
+        // GameObject.FindGameObjectsWithTag, which guarantees no ordering and skips inactive
+        // objects, while the rows are indexed positionally against a ranked query result - so the
+        // leaderboard order on screen did not have to be the order the rows came back in.
+        highScoreRowsObjectsList = new List<GameObject>(initialRowCount);
         for (int i = 0; i < initialRowCount; i++)
         {
-            StatsTableHighScoreRow row = highScoreRowPrefab.GetComponent<StatsTableHighScoreRow>();
+            // same placement as before: the row parents into high_scores_rows, whose layout group
+            // owns the final position
+            GameObject rowObject = Instantiate(
+                highScoreRowPrefab,
+                highScoresRowsObject.transform.position,
+                Quaternion.identity,
+                highScoresRowsObject.transform);
+            highScoreRowsObjectsList.Add(rowObject);
+
             StatsTableHighScoreRow source = i < highScoreRowsDataList.Count ? highScoreRowsDataList[i] : null;
-            CopyHighScoreRow(row, source);
-            // instantiate row on necessary table object
-            Instantiate(highScoreRowPrefab, highScoresRowsObject.transform.position, Quaternion.identity, highScoresRowsObject.transform);
+            SetHighScoreRow(i, source);
         }
-        // list of row onjects that contain the Text displays
-        highScoreRowsObjectsList = GameObject.FindGameObjectsWithTag(highScoreRowTag).ToList();
 
         // default table view
         if (!highScoreTableObject.activeSelf)
@@ -321,25 +352,40 @@ public class StatsManager : MonoBehaviour
         return buttonObject != null ? buttonObject.GetComponent<Button>() : null;
     }
 
+    /// <summary>
+    /// Every stats control that changes a value now has an onClick route (AUD-096, AUD-098).
+    ///
+    /// Mode and page step forward only. Both wrap - <see cref="StatsPaging.NextPage"/> and
+    /// <see cref="changeSelectedMode"/> cycle - so every page and every mode is still reachable
+    /// with one control, which is how the start menu's option buttons already behave. What is gone
+    /// is stepping backwards with Left, which was never available to mouse or touch anyway.
+    /// </summary>
     private void RegisterButtonCallbacks()
     {
-        RegisterRequiredButtonCallback(mainMenuButton, LoadStartMenu);
+        UiSelectionAdapter.RegisterButton(mainMenuButton, LoadStartMenu);
+        UiSelectionAdapter.RegisterButton(modeSelectButton, ChangeLocalModeRight);
+        UiSelectionAdapter.RegisterButton(modeSelectOnlineButton, ChangeOnlineModeRight);
+        UiSelectionAdapter.RegisterButton(pageNumberLocalButton, IncreaseLocalPage);
+        UiSelectionAdapter.RegisterButton(pageNumberOnlineButton, IncreaseOnlinePage);
+        UiSelectionAdapter.RegisterButton(allTimeSelectButton, ShowAllTimeTable);
+        UiSelectionAdapter.RegisterButton(trafficOptionButton, ToggleTrafficFilter);
+        UiSelectionAdapter.RegisterButton(hardcoreOptionButton, ToggleHardcoreFilter);
+        UiSelectionAdapter.RegisterButton(enemiesOptionButton, ToggleEnemiesFilter);
+        UiSelectionAdapter.RegisterButton(sniperOptionButton, ToggleSniperFilter);
     }
 
     private void UnregisterButtonCallbacks()
     {
         UiSelectionAdapter.UnregisterButton(mainMenuButton, LoadStartMenu);
-    }
-
-    private void RegisterRequiredButtonCallback(Button button, UnityEngine.Events.UnityAction action)
-    {
-        if (button == null || action == null)
-        {
-            return;
-        }
-
-        button.onClick.RemoveListener(action);
-        button.onClick.AddListener(action);
+        UiSelectionAdapter.UnregisterButton(modeSelectButton, ChangeLocalModeRight);
+        UiSelectionAdapter.UnregisterButton(modeSelectOnlineButton, ChangeOnlineModeRight);
+        UiSelectionAdapter.UnregisterButton(pageNumberLocalButton, IncreaseLocalPage);
+        UiSelectionAdapter.UnregisterButton(pageNumberOnlineButton, IncreaseOnlinePage);
+        UiSelectionAdapter.UnregisterButton(allTimeSelectButton, ShowAllTimeTable);
+        UiSelectionAdapter.UnregisterButton(trafficOptionButton, ToggleTrafficFilter);
+        UiSelectionAdapter.UnregisterButton(hardcoreOptionButton, ToggleHardcoreFilter);
+        UiSelectionAdapter.UnregisterButton(enemiesOptionButton, ToggleEnemiesFilter);
+        UiSelectionAdapter.UnregisterButton(sniperOptionButton, ToggleSniperFilter);
     }
 
     private GameObject GetDefaultSelectedButton()
@@ -373,26 +419,21 @@ public class StatsManager : MonoBehaviour
         previousHighlightedButton = currentHighlightedButton;
     }
 
+    /// <summary>
+    /// Shows the table that matches the current selection.
+    ///
+    /// This used to also poll <c>UINavigation.Up/Down/Left/Right</c> and change the mode, page and
+    /// filter values from here (AUD-096). The InputSystemUIInputModule consumes the same press to
+    /// move selection, so one Left press both moved the selection and stepped the page - and each
+    /// step runs a synchronous SQLite query. Unlike StartManager and ProgressionManager this screen
+    /// had no per-frame guard, so it was the one actually double-actuating. Value changes now
+    /// arrive through Button.onClick only; see RegisterButtonCallbacks.
+    /// </summary>
     private void HandleSelectedStatsControl()
     {
         if (buttonPressed || string.IsNullOrEmpty(currentHighlightedButton))
         {
             return;
-        }
-
-        if (controls.UINavigation.Up.triggered || controls.UINavigation.Down.triggered)
-        {
-            HandleVerticalOptionInput();
-        }
-
-        if (controls.UINavigation.Left.triggered)
-        {
-            HandleLeftInput();
-        }
-
-        if (controls.UINavigation.Right.triggered)
-        {
-            HandleRightInput();
         }
 
         if (currentHighlightedButton.Equals(modeSelectButtonName))
@@ -427,74 +468,22 @@ public class StatsManager : MonoBehaviour
         }
     }
 
-    private void HandleVerticalOptionInput()
-    {
-        if (currentHighlightedButton.Equals(trafficSelectValueName))
-        {
-            ToggleTrafficFilter();
-        }
-        if (currentHighlightedButton.Equals(hardcoreSelectValueName))
-        {
-            ToggleHardcoreFilter();
-        }
-        if (currentHighlightedButton.Equals(enemySelectValueName))
-        {
-            ToggleEnemiesFilter();
-        }
-        if (currentHighlightedButton.Equals(sniperSelectValueName))
-        {
-            ToggleSniperFilter();
-        }
-    }
-
-    private void HandleLeftInput()
-    {
-        if (currentHighlightedButton.Equals(modeSelectButtonName))
-        {
-            ChangeLocalModeLeft();
-        }
-        if (currentHighlightedButton.Equals(modeSelectButtonOnlineName))
-        {
-            ChangeOnlineModeLeft();
-        }
-        if (currentHighlightedButton.Equals(pageNumberLocalButtonName))
-        {
-            DecreaseLocalPage();
-        }
-        if (currentHighlightedButton.Equals(pageNumberOnlineButtonName))
-        {
-            DecreaseOnlinePage();
-        }
-    }
-
-    private void HandleRightInput()
-    {
-        if (currentHighlightedButton.Equals(modeSelectButtonName))
-        {
-            ChangeLocalModeRight();
-        }
-        if (currentHighlightedButton.Equals(modeSelectButtonOnlineName))
-        {
-            ChangeOnlineModeRight();
-        }
-        if (currentHighlightedButton.Equals(pageNumberLocalButtonName))
-        {
-            IncreaseLocalPage();
-        }
-        if (currentHighlightedButton.Equals(pageNumberOnlineButtonName))
-        {
-            IncreaseOnlinePage();
-        }
-    }
-
+    /// <summary>
+    /// Guards a stats action against re-entry and against running twice in one frame.
+    ///
+    /// The frame guard matches StartManager.RunCommand and ProgressionManager.RunProgressionAction.
+    /// This screen was the one menu that had no frame guard at all (AUD-096), so a control reachable
+    /// from more than one route could step twice on a single press.
+    /// </summary>
     private void RunStatsAction(Action action)
     {
-        if (buttonPressed || action == null)
+        if (buttonPressed || action == null || lastActionFrame == Time.frameCount)
         {
             return;
         }
 
         buttonPressed = true;
+        lastActionFrame = Time.frameCount;
         try
         {
             action();
@@ -545,11 +534,6 @@ public class StatsManager : MonoBehaviour
         });
     }
 
-    private void ChangeLocalModeLeft()
-    {
-        ChangeLocalMode("left");
-    }
-
     private void ChangeLocalModeRight()
     {
         ChangeLocalMode("right");
@@ -564,11 +548,6 @@ public class StatsManager : MonoBehaviour
             changeSelectedMode(direction);
             changeHighScoreDataDisplay();
         });
-    }
-
-    private void ChangeOnlineModeLeft()
-    {
-        ChangeOnlineMode("left");
     }
 
     private void ChangeOnlineModeRight()
@@ -592,19 +571,9 @@ public class StatsManager : MonoBehaviour
         RunStatsAction(increaseLocalResultsPageNumber);
     }
 
-    private void DecreaseLocalPage()
-    {
-        RunStatsAction(decreaseLocalResultsPageNumber);
-    }
-
     private void IncreaseOnlinePage()
     {
         RunStatsAction(increaseOnlineResultsPageNumber);
-    }
-
-    private void DecreaseOnlinePage()
-    {
-        RunStatsAction(decreaseOnlineResultsPageNumber);
     }
 
     private void LoadStartMenu()
@@ -696,8 +665,19 @@ public class StatsManager : MonoBehaviour
             return;
         }
 
-        StatsTableHighScoreRow row = highScoreRowsObjectsList[index].GetComponent<StatsTableHighScoreRow>();
+        GameObject rowObject = highScoreRowsObjectsList[index];
+        if (rowObject == null)
+        {
+            return;
+        }
+
+        StatsTableHighScoreRow row = rowObject.GetComponent<StatsTableHighScoreRow>();
         CopyHighScoreRow(row, source);
+        if (row != null)
+        {
+            // the row used to push these into its Text components from Update every frame (AUD-108)
+            row.Bind();
+        }
     }
 
     private void ClearHighScoreRows(int startIndex)
@@ -845,7 +825,7 @@ public class StatsManager : MonoBehaviour
         catch (Exception e)
         {
             DBHelper.instance.DatabaseLocked = false;
-            Debug.Log("ERROR : " + e);
+            Debug.LogError("ERROR : " + e);
         }
     }
 
@@ -902,7 +882,7 @@ public class StatsManager : MonoBehaviour
             }
             catch (Exception e)
             {
-                Debug.Log("ERROR : " + e);
+                Debug.LogError("ERROR : " + e);
                 DBHelper.instance.DatabaseLocked = false;
                 return;
             }

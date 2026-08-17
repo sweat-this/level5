@@ -177,7 +177,7 @@ public class CreditsManager : MonoBehaviour
         UiSelectionAdapter.RegisterButton(progressionMenuButton, LoadProgressionMenu);
         UiSelectionAdapter.RegisterButton(accountMenuButton, LoadAccountMenu);
         UiSelectionAdapter.RegisterButton(quitButton, QuitGame);
-        RegisterRequiredButtonCallback(submitReportButton, SubmitReportIfAllowed);
+        UiSelectionAdapter.RegisterButton(submitReportButton, SubmitReportIfAllowed);
     }
 
     private void UnregisterButtonCallbacks()
@@ -191,17 +191,6 @@ public class CreditsManager : MonoBehaviour
         UiSelectionAdapter.UnregisterButton(accountMenuButton, LoadAccountMenu);
         UiSelectionAdapter.UnregisterButton(quitButton, QuitGame);
         UiSelectionAdapter.UnregisterButton(submitReportButton, SubmitReportIfAllowed);
-    }
-
-    private void RegisterRequiredButtonCallback(Button button, UnityEngine.Events.UnityAction action)
-    {
-        if (button == null || action == null)
-        {
-            return;
-        }
-
-        button.onClick.RemoveListener(action);
-        button.onClick.AddListener(action);
     }
 
     private void RegisterReportInputSubmit()
@@ -288,7 +277,6 @@ public class CreditsManager : MonoBehaviour
     {
         Application.Quit();
     }
-
 
     // ============================  message display ==============================
     // used in this context to display if item is locked

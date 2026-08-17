@@ -239,12 +239,12 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 5fee5296dccdae74a8e3483d3371a840, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  userNameText: {fileID: 0}
-  scoreText: {fileID: 0}
-  characterText: {fileID: 0}
-  levelText: {fileID: 0}
-  dateText: {fileID: 0}
-  hardcoreText: {fileID: 0}
+  userNameText: {fileID: 8086514927429825769}
+  scoreText: {fileID: 5217845552187571011}
+  characterText: {fileID: 5217845551300956824}
+  levelText: {fileID: 5217845552168833280}
+  dateText: {fileID: 5217845552437317350}
+  hardcoreText: {fileID: 1601882991}
   Score: 
   Character: 
   Level: 

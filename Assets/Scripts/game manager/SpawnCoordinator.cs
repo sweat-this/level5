@@ -266,6 +266,16 @@ public sealed class SpawnCoordinator
             return;
         }
 
+        // "none" is the authored default selection, not a missing prefab. It reached the Resources
+        // load below and reported every cheerleader-less match as an error, which is most of them.
+        // There is no bonus mismatch to warn about here either - the "none" record carries no
+        // bonuses, so nothing is being paid out for an absent actor.
+        if (string.Equals(cheerleaderObjectName, CheerleaderProfile.NoneObjectName,
+                System.StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
         string prefabPath = "Prefabs/characters/cheerleaders/cheerleader_" + cheerleaderObjectName;
         GameObject prefab = Resources.Load(prefabPath) as GameObject;
         if (prefab == null)

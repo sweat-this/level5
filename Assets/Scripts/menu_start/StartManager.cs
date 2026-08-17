@@ -117,6 +117,26 @@ public class StartManager : MonoBehaviour
     public const string accountMenuButtonName = "account_menu";
     public const string updatePointsAvailable = "update_points_available";
 
+    /// <summary>Shared message line, owned by the loading scene's prefab rather than this scene.</summary>
+    private const string MessageDisplayObjectName = "messageDisplay";
+
+    /// <summary>
+    /// The footer command buttons this manager still resolves by name. Level5ProjectValidator
+    /// asserts they exist in any scene carrying a StartManager, so a rename fails the build rather
+    /// than the play session - the same contract GameRules, Pause and ProgressionManager carry
+    /// (AUD-028, AUD-047, AUD-112).
+    /// </summary>
+    public static readonly string[] RequiredSceneObjectNames =
+    {
+        startButtonName,
+        statsMenuButtonName,
+        quitButtonName,
+        optionsMenuButtonName,
+        creditsMenuButtonName,
+        updateMenuButtonName,
+        accountMenuButtonName
+    };
+
     public const string playerSelectButtonName = "player_select";
     public const string playerSelectOptionButtonName = "player_selected_name";
     public const string playerSelectStatsObjectName = "player_selected_stats_numbers";
@@ -241,8 +261,6 @@ public class StartManager : MonoBehaviour
 
     //private int numOfPlayers; //testing with 1
 
-    private PlayerControls controls;
-
     [SerializeField]
     public static StartManager instance;
 
@@ -268,11 +286,9 @@ public class StartManager : MonoBehaviour
     int lastCommandFrame = -1;
     int lastLoadGameFrame = -1;
     int lastOptionFrame = -1;
-    GameObject lastSelectedObject;
 
     private void OnEnable()
     {
-        controls = PlayerControlsProvider.Controls;
         PlayerControlsProvider.EnableMenuMaps();
         if (initialized)
         {
@@ -291,7 +307,6 @@ public class StartManager : MonoBehaviour
         instance = this;
         GameOptions.gameModeHasBeenSelected = false;
         StartCoroutine(getLoadedData());
-        controls = PlayerControlsProvider.Controls;
         // find all button / text / etc and assign to variables
         StartCoroutine(GetUiObjectReferences());
 
@@ -330,34 +345,67 @@ public class StartManager : MonoBehaviour
         initialized = true;
     }
 
-#if UNITY_EDITOR || UNITY_STANDALONE || UNITY_EDITOR_OSX
-    //#if UNITY_EDITOR
-    // Update is called once per frame
+    /// <summary>
+    /// Keeps a valid selection and repaints the tab that matches it.
+    ///
+    /// This used to be wrapped in `#if UNITY_EDITOR || UNITY_STANDALONE || UNITY_EDITOR_OSX`, so the
+    /// start menu ran a materially different interaction model on device than in the editor. Inside
+    /// it, ShouldUseManualMenuInput gated a second navigation and option-cycling implementation that
+    /// polled UINavigation directly (AUD-097): it stayed off until the player pressed Submit on a
+    /// control, then latched on for that control - and while latched, Up/Down both moved the
+    /// selection (via the InputSystemUIInputModule, which consumes the same press) and changed the
+    /// value. Nothing showed the player which mode a control was in.
+    ///
+    /// Everything that block reached is registered on Button.onClick in RegisterButtonCallbacks and
+    /// runs through RunOptionAction/RunCommand, so it is now available to pointer, touch, keyboard
+    /// and gamepad on every platform through one route. Cycling steps forward only; every catalog
+    /// wraps, so nothing became unreachable.
+    ///
+    /// The display refresh below also ran every frame, and ran the level-select and mode-select
+    /// blocks twice per frame because they were pasted in twice (AUD-109). It now runs when the
+    /// selection actually changes.
+    /// </summary>
     void Update()
     {
-
         GameObject selectedObject = UiSelectionAdapter.EnsureSelected(GetDefaultSelectedButton());
-        if (selectedObject != null)
+        if (selectedObject == null)
         {
-            currentHighlightedButton = selectedObject.name; // + "_description";
+            return;
         }
 
+        string selectedName = selectedObject.name;
+        if (selectedName != currentHighlightedButton)
+        {
+            currentHighlightedButton = selectedName;
+            RefreshDisplayForSelection();
+        }
+
+        // Submit fallback. Removing the old polled block (AUD-097) left the InputSystemUIInputModule
+        // as the only route to the selected button, so anything that stops the module resolving its
+        // submit action - a scene whose EventSystem never got one configured, the StandaloneInputModule
+        // fallback path - leaves press_start unreachable with no way to start a game.
+        //
+        // This is safe to keep alongside the module because every action it can reach goes through
+        // RunCommand/RunOptionAction, which drop a second call in the same frame via
+        // lastCommandFrame/lastOptionFrame. That guard is what made the original double-invoke a
+        // non-issue, and it is what makes this belt-and-braces rather than a double actuation.
+        if (PlayerControlsProvider.MenuSubmitTriggered)
+        {
+            UiSelectionAdapter.TryInvokeSelectedButton(GetDefaultSelectedButton());
+        }
+
+        // Change-driven: this is cheap when nothing changed and only rebuilds text/portraits when
+        // selection, focus or mode context actually did.
+        playerSelectCoordinator.RenderIfNeeded();
+    }
+
+    private void RefreshDisplayForSelection()
+    {
         if (string.IsNullOrEmpty(currentHighlightedButton))
         {
             return;
         }
 
-        bool useManualMenuInput = ShouldUseManualMenuInput(selectedObject);
-        if (PlayerControlsProvider.MenuSubmitTriggered
-            && UiSelectionAdapter.TryInvokeSelectedButton(GetDefaultSelectedButton()))
-        {
-            lastSelectedObject = EventSystem.current != null
-                ? EventSystem.current.currentSelectedGameObject
-                : null;
-            return;
-        }
-
-        // if player highlighted, display player
         if ((currentHighlightedButton.Equals(numPlayersSelectButtonName) || currentHighlightedButton.Equals(numPlayersSelectOptionButtonName))
             && dataLoaded)
         {
@@ -369,7 +417,6 @@ public class StartManager : MonoBehaviour
         {
             FocusPlayersTab();
         }
-        // friend
         if (currentHighlightedButton.Equals(friendSelectButtonName) || currentHighlightedButton.Equals(FriendSelectOptionButtonName))
         {
             initializefriendDisplay();
@@ -387,240 +434,11 @@ public class StartManager : MonoBehaviour
             initializeCpuDisplay();
         }
         FocusHighlightedCpuSlot();
-        if (currentHighlightedButton.Equals(levelSelectButtonName) || currentHighlightedButton.Equals(levelSelectOptionButtonName))
-        {
-            initializeLevelDisplay();
-        }
-        if (currentHighlightedButton.Equals(modeSelectButtonName) || currentHighlightedButton.Equals(modeSelectOptionButtonName))
-        {
-            initializeModeDisplay();
-        }
         if (currentHighlightedButton.Equals(optionsSelectButtonName) || currentHighlightedButton.Equals(optionsSelectOptionName))
         {
             initializeOptionsDisplay();
         }
-        // ================================== navigation =====================================================================
-        if (useManualMenuInput)
-        {
-            // up, option select
-            if (controls.UINavigation.Up.triggered && !buttonPressed
-                && !currentHighlightedButton.Equals(numPlayersSelectOptionButtonName)
-                && !currentHighlightedButton.Equals(playerSelectOptionButtonName)
-                && !currentHighlightedButton.Equals(levelSelectOptionButtonName)
-                && !currentHighlightedButton.Equals(modeSelectOptionButtonName)
-                && !currentHighlightedButton.Equals(trafficSelectOptionName)
-                && !currentHighlightedButton.Equals(FriendSelectOptionButtonName)
-                && !currentHighlightedButton.Equals(hardcoreSelectOptionName)
-                && !currentHighlightedButton.Equals(enemySelectOptionName)
-                && !currentHighlightedButton.Equals(difficultySelectOptionName)
-                && !currentHighlightedButton.Equals(obstacleSelectOptionName)
-                && !currentHighlightedButton.Equals(SniperSelectOptionName)
-                && !currentHighlightedButton.Equals(cpuSelectOptionButtonName)
-                && !currentHighlightedButton.Equals(optionsSelectOptionName))
-            {
-                buttonPressed = true;
-                MoveSelection(button => button.FindSelectableOnUp());
-                buttonPressed = false;
-            }
-            // down, option select
-            if (controls.UINavigation.Down.triggered && !buttonPressed
-                && !currentHighlightedButton.Equals(numPlayersSelectOptionButtonName)
-                && !currentHighlightedButton.Equals(playerSelectOptionButtonName)
-                && !currentHighlightedButton.Equals(levelSelectOptionButtonName)
-                && !currentHighlightedButton.Equals(modeSelectOptionButtonName)
-                && !currentHighlightedButton.Equals(FriendSelectOptionButtonName)
-                && !currentHighlightedButton.Equals(trafficSelectOptionName)
-                && !currentHighlightedButton.Equals(hardcoreSelectOptionName)
-                && !currentHighlightedButton.Equals(difficultySelectOptionName)
-                && !currentHighlightedButton.Equals(enemySelectOptionName)
-                && !currentHighlightedButton.Equals(obstacleSelectOptionName)
-                && !currentHighlightedButton.Equals(cpuSelectOptionButtonName)
-                && !currentHighlightedButton.Equals(SniperSelectOptionName)
-                && !currentHighlightedButton.Equals(optionsSelectOptionName))
-            {
-                buttonPressed = true;
-                MoveSelection(button => button.FindSelectableOnDown());
-                buttonPressed = false;
-            }
-
-            // right, go to change options
-            if (controls.UINavigation.Right.triggered
-                && EventSystem.current.currentSelectedGameObject != null)
-            {
-                MoveSelection(button => button.FindSelectableOnRight());
-            }
-
-            // left, return to option select
-            if (controls.UINavigation.Left.triggered)
-            {
-                MoveSelection(button => button.FindSelectableOnLeft());
-            }
-        }
-
-        // ================================== change options =============================================================
-        if (useManualMenuInput)
-        {
-            // up, change options
-            if (controls.UINavigation.Up.triggered && !buttonPressed)
-            {
-                buttonPressed = true;
-                try
-                {
-                    //if (currentHighlightedButton.Equals(numPlayersSelectOptionButtonName))
-                    //{
-                    //    changeSelectedNumPlayersUp();
-                    //    initializeNumPlayersDisplay();
-                    //}
-                    if (currentHighlightedButton.Equals(playerSelectOptionButtonName))
-                    {
-                        playerSelectCoordinator.SelectPreviousPrimary();
-                    }
-                    if (currentHighlightedButton.Equals(levelSelectOptionButtonName))
-                    {
-                        changeSelectedLevelUp();
-                        initializeLevelDisplay();
-                    }
-                    if (currentHighlightedButton.Equals(modeSelectOptionButtonName))
-                    {
-                        changeSelectedModeUp();
-                        initializeModeDisplay();
-                    }
-                    if (currentHighlightedButton.Equals(FriendSelectOptionButtonName))
-                    {
-                        changeSelectedfriendUp();
-                        initializefriendDisplay();
-                    }
-                    //if (currentHighlightedButton.Equals(optionsSelectOptionName))
-                    //{
-                    //    Debug.Log("option up");
-                    //    //changeSelectedfriendUp();
-                    //    //initializefriendDisplay();
-                    //}
-                    if (currentHighlightedButton.Equals(trafficSelectOptionName))
-                    {
-                        // disabled for now. default : OFF
-                        changeSelectedTrafficOption();
-                        initializeTrafficOptionDisplay();
-                    }
-                    if (currentHighlightedButton.Equals(hardcoreSelectOptionName))
-                    {
-                        changeSelectedHardcoreOption();
-                        initializeHardcoreOptionDisplay();
-                    }
-                    if (currentHighlightedButton.Equals(enemySelectOptionName))
-                    {
-                        changeSelectedEnemiesOption();
-                        initializeEnemyOptionDisplay();
-                    }
-                    if (currentHighlightedButton.Equals(SniperSelectOptionName))
-                    {
-                        changeSelectedSniperOption();
-                        initializeSniperOptionDisplay();
-                    }
-                    if (currentHighlightedButton.Equals(difficultySelectOptionName))
-                    {
-                        changeSelectedDifficultyOption(difficultySelected);
-                        initializeDifficultyOptionDisplay();
-                    }
-                    if (currentHighlightedButton.Equals(ObstacleSelectOptionName))
-                    {
-                        changeSelectedObstacleOption();
-                        initializeObstacleOptionDisplay();
-                    }
-                    // CPU cycling has always stepped opposite to level/player on Up/Down; preserved here.
-                    CycleHighlightedCpuSlot(currentHighlightedButton, 1);
-                }
-                catch (Exception e)
-                {
-                    Debug.Log("ERROR : " + e);
-                }
-                buttonPressed = false;
-            }
-            // down, change option
-            if (controls.UINavigation.Down.triggered && !buttonPressed)
-            {
-                buttonPressed = true;
-                try
-                {
-                    //if (currentHighlightedButton.Equals(numPlayersSelectOptionButtonName))
-                    //{
-                    //    changeSelectedNumPlayersDown();
-                    //    initializeNumPlayersDisplay();
-                    //}
-                    if (currentHighlightedButton.Equals(playerSelectOptionButtonName))
-                    {
-                        playerSelectCoordinator.SelectNextPrimary();
-                    }
-                    if (currentHighlightedButton.Equals(levelSelectOptionButtonName))
-                    {
-                        changeSelectedLevelDown();
-                        initializeLevelDisplay();
-                    }
-                    if (currentHighlightedButton.Equals(modeSelectOptionButtonName))
-                    {
-                        changeSelectedModeDown();
-                        initializeModeDisplay();
-                    }
-                    if (currentHighlightedButton.Equals(FriendSelectOptionButtonName))
-                    {
-                        changeSelectedfriendDown();
-                        initializefriendDisplay();
-                    }
-                    //if (currentHighlightedButton.Equals(optionsSelectOptionName))
-                    //{
-                    //    //changeSelectedfriendUp();
-                    //    //initializefriendDisplay();
-                    //}
-                    if (currentHighlightedButton.Equals(trafficSelectOptionName))
-                    {
-                        changeSelectedTrafficOption();
-                        initializeTrafficOptionDisplay();
-
-                    }
-                    if (currentHighlightedButton.Equals(hardcoreSelectOptionName))
-                    {
-                        changeSelectedHardcoreOption();
-                        initializeHardcoreOptionDisplay();
-                    }
-                    if (currentHighlightedButton.Equals(enemySelectOptionName))
-                    {
-                        changeSelectedEnemiesOption();
-                        initializeEnemyOptionDisplay();
-                    }
-                    if (currentHighlightedButton.Equals(SniperSelectOptionName))
-                    {
-                        changeSelectedSniperOption();
-                        initializeSniperOptionDisplay();
-                    }
-                    if (currentHighlightedButton.Equals(difficultySelectOptionName))
-                    {
-                        changeSelectedDifficultyOption(difficultySelected);
-                        initializeDifficultyOptionDisplay();
-                    }
-                    if (currentHighlightedButton.Equals(ObstacleSelectOptionName))
-                    {
-                        changeSelectedObstacleOption();
-                        initializeObstacleOptionDisplay();
-                    }
-                    CycleHighlightedCpuSlot(currentHighlightedButton, -1);
-                }
-                catch (Exception e)
-                {
-                    Debug.Log("ERROR : " + e);
-                }
-                buttonPressed = false;
-            }
-        }
-
-        // Change-driven: this is cheap when nothing changed and only rebuilds text/portraits when
-        // selection, focus or mode context actually did.
-        playerSelectCoordinator.RenderIfNeeded();
-
-        lastSelectedObject = EventSystem.current != null
-            ? EventSystem.current.currentSelectedGameObject
-            : null;
     }
-#endif
 
     /// <summary>
     /// Activates the players tab and focuses the primary select control. Wrapped in try/catch like
@@ -637,7 +455,7 @@ public class StartManager : MonoBehaviour
         }
         catch (Exception e)
         {
-            Debug.Log("ERROR : " + e);
+            Debug.LogError("ERROR : " + e);
         }
     }
 
@@ -686,13 +504,6 @@ public class StartManager : MonoBehaviour
         return -1;
     }
 
-    private bool ShouldUseManualMenuInput(GameObject selectedObject)
-    {
-        return !UiSelectionAdapter.InputSystemUiActive
-            || selectedObject == null
-            || selectedObject == lastSelectedObject;
-    }
-
     private void ResolveCommandButtonReferences()
     {
         startButton = ResolveButton(startButton, startButtonName);
@@ -711,25 +522,20 @@ public class StartManager : MonoBehaviour
             return button;
         }
 
+        // AUD-103: the fallback here used to be Resources.FindObjectsOfTypeAll<Button>(), which
+        // walks every Button loaded in the process - prefab assets and hidden objects included -
+        // to find one by name. GameObject.Find still cannot see inactive objects, so a missing
+        // result is reported by name rather than silently returning null.
         GameObject buttonObject = GameObject.Find(buttonName);
         Button activeButton = buttonObject != null ? buttonObject.GetComponent<Button>() : null;
-        if (activeButton != null)
+        if (activeButton == null)
         {
-            return activeButton;
+            Debug.LogWarning(
+                "StartManager could not resolve the '" + buttonName + "' button in this scene.",
+                this);
         }
 
-        Button[] buttons = Resources.FindObjectsOfTypeAll<Button>();
-        foreach (Button candidate in buttons)
-        {
-            if (candidate != null
-                && candidate.gameObject.name == buttonName
-                && candidate.gameObject.scene.IsValid())
-            {
-                return candidate;
-            }
-        }
-
-        return null;
+        return activeButton;
     }
 
     private Button GetButton(GameObject buttonObject)
@@ -739,26 +545,26 @@ public class StartManager : MonoBehaviour
 
     private void RegisterButtonCallbacks()
     {
-        RegisterRequiredButtonCallback(startButton, StartGame);
-        RegisterRequiredButtonCallback(statsMenuButton, LoadStatsMenu);
-        RegisterRequiredButtonCallback(quitButton, QuitGame);
-        RegisterRequiredButtonCallback(updateMenuButton, LoadProgressionMenu);
-        RegisterRequiredButtonCallback(optionsMenuButton, LoadOptionsMenu);
-        RegisterRequiredButtonCallback(creditsMenuButton, LoadCreditsMenu);
-        RegisterRequiredButtonCallback(accountMenuButton, LoadAccountMenu);
-        RegisterRequiredButtonCallback(playerSelectButton, SelectNextPlayer);
-        RegisterRequiredButtonCallback(friendSelectButton, SelectNextFriend);
-        RegisterRequiredButtonCallback(levelSelectButton, SelectNextLevel);
-        RegisterRequiredButtonCallback(modeSelectButton, SelectNextMode);
-        RegisterRequiredButtonCallback(trafficSelectButton, ToggleTrafficOption);
-        RegisterRequiredButtonCallback(hardcoreSelectButton, ToggleHardcoreOption);
-        RegisterRequiredButtonCallback(enemySelectButton, ToggleEnemiesOption);
-        RegisterRequiredButtonCallback(sniperSelectButton, ToggleSniperOption);
-        RegisterRequiredButtonCallback(difficultySelectButton, CycleDifficultyOption);
-        RegisterRequiredButtonCallback(obstacleSelectButton, ToggleObstacleOption);
-        RegisterRequiredButtonCallback(cpu1OptionButton, CycleCpu1Option);
-        RegisterRequiredButtonCallback(cpu2OptionButton, CycleCpu2Option);
-        RegisterRequiredButtonCallback(cpu3OptionButton, CycleCpu3Option);
+        UiSelectionAdapter.RegisterButton(startButton, StartGame);
+        UiSelectionAdapter.RegisterButton(statsMenuButton, LoadStatsMenu);
+        UiSelectionAdapter.RegisterButton(quitButton, QuitGame);
+        UiSelectionAdapter.RegisterButton(updateMenuButton, LoadProgressionMenu);
+        UiSelectionAdapter.RegisterButton(optionsMenuButton, LoadOptionsMenu);
+        UiSelectionAdapter.RegisterButton(creditsMenuButton, LoadCreditsMenu);
+        UiSelectionAdapter.RegisterButton(accountMenuButton, LoadAccountMenu);
+        UiSelectionAdapter.RegisterButton(playerSelectButton, SelectNextPlayer);
+        UiSelectionAdapter.RegisterButton(friendSelectButton, SelectNextFriend);
+        UiSelectionAdapter.RegisterButton(levelSelectButton, SelectNextLevel);
+        UiSelectionAdapter.RegisterButton(modeSelectButton, SelectNextMode);
+        UiSelectionAdapter.RegisterButton(trafficSelectButton, ToggleTrafficOption);
+        UiSelectionAdapter.RegisterButton(hardcoreSelectButton, ToggleHardcoreOption);
+        UiSelectionAdapter.RegisterButton(enemySelectButton, ToggleEnemiesOption);
+        UiSelectionAdapter.RegisterButton(sniperSelectButton, ToggleSniperOption);
+        UiSelectionAdapter.RegisterButton(difficultySelectButton, CycleDifficultyOption);
+        UiSelectionAdapter.RegisterButton(obstacleSelectButton, ToggleObstacleOption);
+        UiSelectionAdapter.RegisterButton(cpu1OptionButton, CycleCpu1Option);
+        UiSelectionAdapter.RegisterButton(cpu2OptionButton, CycleCpu2Option);
+        UiSelectionAdapter.RegisterButton(cpu3OptionButton, CycleCpu3Option);
     }
 
     private void UnregisterButtonCallbacks()
@@ -785,17 +591,6 @@ public class StartManager : MonoBehaviour
         UiSelectionAdapter.UnregisterButton(cpu3OptionButton, CycleCpu3Option);
     }
 
-    private void RegisterRequiredButtonCallback(Button button, UnityEngine.Events.UnityAction action)
-    {
-        if (button == null || action == null)
-        {
-            return;
-        }
-
-        button.onClick.RemoveListener(action);
-        button.onClick.AddListener(action);
-    }
-
     private GameObject GetDefaultSelectedButton()
     {
         if (EventSystem.current != null && EventSystem.current.firstSelectedGameObject != null)
@@ -804,21 +599,6 @@ public class StartManager : MonoBehaviour
         }
 
         return startButton != null ? startButton.gameObject : null;
-    }
-
-    private void MoveSelection(Func<Selectable, Selectable> findNext)
-    {
-        if (EventSystem.current == null || EventSystem.current.currentSelectedGameObject == null)
-        {
-            return;
-        }
-
-        Selectable current = EventSystem.current.currentSelectedGameObject.GetComponent<Selectable>();
-        Selectable next = current != null ? findNext(current) : null;
-        if (next != null && next.IsActive() && next.IsInteractable())
-        {
-            EventSystem.current.SetSelectedGameObject(next.gameObject);
-        }
     }
 
     private static IEnumerator WaitForCondition(Func<bool> condition)
@@ -840,6 +620,31 @@ public class StartManager : MonoBehaviour
 
         GameOptions.previousSceneName = activeScene;
         SceneManager.LoadScene(Constants.SCENE_NAME_level_00_loading);
+    }
+
+    /// <summary>
+    /// Names the first unmet precondition for starting a match, or null when the menu is ready.
+    ///
+    /// <see cref="HasLoadedGameSetup"/> is a single bool over eighteen conditions, and when it is
+    /// false the player gets "press start does nothing" - the launch is refused and the menu bounces
+    /// to the loading scene, which comes straight back. Anyone diagnosing that had no way to know
+    /// which of the eighteen failed. This says so.
+    /// </summary>
+    private string DescribeMissingGameSetup()
+    {
+        if (!dataLoaded) { return "menu data has not finished loading (dataLoaded)"; }
+        if (playerSelectedData == null || playerSelectedData.Count == 0) { return "no player profiles (playerSelectedData)"; }
+        if (playerSelectCoordinator.CurrentPrimary == null) { return "no primary character selected (playerSelectCoordinator.CurrentPrimary) - player select has not initialised yet"; }
+        if (cpuPlayerSelectedData == null || cpuPlayerSelectedData.Count == 0) { return "no CPU profiles (cpuPlayerSelectedData)"; }
+        if (friendSelectedData == null || friendSelectedData.Count == 0) { return "no cheerleader profiles (friendSelectedData)"; }
+        if (friendSelectedIndex < 0 || friendSelectedIndex >= friendSelectedData.Count) { return "cheerleader index " + friendSelectedIndex + " is outside 0.." + (friendSelectedData.Count - 1); }
+        if (levelSelectedData == null || levelSelectedData.Count == 0) { return "no levels (levelSelectedData)"; }
+        if (levelSelectedIndex < 0 || levelSelectedIndex >= levelSelectedData.Count) { return "level index " + levelSelectedIndex + " is outside 0.." + (levelSelectedData.Count - 1); }
+        if (modeSelectedData == null || modeSelectedData.Count == 0) { return "no game modes (modeSelectedData)"; }
+        if (modeSelectedIndex < 0 || modeSelectedIndex >= modeSelectedData.Count) { return "mode index " + modeSelectedIndex + " is outside 0.." + (modeSelectedData.Count - 1); }
+        if (!MatchCatalogs.IsReady) { return "match catalogs were never built (MatchCatalogs.IsReady)"; }
+
+        return null;
     }
 
     private bool HasLoadedGameSetup()
@@ -898,7 +703,7 @@ public class StartManager : MonoBehaviour
         }
         catch (Exception e)
         {
-            Debug.Log("ERROR : " + e);
+            Debug.LogError("ERROR : " + e);
         }
         finally
         {
@@ -928,7 +733,7 @@ public class StartManager : MonoBehaviour
         }
         catch (Exception e)
         {
-            Debug.Log("ERROR : " + e);
+            Debug.LogError("ERROR : " + e);
         }
         finally
         {
@@ -940,9 +745,13 @@ public class StartManager : MonoBehaviour
     {
         RunCommand(() =>
         {
-            if (!HasLoadedGameSetup())
+            string missing = DescribeMissingGameSetup();
+            if (missing != null)
             {
-                Debug.LogWarning("StartManager cannot start a game until start menu data is loaded. Returning to loading scene.");
+                Debug.LogWarning(
+                    "StartManager cannot start a game: " + missing
+                        + ". Returning to loading scene.",
+                    this);
                 ReturnToLoadingScene();
                 return;
             }
@@ -1139,7 +948,6 @@ public class StartManager : MonoBehaviour
             playerSelectCoordinator.SelectNextCpu(2);
         });
     }
-
 
     IEnumerator UpdateLevelAndExperienceFromDatabase()
     {
@@ -1562,12 +1370,18 @@ public class StartManager : MonoBehaviour
             }
             else { StartMenuUiObjects.instance.column3_friend_selected_stats_numbers_text.text = "";  }
 
-            friendSelectOptionText = GameObject.Find(FriendSelectOptionButtonName).GetComponent<Text>();
-            friendSelectOptionText.text = friendSelectedData[friendSelectedIndex].CheerleaderDisplayName;
+            // AUD-110: this used to re-resolve the label with
+            // GameObject.Find(...).GetComponent<Text>() on every refresh, unguarded, inside a catch
+            // that only logs - so a rename or an inactive object made the friend display fail
+            // silently. GetUiObjectReferences already holds this reference.
+            if (friendSelectOptionText != null)
+            {
+                friendSelectOptionText.text = friendSelectedData[friendSelectedIndex].CheerleaderDisplayName;
+            }
         }
         catch (Exception e)
         {
-            Debug.Log("ERROR : " + e);
+            Debug.LogError("ERROR : " + e);
             return;
         }
     }
@@ -1581,7 +1395,7 @@ public class StartManager : MonoBehaviour
         }
         catch (Exception e)
         {
-            Debug.Log("ERROR : " + e);
+            Debug.LogError("ERROR : " + e);
             return;
         }
     }
@@ -1606,88 +1420,114 @@ public class StartManager : MonoBehaviour
         ModeSelectOptionDescriptionText = StartMenuUiObjects.instance.column2_mode_tab_mode_selected_description;
         ModeSelectOptionDescriptionText.text = mode.Description;
     }
+    /// <summary>
+    /// Shows or hides one tab object, tolerating an unwired reference.
+    ///
+    /// These were direct <c>StartMenuUiObjects.instance.field.SetActive(...)</c> calls. Ninety-six of
+    /// StartMenuUiObjects' serialized references are unassigned on the prefab, and Unity throws
+    /// UnassignedReferenceException on member access rather than returning null - so hitting one
+    /// killed the caller. From <see cref="InitializeDisplay"/> that aborted the coroutine at
+    /// initializeCpuDisplay, and every display after it - level, mode, enemy, traffic, hardcore,
+    /// sniper, difficulty, obstacle - was never initialised at all. Naming the field makes the
+    /// missing wiring actionable instead of a stack trace that only points at SetActive.
+    /// </summary>
+    private static void SetTabObjectActive(GameObject target, string fieldName, bool active)
+    {
+        // Unity's == overload reports an unassigned serialized reference as null, so this catches it
+        // without touching the member that throws.
+        if (target == null)
+        {
+            Debug.LogWarning(
+                "StartMenuUiObjects." + fieldName + " is not assigned on the prefab, so the start"
+                    + " menu cannot show or hide it.");
+            return;
+        }
+
+        target.SetActive(active);
+    }
+
     void disableMenuObjects(string activeMenu)
     {
         if (!activeMenu.ToLower().Equals("players_tab"))
         {
-            StartMenuUiObjects.instance.column2_players_tab.SetActive(false);
-            StartMenuUiObjects.instance.column3.SetActive(false);
-            StartMenuUiObjects.instance.column2_players_tab.SetActive(false);
+            SetTabObjectActive(StartMenuUiObjects.instance.column2_players_tab, "column2_players_tab", false);
+            SetTabObjectActive(StartMenuUiObjects.instance.column3, "column3", false);
+            SetTabObjectActive(StartMenuUiObjects.instance.column2_players_tab, "column2_players_tab", false);
         }
         if (!activeMenu.ToLower().Equals("cpu_tab"))
         {
-            StartMenuUiObjects.instance.column4.SetActive(false);
-            StartMenuUiObjects.instance.column2.SetActive(true);
-            StartMenuUiObjects.instance.column1_subgroup_column2.SetActive(true);
+            SetTabObjectActive(StartMenuUiObjects.instance.column4, "column4", false);
+            SetTabObjectActive(StartMenuUiObjects.instance.column2, "column2", true);
+            SetTabObjectActive(StartMenuUiObjects.instance.column1_subgroup_column2, "column1_subgroup_column2", true);
         }
         if (!activeMenu.ToLower().Equals("friend_tab"))
         {
-            StartMenuUiObjects.instance.column2_friend_tab.SetActive(false);
-            StartMenuUiObjects.instance.column3.SetActive(false);
-            StartMenuUiObjects.instance.column3_friend_selected_stats_numbers.SetActive(false);
+            SetTabObjectActive(StartMenuUiObjects.instance.column2_friend_tab, "column2_friend_tab", false);
+            SetTabObjectActive(StartMenuUiObjects.instance.column3, "column3", false);
+            SetTabObjectActive(StartMenuUiObjects.instance.column3_friend_selected_stats_numbers, "column3_friend_selected_stats_numbers", false);
         }
         if (!activeMenu.ToLower().Equals("level_tab"))
         {
-            StartMenuUiObjects.instance.column2_level_tab.SetActive(false);
+            SetTabObjectActive(StartMenuUiObjects.instance.column2_level_tab, "column2_level_tab", false);
         }
         if (!activeMenu.ToLower().Equals("mode_tab"))
         {
-            StartMenuUiObjects.instance.column2_mode_tab.SetActive(false);
+            SetTabObjectActive(StartMenuUiObjects.instance.column2_mode_tab, "column2_mode_tab", false);
         }
         if (!activeMenu.ToLower().Equals("options_tab"))
         {
-            StartMenuUiObjects.instance.column2_options_tab.SetActive(false);
+            SetTabObjectActive(StartMenuUiObjects.instance.column2_options_tab, "column2_options_tab", false);
         }
         if (activeMenu.ToLower().Equals("cpu_tab"))
         {
-            StartMenuUiObjects.instance.column2.SetActive(false);
-            StartMenuUiObjects.instance.column1_subgroup_column2.SetActive(false);
+            SetTabObjectActive(StartMenuUiObjects.instance.column2, "column2", false);
+            SetTabObjectActive(StartMenuUiObjects.instance.column1_subgroup_column2, "column1_subgroup_column2", false);
         }
     }
     void enableMenuObjects(string activeMenu)
     {
         if (activeMenu.ToLower().Equals("players_tab"))
         {
-            StartMenuUiObjects.instance.column1_subgroup_column2.SetActive(true);
-            StartMenuUiObjects.instance.column2.SetActive(true);
-            StartMenuUiObjects.instance.column2_players_tab.SetActive(true);
-            StartMenuUiObjects.instance.column3.SetActive(true);
-            StartMenuUiObjects.instance.column3_player_stats.SetActive(true);
+            SetTabObjectActive(StartMenuUiObjects.instance.column1_subgroup_column2, "column1_subgroup_column2", true);
+            SetTabObjectActive(StartMenuUiObjects.instance.column2, "column2", true);
+            SetTabObjectActive(StartMenuUiObjects.instance.column2_players_tab, "column2_players_tab", true);
+            SetTabObjectActive(StartMenuUiObjects.instance.column3, "column3", true);
+            SetTabObjectActive(StartMenuUiObjects.instance.column3_player_stats, "column3_player_stats", true);
             // Lock overlay is owned by PlayerSelectView now; it renders whenever selection changes,
             // not only when this tab activates.
         }
 
         if (activeMenu.ToLower().Equals("cpu_tab"))
         {
-            StartMenuUiObjects.instance.column4.SetActive(true);
+            SetTabObjectActive(StartMenuUiObjects.instance.column4, "column4", true);
             // CPU slot portraits/names are kept current by playerSelectCoordinator.RenderIfNeeded(),
             // not refreshed here.
         }
 
         if (activeMenu.ToLower().Equals("friend_tab"))
         {
-            //StartMenuUiObjects.instance.column1_subgroup_column2.SetActive(true);
-            //StartMenuUiObjects.instance.column2.SetActive(true);
-            //StartMenuUiObjects.instance.column2_players_tab.SetActive(true);
-            StartMenuUiObjects.instance.column3.SetActive(true);
-            StartMenuUiObjects.instance.column3_player_stats.SetActive(true);
+            //SetTabObjectActive(StartMenuUiObjects.instance.column1_subgroup_column2, "column1_subgroup_column2", true);
+            //SetTabObjectActive(StartMenuUiObjects.instance.column2, "column2", true);
+            //SetTabObjectActive(StartMenuUiObjects.instance.column2_players_tab, "column2_players_tab", true);
+            SetTabObjectActive(StartMenuUiObjects.instance.column3, "column3", true);
+            SetTabObjectActive(StartMenuUiObjects.instance.column3_player_stats, "column3_player_stats", true);
 
-            StartMenuUiObjects.instance.column2_friend_tab.SetActive(true);
-            //StartMenuUiObjects.instance.column3.SetActive(true);
-            StartMenuUiObjects.instance.column3_friend_selected_stats_numbers.SetActive(true);
+            SetTabObjectActive(StartMenuUiObjects.instance.column2_friend_tab, "column2_friend_tab", true);
+            //SetTabObjectActive(StartMenuUiObjects.instance.column3, "column3", true);
+            SetTabObjectActive(StartMenuUiObjects.instance.column3_friend_selected_stats_numbers, "column3_friend_selected_stats_numbers", true);
         }
         if (activeMenu.ToLower().Equals("level_tab"))
         {
-            StartMenuUiObjects.instance.column2_level_tab.SetActive(true);
+            SetTabObjectActive(StartMenuUiObjects.instance.column2_level_tab, "column2_level_tab", true);
         }
         if (activeMenu.ToLower().Equals("mode_tab"))
         {
-            StartMenuUiObjects.instance.column2_mode_tab.SetActive(true);
+            SetTabObjectActive(StartMenuUiObjects.instance.column2_mode_tab, "column2_mode_tab", true);
 
         }
         if (activeMenu.ToLower().Equals("options_tab"))
         {
-            StartMenuUiObjects.instance.column2_options_tab.SetActive(true);
+            SetTabObjectActive(StartMenuUiObjects.instance.column2_options_tab, "column2_options_tab", true);
         }
     }
 
@@ -1851,11 +1691,22 @@ public class StartManager : MonoBehaviour
     // ============================  message display ==============================
     // used in this context to display if item is locked
 
+    /// <summary>
+    /// Clears the shared message line after a delay.
+    ///
+    /// This used to be `GameObject.Find("messageDisplay").GetComponent&lt;Text&gt;()` with no guard
+    /// on either step (AUD-110), and `messageDisplay` is not part of the start scene - it comes from
+    /// the loading scene's prefab - so the chain throws whenever the start menu is entered without
+    /// it. Resolved through <see cref="SceneObjects"/>, which reports the missing name instead.
+    /// </summary>
     public IEnumerator turnOffMessageLogDisplayAfterSeconds(float seconds)
     {
         yield return new WaitForSecondsRealtime(seconds);
-        Text messageText = GameObject.Find("messageDisplay").GetComponent<Text>();
-        messageText.text = "";
+        Text messageText = SceneObjects.Find<Text>(MessageDisplayObjectName, this);
+        if (messageText != null)
+        {
+            messageText.text = "";
+        }
     }
 
     // ============================  navigation functions ==============================

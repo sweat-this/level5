@@ -28,9 +28,17 @@ public class EndRoundMenuManager : MonoBehaviour
 
     public static EndRoundMenuManager instance;
 
+    private bool initialized;
+
     private void OnEnable()
     {
         PlayerControlsProvider.EnableMenuMaps();
+        // AUD-102: OnDisable unregisters every onClick but this used to not register them again,
+        // so disabling and re-enabling this component left every button on the screen inert.
+        if (initialized)
+        {
+            RegisterMenuButtonCallbacks();
+        }
     }
     private void OnDisable()
     {
@@ -97,6 +105,7 @@ public class EndRoundMenuManager : MonoBehaviour
         UiSelectionAdapter.EnsureInputSystemUiModule();
         RegisterMenuButtonCallbacks();
         UiSelectionAdapter.EnsureSelected(GetDefaultSelectedButton());
+        initialized = true;
     }
 
     private void Update()
@@ -119,9 +128,9 @@ public class EndRoundMenuManager : MonoBehaviour
             return;
         }
 
-        RegisterButton(uiObjects.nextRoundButton, pressNext);
-        RegisterButton(uiObjects.startMenuButton, pressStartMenu);
-        RegisterButton(uiObjects.QuitMenuButton, pressQuit);
+        UiSelectionAdapter.RegisterButton(uiObjects.nextRoundButton, pressNext);
+        UiSelectionAdapter.RegisterButton(uiObjects.startMenuButton, pressStartMenu);
+        UiSelectionAdapter.RegisterButton(uiObjects.QuitMenuButton, pressQuit);
     }
 
     private void UnregisterMenuButtonCallbacks()
@@ -132,33 +141,9 @@ public class EndRoundMenuManager : MonoBehaviour
             return;
         }
 
-        UnregisterButton(uiObjects.nextRoundButton, pressNext);
-        UnregisterButton(uiObjects.startMenuButton, pressStartMenu);
-        UnregisterButton(uiObjects.QuitMenuButton, pressQuit);
-    }
-
-    private void RegisterButton(Button button, UnityEngine.Events.UnityAction action)
-    {
-        if (button == null)
-        {
-            return;
-        }
-
-        button.onClick.RemoveListener(action);
-        if (!UiSelectionAdapter.HasPersistentListeners(button))
-        {
-            button.onClick.AddListener(action);
-        }
-    }
-
-    private void UnregisterButton(Button button, UnityEngine.Events.UnityAction action)
-    {
-        if (button == null)
-        {
-            return;
-        }
-
-        button.onClick.RemoveListener(action);
+        UiSelectionAdapter.UnregisterButton(uiObjects.nextRoundButton, pressNext);
+        UiSelectionAdapter.UnregisterButton(uiObjects.startMenuButton, pressStartMenu);
+        UiSelectionAdapter.UnregisterButton(uiObjects.QuitMenuButton, pressQuit);
     }
 
     private GameObject GetDefaultSelectedButton()
