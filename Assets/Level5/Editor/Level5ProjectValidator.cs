@@ -53,6 +53,10 @@ public sealed class Level5ProjectValidator : IPreprocessBuildWithReport
         ValidateInputActions(errors);
         ValidateContestModeTimers(errors);
         ValidateDevCodeIsolation(errors);
+        // AUD-088: enforced at build time now that the allowlist is empty. Every prefab that
+        // could not be reserialized has been repaired or removed, so a binary asset appearing
+        // here again is a regression rather than a known gap.
+        errors.AddRange(CollectBinarySerializedAssetErrors());
 
         if (errors.Count > 0)
         {
@@ -264,28 +268,6 @@ public sealed class Level5ProjectValidator : IPreprocessBuildWithReport
     };
 
     /// <summary>
-    /// Prefabs Unity refuses to reserialize because they contain a missing MonoBehaviour script:
-    /// "You are trying to save a Prefab with a missing script. This is not allowed."
-    ///
-    /// Being binary is why nothing caught this earlier - <see cref="CollectMissingScriptReferenceErrors"/>
-    /// parses YAML, so it could not see inside them. Three of these are live
-    /// (<c>Cameras _Mobile</c> is referenced by 22 assets, <c>Sunglasses</c> by 26, <c>NavMesh</c> by
-    /// one); the other four are referenced by nothing. Repairing the missing scripts is gameplay-asset
-    /// work, not menu work, so they are recorded here rather than fixed alongside AUD-088 - this list
-    /// is the outstanding item, and shrinking it to empty is the follow-up.
-    /// </summary>
-    private static readonly string[] BinaryAssetsBlockedByMissingScripts =
-    {
-        // The last one. Its missing script is NavMeshSurface, which still exists at
-        // Assets/NavMeshComponents/Scripts/NavMeshSurface.cs under a different GUID, and the prefab
-        // is used by level_12_theater. Removing the component would discard that level's bake
-        // settings and its baked m_NavMeshData reference, so this one is repaired by reassigning the
-        // script in the Inspector - dropping the .cs onto the missing-script slot keeps the
-        // serialized values because the field names still match. It is not a headless fix.
-        "Assets/Resources/Prefabs/critical/NavMesh.prefab",
-    };
-
-    /// <summary>
     /// AUD-088: the project is on Force Text, and .gitattributes declares
     /// <c>*.prefab text eol=lf merge=unityyamlmerge</c>, but a set of assets - including every menu
     /// screen's UI except the start menu - were still Unity 2020/2021 binary because they were never
@@ -314,9 +296,7 @@ public sealed class Level5ProjectValidator : IPreprocessBuildWithReport
             }
 
             string normalized = file.Replace('\\', '/');
-            if (IsExcludedFromBinaryAssetScan(normalized)
-                || Array.IndexOf(BinaryAssetsBlockedByMissingScripts, normalized) >= 0
-                || IsTextSerialized(file))
+            if (IsExcludedFromBinaryAssetScan(normalized) || IsTextSerialized(file))
             {
                 continue;
             }

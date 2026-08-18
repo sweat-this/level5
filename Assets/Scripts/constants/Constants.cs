@@ -1,4 +1,4 @@
-using UnityEngine.SceneManagement;
+﻿using UnityEngine.SceneManagement;
 
 public static class Constants
 {
@@ -38,7 +38,6 @@ public static class Constants
     public const string SCENE_NAME_level_09_party_mansion = "level_09_party_mansion";
     public const string SCENE_NAME_level_10_time_jail = "level_10_time_jail";
     public const string SCENE_NAME_level_11_forest = "level_11_forest";
-    public const string SCENE_NAME_level_12_theater = "level_12_theater";
     public const string SCENE_NAME_level_13_rustys = "level_13_rustys";
     public const string SCENE_NAME_level_14_dome = "level_14_dome";
     public const string SCENE_NAME_level_15_cocaine_island = "level_15_cocaine_island";

@@ -198,11 +198,11 @@ public class CharacterProgressionService
 
         draft.Luck = Mathf.Min(draft.OriginalLuck + draft.AddToLuck, progressionState.MaxLuck);
         draft.Release = Mathf.Min(draft.OriginalRelease + draft.AddToRelease, progressionState.MaxReleaseAccuraccy);
-        // Clamped like Luck and Release. Unclamped, this compounds: LoadManager.getPointsUsed
-        // reconstructs spent points as (Range - 25) / 5, which is wrong for every character
-        // authored at range 55, so each save/load cycle credited phantom points and pushed Range
-        // up again. The reconstruction is the deeper bug; the cap bounds the damage.
-        draft.Range = Mathf.Min(draft.OriginalRange + draft.AddToRange, progressionState.MaxRange);
+        // Range is deliberately uncapped - see ProgressionState. The drift it is exposed to comes
+        // from LoadManager.getPointsUsed reconstructing spent points as (Range - 25) / 5, which is
+        // wrong for every character authored at range 55, so each save/load cycle credits phantom
+        // points. That reconstruction is the bug, not the absence of a ceiling.
+        draft.Range = draft.OriginalRange + draft.AddToRange;
     }
 
     private int GetAccuracy(CharacterProgressDraft draft, AccuracySlot slot)

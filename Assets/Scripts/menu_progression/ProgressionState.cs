@@ -7,7 +7,6 @@ public class ProgressionState : MonoBehaviour
     [SerializeField] int maxSevenAccuraccy;
     [SerializeField] int maxReleaseAccuraccy;
     [SerializeField] int maxLuck;
-    [SerializeField] int maxRange;
 
     [SerializeField] int addTo3;
     [SerializeField] int addTo4;
@@ -60,12 +59,6 @@ public class ProgressionState : MonoBehaviour
         maxSevenAccuraccy = 100;
         maxReleaseAccuraccy = 100;
         maxLuck = 10;
-        // Range was the only upgradeable stat with no ceiling, which is why a long-lived save
-        // could reach a Range of 1930 against authored values of 25-55. 475 is the ceiling the
-        // codebase already implies: LoadManager.getPointsUsed carries a commented-out
-        // `(((temp.Level - 90) * 5) + (90 * 5) + 25)`, and 90 points at 5 feet each over a base
-        // of 25 is 475.
-        maxRange = 475;
     }
 
     public void initializeState(CharacterProfile characterProfile)
@@ -165,5 +158,4 @@ public class ProgressionState : MonoBehaviour
     public int MaxSevenAccuraccy { get => maxSevenAccuraccy; set => maxSevenAccuraccy = value; }
     public int MaxReleaseAccuraccy { get => maxReleaseAccuraccy; set => maxReleaseAccuraccy = value; }
     public int MaxLuck { get => maxLuck; set => maxLuck = value; }
-    public int MaxRange { get => maxRange; set => maxRange = value; }
 }
