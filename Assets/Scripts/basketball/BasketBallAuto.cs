@@ -163,7 +163,7 @@ public class BasketBallAuto : MonoBehaviour
             // change this to reduce opacity
             if (!autoPlayerController.hasBasketball)
             {
-                spriteRenderer.color = new Color(1f, 1f, 1f, 1f); // is about 100 % transparent
+                SetBallVisible(true);
                 dropShadow.SetActive(true);
                 basketBallState.CanPullBall = true;
                 basketBallSprite.transform.rotation = Quaternion.Euler(13.6f, 0, transform.root.position.z);
@@ -174,7 +174,7 @@ public class BasketBallAuto : MonoBehaviour
                 && autoPlayerController.currentState != autoPlayerController.inAirDunkState)//&& !basketBallState.Thrown)
             {
                 basketBallState.CanPullBall = false;
-                spriteRenderer.color = new Color(1f, 1f, 1f, 0f);
+                SetBallVisible(false);
                 dropShadow.SetActive(false);
                 autoPlayerController.SetPlayerAnim("hasBasketball", true);
                 //autoPlayerState.setPlayerAnim("walking", false);
@@ -186,6 +186,23 @@ public class BasketBallAuto : MonoBehaviour
                     basketBallPosition.transform.position.z);
             }
         }
+    }
+
+    /// <summary>
+    /// Shows or hides the ball itself. Same fix as BasketBall.SetBallVisible: tinting
+    /// spriteRenderer.color to alpha 0 does not hide it, because the sprite renders with
+    /// Universal Render Pipeline/Particles/Unlit, which does not honour the SpriteRenderer's
+    /// per-renderer colour. Toggling the renderer does.
+    /// </summary>
+    private void SetBallVisible(bool visible)
+    {
+        if (spriteRenderer == null)
+        {
+            return;
+        }
+
+        spriteRenderer.enabled = visible;
+        spriteRenderer.color = new Color(1f, 1f, 1f, visible ? 1f : 0f);
     }
 
     public void CheckIsBallFacingGoalAuto()
