@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using UnityEditor;
 using UnityEngine;
@@ -26,22 +26,15 @@ using UnityEngine;
 /// <c>PostProcessLayer</c> or <c>PostProcessVolume</c>, so these components are inert. Removing them
 /// changes no rendering behaviour - URP has been doing the work since the migration.
 ///
-/// Deliberately NOT handled here:
-/// <list type="bullet">
-/// <item><c>critical/NavMesh.prefab</c> - the missing script is <c>NavMeshSurface</c>
-/// (<c>m_AgentTypeID</c>, <c>m_CollectObjects</c>, <c>m_OverrideVoxelSize</c>, <c>m_NavMeshData</c>).
-/// <c>Assets/NavMeshComponents/Scripts/NavMeshSurface.cs</c> still exists, under a different GUID, so
-/// the component is recoverable. The prefab is used by <c>level_12_theater</c>. Removing it would
-/// discard that level's bake settings and its baked <c>m_NavMeshData</c> reference. Reassign the
-/// script in the Inspector instead - dropping NavMeshSurface.cs onto the missing-script slot keeps
-/// the serialized values, because the field names still match.</item>
-/// <item>The three orphans - <c>menu_start/StartManager.prefab</c> (a Unity 2020.2 copy of the old
-/// StartManager, superseded by <c>start_manager_test.prefab</c>),
-/// <c>enemy_misc/enemyShotMarker.prefab</c> (its script is <c>BasketBallShotMarkerAuto</c>, which now
-/// lives in <c>basketball/Legacy~/</c> and so is excluded from compilation), and
-/// <c>auto_players/enemy_executioner_auto.prefab</c>. Nothing references any of them. Deleting the
-/// prefabs is the right fix, but that is a deletion and belongs to whoever owns those assets.</item>
-/// </list>
+/// All seven are now resolved. The three above were repaired by this tool. NavMesh.prefab's missing
+/// script was NavMeshSurface from Assets/NavMeshComponents, which turned out to be dead across the
+/// whole project - zero references to any of its types - so the prefab, the level_12_theater scene
+/// that was its only user, and the package itself were removed rather than repaired. The remaining
+/// three were unreferenced orphans and were deleted.
+///
+/// Kept as the record of what was wrong and as a repair path if PPv2 leftovers ever reappear.
+/// Regression is covered by CollectBinarySerializedAssetErrors, which is enforced in
+/// ValidateOrThrow now that the allowlist is empty.
 /// </summary>
 public static class MissingPrefabScriptRepair
 {
