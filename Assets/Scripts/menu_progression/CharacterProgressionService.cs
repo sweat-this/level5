@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 
 public class CharacterProgressionService
 {
@@ -198,7 +198,11 @@ public class CharacterProgressionService
 
         draft.Luck = Mathf.Min(draft.OriginalLuck + draft.AddToLuck, progressionState.MaxLuck);
         draft.Release = Mathf.Min(draft.OriginalRelease + draft.AddToRelease, progressionState.MaxReleaseAccuraccy);
-        draft.Range = draft.OriginalRange + draft.AddToRange;
+        // Clamped like Luck and Release. Unclamped, this compounds: LoadManager.getPointsUsed
+        // reconstructs spent points as (Range - 25) / 5, which is wrong for every character
+        // authored at range 55, so each save/load cycle credited phantom points and pushed Range
+        // up again. The reconstruction is the deeper bug; the cap bounds the damage.
+        draft.Range = Mathf.Min(draft.OriginalRange + draft.AddToRange, progressionState.MaxRange);
     }
 
     private int GetAccuracy(CharacterProgressDraft draft, AccuracySlot slot)

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using UnityEditor;
@@ -276,13 +276,13 @@ public sealed class Level5ProjectValidator : IPreprocessBuildWithReport
     /// </summary>
     private static readonly string[] BinaryAssetsBlockedByMissingScripts =
     {
-        "Assets/Resources/Prefabs/menu_start/StartManager.prefab",
-        "Assets/Resources/Prefabs/camera/Cameras.prefab",
-        "Assets/Resources/Prefabs/camera/Cameras _Mobile.prefab",
+        // The last one. Its missing script is NavMeshSurface, which still exists at
+        // Assets/NavMeshComponents/Scripts/NavMeshSurface.cs under a different GUID, and the prefab
+        // is used by level_12_theater. Removing the component would discard that level's bake
+        // settings and its baked m_NavMeshData reference, so this one is repaired by reassigning the
+        // script in the Inspector - dropping the .cs onto the missing-script slot keeps the
+        // serialized values because the field names still match. It is not a headless fix.
         "Assets/Resources/Prefabs/critical/NavMesh.prefab",
-        "Assets/Resources/Prefabs/enemy_misc/enemyShotMarker.prefab",
-        "Assets/Resources/Prefabs/auto_players/enemy_executioner_auto.prefab",
-        "Assets/Resources/Prefabs/they_live/Sunglasses.prefab",
     };
 
     /// <summary>
