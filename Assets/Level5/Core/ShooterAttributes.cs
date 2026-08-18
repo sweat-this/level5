@@ -85,6 +85,22 @@ namespace Level5.Core
         /// the accuracy term at 0 when no flag was set, and an accuracy of 100 reproduces that
         /// exactly. Returning AccuracyTwoPoint here would look tidier and silently change the shot.
         /// </summary>
+        /// <summary>
+        /// Whether the three-point accuracy branch applied.
+        ///
+        /// <c>ResolveShotAccuracy</c> has two outputs, not one: alongside the accuracy it sets a
+        /// `threePoints` flag, and only in the three-point branch. <c>ShotModifiers.AccuracyModifier</c>
+        /// consumes it, so a consumer migrated onto <see cref="AccuracyFor"/> alone would silently
+        /// pass false for every three-point shot and change how those shots score.
+        ///
+        /// It is derivable rather than stored because the original sets it in exactly the branch
+        /// this expresses - but it has to be stated, or the derivation gets re-invented per caller.
+        /// </summary>
+        public static bool IsThreePointBranch(ShotKind kind)
+        {
+            return kind == ShotKind.Three;
+        }
+
         public float AccuracyFor(ShotKind kind)
         {
             switch (kind)

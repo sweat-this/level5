@@ -128,6 +128,39 @@ public class PlayerMovementPhysicsTests
                 + " horizontally, so something is still driving horizontal motion during the jump");
     }
 
+    /// <summary>
+    /// Locomotion must not erase a velocity another system imposed. PlayerDunk.Launch sets a
+    /// ballistic velocity and then clears Locked immediately, so FixedUpdate resumes mid-flight; an
+    /// unconditional horizontal write zeroed x/z and the player never reached the rim.
+    /// </summary>
+    [UnityTest]
+    public IEnumerator AnImposedArcSurvivesWhileAirborneWithNoInput()
+    {
+        Rigidbody player = null;
+        yield return EnterGameplayLevel(result => player = result);
+        Assert.That(player, Is.Not.Null, "No player rigidbody in the gameplay level.");
+
+        Assert.That(Time.timeScale, Is.GreaterThan(0f), "physics is frozen, the level never resumed");
+
+        // lift clear of the ground so Grounded is false, then impose an arc the way a dunk does
+        player.position += Vector3.up * 3f;
+        yield return new WaitForFixedUpdate();
+        player.linearVelocity = new Vector3(4f, 6f, 3f);
+
+        // one physics step is all it took for the old code to flatten it
+        yield return new WaitForFixedUpdate();
+        yield return new WaitForFixedUpdate();
+
+        Vector3 v = player.linearVelocity;
+        float horizontal = new Vector2(v.x, v.z).magnitude;
+        Debug.Log("DIAG horizontal retained mid-air: " + horizontal);
+
+        Assert.That(
+            horizontal,
+            Is.GreaterThan(1f),
+            "an imposed arc was flattened by locomotion - dunks and knockbacks would not travel");
+    }
+
     /// <summary>Start menu -> gameplay level, resumed, physics running.</summary>
     private IEnumerator EnterGameplayLevel(System.Action<Rigidbody> onReady)
     {

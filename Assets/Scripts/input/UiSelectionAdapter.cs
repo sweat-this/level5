@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.Events;
@@ -97,8 +97,20 @@ public static class UiSelectionAdapter
     /// managers always registered (AUD-105). Whether a button's behaviour came from code or from the
     /// scene therefore depended on which helper the screen happened to use - and for the menu screens
     /// still authored in binary prefabs, the scene half is not reviewable. Code owns menu button
-    /// behaviour; scenes author none. <see cref="HasPersistentListeners"/> remains so the validator
-    /// can assert that.
+    /// behaviour.
+    ///
+    /// "Scenes author none" is not a project-wide rule and this does not enforce one - 23 authored
+    /// onClick calls exist across the menu assets, and for the account and credits screens they are
+    /// the only wiring there is. The invariant that matters is narrower: no button may be both
+    /// authored and code-registered, or it fires twice. Checked at the time of this change across
+    /// OptionManager, StatsManager, creditsManager, LoginManager, start.prefab and the start scene -
+    /// no authored target collides with a code registration.
+    ///
+    /// Two authored listeners are dead rather than duplicated: OptionManager's press_start points at
+    /// OptionsManager.loadStartScreen and a VSync button at ChangeVSync, neither of which exists any
+    /// more. They are inert, and the buttons work through their code registration.
+    ///
+    /// <see cref="HasPersistentListeners"/> is retained for callers that need to ask.
     /// </summary>
     public static void RegisterButton(Button button, UnityAction action)
     {

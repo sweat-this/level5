@@ -40,13 +40,18 @@ public static class ShooterAttributesFactory
     }
 
     /// <summary>
-    /// The shot kind the pipeline's if/else chain would have selected for this ball state.
+    /// The shot kind the launch pipeline's if/else chain would select, read from the *point* flags.
     ///
-    /// The flags are not mutually exclusive, so order matters: seven, then four, then three, then
-    /// two. Extracted here so the precedence exists once rather than being re-typed at every site
-    /// that needs to pick an accuracy.
+    /// Deliberately not named ShotKindOf, because <c>BasketBallShotMade.ShotKindOf</c> already
+    /// exists and answers a different question with the opposite precedence. That one reads the
+    /// *attempt* flags (TwoAttempt..SevenAttempt) ascending, and can, because by the time a make is
+    /// registered they are mutually exclusive. These point flags are not mutually exclusive at
+    /// launch time, so precedence runs seven, four, three, two and the highest wins - matching
+    /// BasketballShotPipeline.ResolveShotAccuracy.
+    ///
+    /// Two resolvers distinguished only by which flag set they read is a trap; the names say which.
     /// </summary>
-    public static ShotKind KindOf(BasketBallState basketBallState)
+    public static ShotKind KindFromPointFlags(BasketBallState basketBallState)
     {
         if (basketBallState == null)
         {

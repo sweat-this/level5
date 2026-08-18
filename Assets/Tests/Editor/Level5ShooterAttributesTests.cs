@@ -89,6 +89,21 @@ public class Level5ShooterAttributesTests
         Assert.That(attributes.RunSpeed, Is.EqualTo(9f));
     }
 
+    /// <summary>
+    /// ResolveShotAccuracy has two outputs. The second - the threePoints flag consumed by
+    /// ShotModifiers.AccuracyModifier - is set only in the three-point branch. A consumer migrated
+    /// onto AccuracyFor alone would pass false for every three-pointer and change how they score.
+    /// </summary>
+    [TestCase(ShotKind.Three, true)]
+    [TestCase(ShotKind.Two, false)]
+    [TestCase(ShotKind.Four, false)]
+    [TestCase(ShotKind.Seven, false)]
+    [TestCase(ShotKind.None, false)]
+    public void OnlyTheThreePointBranchSetsTheThreePointFlag(ShotKind kind, bool expected)
+    {
+        Assert.That(ShooterAttributes.IsThreePointBranch(kind), Is.EqualTo(expected));
+    }
+
     /// <summary>A default instance must be inert rather than throwing - see ShooterAttributesFactory.</summary>
     [Test]
     public void ADefaultInstanceIsInert()
