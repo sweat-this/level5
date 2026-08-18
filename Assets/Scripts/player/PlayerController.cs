@@ -343,8 +343,7 @@ public class PlayerController : MonoBehaviour
 
             if (currentState != specialState)
             {
-                //rigidBody.MovePosition(transform.position + movement);
-                rigidBody.MovePosition(rigidBody.position + movement);
+                ApplyHorizontalMovement();
                 //isWalking(movement);
                 IsWalking(movementHorizontal, movementVertical);
             }
@@ -772,6 +771,39 @@ public class PlayerController : MonoBehaviour
         {
             Flip();
         }
+    }
+
+    /// <summary>
+    /// Drives horizontal movement through the rigidbody's velocity, leaving the vertical axis to
+    /// gravity and <see cref="PlayerJump"/>.
+    ///
+    /// This used to be <c>rigidBody.MovePosition(rigidBody.position + movement)</c>, which does not
+    /// mean "teleport" on a non-kinematic body - the player is <c>m_IsKinematic: 0</c> with
+    /// <c>m_LinearDamping: 0</c> and discrete collision detection, so PhysX derives an implicit
+    /// velocity of delta/fixedDeltaTime to reach the requested position. That produced two bugs:
+    ///
+    /// - walking into another character drove a dynamic body into a collider, and the resulting
+    ///   depenetration impulse had no damping to bleed it off, so the player shot away at
+    ///   enormous speed;
+    /// - jumping wrote <c>linearVelocity</c> directly while MovePosition kept running every physics
+    ///   step (there is no grounded check on movement), so holding a direction and jumping had the
+    ///   two mechanisms compound and the player flew a long way, fast.
+    ///
+    /// Writing velocity composes correctly with both: the jump's vertical component is preserved,
+    /// gravity still applies, and contacts resolve through the solver instead of by teleporting into
+    /// them. Overwriting the horizontal component every step also means any residual push from a
+    /// contact is gone on the next step rather than accumulating.
+    ///
+    /// Speed is unchanged - <c>movementSpeed</c> was already units per second, which is why the old
+    /// line multiplied it by <c>Time.fixedDeltaTime</c> to get a per-step displacement. Air control
+    /// still uses the <c>InAirSpeed</c> that Update selects.
+    /// </summary>
+    private void ApplyHorizontalMovement()
+    {
+        Vector3 velocity = rigidBody.linearVelocity;
+        velocity.x = movementHorizontal * movementSpeed;
+        velocity.z = movementVertical * movementSpeed;
+        rigidBody.linearVelocity = velocity;
     }
 
     public void PlayerJump()

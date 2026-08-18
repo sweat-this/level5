@@ -145,7 +145,7 @@ public class BasketBall : MonoBehaviour
             // change this to reduce opacity
             if (!playerController.hasBasketball)
             {
-                spriteRenderer.color = new Color(1f, 1f, 1f, 1f); // is about 100 % transparent
+                SetBallVisible(true);
                 dropShadow.SetActive(true);
                 basketBallState.CanPullBall = true;
                 basketBallSprite.transform.rotation = Quaternion.Euler(13.6f, 0, transform.root.position.z);
@@ -155,7 +155,7 @@ public class BasketBall : MonoBehaviour
                 && playerController.currentState != playerController.dunkState)//&& !basketBallState.Thrown)
             {
                 basketBallState.CanPullBall = false;
-                spriteRenderer.color = new Color(1f, 1f, 1f, 0f);
+                SetBallVisible(false);
                 dropShadow.SetActive(false);
                 playerController.SetPlayerAnim("hasBasketball", true);
                 //playerState.setPlayerAnim("walking", false);
@@ -167,6 +167,33 @@ public class BasketBall : MonoBehaviour
                     basketBallPosition.transform.position.z);
             }
         }
+    }
+
+    /// <summary>
+    /// Shows or hides the ball itself.
+    ///
+    /// This used to be done by tinting <c>spriteRenderer.color</c> to alpha 0. A play-mode trace
+    /// confirmed the tint is applied - the ball sits exactly on the owner's hold point with
+    /// alpha 0.00 - and the material is a correctly configured transparent one
+    /// (<c>_SURFACE_TYPE_TRANSPARENT</c>, SrcAlpha/OneMinusSrcAlpha), yet the ball is still drawn
+    /// above the player's head. The sprite is rendered with
+    /// <c>Universal Render Pipeline/Particles/Unlit</c>, a particle shader rather than a sprite
+    /// shader, and it does not honour the SpriteRenderer's per-renderer colour the way
+    /// Sprites-Default does.
+    ///
+    /// Toggling the renderer says exactly what is meant and does not depend on the shader
+    /// respecting vertex colour. The tint is kept so anything that does read the colour still sees
+    /// the old values.
+    /// </summary>
+    private void SetBallVisible(bool visible)
+    {
+        if (spriteRenderer == null)
+        {
+            return;
+        }
+
+        spriteRenderer.enabled = visible;
+        spriteRenderer.color = new Color(1f, 1f, 1f, visible ? 1f : 0f);
     }
 
     public void CheckIsBallFacingGoal()
