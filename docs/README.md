@@ -25,6 +25,7 @@ Decision records and audits:
 - [UI Menu System Audit 2026-08-17](ui-menu-audit-2026-08-17.md) - two review passes over the ten menu scenes, the pause menu and `Assets/Scripts/menu_*`: asset authoring, canvas scaling, input routing, wiring ownership, per-frame cost, and coverage. AUD-088 to AUD-112, all open. Paired with the [implementation prompt](ui-menu-overhaul-implementation-prompt.md).
 - [Deep Audit 2026-08-06](deep-audit-2026-08-06.md) - five runtime passes covering progression/XP math, stat ownership, AI instance state, persistence locking, and lifecycle hygiene. AUD-022 to AUD-045 fixed, pending Unity compile/playtest verification.
 - [Deep Audit 2026-08-09](deep-audit-2026-08-09.md) - credential security, Unity null semantics, singleton teardown, per-frame allocation, device assumptions, build contents, and assembly structure. AUD-057 to AUD-063, all fixed. Includes what was checked and found clean, and the first play-mode coverage of runtime gameplay code.
+- [Systems Restructure Plan](systems-restructure-plan.md) - the order to unlock structural work in, measured from the real dependency graph: cut the player/basketball/game-manager cycle, split the assembly, then collapse the human/CPU duplicate pairs.
 - [Architecture Remediation Plan](architecture-remediation-plan.md) - staged implementation plan for clean architecture, Unity best practices, performance, and risk control.
 - [Versus Implementation Plan](versus-correspondence-plan.md) - the decision record behind the above: audit findings, target architecture, and the two review passes.
 
