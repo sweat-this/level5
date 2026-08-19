@@ -287,9 +287,18 @@ public class AutoPlayerDefense : MonoBehaviour
     /// <see cref="AutoPlayerController.moveToPosition"/>, which this now matches: normalize the
     /// direction, and clamp the step to the remaining distance so arriving cannot overshoot.
     ///
-    /// This changes how the lockdown defender feels. With the authored guard distance the two
-    /// forms agree at roughly one unit of separation; beyond that the old code was faster, inside
-    /// it slower. <c>speed</c> is now literally units per second and wants a Play Mode retune.
+    /// This changes how the lockdown defender feels. The old form's effective speed was
+    /// <c>speed * separation</c>, so the two agree at exactly one unit of separation; beyond that
+    /// the old code was faster, inside it slower.
+    ///
+    /// The important difference is not close-out speed but tracking. The old form had no cap and
+    /// self-corrected at any separation, settling at a lag of <c>v / speed</c> against a player
+    /// moving at <c>v</c>. This form cannot exceed <c>speed</c>, so a defender slower than the
+    /// player it guards falls behind without bound. The authored 6 tied the fastest ball handlers
+    /// (<c>runSpeedHasBall</c> tops out at 6) and lost to a free runner (<c>runSpeed</c> 6.5), so
+    /// it could neither close a gap nor hold one. It is now 10: clear of every authored player
+    /// speed, and a match for the old close-out authority over the 1.5-3 unit band where a
+    /// contest actually happens. Tuned by construction, not by feel - worth a Play Mode pass.
     /// </summary>
     public void moveToPosition(Vector3 target)
     {
