@@ -228,7 +228,7 @@ public class Timer : MonoBehaviour
             requiresConsecutiveShots,
             player.basketBallState.Thrown,
             player.playerController.Grounded,
-            player.gameStats.ConsecutiveShotsMade);
+            player.gameStats.Stats.ConsecutiveShotsMade);
 
         if (expired)
         {

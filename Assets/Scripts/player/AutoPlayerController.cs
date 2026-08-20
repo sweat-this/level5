@@ -518,20 +518,20 @@ public class AutoPlayerController : MonoBehaviour
         else { directionOfTravelSeven = Vector3.left; }
         // conditions for type of shot
         if (characterProfile.Accuracy3Pt > characterProfile.Accuracy4Pt
-             && (GameLevelManager.instance.currentHighScoreTotalPoints - gameStats.TotalPoints) <= 12)
+             && (GameLevelManager.instance.currentHighScoreTotalPoints - gameStats.Stats.TotalPoints) <= 12)
         {
             finalDirection = directionOfTravel + directionOfTravel.normalized * distance3;
             targetPosition = GameLevelManager.instance.BasketballRimVector + finalDirection;
         }
         if (characterProfile.Accuracy3Pt <= characterProfile.Accuracy4Pt
-            || (GameLevelManager.instance.currentHighScoreTotalPoints - gameStats.TotalPoints) >= 16)
+            || (GameLevelManager.instance.currentHighScoreTotalPoints - gameStats.Stats.TotalPoints) >= 16)
         {
             finalDirection = directionOfTravel + directionOfTravel.normalized * distance4;
             targetPosition = GameLevelManager.instance.BasketballRimVector + finalDirection;
         }
         if (((characterProfile.Accuracy7Pt >= characterProfile.Accuracy4Pt
             && characterProfile.Accuracy7Pt >= characterProfile.Accuracy3Pt)
-            || (GameLevelManager.instance.currentHighScoreTotalPoints - gameStats.TotalPoints) >= 21)
+            || (GameLevelManager.instance.currentHighScoreTotalPoints - gameStats.Stats.TotalPoints) >= 21)
             && cpuShootSevenpointers())
         {
             // CPU-4: this was `transform.position + finalDirection` - the only branch here that

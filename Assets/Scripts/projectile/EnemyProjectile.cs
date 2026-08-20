@@ -238,7 +238,7 @@ public class EnemyProjectile : MonoBehaviour
         {
             if (other.gameObject.CompareTag("playerHitbox") && sniperProjectile)
             {
-                GameLevelManager.instance.Player1.gameStats.SniperHits++;
+                GameLevelManager.instance.Player1.gameStats.Stats.SniperHits++;
             }
 
             Vector3 transformAtImpact = SniperManager.instance.PlayerPosAtShoot;
