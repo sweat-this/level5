@@ -44,13 +44,13 @@ public static class BasketballShotPipeline
         if (GameRules.instance.BasketBallShotMarkersList[basketBallState.OnShootShotMarkerId].ShotAttempt == 5
             && (MatchRuntime.Rules.IsThreePointContest || MatchRuntime.Rules.IsFourPointContest || MatchRuntime.Rules.IsSevenPointContest))
         {
-            gameStats.MoneyBallAttempts++;
+            gameStats.Stats.MoneyBallAttempts++;
         }
 
         if (GameRules.instance.MoneyBallEnabled)
         {
             basketBallState.MoneyBallEnabledOnShoot = true;
-            gameStats.MoneyBallAttempts++;
+            gameStats.Stats.MoneyBallAttempts++;
         }
     }
 
@@ -189,7 +189,7 @@ public static class BasketballShotPipeline
     {
         if (UtilityFunctions.RollPercent(maxPercent))
         {
-            gameStats.CriticalRolled++;
+            gameStats.Stats.CriticalRolled++;
             return true;
         }
         return false;
@@ -276,26 +276,34 @@ public static class BasketballShotPipeline
                                 + "luck : " + shooter.Luck;
     }
 
+    /// <summary>
+    /// Phase 1c: reads counters through <see cref="GameStats.Stats"/> rather than the facade's
+    /// passthrough properties. Still takes <c>GameStats</c> itself, not just <c>MatchStats</c> -
+    /// <see cref="GameStats.getExperienceGainedFromSession"/> reads <c>MatchRuntime</c>, which
+    /// <c>MatchStats</c> cannot reach across the assembly boundary, so that one call stays on the
+    /// facade.
+    /// </summary>
     public static void UpdateScoreText(Text scoreText, GameStats gameStats, float lastShotDistance)
     {
-        scoreText.text = "shots  : " + gameStats.ShotMade + " / " + gameStats.ShotAttempt + "  " +
-                         gameStats.getTotalPointAccuracy().ToString("0.00") + "\n"
-                         + "points : " + gameStats.TotalPoints + "\n"
-                         + "2 pointers : " + gameStats.TwoPointerMade + " / " +
-                         gameStats.TwoPointerAttempts + "  " + GetPercentage(gameStats.TwoPointerMade, gameStats.TwoPointerAttempts).ToString("0.00") + "%\n"
-                         + "3 pointers : " + gameStats.ThreePointerMade + " / " +
-                         gameStats.ThreePointerAttempts + "  " + GetPercentage(gameStats.ThreePointerMade, gameStats.ThreePointerAttempts).ToString("0.00") + "%\n"
-                         + "4 pointers : " + gameStats.FourPointerMade + " / " +
-                         gameStats.FourPointerAttempts + "  : " + GetPercentage(gameStats.FourPointerMade, gameStats.FourPointerAttempts).ToString("0.00") + "%\n"
-                         + "7 pointers : " + gameStats.SevenPointerMade + " / " +
-                         gameStats.SevenPointerAttempts + "  " + GetPercentage(gameStats.SevenPointerMade, gameStats.SevenPointerAttempts).ToString("0.00") + "%\n"
+        MatchStats stats = gameStats.Stats;
+        scoreText.text = "shots  : " + stats.ShotMade + " / " + stats.ShotAttempt + "  " +
+                         stats.TotalPointAccuracy.ToString("0.00") + "\n"
+                         + "points : " + stats.TotalPoints + "\n"
+                         + "2 pointers : " + stats.TwoPointerMade + " / " +
+                         stats.TwoPointerAttempts + "  " + GetPercentage(stats.TwoPointerMade, stats.TwoPointerAttempts).ToString("0.00") + "%\n"
+                         + "3 pointers : " + stats.ThreePointerMade + " / " +
+                         stats.ThreePointerAttempts + "  " + GetPercentage(stats.ThreePointerMade, stats.ThreePointerAttempts).ToString("0.00") + "%\n"
+                         + "4 pointers : " + stats.FourPointerMade + " / " +
+                         stats.FourPointerAttempts + "  : " + GetPercentage(stats.FourPointerMade, stats.FourPointerAttempts).ToString("0.00") + "%\n"
+                         + "7 pointers : " + stats.SevenPointerMade + " / " +
+                         stats.SevenPointerAttempts + "  " + GetPercentage(stats.SevenPointerMade, stats.SevenPointerAttempts).ToString("0.00") + "%\n"
                          + "last shot distance : " + (Math.Round(lastShotDistance, 2) * 6f).ToString("0.00") + " ft." +
                          "\n"
                          + "longest shot distance : " +
-                         (Math.Round(gameStats.LongestShotMade, 2)).ToString("0.00") + " ft." + "\n" +
-                         "criticals rolled : " + gameStats.CriticalRolled + " / " + gameStats.ShotAttempt
-                         + "  " + GetPercentage(gameStats.CriticalRolled, gameStats.ShotAttempt).ToString("0.00") + "%\n"
-                         + "consecutive shots made : " + gameStats.ConsecutiveShotsMade + "\n"
+                         (Math.Round(stats.LongestShotMade, 2)).ToString("0.00") + " ft." + "\n" +
+                         "criticals rolled : " + stats.CriticalRolled + " / " + stats.ShotAttempt
+                         + "  " + GetPercentage(stats.CriticalRolled, stats.ShotAttempt).ToString("0.00") + "%\n"
+                         + "consecutive shots made : " + stats.ConsecutiveShotsMade + "\n"
                          + "current exp : " + gameStats.getExperienceGainedFromSession();
     }
 
