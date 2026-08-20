@@ -416,7 +416,7 @@ public class MatchHudPresenter : MonoBehaviour
     public void updatePlayerScore()
     {
         List<PlayerIdentifier> players = GameLevelManager.instance.getSortedGameStatsList();
-        Timer.instance.ScoreClockText.text = players[0].gameStats.TotalPoints.ToString();
+        Timer.instance.ScoreClockText.text = players[0].gameStats.Stats.TotalPoints.ToString();
         string playerType;
         if (players.Count > 0 && players[0] != null)
         {
@@ -425,9 +425,9 @@ public class MatchHudPresenter : MonoBehaviour
             displayP1ScoreText.text = playerType + " " + (players[0].pid + 1)
                 + "\n" + players[0].characterProfile.PlayerDisplayName
                 //+ "\n" + "lvl : "+ players[0].characterProfile.Level
-                + "\n" + "points : " + players[0].gameStats.TotalPoints
-                + "\n" + players[0].gameStats.ShotMade + "/" + players[0].gameStats.ShotAttempt
-                + " " + players[0].gameStats.getTotalPointAccuracy().ToString("0.00") + "%";
+                + "\n" + "points : " + players[0].gameStats.Stats.TotalPoints
+                + "\n" + players[0].gameStats.Stats.ShotMade + "/" + players[0].gameStats.Stats.ShotAttempt
+                + " " + players[0].gameStats.Stats.TotalPointAccuracy.ToString("0.00") + "%";
         }
         if (players.Count > 1 && players[1] != null)
         {
@@ -436,9 +436,9 @@ public class MatchHudPresenter : MonoBehaviour
             displayP2ScoreText.text = playerType + " " + (players[1].pid + 1)
                 + "\n" + players[1].characterProfile.PlayerDisplayName
                 //+ "\n" + "lvl : " + players[1].characterProfile.Level
-                + "\n" + "points : " + players[1].gameStats.TotalPoints
-                + "\n" + players[1].gameStats.ShotMade + "/" + players[1].gameStats.ShotAttempt
-                + " " + players[1].gameStats.getTotalPointAccuracy().ToString("0.00") + "%";
+                + "\n" + "points : " + players[1].gameStats.Stats.TotalPoints
+                + "\n" + players[1].gameStats.Stats.ShotMade + "/" + players[1].gameStats.Stats.ShotAttempt
+                + " " + players[1].gameStats.Stats.TotalPointAccuracy.ToString("0.00") + "%";
         }
         else
         {
@@ -451,9 +451,9 @@ public class MatchHudPresenter : MonoBehaviour
             displayP3ScoreText.text = playerType + " " + (players[2].pid + 1)
                 + "\n" + players[2].characterProfile.PlayerDisplayName
                 //+ "\n" + "lvl : " + players[2].characterProfile.Level
-                + "\n" + "points : " + players[2].gameStats.TotalPoints
-                + "\n" + players[2].gameStats.ShotMade + "/" + players[2].gameStats.ShotAttempt
-                + " " + players[2].gameStats.getTotalPointAccuracy().ToString("0.00") + "%";
+                + "\n" + "points : " + players[2].gameStats.Stats.TotalPoints
+                + "\n" + players[2].gameStats.Stats.ShotMade + "/" + players[2].gameStats.Stats.ShotAttempt
+                + " " + players[2].gameStats.Stats.TotalPointAccuracy.ToString("0.00") + "%";
         }
         else
         {
@@ -466,9 +466,9 @@ public class MatchHudPresenter : MonoBehaviour
             displayP4ScoreText.text = playerType + " " + (players[3].pid + 1)
                 + "\n" + players[3].characterProfile.PlayerDisplayName
                 //+ "\n" + "lvl : " + players[3].characterProfile.Level
-                + "\n" + "points : " + players[3].gameStats.TotalPoints
-                + "\n" + players[3].gameStats.ShotMade + "/" + players[3].gameStats.ShotAttempt
-                + " " + players[3].gameStats.getTotalPointAccuracy().ToString("0.00") + "%";
+                + "\n" + "points : " + players[3].gameStats.Stats.TotalPoints
+                + "\n" + players[3].gameStats.Stats.ShotMade + "/" + players[3].gameStats.Stats.ShotAttempt
+                + " " + players[3].gameStats.Stats.TotalPointAccuracy.ToString("0.00") + "%";
         }
         else
         {
@@ -485,16 +485,16 @@ public class MatchHudPresenter : MonoBehaviour
             //switch (gameModeId)
             //{
             //    case Modes.TotalPoints:
-            //        displayCurrentScoreText.text = "total points : " + gameStats.TotalPoints
+            //        displayCurrentScoreText.text = "total points : " + gameStats.Stats.TotalPoints
             //        + "\ncurrent shot : " + BasketBall.instance.BasketBallState.CurrentShotType;
-            //        Timer.instance.ScoreClockText.text = gameStats.TotalPoints.ToString();
+            //        Timer.instance.ScoreClockText.text = gameStats.Stats.TotalPoints.ToString();
             //        displayHighScoreText.text = "high score : " + PlayerData.instance.TotalPoints;
 
             //        break;
             //    case Modes.Total3Pointers:
-            //        displayCurrentScoreText.text = "3s made : " + gameStats.ThreePointerMade
+            //        displayCurrentScoreText.text = "3s made : " + gameStats.Stats.ThreePointerMade
             //        + "\ncurrent shot : " + BasketBall.instance.BasketBallState.CurrentShotType;
-            //        Timer.instance.ScoreClockText.text = gameStats.ThreePointerMade.ToString();
+            //        Timer.instance.ScoreClockText.text = gameStats.Stats.ThreePointerMade.ToString();
 
             //        displayHighScoreText.text = "high score : " + PlayerData.instance.ThreePointerMade;
             //        break;
@@ -516,45 +516,45 @@ public class MatchHudPresenter : MonoBehaviour
             //}
             if (gameModeId == Modes.TotalPoints)
             {
-                displayCurrentScoreText.text = "total points : " + gameStats.TotalPoints
+                displayCurrentScoreText.text = "total points : " + gameStats.Stats.TotalPoints
                     + "\ncurrent shot : " + BasketBall.instance.BasketBallState.CurrentShotType;
-                Timer.instance.ScoreClockText.text = gameStats.TotalPoints.ToString();
+                Timer.instance.ScoreClockText.text = gameStats.Stats.TotalPoints.ToString();
 
                 displayHighScoreText.text = "high score : " + PlayerData.instance.TotalPoints;
                 return;
             }
             if ( gameModeId == Modes.Lockdown)
             {
-                displayCurrentScoreText.text = "total points : " + gameStats.TotalPoints
+                displayCurrentScoreText.text = "total points : " + gameStats.Stats.TotalPoints
                     + "\ncurrent shot : " + BasketBall.instance.BasketBallState.CurrentShotType;
-                Timer.instance.ScoreClockText.text = gameStats.TotalPoints.ToString();
+                Timer.instance.ScoreClockText.text = gameStats.Stats.TotalPoints.ToString();
 
                 displayHighScoreText.text = "high score : " + PlayerData.instance.TotalPointsLockDown;
                 return;
             }
             if (gameModeId == Modes.Total3Pointers)
             {
-                displayCurrentScoreText.text = "3s made : " + gameStats.ThreePointerMade
+                displayCurrentScoreText.text = "3s made : " + gameStats.Stats.ThreePointerMade
                     + "\ncurrent shot : " + BasketBall.instance.BasketBallState.CurrentShotType;
-                Timer.instance.ScoreClockText.text = gameStats.ThreePointerMade.ToString();
+                Timer.instance.ScoreClockText.text = gameStats.Stats.ThreePointerMade.ToString();
 
                 displayHighScoreText.text = "high score : " + PlayerData.instance.ThreePointerMade;
                 return;
             }
             if (gameModeId == Modes.Total4Pointers)
             {
-                displayCurrentScoreText.text = "4s made : " + gameStats.FourPointerMade
+                displayCurrentScoreText.text = "4s made : " + gameStats.Stats.FourPointerMade
                     + "\ncurrent shot : " + BasketBall.instance.BasketBallState.CurrentShotType;
-                Timer.instance.ScoreClockText.text = gameStats.FourPointerMade.ToString();
+                Timer.instance.ScoreClockText.text = gameStats.Stats.FourPointerMade.ToString();
 
                 displayHighScoreText.text = "high score : " + PlayerData.instance.FourPointerMade;
                 return;
             }
             if (gameModeId == Modes.Total7Pointers)
             {
-                displayCurrentScoreText.text = "7s made : " + gameStats.SevenPointerMade
+                displayCurrentScoreText.text = "7s made : " + gameStats.Stats.SevenPointerMade
                                                             + "\ncurrent shot : " + BasketBall.instance.BasketBallState.CurrentShotType;
-                Timer.instance.ScoreClockText.text = gameStats.SevenPointerMade.ToString();
+                Timer.instance.ScoreClockText.text = gameStats.Stats.SevenPointerMade.ToString();
 
                 displayHighScoreText.text = "high score : " + PlayerData.instance.SevenPointerMade;
                 return;
@@ -567,9 +567,9 @@ public class MatchHudPresenter : MonoBehaviour
             //}
             if (gameModeId == Modes.TotalDistance)
             {
-                displayCurrentScoreText.text = "total distance : " + (gameStats.TotalDistance).ToString("0.00")
+                displayCurrentScoreText.text = "total distance : " + (gameStats.Stats.TotalDistance).ToString("0.00")
                 + "\ncurrent distance : " + (BasketBall.instance.BasketBallState.PlayerDistanceFromRim * 6).ToString("0.00");
-                Timer.instance.ScoreClockText.text = (gameStats.TotalDistance).ToString("0.00");
+                Timer.instance.ScoreClockText.text = (gameStats.Stats.TotalDistance).ToString("0.00");
 
                 displayHighScoreText.text = "high score : " + PlayerData.instance.TotalDistance.ToString("0.00");
                 return;
@@ -597,7 +597,7 @@ public class MatchHudPresenter : MonoBehaviour
                 //                                                 + "\ncurrent distance : " + (BasketBall.instance.BasketBallState.BallDistanceFromRim * 6).ToString("0.00");
                 //displayHighScoreText.text = "high score : " + PlayerData.instance.TotalDistance.ToString("0.00");
                 displayHighScoreText.text = "high score : " + PlayerData.instance.MakeSevenPointersLowTime;
-                Timer.instance.ScoreClockText.text = gameStats.TotalPoints.ToString();
+                Timer.instance.ScoreClockText.text = gameStats.Stats.TotalPoints.ToString();
                 //displayMoneyText.text = "$" + PlayerStats.instance.Money;
             }
             if (gameModeId == Modes.SpotUpAll)
@@ -633,9 +633,9 @@ public class MatchHudPresenter : MonoBehaviour
             if (gameModeId == Modes.ConsecutiveShots)
             {
                 displayCurrentScoreText.text = "Consecutive Shots"
-                    + "\nCurrent : " + GameLevelManager.instance.Player1.gameStats.ConsecutiveShotsMade
-                    + "\nHigh Shots : " + gameStats.MostConsecutiveShots;
-                Timer.instance.ScoreClockText.text = GameLevelManager.instance.Player1.gameStats.ConsecutiveShotsMade.ToString();
+                    + "\nCurrent : " + GameLevelManager.instance.Player1.gameStats.Stats.ConsecutiveShotsMade
+                    + "\nHigh Shots : " + gameStats.Stats.MostConsecutiveShots;
+                Timer.instance.ScoreClockText.text = GameLevelManager.instance.Player1.gameStats.Stats.ConsecutiveShotsMade.ToString();
 
                 displayHighScoreText.text = "high score : " + PlayerData.instance.MostConsecutiveShots;
                 //displayMoneyText.text = "$" + PlayerStats.instance.Money;
@@ -643,13 +643,13 @@ public class MatchHudPresenter : MonoBehaviour
             }
             if (gameModeId == Modes.InThePocket)
             {
-                displayCurrentScoreText.text = "total points : " + gameStats.TotalPoints
+                displayCurrentScoreText.text = "total points : " + gameStats.Stats.TotalPoints
                     + "\ncurrent shot : " + BasketBall.instance.BasketBallState.CurrentShotType
-                    + "\nCurrent Consecutive: " + GameLevelManager.instance.players[0].gameStats.ConsecutiveShotsMade;
-                Timer.instance.ScoreClockText.text = gameStats.TotalPoints.ToString();
+                    + "\nCurrent Consecutive: " + GameLevelManager.instance.players[0].gameStats.Stats.ConsecutiveShotsMade;
+                Timer.instance.ScoreClockText.text = gameStats.Stats.TotalPoints.ToString();
 
                 // in the pocket is active, display text notifier
-                if (GameLevelManager.instance.Player1.gameStats.ConsecutiveShotsMade >= inThePocketActivateValue)
+                if (GameLevelManager.instance.Player1.gameStats.Stats.ConsecutiveShotsMade >= inThePocketActivateValue)
                 {
                     displayOtherMessageText.text = "In The Pocket";
                 }
@@ -664,19 +664,19 @@ public class MatchHudPresenter : MonoBehaviour
             if (gameModeId == Modes.ThreePointContest)
             {
                 displayHighScoreText.text = "high score : " + PlayerData.instance.ThreePointContestScore;
-                Timer.instance.ScoreClockText.text = gameStats.TotalPoints.ToString();
+                Timer.instance.ScoreClockText.text = gameStats.Stats.TotalPoints.ToString();
                 return;
             }
             if (gameModeId == Modes.FourPointContest)
             {
                 displayHighScoreText.text = "high score : " + PlayerData.instance.FourPointContestScore;
-                Timer.instance.ScoreClockText.text = gameStats.TotalPoints.ToString();
+                Timer.instance.ScoreClockText.text = gameStats.Stats.TotalPoints.ToString();
                 return;
             }
             if (gameModeId == Modes.AllPointContest)
             {
                 displayHighScoreText.text = "high score : " + PlayerData.instance.AllPointContestScore;
-                Timer.instance.ScoreClockText.text = gameStats.TotalPoints.ToString();
+                Timer.instance.ScoreClockText.text = gameStats.Stats.TotalPoints.ToString();
                 return;
             }
             if (gameModeId == Modes.PointsByDistance)
@@ -686,9 +686,9 @@ public class MatchHudPresenter : MonoBehaviour
                 displayCurrentScoreText.text =
                     "current distance : " + (BasketBall.instance.BasketBallState.PlayerDistanceFromRim * 6).ToString("00.00")
                     + "\nlast shot : " + Mathf.FloorToInt((BasketBall.instance.LastShotDistance * 6) / 10)
-                    + "\ntotal points : " + gameStats.TotalPoints;
+                    + "\ntotal points : " + gameStats.Stats.TotalPoints;
 
-                Timer.instance.ScoreClockText.text = gameStats.TotalPoints.ToString();
+                Timer.instance.ScoreClockText.text = gameStats.Stats.TotalPoints.ToString();
                 return;
             }
             if (gameModeId == Modes.BashUpSomeNerds)
@@ -696,10 +696,10 @@ public class MatchHudPresenter : MonoBehaviour
                 displayHighScoreText.text = "high score : " + PlayerData.instance.EnemiesKilled;
 
                 displayCurrentScoreText.text =
-                    "nerds bashed : " + (gameStats.EnemiesKilled);
+                    "nerds bashed : " + (gameStats.Stats.EnemiesKilled);
                 if (Timer.instance.ScoreClockText != null)
                 {
-                    Timer.instance.ScoreClockText.text = (gameStats.EnemiesKilled).ToString();
+                    Timer.instance.ScoreClockText.text = (gameStats.Stats.EnemiesKilled).ToString();
                 }
                 return;
             }
@@ -708,10 +708,10 @@ public class MatchHudPresenter : MonoBehaviour
                 displayHighScoreText.text = "high score : " + PlayerData.instance.EnemiesKilledBattleRoyal;
 
                 displayCurrentScoreText.text =
-                    "nerds bashed : " + (gameStats.EnemiesKilled);
+                    "nerds bashed : " + (gameStats.Stats.EnemiesKilled);
                 if (Timer.instance.ScoreClockText != null)
                 {
-                    Timer.instance.ScoreClockText.text = (gameStats.EnemiesKilled).ToString();
+                    Timer.instance.ScoreClockText.text = (gameStats.Stats.EnemiesKilled).ToString();
                 }
                 return;
             }
@@ -720,23 +720,23 @@ public class MatchHudPresenter : MonoBehaviour
                 displayHighScoreText.text = "high score : " + PlayerData.instance.EnemiesKilledCageMatch;
 
                 displayCurrentScoreText.text =
-                    "nerds bashed : " + (gameStats.EnemiesKilled);
+                    "nerds bashed : " + (gameStats.Stats.EnemiesKilled);
                 if (Timer.instance.ScoreClockText != null)
                 {
-                    Timer.instance.ScoreClockText.text = (gameStats.EnemiesKilled).ToString();
+                    Timer.instance.ScoreClockText.text = (gameStats.Stats.EnemiesKilled).ToString();
                 }
                 return;
             }
             if (gameModeId == Modes.VersusCpu || gameModeId == Modes.BeatThaComputahs)
             {
-                Timer.instance.ScoreClockText.text = gameStats.TotalPoints.ToString();
+                Timer.instance.ScoreClockText.text = gameStats.Stats.TotalPoints.ToString();
                 updatePlayerScore();
                 return;
             }
             if (gameModeId == Modes.SevenPointContest)
             {
                 displayHighScoreText.text = "high score : " + PlayerData.instance.SevenPointContestScore;
-                Timer.instance.ScoreClockText.text = gameStats.TotalPoints.ToString();
+                Timer.instance.ScoreClockText.text = gameStats.Stats.TotalPoints.ToString();
                 return;
             }
             //if (gameModeId == 21)
@@ -744,10 +744,10 @@ public class MatchHudPresenter : MonoBehaviour
             //    displayHighScoreText.text = "high score : " + PlayerData.instance.EnemiesKilled;
 
             //    displayCurrentScoreText.text =
-            //        "nerds bashed : " + (gameStats.EnemiesKilled);
+            //        "nerds bashed : " + (gameStats.Stats.EnemiesKilled);
             //    if (Timer.instance.ScoreClockText != null)
             //    {
-            //        Timer.instance.ScoreClockText.text = (gameStats.EnemiesKilled).ToString();
+            //        Timer.instance.ScoreClockText.text = (gameStats.Stats.EnemiesKilled).ToString();
             //    }
             //}
 
@@ -767,7 +767,7 @@ public class MatchHudPresenter : MonoBehaviour
                     displayHighScoreText.text = "high score : " + PlayerData.instance.LongestShotMadeFreePlay.ToString("0.00");
                 }
                 // if longest shot > saved longest shot
-                if ((gameStats.LongestShotMade) > PlayerData.instance.LongestShotMadeFreePlay)
+                if ((gameStats.Stats.LongestShotMade) > PlayerData.instance.LongestShotMadeFreePlay)
                 {
                     //PlayerData.instance.saveStats();
                     PlayerData.instance.LongestShotMadeFreePlay = gameStats1.LongestShotMade;
@@ -870,18 +870,18 @@ public class MatchHudPresenter : MonoBehaviour
 
             displayText = players[0].characterProfile.PlayerDisplayName + " wins!"
                 + "\n---------------------------------"
-                + "\n" + players[0].characterProfile.PlayerDisplayName + " : " + players[0].gameStats.TotalPoints;
+                + "\n" + players[0].characterProfile.PlayerDisplayName + " : " + players[0].gameStats.Stats.TotalPoints;
             if (players.Count > 1)
             {
-                displayText += "\n" + players[1].characterProfile.PlayerDisplayName + " : " + players[1].gameStats.TotalPoints;
+                displayText += "\n" + players[1].characterProfile.PlayerDisplayName + " : " + players[1].gameStats.Stats.TotalPoints;
             }
             if (players.Count > 2)
             {
-                displayText += "\n" + players[2].characterProfile.PlayerDisplayName + " : " + players[2].gameStats.TotalPoints;
+                displayText += "\n" + players[2].characterProfile.PlayerDisplayName + " : " + players[2].gameStats.Stats.TotalPoints;
             }
             if (players.Count > 3)
             {
-                displayText += "\n" + players[3].characterProfile.PlayerDisplayName + " : " + players[3].gameStats.TotalPoints;
+                displayText += "\n" + players[3].characterProfile.PlayerDisplayName + " : " + players[3].gameStats.Stats.TotalPoints;
             }
         }
         if (gameModeId == Modes.ArcadeMode)
