@@ -17,7 +17,7 @@ parts that are still spread out.
   launch                    BasketBall.shootBasketBall / BasketBallAuto
     |                       - snapshots the shot into BasketballState
     |                       - ShotModifiers decides accuracy / range / release   [Level5.Core]
-    |                       - gameStats.ShotAttempt++ and the per-line attempt counter
+    |                       - gameStats.Stats.ShotAttempt++ and the per-line attempt counter
     v
   flight                    physics
     |
