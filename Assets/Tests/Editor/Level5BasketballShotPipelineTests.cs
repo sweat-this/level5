@@ -1,6 +1,8 @@
 using System.Collections.Generic;
+using Level5.Core;
 using NUnit.Framework;
 using UnityEngine;
+using UnityEngine.TestTools;
 using UnityEngine.UI;
 
 /// <summary>
@@ -170,5 +172,33 @@ public class Level5BasketballShotPipelineTests
         Assert.That(scoreText.text, Does.Contain("shots  : 3 / 4"));
         Assert.That(scoreText.text, Does.Contain("2 pointers : 2 / 2  100.00%"));
         Assert.That(scoreText.text, Does.Contain("3 pointers : 1 / 2  50.00%"));
+    }
+
+    /// <summary>
+    /// Code review on the Phase 1c migration: a missing CharacterProfile used to throw at this call
+    /// site; ShooterAttributesFactory.From now returns an inert default instead. That fallback
+    /// predates this migration (Phase 1a) and is deliberately preserved - not thrown here - but it
+    /// must not go silent, since a real missing profile is a setup bug worth seeing in the console.
+    /// </summary>
+    [Test]
+    public void MissingCharacterProfileLogsAndFallsBackToAnInertShooter()
+    {
+        LogAssert.Expect(LogType.Warning, new System.Text.RegularExpressions.Regex("ShooterAttributesFactory.From"));
+
+        ShooterAttributes shooter = ShooterAttributesFactory.From(null);
+
+        Assert.That(shooter.DisplayName, Is.Null);
+        Assert.That(shooter.AccuracyFor(ShotKind.Two), Is.EqualTo(0f));
+    }
+
+    /// <summary>Same as above for the other half of the seam: a missing BasketBallState.</summary>
+    [Test]
+    public void MissingBasketBallStateLogsAndFallsBackToNoShotKind()
+    {
+        LogAssert.Expect(LogType.Warning, new System.Text.RegularExpressions.Regex("ShooterAttributesFactory.KindFromPointFlags"));
+
+        ShotKind kind = ShooterAttributesFactory.KindFromPointFlags(null);
+
+        Assert.That(kind, Is.EqualTo(ShotKind.None));
     }
 }

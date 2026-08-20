@@ -1,4 +1,5 @@
 using Level5.Core;
+using UnityEngine;
 
 /// <summary>
 /// Reads a shooter's numbers off the scene component into a plain value.
@@ -17,11 +18,17 @@ public static class ShooterAttributesFactory
     /// Builds the contract from a profile. Returns default when the profile is missing rather than
     /// throwing - the shot pipeline already runs in scenes where a shooter can be absent, and a
     /// zeroed attribute set is inert rather than dangerous.
+    ///
+    /// Logged rather than silent: Phase 1c wired this into <c>BasketBall</c>/<c>BasketBallAuto</c>'s
+    /// live shot path, where a missing profile used to throw at the same call site. The zeroed
+    /// fallback stays - this only makes the previously-silent case visible in the console instead
+    /// of changing what shot gets computed.
     /// </summary>
     public static ShooterAttributes From(CharacterProfile profile)
     {
         if (profile == null)
         {
+            Debug.LogWarning("ShooterAttributesFactory.From: no CharacterProfile - shooting with a zeroed shot pipeline.");
             return default;
         }
 
@@ -55,6 +62,7 @@ public static class ShooterAttributesFactory
     {
         if (basketBallState == null)
         {
+            Debug.LogWarning("ShooterAttributesFactory.KindFromPointFlags: no BasketBallState - resolving to ShotKind.None.");
             return ShotKind.None;
         }
 
