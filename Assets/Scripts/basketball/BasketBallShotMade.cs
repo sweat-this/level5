@@ -108,11 +108,11 @@ public class BasketBallShotMade : MonoBehaviour
         float shotDistance = LastShotDistanceFor(playerIdentifier, basketBall, basketBallAuto);
         // add to total shot distance made total
         float shotDistanceFeet = shotDistance * 6;
-        gameStats.TotalDistance += shotDistanceFeet;
+        gameStats.Stats.TotalDistance += shotDistanceFeet;
         // is this the longest shot made?
-        if (shotDistanceFeet > gameStats.LongestShotMade)
+        if (shotDistanceFeet > gameStats.Stats.LongestShotMade)
         {
-            gameStats.LongestShotMade = shotDistanceFeet;
+            gameStats.Stats.LongestShotMade = shotDistanceFeet;
         }
         // updates shots made/shot attempted
         ShotScore score = updateShotMadeBasketBallStats(gameStats, basketBallState, shotDistance);
@@ -122,7 +122,7 @@ public class BasketBallShotMade : MonoBehaviour
             ShotKindOf(basketBallState),
             score,
             shotDistance,
-            gameStats.TotalPoints));
+            gameStats.Stats.TotalPoints));
 
         // instantiate money if game requires it
         if (GameRules.instance.GameModeRequiresMoneyBall
@@ -275,7 +275,7 @@ public class BasketBallShotMade : MonoBehaviour
                 || GameRules.instance.GameModeAllPointContest,
             ScoresByDistance = MatchRuntime.RawModeId == Modes.PointsByDistance,
             HasStreakBonus = MatchRuntime.RawModeId == Modes.InThePocket,
-            ConsecutiveShotsMade = gameStats.ConsecutiveShotsMade,
+            ConsecutiveShotsMade = gameStats.Stats.ConsecutiveShotsMade,
             StreakBonusThreshold = GameRules.instance.InThePocketActivateValue,
             OnEnabledMarker = basketBallState.PlayerOnMarkerOnShoot
                 && marker != null
@@ -294,8 +294,8 @@ public class BasketBallShotMade : MonoBehaviour
         // running GameRules/MatchRuntime.
         ShotScore score = gameStats.ApplyMadeShot(basketBallState, input);
 
-        gameStats.TotalPoints += score.Points;
-        gameStats.MoneyBallMade += score.MoneyBallMade;
+        gameStats.Stats.TotalPoints += score.Points;
+        gameStats.Stats.MoneyBallMade += score.MoneyBallMade;
 
         // ==================== requires position markers logic ==============================
         if (basketBallState.PlayerOnMarkerOnShoot 
