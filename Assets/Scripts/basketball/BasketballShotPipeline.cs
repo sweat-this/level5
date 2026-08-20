@@ -2,6 +2,7 @@ using System;
 using UnityEngine;
 using UnityEngine.UI;
 using Assets.Scripts.Utility;
+using Level5.Core;
 using Level5.Core.Match;
 using Random = UnityEngine.Random;
 
@@ -67,12 +68,16 @@ public static class BasketballShotPipeline
     /// velocity in world space. Rolls happen in the same order the original did - direction is
     /// drawn before the release roll, and the in-range check short-circuits before any range roll -
     /// because swapping either shifts the whole random sequence for the rest of the shot.
+    ///
+    /// Phase 1c of the systems restructure: takes <see cref="ShooterAttributes"/> rather than a
+    /// <c>CharacterProfile</c>, the first consumer migrated onto the Phase 1a contract. Callers
+    /// build it once via <c>ShooterAttributesFactory.From</c>.
     /// </summary>
     public static LaunchComputation ComputeLaunch(
         Transform ballTransform,
         Vector3 ballPositionAtLaunch,
         Vector3 targetPosition,
-        CharacterProfile characterProfile,
+        ShooterAttributes shooter,
         BasketBallState basketBallState,
         GameStats gameStats,
         float lastShotDistance,
@@ -93,13 +98,13 @@ public static class BasketballShotPipeline
         }
         else
         {
-            tanAlpha = Mathf.Tan(characterProfile.ShootAngle * Mathf.Deg2Rad);
+            tanAlpha = Mathf.Tan(shooter.ShootAngle * Mathf.Deg2Rad);
         }
         float H = targetPosition.y - ballPositionAtLaunch.y;
         float Vz = Mathf.Sqrt(G * R * R / (2.0f * (H - R * tanAlpha)));
         float Vy = tanAlpha * Vz;
 
-        bool critical = RollForCriticalShotChance(characterProfile.Luck, gameStats);
+        bool critical = RollForCriticalShotChance(shooter.Luck, gameStats);
 
         float accuracyModifierX = 0f;
         float accuracyModifierY = 0f;
@@ -121,7 +126,7 @@ public static class BasketballShotPipeline
         if (shotMeterSliderValue >= 95 && !critical)
         {
             accuracyModifierX = 0;
-            accuracyModifierY = GetReleaseModifier(characterProfile);
+            accuracyModifierY = GetReleaseModifier(shooter);
             accuracyModifierZ = 0;
             shotMeterMessage = ">= 95";
             shotMeterMessageY = "+ release modifier";
@@ -129,8 +134,8 @@ public static class BasketballShotPipeline
         // NOT critical and NOT >= 95 (get X, Y modifiers)
         if (shotMeterSliderValue < 95 && !critical)
         {
-            accuracyModifierX = GetAccuracyModifier(characterProfile, basketBallState, shotMeterSliderValue);
-            accuracyModifierY = GetReleaseModifier(characterProfile);
+            accuracyModifierX = GetAccuracyModifier(shooter, basketBallState, shotMeterSliderValue);
+            accuracyModifierY = GetReleaseModifier(shooter);
 
             shotMeterMessage = "< 95";
             shotMeterMessageX = "+ accuracy modifier";
@@ -138,7 +143,7 @@ public static class BasketballShotPipeline
         }
 
         // range modifier always factors in
-        accuracyModifierZ = GetRangeModifier(characterProfile, lastShotDistance);
+        accuracyModifierZ = GetRangeModifier(shooter, lastShotDistance);
 
         if (accuracyModifierZ != 0)
         {
@@ -190,52 +195,49 @@ public static class BasketballShotPipeline
         return false;
     }
 
-    private static float GetAccuracyModifier(CharacterProfile characterProfile, BasketBallState basketBallState, float shotMeterSliderValue)
+    private static float GetAccuracyModifier(ShooterAttributes shooter, BasketBallState basketBallState, float shotMeterSliderValue)
     {
         // drawn first, as the original did
         int direction = GetRandomPositiveOrNegative();
-        ResolveShotAccuracy(basketBallState, characterProfile, out float shotTypeAccuracy, out bool threePoints);
+        ResolveShotAccuracy(basketBallState, shooter, out float shotTypeAccuracy, out bool threePoints);
 
         return ShotModifiers.AccuracyModifier(shotMeterSliderValue, shotTypeAccuracy, threePoints, direction);
     }
 
     /// <summary>
-    /// Picks the accuracy stat for the shot being taken, preserving the original's precedence.
+    /// Picks the accuracy stat for the shot being taken.
     ///
-    /// The original was four independent (not else-if) assignments in the order two, three, four,
-    /// seven, so when more than one flag was set the *last* one won. That order is reversed here to
-    /// get the same answer with a single branch. When no flag is set the original left the accuracy
-    /// term at 0, which an accuracy of 100 reproduces exactly.
+    /// Phase 1c: defers to <see cref="ShooterAttributes.AccuracyFor"/> and
+    /// <see cref="ShooterAttributes.IsThreePointBranch"/>, which mirror the precedence this method
+    /// used to compute inline (see their doc comments for the preserved oddities - the reversed
+    /// precedence order and the no-flag-set case returning 100, not two-point accuracy). One
+    /// implementation now, not two that could drift apart.
     /// </summary>
-    private static void ResolveShotAccuracy(BasketBallState basketBallState, CharacterProfile characterProfile, out float shotTypeAccuracy, out bool threePoints)
+    private static void ResolveShotAccuracy(BasketBallState basketBallState, ShooterAttributes shooter, out float shotTypeAccuracy, out bool threePoints)
     {
-        threePoints = false;
-
-        if (basketBallState.SevenPoints) { shotTypeAccuracy = characterProfile.Accuracy7Pt; }
-        else if (basketBallState.FourPoints) { shotTypeAccuracy = characterProfile.Accuracy4Pt; }
-        else if (basketBallState.ThreePoints) { shotTypeAccuracy = characterProfile.Accuracy3Pt; threePoints = true; }
-        else if (basketBallState.TwoPoints) { shotTypeAccuracy = characterProfile.Accuracy2Pt; }
-        else { shotTypeAccuracy = 100f; }
+        ShotKind kind = ShooterAttributesFactory.KindFromPointFlags(basketBallState);
+        shotTypeAccuracy = shooter.AccuracyFor(kind);
+        threePoints = ShooterAttributes.IsThreePointBranch(kind);
     }
 
-    private static float GetRangeModifier(CharacterProfile characterProfile, float lastShotDistance)
+    private static float GetRangeModifier(ShooterAttributes shooter, float lastShotDistance)
     {
         // range divided by distance to get %
         // ex. range 50 ft / shot distance 100 = 50% chance of reaching rim
         // the in-range check comes first and returns without rolling - the original's `||`
         // short-circuited, so an in-range shot must not consume a random value
-        if (ShotModifiers.ReachesRim(characterProfile.Range, lastShotDistance))
+        if (ShotModifiers.ReachesRim(shooter.Range, lastShotDistance))
         {
             return 0f;
         }
 
         bool rolledClean = UtilityFunctions.RollPercent(
-            ShotModifiers.MaxCleanChance(characterProfile.Range, lastShotDistance));
+            ShotModifiers.MaxCleanChance(shooter.Range, lastShotDistance));
 
-        return ShotModifiers.RangeModifier(characterProfile.Range, lastShotDistance, rolledClean);
+        return ShotModifiers.RangeModifier(shooter.Range, lastShotDistance, rolledClean);
     }
 
-    private static float GetReleaseModifier(CharacterProfile characterProfile)
+    private static float GetReleaseModifier(ShooterAttributes shooter)
     {
         // direction is drawn before the roll, matching the original's order - swapping them would
         // shift every subsequent random value
@@ -243,9 +245,9 @@ public static class BasketballShotPipeline
 
         // the release stat IS the chance to shoot clean.
         // ex if release = 85, 85% chance to remove the modifier entirely.
-        bool rolledClean = UtilityFunctions.RollPercent(characterProfile.Release);
+        bool rolledClean = UtilityFunctions.RollPercent(shooter.Release);
 
-        return ShotModifiers.ReleaseModifier(characterProfile.Release, direction, rolledClean);
+        return ShotModifiers.ReleaseModifier(shooter.Release, direction, rolledClean);
     }
 
     private static int GetRandomPositiveOrNegative()
@@ -255,18 +257,23 @@ public static class BasketballShotPipeline
 
     // ========================== ui text formatting ==========================================
 
-    public static void UpdateShooterProfileText(Text shootProfileText, CharacterProfile characterProfile)
+    /// <summary>
+    /// Phase 1c: second consumer migrated onto <see cref="ShooterAttributes"/>. Exercises every
+    /// field of the contract, including RunSpeed, JumpForce and DisplayName that
+    /// <see cref="ComputeLaunch"/>'s arithmetic does not touch.
+    /// </summary>
+    public static void UpdateShooterProfileText(Text shootProfileText, ShooterAttributes shooter)
     {
-        shootProfileText.text = characterProfile.PlayerDisplayName + "\n"
-                                + "2 point : " + (characterProfile.Accuracy2Pt) + "\n"
-                                + "3 point : " + (characterProfile.Accuracy3Pt) + "\n"
-                                + "4 point : " + (characterProfile.Accuracy4Pt) + "\n"
-                                + "7 point : " + (characterProfile.Accuracy7Pt) + "\n"
-                                + "release : " + characterProfile.Release + "\n"
-                                + "range : " + characterProfile.Range + "\n"
-                                + "speed : " + characterProfile.RunSpeed + "\n"
-                                + "jump : " + characterProfile.JumpForce + "\n"
-                                + "luck : " + characterProfile.Luck;
+        shootProfileText.text = shooter.DisplayName + "\n"
+                                + "2 point : " + (shooter.AccuracyTwoPoint) + "\n"
+                                + "3 point : " + (shooter.AccuracyThreePoint) + "\n"
+                                + "4 point : " + (shooter.AccuracyFourPoint) + "\n"
+                                + "7 point : " + (shooter.AccuracySevenPoint) + "\n"
+                                + "release : " + shooter.Release + "\n"
+                                + "range : " + shooter.Range + "\n"
+                                + "speed : " + shooter.RunSpeed + "\n"
+                                + "jump : " + shooter.JumpForce + "\n"
+                                + "luck : " + shooter.Luck;
     }
 
     public static void UpdateScoreText(Text scoreText, GameStats gameStats, float lastShotDistance)

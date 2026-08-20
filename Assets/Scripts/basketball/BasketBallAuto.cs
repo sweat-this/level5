@@ -5,6 +5,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using Assets.Scripts.Utility;
 using Random = UnityEngine.Random;
+using Level5.Core;
 using Level5.Core.Match;
 
 public class BasketBallAuto : MonoBehaviour
@@ -124,7 +125,7 @@ public class BasketBallAuto : MonoBehaviour
             if (UiStatsEnabled)
             {
                 updateScoreText();
-                BasketballShotPipeline.UpdateShooterProfileText(shootProfileText, characterProfile);
+                BasketballShotPipeline.UpdateShooterProfileText(shootProfileText, ShooterAttributesFactory.From(characterProfile));
                 uiStatsBackground.SetActive(true);
             }
             else
@@ -401,7 +402,7 @@ public class BasketBallAuto : MonoBehaviour
             transform,
             ballPositionAtLaunch.transform.position,
             basketBallState.BasketBallTarget.transform.position,
-            characterProfile,
+            ShooterAttributesFactory.From(characterProfile),
             basketBallState,
             gameStats,
             LastShotDistance,
@@ -495,7 +496,7 @@ public class BasketBallAuto : MonoBehaviour
         if (UiStatsEnabled)
         {
             updateScoreText();
-            BasketballShotPipeline.UpdateShooterProfileText(shootProfileText, characterProfile);
+            BasketballShotPipeline.UpdateShooterProfileText(shootProfileText, ShooterAttributesFactory.From(characterProfile));
             uiStatsBackground.SetActive(true);
             return true;
         }
