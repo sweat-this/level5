@@ -371,26 +371,26 @@ public class BasketBallAuto : MonoBehaviour
         if (two && !three )
         {
             basketBallState.TwoAttempt = true;
-            gameStats.TwoPointerAttempts++;
-            gameStats.ShotAttempt++;
+            gameStats.Stats.TwoPointerAttempts++;
+            gameStats.Stats.ShotAttempt++;
         }
         if (three && !four)
         {
             basketBallState.ThreeAttempt = true;
-            gameStats.ThreePointerAttempts++;
-            gameStats.ShotAttempt++;
+            gameStats.Stats.ThreePointerAttempts++;
+            gameStats.Stats.ShotAttempt++;
         }
         if (four && !three)
         {
             basketBallState.FourAttempt = true;
-            gameStats.FourPointerAttempts++;
-            gameStats.ShotAttempt++;
+            gameStats.Stats.FourPointerAttempts++;
+            gameStats.Stats.ShotAttempt++;
         }
         if (seven)
         {
             basketBallState.SevenAttempt = true;
-            gameStats.SevenPointerAttempts++;
-            gameStats.ShotAttempt++;
+            gameStats.Stats.SevenPointerAttempts++;
+            gameStats.Stats.ShotAttempt++;
         }
         //GameRules.instance.updatePlayerScore();
     }
@@ -469,7 +469,7 @@ public class BasketBallAuto : MonoBehaviour
         float clutchBonus = Random.Range(1f, 10f);
         // consecutive shots (increase percent). shot streak ups percent
         // consecutive shots bonus capped at 10
-        int consecShotsModifier = gameStats.ConsecutiveShotsMade;
+        int consecShotsModifier = gameStats.Stats.ConsecutiveShotsMade;
         if (consecShotsModifier > 10)
         {
             consecShotsModifier = 10;

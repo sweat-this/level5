@@ -359,26 +359,26 @@ public class BasketBall : MonoBehaviour
         if (two && !three)
         {
             basketBallState.TwoAttempt = true;
-            gameStats.TwoPointerAttempts++;
-            gameStats.ShotAttempt++;
+            gameStats.Stats.TwoPointerAttempts++;
+            gameStats.Stats.ShotAttempt++;
         }
         if (three && !four)
         {
             basketBallState.ThreeAttempt = true;
-            gameStats.ThreePointerAttempts++;
-            gameStats.ShotAttempt++;
+            gameStats.Stats.ThreePointerAttempts++;
+            gameStats.Stats.ShotAttempt++;
         }
         if (four && !three)
         {
             basketBallState.FourAttempt = true;
-            gameStats.FourPointerAttempts++;
-            gameStats.ShotAttempt++;
+            gameStats.Stats.FourPointerAttempts++;
+            gameStats.Stats.ShotAttempt++;
         }
         if (seven)
         {
             basketBallState.SevenAttempt = true;
-            gameStats.SevenPointerAttempts++;
-            gameStats.ShotAttempt++;
+            gameStats.Stats.SevenPointerAttempts++;
+            gameStats.Stats.ShotAttempt++;
         }
         //GameRules.instance.updatePlayerScore();
     }
