@@ -591,8 +591,8 @@ public class GameRules : MonoBehaviour
             EndRoundData.currentRoundCpuLoserImage = completedCpuProfile.losePortrait;
         }
 
-        EndRoundData.currentRoundWinnerScore = players[0].gameStats.TotalPoints;
-        EndRoundData.currentRoundLoserScore = players[1].gameStats.TotalPoints;
+        EndRoundData.currentRoundWinnerScore = players[0].gameStats.Stats.TotalPoints;
+        EndRoundData.currentRoundLoserScore = players[1].gameStats.Stats.TotalPoints;
 
         EndRoundData.currentRoundWinnerIsCpu = players[0].isCpu;
         EndRoundData.currentRoundLoserIsCpu = players[1].isCpu;
