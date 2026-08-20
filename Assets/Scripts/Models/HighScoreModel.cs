@@ -104,31 +104,31 @@ namespace Assets.Scripts.database
             model.Os = SystemInfo.operatingSystem;
             model.Version = Application.version;
             model.Date = DateTime.Now.ToString();
-            model.Time = gameStats.TimePlayed;
+            model.Time = gameStats.Stats.TimePlayed;
             model.Difficulty = MatchDifficulties.ToInt(MatchRuntime.Rules.Difficulty);
-            model.TotalPoints = gameStats.TotalPoints;
-            model.LongestShot = gameStats.LongestShotMade;
-            model.TotalDistance = gameStats.TotalDistance;
-            model.MaxShotMade = gameStats.ShotMade;
-            model.MaxShotAtt = gameStats.ShotAttempt;
-            model.ConsecutiveShots = gameStats.MostConsecutiveShots;
+            model.TotalPoints = gameStats.Stats.TotalPoints;
+            model.LongestShot = gameStats.Stats.LongestShotMade;
+            model.TotalDistance = gameStats.Stats.TotalDistance;
+            model.MaxShotMade = gameStats.Stats.ShotMade;
+            model.MaxShotAtt = gameStats.Stats.ShotAttempt;
+            model.ConsecutiveShots = gameStats.Stats.MostConsecutiveShots;
             model.TrafficEnabled = trafficEnabled;
             model.HardcoreEnabled = hardcoreEnabled;
-            model.EnemiesKilled = gameStats.EnemiesKilled;
+            model.EnemiesKilled = gameStats.Stats.EnemiesKilled;
             model.Device = SystemInfo.deviceModel;
             model.Platform = SystemInfo.deviceType.ToString();
             //model.Ipaddress = GetExternalIpAdress();
-            model.TwoMade = gameStats.TwoPointerMade;
-            model.TwoAtt = gameStats.TwoPointerAttempts;
-            model.ThreeMade = gameStats.ThreePointerMade;
-            model.ThreeAtt = gameStats.ThreePointerAttempts;
-            model.FourMade = gameStats.FourPointerMade;
-            model.FourAtt = gameStats.FourPointerAttempts;
-            model.SevenMade = gameStats.SevenPointerMade;
-            model.SevenAtt = gameStats.SevenPointerAttempts;
-            model.BonusPoints = gameStats.BonusPoints;
-            model.MoneyBallMade = gameStats.MoneyBallMade;
-            model.MoneyBallAtt = gameStats.MoneyBallAttempts;
+            model.TwoMade = gameStats.Stats.TwoPointerMade;
+            model.TwoAtt = gameStats.Stats.TwoPointerAttempts;
+            model.ThreeMade = gameStats.Stats.ThreePointerMade;
+            model.ThreeAtt = gameStats.Stats.ThreePointerAttempts;
+            model.FourMade = gameStats.Stats.FourPointerMade;
+            model.FourAtt = gameStats.Stats.FourPointerAttempts;
+            model.SevenMade = gameStats.Stats.SevenPointerMade;
+            model.SevenAtt = gameStats.Stats.SevenPointerAttempts;
+            model.BonusPoints = gameStats.Stats.BonusPoints;
+            model.MoneyBallMade = gameStats.Stats.MoneyBallMade;
+            model.MoneyBallAtt = gameStats.Stats.MoneyBallAttempts;
             model.EnemiesEnabled = enemiesEnabled;
             model.UserName = GameOptions.userName;
             model.Userid = GameOptions.userid;
@@ -153,8 +153,8 @@ namespace Assets.Scripts.database
                 model.SniperMode = 3;
                 model.SniperModeName = "disintegration ray";
             }
-            model.SniperShots = gameStats.SniperShots;
-            model.Sniperhits = gameStats.SniperHits;
+            model.SniperShots = gameStats.Stats.SniperShots;
+            model.Sniperhits = gameStats.Stats.SniperHits;
             //Debug.Log("MatchRuntime.ParticipantCount : " + MatchRuntime.ParticipantCount);
             //Debug.Log("isCpu : " + isCpu);
             //Debug.Log(" : " + characterProfile.PlayerDisplayName);
@@ -162,9 +162,9 @@ namespace Assets.Scripts.database
 
             model.numPlayers = MatchRuntime.ParticipantCount;
             model.Difficulty = MatchDifficulties.ToInt(MatchRuntime.Rules.Difficulty);
-            model.campaignWins = gameStats.campaignWins;
-            model.campaignLosses = gameStats.campaignLosses;
-            model.campaignTies = gameStats.campaignTies;
+            model.campaignWins = gameStats.Stats.CampaignWins;
+            model.campaignLosses = gameStats.Stats.CampaignLosses;
+            model.campaignTies = gameStats.Stats.CampaignTies;
 
             return model;
         }
@@ -274,7 +274,7 @@ namespace Assets.Scripts.database
 
             if (TryGetPlayer(pi, 0, out PlayerIdentifier firstPlacePlayer))
             {
-                model.p1TotalPoints = firstPlacePlayer.gameStats.TotalPoints;
+                model.p1TotalPoints = firstPlacePlayer.gameStats.Stats.TotalPoints;
                 model.firstPlace = firstPlacePlayer.characterProfile.PlayerDisplayName;
                 model.p1IsCpu = GetCpuFlag(firstPlacePlayer);
             }
@@ -289,7 +289,7 @@ namespace Assets.Scripts.database
                 && MatchRuntime.RawModeId != Modes.Lockdown
                 && TryGetPlayer(pi, 1, out PlayerIdentifier secondPlacePlayer))
             {
-                model.p2TotalPoints = secondPlacePlayer.gameStats.TotalPoints;
+                model.p2TotalPoints = secondPlacePlayer.gameStats.Stats.TotalPoints;
                 model.secondPlace = secondPlacePlayer.characterProfile.PlayerDisplayName;
                 model.p2IsCpu = GetCpuFlag(secondPlacePlayer);
             }
@@ -302,7 +302,7 @@ namespace Assets.Scripts.database
             //player 3
             if (MatchRuntime.ParticipantCount > 2 && TryGetPlayer(pi, 2, out PlayerIdentifier thirdPlacePlayer))
             {
-                model.p3TotalPoints = thirdPlacePlayer.gameStats.TotalPoints;
+                model.p3TotalPoints = thirdPlacePlayer.gameStats.Stats.TotalPoints;
                 model.thirdPlace = thirdPlacePlayer.characterProfile.PlayerDisplayName;
                 model.p3IsCpu = GetCpuFlag(thirdPlacePlayer);
             }
@@ -315,7 +315,7 @@ namespace Assets.Scripts.database
             //player 4
             if (MatchRuntime.ParticipantCount > 3 && TryGetPlayer(pi, 3, out PlayerIdentifier fourthPlacePlayer))
             {
-                model.p4TotalPoints = fourthPlacePlayer.gameStats.TotalPoints;
+                model.p4TotalPoints = fourthPlacePlayer.gameStats.Stats.TotalPoints;
                 model.fourthPlace = fourthPlacePlayer.characterProfile.PlayerDisplayName;
                 model.p4IsCpu = GetCpuFlag(fourthPlacePlayer);
             }
