@@ -459,10 +459,10 @@ public class BasketBallAuto : MonoBehaviour
     public float  rollForAutoPlayerSliderValue()
     {
         float shootPercent = 0;
-        if (basketBallState.TwoPoints) { shootPercent = characterProfile.Accuracy2Pt / 2; }
-        if (basketBallState.ThreePoints) { shootPercent = characterProfile.Accuracy3Pt / 2; }
-        if (basketBallState.FourPoints) { shootPercent = characterProfile.Accuracy4Pt / 2; }
-        if (basketBallState.SevenPoints) { shootPercent = characterProfile.Accuracy7Pt / 2; }
+        if (basketBallState.TwoPoints) { shootPercent = currentShooter.AccuracyTwoPoint / 2; }
+        if (basketBallState.ThreePoints) { shootPercent = currentShooter.AccuracyThreePoint / 2; }
+        if (basketBallState.FourPoints) { shootPercent = currentShooter.AccuracyFourPoint / 2; }
+        if (basketBallState.SevenPoints) { shootPercent = currentShooter.AccuracySevenPoint / 2; }
         //default if none assigned
         if(shootPercent == 0) { shootPercent = 90; }
         // get base value
