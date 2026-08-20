@@ -10,7 +10,10 @@ using UnityEngine;
 /// this side of the boundary - and keeping it in one function is what lets the shot pipeline stop
 /// taking a <c>CharacterProfile</c> later without every call site learning a new type.
 ///
-/// Nothing is migrated onto this yet. Phase 1c moves consumers one at a time.
+/// Phase 1c has since migrated onto this: <c>BasketballShotPipeline.ComputeLaunch</c>,
+/// <c>UpdateShooterProfileText</c>, and the <c>BasketBall</c>/<c>BasketBallAuto</c> call sites that
+/// build the contract, all reach the shot pipeline through <see cref="From"/> now rather than a
+/// <see cref="CharacterProfile"/> reference.
 /// </summary>
 public static class ShooterAttributesFactory
 {

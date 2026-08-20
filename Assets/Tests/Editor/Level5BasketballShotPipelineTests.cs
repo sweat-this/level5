@@ -201,4 +201,36 @@ public class Level5BasketballShotPipelineTests
 
         Assert.That(kind, Is.EqualTo(ShotKind.None));
     }
+
+    /// <summary>
+    /// Code review on the Phase 1c migration: an inert (zeroed) ShooterAttributes has ShootAngle 0,
+    /// so tanAlpha is 0. With a target above the release point - the ordinary case, the rim is
+    /// higher than the ball - that leaves Sqrt(G * R^2 / (2 * H)) with a negative radicand, since G
+    /// (gravity) is always negative and H is positive. Sqrt of a negative number is NaN, not an
+    /// exception, and it would have flowed straight into the launch velocity applied to the ball's
+    /// Rigidbody. The fix clamps the radicand at 0 instead of letting it go negative, so a
+    /// degenerate shooter produces a shot that goes nowhere rather than NaN physics state.
+    /// </summary>
+    [Test]
+    public void ADegenerateShooterProducesAZeroVelocityShotRatherThanNaN()
+    {
+        BasketBallState state = MakeState(twoPoints: true);
+        state.BasketBallTarget.transform.position = new Vector3(0f, 5f, 20f);
+        GameStats stats = MakeStats();
+        GameObject ball = Spawn("ball");
+
+        BasketballShotPipeline.LaunchComputation result = BasketballShotPipeline.ComputeLaunch(
+            ball.transform,
+            Vector3.zero,
+            state.BasketBallTarget.transform.position,
+            default(ShooterAttributes),
+            state,
+            stats,
+            lastShotDistance: 10f,
+            shotMeterSliderValue: 50f);
+
+        Assert.That(float.IsNaN(result.GlobalVelocity.x), Is.False, "x component must not be NaN");
+        Assert.That(float.IsNaN(result.GlobalVelocity.y), Is.False, "y component must not be NaN");
+        Assert.That(float.IsNaN(result.GlobalVelocity.z), Is.False, "z component must not be NaN");
+    }
 }

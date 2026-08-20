@@ -101,7 +101,13 @@ public static class BasketballShotPipeline
             tanAlpha = Mathf.Tan(shooter.ShootAngle * Mathf.Deg2Rad);
         }
         float H = targetPosition.y - ballPositionAtLaunch.y;
-        float Vz = Mathf.Sqrt(G * R * R / (2.0f * (H - R * tanAlpha)));
+        // Code review: a degenerate ShootAngle (0, from ShooterAttributesFactory's zeroed fallback
+        // when a shooter has no CharacterProfile) can make this radicand negative - G is gravity,
+        // always negative, and a zero tanAlpha leaves the denominator at the ordinary sign for an
+        // above-release target. Sqrt of a negative number is NaN, not an exception, and it would
+        // flow straight into the Rigidbody's velocity. Clamped rather than left to propagate, so a
+        // malformed shooter produces a shot that goes nowhere instead of corrupting physics state.
+        float Vz = Mathf.Sqrt(Mathf.Max(0f, G * R * R / (2.0f * (H - R * tanAlpha))));
         float Vy = tanAlpha * Vz;
 
         bool critical = RollForCriticalShotChance(shooter.Luck, gameStats);

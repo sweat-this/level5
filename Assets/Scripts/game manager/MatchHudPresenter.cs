@@ -420,25 +420,27 @@ public class MatchHudPresenter : MonoBehaviour
         string playerType;
         if (players.Count > 0 && players[0] != null)
         {
+            MatchStats stats0 = players[0].gameStats.Stats;
             playerType = players[0].isCpu ? "CPU" : "Player";
             if (!players[0].isCpu) { displayP1ScoreText.color = Color.green; } else { displayP1ScoreText.color = Color.white; }
             displayP1ScoreText.text = playerType + " " + (players[0].pid + 1)
                 + "\n" + players[0].characterProfile.PlayerDisplayName
                 //+ "\n" + "lvl : "+ players[0].characterProfile.Level
-                + "\n" + "points : " + players[0].gameStats.Stats.TotalPoints
-                + "\n" + players[0].gameStats.Stats.ShotMade + "/" + players[0].gameStats.Stats.ShotAttempt
-                + " " + players[0].gameStats.Stats.TotalPointAccuracy.ToString("0.00") + "%";
+                + "\n" + "points : " + stats0.TotalPoints
+                + "\n" + stats0.ShotMade + "/" + stats0.ShotAttempt
+                + " " + stats0.TotalPointAccuracy.ToString("0.00") + "%";
         }
         if (players.Count > 1 && players[1] != null)
         {
+            MatchStats stats1 = players[1].gameStats.Stats;
             playerType = players[1].isCpu ? "CPU" : "Player";
             if (!players[1].isCpu) { displayP2ScoreText.color = Color.green; } else { displayP2ScoreText.color = Color.white; }
             displayP2ScoreText.text = playerType + " " + (players[1].pid + 1)
                 + "\n" + players[1].characterProfile.PlayerDisplayName
                 //+ "\n" + "lvl : " + players[1].characterProfile.Level
-                + "\n" + "points : " + players[1].gameStats.Stats.TotalPoints
-                + "\n" + players[1].gameStats.Stats.ShotMade + "/" + players[1].gameStats.Stats.ShotAttempt
-                + " " + players[1].gameStats.Stats.TotalPointAccuracy.ToString("0.00") + "%";
+                + "\n" + "points : " + stats1.TotalPoints
+                + "\n" + stats1.ShotMade + "/" + stats1.ShotAttempt
+                + " " + stats1.TotalPointAccuracy.ToString("0.00") + "%";
         }
         else
         {
@@ -446,14 +448,15 @@ public class MatchHudPresenter : MonoBehaviour
         }
         if (players.Count > 2 && players[2] != null)
         {
+            MatchStats stats2 = players[2].gameStats.Stats;
             playerType = players[2].isCpu ? "CPU" : "Player";
             if (!players[2].isCpu) { displayP3ScoreText.color = Color.green; } else { displayP3ScoreText.color = Color.white; }
             displayP3ScoreText.text = playerType + " " + (players[2].pid + 1)
                 + "\n" + players[2].characterProfile.PlayerDisplayName
                 //+ "\n" + "lvl : " + players[2].characterProfile.Level
-                + "\n" + "points : " + players[2].gameStats.Stats.TotalPoints
-                + "\n" + players[2].gameStats.Stats.ShotMade + "/" + players[2].gameStats.Stats.ShotAttempt
-                + " " + players[2].gameStats.Stats.TotalPointAccuracy.ToString("0.00") + "%";
+                + "\n" + "points : " + stats2.TotalPoints
+                + "\n" + stats2.ShotMade + "/" + stats2.ShotAttempt
+                + " " + stats2.TotalPointAccuracy.ToString("0.00") + "%";
         }
         else
         {
@@ -461,14 +464,15 @@ public class MatchHudPresenter : MonoBehaviour
         }
         if (players.Count > 3 && players[3] != null)
         {
+            MatchStats stats3 = players[3].gameStats.Stats;
             playerType = players[3].isCpu ? "CPU" : "Player";
             if (!players[3].isCpu) { displayP4ScoreText.color = Color.green; } else { displayP4ScoreText.color = Color.white; }
             displayP4ScoreText.text = playerType + " " + (players[3].pid + 1)
                 + "\n" + players[3].characterProfile.PlayerDisplayName
                 //+ "\n" + "lvl : " + players[3].characterProfile.Level
-                + "\n" + "points : " + players[3].gameStats.Stats.TotalPoints
-                + "\n" + players[3].gameStats.Stats.ShotMade + "/" + players[3].gameStats.Stats.ShotAttempt
-                + " " + players[3].gameStats.Stats.TotalPointAccuracy.ToString("0.00") + "%";
+                + "\n" + "points : " + stats3.TotalPoints
+                + "\n" + stats3.ShotMade + "/" + stats3.ShotAttempt
+                + " " + stats3.TotalPointAccuracy.ToString("0.00") + "%";
         }
         else
         {
@@ -791,43 +795,45 @@ public class MatchHudPresenter : MonoBehaviour
             return displayText;
         }
 
+        MatchStats stats = gameStats1.Stats;
+
         if (gameModeId == Modes.TotalPoints)
         {
-            displayText = "You scored " + gameStats1.Stats.TotalPoints + " total points\n\n" + GetStatsTotals();
+            displayText = "You scored " + stats.TotalPoints + " total points\n\n" + GetStatsTotals();
         }
         if (gameModeId == Modes.Total3Pointers)
         {
-            displayText = "You made " + gameStats1.Stats.ThreePointerMade + " total 3 pointers\n\n" + GetStatsTotals();
+            displayText = "You made " + stats.ThreePointerMade + " total 3 pointers\n\n" + GetStatsTotals();
         }
         if (gameModeId == Modes.Total4Pointers)
         {
-            displayText = "You made " + gameStats1.Stats.FourPointerMade + " total 4 pointers\n\n" + GetStatsTotals();
+            displayText = "You made " + stats.FourPointerMade + " total 4 pointers\n\n" + GetStatsTotals();
         }
         if (gameModeId == Modes.Total7Pointers)
         {
-            displayText = "You made " + gameStats1.Stats.SevenPointerMade + " total 7 pointers\n\n" + GetStatsTotals();
+            displayText = "You made " + stats.SevenPointerMade + " total 7 pointers\n\n" + GetStatsTotals();
         }
         // mode 5 has no entry in Modes.cs - the enum skips from 4 straight to 6 (TotalDistance).
         if (gameModeId == 5)
         {
-            displayText = "Your longest shot made was " + (gameStats1.Stats.LongestShotMade).ToString("0.00") + " ft.\n\n" + GetStatsTotals();
+            displayText = "Your longest shot made was " + (stats.LongestShotMade).ToString("0.00") + " ft.\n\n" + GetStatsTotals();
         }
         if (gameModeId == Modes.TotalDistance)
         {
-            displayText = "Your total distance for shots made was " + (gameStats1.Stats.TotalDistance).ToString("0.00") + " ft.\n\n" + GetStatsTotals();
+            displayText = "Your total distance for shots made was " + (stats.TotalDistance).ToString("0.00") + " ft.\n\n" + GetStatsTotals();
         }
         // range covers modes 7-12 (SpotUp3s/SpotUp4s/SpotUpAll plus three more IDs with no
         // entries in Modes.cs) and 25 (SpotUp7s).
         if (gameModeId > 6 && gameModeId <= 12 || gameModeId == Modes.SpotUp7s)
         {
-            int minutes = Mathf.FloorToInt(gameStats1.Stats.TimePlayed / 60);
-            float seconds = (gameStats1.Stats.TimePlayed - (minutes * 60));
+            int minutes = Mathf.FloorToInt(stats.TimePlayed / 60);
+            float seconds = (stats.TimePlayed - (minutes * 60));
             //displayText = "Your time was " + (counterTime).ToString("0.000") + "\n\n" + getStatsTotals();
             displayText = "Your time was " + minutes.ToString("0") + ":" + seconds.ToString("00.000") + "\n\n" + GetStatsTotals();
         }
         if (gameModeId == Modes.ConsecutiveShots)
         {
-            displayText = "Your most consecutive shots was " + gameStats1.Stats.MostConsecutiveShots + "\n\n" + GetStatsTotals();
+            displayText = "Your most consecutive shots was " + stats.MostConsecutiveShots + "\n\n" + GetStatsTotals();
         }
         //if (gameModeId == 15)
         //{
@@ -837,23 +843,23 @@ public class MatchHudPresenter : MonoBehaviour
             || gameModeId == Modes.AllPointContest || gameModeId == Modes.PointsByDistance
             || gameModeId == Modes.SevenPointContest || gameModeId == Modes.Lockdown)
         {
-            displayText = "You scored " + gameStats1.Stats.TotalPoints + " total points\n\n" + GetStatsTotals();
+            displayText = "You scored " + stats.TotalPoints + " total points\n\n" + GetStatsTotals();
         }
         if (gameModeId == Modes.Lockdown)
         {
-            displayText = "You scored " + gameStats1.Stats.TotalPoints + " total points\nYou were blocked "
-                + gameStats1.Stats.BlockedShots + " times \n\n" + GetStatsTotals();
+            displayText = "You scored " + stats.TotalPoints + " total points\nYou were blocked "
+                + stats.BlockedShots + " times \n\n" + GetStatsTotals();
         }
         if (gameModeId == Modes.BashUpSomeNerds)
         {
-            displayText = "You Bashed up " + gameStats1.Stats.EnemiesKilled + " nerds"
+            displayText = "You Bashed up " + stats.EnemiesKilled + " nerds"
                 + "\n\nexperience gained : " + gameStats1.getExperienceGainedFromSession();
         }
         if (gameModeId == Modes.BattleRoyal)
         {
-            int minutes = Mathf.FloorToInt(gameStats1.Stats.TimePlayed / 60);
-            float seconds = (gameStats1.Stats.TimePlayed - (minutes * 60));
-            displayText = "You Bashed up " + gameStats1.Stats.EnemiesKilled + " nerds"
+            int minutes = Mathf.FloorToInt(stats.TimePlayed / 60);
+            float seconds = (stats.TimePlayed - (minutes * 60));
+            displayText = "You Bashed up " + stats.EnemiesKilled + " nerds"
                 + "\n\nYou survived for  : " + minutes.ToString("0") + ":" + seconds.ToString("00.000") + "\n\n"
                 + "\n\nexperience gained : " + gameStats1.getExperienceGainedFromSession();
         }
@@ -900,61 +906,62 @@ public class MatchHudPresenter : MonoBehaviour
     string GetStatsTotals()
     {
         // Percentages use gameStats1's own counts, not BasketBall.instance's mutable state.
+        MatchStats stats = gameStats1.Stats;
         string scoreText;
         if (rules.IsContest && !rules.SniperEnabled)
         {
-            scoreText = "shots  : " + gameStats1.Stats.ShotMade + " / " + gameStats1.Stats.ShotAttempt + " " + UtilityFunctions.getPercentageFloat(gameStats1.Stats.ShotMade, gameStats1.Stats.ShotAttempt).ToString("0.00") + "%\n"
-                             + "points : " + gameStats1.Stats.TotalPoints + "\n"
-                             //+ "bonus points : " + gameStats1.Stats.BonusPoints + "\n"
-                             + "2 pointers : " + gameStats1.Stats.TwoPointerMade + " / " + gameStats1.Stats.TwoPointerAttempts + "    "
-                             + UtilityFunctions.getPercentageFloat(gameStats1.Stats.TwoPointerMade, gameStats1.Stats.TwoPointerAttempts).ToString("00.0") + "%\n"
-                             + "3 pointers : " + gameStats1.Stats.ThreePointerMade + " / " + gameStats1.Stats.ThreePointerAttempts + "    "
-                             + UtilityFunctions.getPercentageFloat(gameStats1.Stats.ThreePointerMade, gameStats1.Stats.ThreePointerAttempts).ToString("00.0") + "%\n"
-                             + "4 pointers : " + gameStats1.Stats.FourPointerMade + " / " + gameStats1.Stats.FourPointerAttempts + "    "
-                             + UtilityFunctions.getPercentageFloat(gameStats1.Stats.FourPointerMade, gameStats1.Stats.FourPointerAttempts).ToString("00.0") + "%\n"
-                             + "7 pointers : " + gameStats1.Stats.SevenPointerMade + " / " + gameStats1.Stats.SevenPointerAttempts + "    "
-                             + UtilityFunctions.getPercentageFloat(gameStats1.Stats.SevenPointerMade, gameStats1.Stats.SevenPointerAttempts).ToString("00.0") + "%\n"
-                             + "money ball : " + gameStats1.Stats.MoneyBallMade + " / " + gameStats1.Stats.MoneyBallAttempts + "    "
-                             + UtilityFunctions.getPercentageFloat(gameStats1.Stats.MoneyBallMade, gameStats1.Stats.MoneyBallAttempts).ToString("00.0") + "%\n"
-                             + "longest shot distance : " + (Math.Round(gameStats1.Stats.LongestShotMade, 2)).ToString("0.00") + " ft.\n"
-                             + "total shots made distance : " + (Math.Round(gameStats1.Stats.TotalDistance, 2)).ToString("0.00") + " ft.\n"
-                             + "most consecutive shots : " + gameStats1.Stats.MostConsecutiveShots + "\n"
+            scoreText = "shots  : " + stats.ShotMade + " / " + stats.ShotAttempt + " " + UtilityFunctions.getPercentageFloat(stats.ShotMade, stats.ShotAttempt).ToString("0.00") + "%\n"
+                             + "points : " + stats.TotalPoints + "\n"
+                             //+ "bonus points : " + stats.BonusPoints + "\n"
+                             + "2 pointers : " + stats.TwoPointerMade + " / " + stats.TwoPointerAttempts + "    "
+                             + UtilityFunctions.getPercentageFloat(stats.TwoPointerMade, stats.TwoPointerAttempts).ToString("00.0") + "%\n"
+                             + "3 pointers : " + stats.ThreePointerMade + " / " + stats.ThreePointerAttempts + "    "
+                             + UtilityFunctions.getPercentageFloat(stats.ThreePointerMade, stats.ThreePointerAttempts).ToString("00.0") + "%\n"
+                             + "4 pointers : " + stats.FourPointerMade + " / " + stats.FourPointerAttempts + "    "
+                             + UtilityFunctions.getPercentageFloat(stats.FourPointerMade, stats.FourPointerAttempts).ToString("00.0") + "%\n"
+                             + "7 pointers : " + stats.SevenPointerMade + " / " + stats.SevenPointerAttempts + "    "
+                             + UtilityFunctions.getPercentageFloat(stats.SevenPointerMade, stats.SevenPointerAttempts).ToString("00.0") + "%\n"
+                             + "money ball : " + stats.MoneyBallMade + " / " + stats.MoneyBallAttempts + "    "
+                             + UtilityFunctions.getPercentageFloat(stats.MoneyBallMade, stats.MoneyBallAttempts).ToString("00.0") + "%\n"
+                             + "longest shot distance : " + (Math.Round(stats.LongestShotMade, 2)).ToString("0.00") + " ft.\n"
+                             + "total shots made distance : " + (Math.Round(stats.TotalDistance, 2)).ToString("0.00") + " ft.\n"
+                             + "most consecutive shots : " + stats.MostConsecutiveShots + "\n"
                              + "experience gained : " + gameStats1.getExperienceGainedFromSession();
         }
         else if (rules.SniperEnabled)
         {
-            scoreText = "shots  : " + gameStats1.Stats.ShotMade + " / " + gameStats1.Stats.ShotAttempt + " " + UtilityFunctions.getPercentageFloat(gameStats1.Stats.ShotMade, gameStats1.Stats.ShotAttempt).ToString("0.00") + "%\n"
-                 + "points : " + gameStats1.Stats.TotalPoints + "\n"
-                 + "2 pointers : " + gameStats1.Stats.TwoPointerMade + " / " + gameStats1.Stats.TwoPointerAttempts + "    "
-                 + UtilityFunctions.getPercentageFloat(gameStats1.Stats.TwoPointerMade, gameStats1.Stats.TwoPointerAttempts).ToString("00.0") + "%\n"
-                 + "3 pointers : " + gameStats1.Stats.ThreePointerMade + " / " + gameStats1.Stats.ThreePointerAttempts + "    "
-                 + UtilityFunctions.getPercentageFloat(gameStats1.Stats.ThreePointerMade, gameStats1.Stats.ThreePointerAttempts).ToString("00.0") + "%\n"
-                 + "4 pointers : " + gameStats1.Stats.FourPointerMade + " / " + gameStats1.Stats.FourPointerAttempts + "    "
-                 + UtilityFunctions.getPercentageFloat(gameStats1.Stats.FourPointerMade, gameStats1.Stats.FourPointerAttempts).ToString("00.0") + "%\n"
-                 + "7 pointers : " + gameStats1.Stats.SevenPointerMade + " / " + gameStats1.Stats.SevenPointerAttempts + "    "
-                 + UtilityFunctions.getPercentageFloat(gameStats1.Stats.SevenPointerMade, gameStats1.Stats.SevenPointerAttempts).ToString("00.0") + "%\n"
-                 + "longest shot distance : " + (Math.Round(gameStats1.Stats.LongestShotMade, 2)).ToString("0.00") + " ft.\n"
-                 + "total shots made distance : " + (Math.Round(gameStats1.Stats.TotalDistance, 2)).ToString("0.00") + " ft.\n"
-                 + "most consecutive shots : " + gameStats1.Stats.MostConsecutiveShots + "\n"
-                 + "sniper accuracy : " + gameStats1.Stats.SniperHits + " / " + gameStats1.Stats.SniperShots
-                    + " " + UtilityFunctions.getPercentageFloat(gameStats1.Stats.SniperHits, gameStats1.Stats.SniperShots).ToString("00.0") + "%\n"
+            scoreText = "shots  : " + stats.ShotMade + " / " + stats.ShotAttempt + " " + UtilityFunctions.getPercentageFloat(stats.ShotMade, stats.ShotAttempt).ToString("0.00") + "%\n"
+                 + "points : " + stats.TotalPoints + "\n"
+                 + "2 pointers : " + stats.TwoPointerMade + " / " + stats.TwoPointerAttempts + "    "
+                 + UtilityFunctions.getPercentageFloat(stats.TwoPointerMade, stats.TwoPointerAttempts).ToString("00.0") + "%\n"
+                 + "3 pointers : " + stats.ThreePointerMade + " / " + stats.ThreePointerAttempts + "    "
+                 + UtilityFunctions.getPercentageFloat(stats.ThreePointerMade, stats.ThreePointerAttempts).ToString("00.0") + "%\n"
+                 + "4 pointers : " + stats.FourPointerMade + " / " + stats.FourPointerAttempts + "    "
+                 + UtilityFunctions.getPercentageFloat(stats.FourPointerMade, stats.FourPointerAttempts).ToString("00.0") + "%\n"
+                 + "7 pointers : " + stats.SevenPointerMade + " / " + stats.SevenPointerAttempts + "    "
+                 + UtilityFunctions.getPercentageFloat(stats.SevenPointerMade, stats.SevenPointerAttempts).ToString("00.0") + "%\n"
+                 + "longest shot distance : " + (Math.Round(stats.LongestShotMade, 2)).ToString("0.00") + " ft.\n"
+                 + "total shots made distance : " + (Math.Round(stats.TotalDistance, 2)).ToString("0.00") + " ft.\n"
+                 + "most consecutive shots : " + stats.MostConsecutiveShots + "\n"
+                 + "sniper accuracy : " + stats.SniperHits + " / " + stats.SniperShots
+                    + " " + UtilityFunctions.getPercentageFloat(stats.SniperHits, stats.SniperShots).ToString("00.0") + "%\n"
                  + "experience gained : " + gameStats1.getExperienceGainedFromSession();
         }
         else
         {
-            scoreText = "shots  : " + gameStats1.Stats.ShotMade + " / " + gameStats1.Stats.ShotAttempt + " " + UtilityFunctions.getPercentageFloat(gameStats1.Stats.ShotMade, gameStats1.Stats.ShotAttempt).ToString("0.00") + "%\n"
-                 + "points : " + gameStats1.Stats.TotalPoints + "\n"
-                 + "2 pointers : " + gameStats1.Stats.TwoPointerMade + " / " + gameStats1.Stats.TwoPointerAttempts + "    "
-                 + UtilityFunctions.getPercentageFloat(gameStats1.Stats.TwoPointerMade, gameStats1.Stats.TwoPointerAttempts).ToString("00.0") + "%\n"
-                 + "3 pointers : " + gameStats1.Stats.ThreePointerMade + " / " + gameStats1.Stats.ThreePointerAttempts + "    "
-                 + UtilityFunctions.getPercentageFloat(gameStats1.Stats.ThreePointerMade, gameStats1.Stats.ThreePointerAttempts).ToString("00.0") + "%\n"
-                 + "4 pointers : " + gameStats1.Stats.FourPointerMade + " / " + gameStats1.Stats.FourPointerAttempts + "    "
-                 + UtilityFunctions.getPercentageFloat(gameStats1.Stats.FourPointerMade, gameStats1.Stats.FourPointerAttempts).ToString("00.0") + "%\n"
-                 + "7 pointers : " + gameStats1.Stats.SevenPointerMade + " / " + gameStats1.Stats.SevenPointerAttempts + "    "
-                 + UtilityFunctions.getPercentageFloat(gameStats1.Stats.SevenPointerMade, gameStats1.Stats.SevenPointerAttempts).ToString("00.0") + "%\n"
-                 + "longest shot distance : " + (Math.Round(gameStats1.Stats.LongestShotMade, 2)).ToString("0.00") + " ft.\n"
-                 + "total shots made distance : " + (Math.Round(gameStats1.Stats.TotalDistance, 2)).ToString("0.00") + " ft.\n"
-                 + "most consecutive shots : " + gameStats1.Stats.MostConsecutiveShots + "\n"
+            scoreText = "shots  : " + stats.ShotMade + " / " + stats.ShotAttempt + " " + UtilityFunctions.getPercentageFloat(stats.ShotMade, stats.ShotAttempt).ToString("0.00") + "%\n"
+                 + "points : " + stats.TotalPoints + "\n"
+                 + "2 pointers : " + stats.TwoPointerMade + " / " + stats.TwoPointerAttempts + "    "
+                 + UtilityFunctions.getPercentageFloat(stats.TwoPointerMade, stats.TwoPointerAttempts).ToString("00.0") + "%\n"
+                 + "3 pointers : " + stats.ThreePointerMade + " / " + stats.ThreePointerAttempts + "    "
+                 + UtilityFunctions.getPercentageFloat(stats.ThreePointerMade, stats.ThreePointerAttempts).ToString("00.0") + "%\n"
+                 + "4 pointers : " + stats.FourPointerMade + " / " + stats.FourPointerAttempts + "    "
+                 + UtilityFunctions.getPercentageFloat(stats.FourPointerMade, stats.FourPointerAttempts).ToString("00.0") + "%\n"
+                 + "7 pointers : " + stats.SevenPointerMade + " / " + stats.SevenPointerAttempts + "    "
+                 + UtilityFunctions.getPercentageFloat(stats.SevenPointerMade, stats.SevenPointerAttempts).ToString("00.0") + "%\n"
+                 + "longest shot distance : " + (Math.Round(stats.LongestShotMade, 2)).ToString("0.00") + " ft.\n"
+                 + "total shots made distance : " + (Math.Round(stats.TotalDistance, 2)).ToString("0.00") + " ft.\n"
+                 + "most consecutive shots : " + stats.MostConsecutiveShots + "\n"
                  + "experience gained : " + gameStats1.getExperienceGainedFromSession();
         }
         return scoreText;

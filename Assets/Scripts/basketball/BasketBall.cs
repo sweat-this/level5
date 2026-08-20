@@ -19,8 +19,14 @@ public class BasketBall : MonoBehaviour
     /// Phase 1c seam: one place that reads <see cref="characterProfile"/> into the shot pipeline's
     /// contract, so the three call sites that need it build it the same way rather than each calling
     /// <c>ShooterAttributesFactory.From</c> separately.
+    ///
+    /// Code review: resolved once in <see cref="Start"/> rather than recomputed on every read.
+    /// <c>characterProfile</c> is assigned once and never reassigned, so a computed property gained
+    /// nothing but cost - and cost that mattered specifically on the missing-profile path, where
+    /// <c>displayUiStats</c>'s twice-a-second <c>InvokeRepeating</c> would have re-logged the same
+    /// warning forever instead of once at startup.
     /// </summary>
-    private ShooterAttributes CurrentShooter => ShooterAttributesFactory.From(characterProfile);
+    private ShooterAttributes currentShooter;
 
     BasketBallState basketBallState;
     GameStats gameStats;
@@ -75,6 +81,7 @@ public class BasketBall : MonoBehaviour
         player = playerIdentifier.player;
         playerController = player.GetComponent<PlayerController>();
         characterProfile = playerController.GetComponent<CharacterProfile>();
+        currentShooter = ShooterAttributesFactory.From(characterProfile);
         basketBallPosition = player.transform.Find("basketBall_position").gameObject;
         rigidbody = GetComponent<Rigidbody>();
         gameStats =  GetComponent<GameStats>();
@@ -111,7 +118,7 @@ public class BasketBall : MonoBehaviour
             if (UiStatsEnabled)
             {
                 updateScoreText();
-                BasketballShotPipeline.UpdateShooterProfileText(shootProfileText, CurrentShooter);
+                BasketballShotPipeline.UpdateShooterProfileText(shootProfileText, currentShooter);
                 uiStatsBackground.SetActive(true);
             }
             else
@@ -398,7 +405,7 @@ public class BasketBall : MonoBehaviour
             transform,
             ballPositionAtLaunch.transform.position,
             basketBallState.BasketBallTarget.transform.position,
-            CurrentShooter,
+            currentShooter,
             basketBallState,
             gameStats,
             LastShotDistance,
@@ -452,7 +459,7 @@ public class BasketBall : MonoBehaviour
         if (UiStatsEnabled)
         {
             updateScoreText();
-            BasketballShotPipeline.UpdateShooterProfileText(shootProfileText, CurrentShooter);
+            BasketballShotPipeline.UpdateShooterProfileText(shootProfileText, currentShooter);
             uiStatsBackground.SetActive(true);
             return true;
         }
