@@ -77,7 +77,7 @@ public class GameStats : MonoBehaviour
     // this method's only job is reading the session's stats and mode flags into plain data.
     //
     // it stays on this side of the assembly boundary because MatchRuntime is an Assembly-CSharp
-    // static that Level5.Core cannot see - the same constraint ShooterAttributesFactory has.
+    // static that Level5.Core cannot see - the same constraint ShooterAttributesMapper has.
     public MatchExperienceInput BuildExperienceInput()
     {
         return new MatchExperienceInput

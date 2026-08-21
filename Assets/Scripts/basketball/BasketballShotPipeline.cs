@@ -71,7 +71,9 @@ public static class BasketballShotPipeline
     ///
     /// Phase 1c of the systems restructure: takes <see cref="ShooterAttributes"/> rather than a
     /// <c>CharacterProfile</c>, the first consumer migrated onto the Phase 1a contract. Callers
-    /// build it once via <c>ShooterAttributesFactory.From</c>.
+    /// build it once via the actor's <see cref="IShooterActor.ShooterAttributes"/> (backed by
+    /// <c>ShooterAttributesMapper.From</c> on the player side since the player↔basketball cycle-cut
+    /// slice).
     /// </summary>
     public static LaunchComputation ComputeLaunch(
         Transform ballTransform,
@@ -101,7 +103,7 @@ public static class BasketballShotPipeline
             tanAlpha = Mathf.Tan(shooter.ShootAngle * Mathf.Deg2Rad);
         }
         float H = targetPosition.y - ballPositionAtLaunch.y;
-        // Code review: a degenerate ShootAngle (0, from ShooterAttributesFactory's zeroed fallback
+        // Code review: a degenerate ShootAngle (0, from ShooterAttributesMapper's zeroed fallback
         // when a shooter has no CharacterProfile) can make this radicand negative - G is gravity,
         // always negative, and a zero tanAlpha leaves the denominator at the ordinary sign for an
         // above-release target. Sqrt of a negative number is NaN, not an exception, and it would
@@ -221,9 +223,51 @@ public static class BasketballShotPipeline
     /// </summary>
     private static void ResolveShotAccuracy(BasketBallState basketBallState, ShooterAttributes shooter, out float shotTypeAccuracy, out bool threePoints)
     {
-        ShotKind kind = ShooterAttributesFactory.KindFromPointFlags(basketBallState);
+        ShotKind kind = KindFromPointFlags(basketBallState);
         shotTypeAccuracy = shooter.AccuracyFor(kind);
         threePoints = ShooterAttributes.IsThreePointBranch(kind);
+    }
+
+    /// <summary>
+    /// The shot kind the launch pipeline's if/else chain would select, read from the *point* flags.
+    ///
+    /// Player↔basketball cycle-cut slice: inlined from the deleted <c>ShooterAttributesFactory</c>,
+    /// which this was the only caller of. Deliberately not named <c>ShotKindOf</c>, because
+    /// <c>BasketBallShotMade.ShotKindOf</c> already exists and answers a different question with the
+    /// opposite precedence. That one reads the *attempt* flags (TwoAttempt..SevenAttempt) ascending,
+    /// and can, because by the time a make is registered they are mutually exclusive. These point
+    /// flags are not mutually exclusive at launch time, so precedence runs seven, four, three, two and
+    /// the highest wins.
+    /// </summary>
+    public static ShotKind KindFromPointFlags(BasketBallState basketBallState)
+    {
+        if (basketBallState == null)
+        {
+            Debug.LogWarning("BasketballShotPipeline.KindFromPointFlags: no BasketBallState - resolving to ShotKind.None.");
+            return ShotKind.None;
+        }
+
+        if (basketBallState.SevenPoints)
+        {
+            return ShotKind.Seven;
+        }
+
+        if (basketBallState.FourPoints)
+        {
+            return ShotKind.Four;
+        }
+
+        if (basketBallState.ThreePoints)
+        {
+            return ShotKind.Three;
+        }
+
+        if (basketBallState.TwoPoints)
+        {
+            return ShotKind.Two;
+        }
+
+        return ShotKind.None;
     }
 
     private static float GetRangeModifier(ShooterAttributes shooter, float lastShotDistance)

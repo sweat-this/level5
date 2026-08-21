@@ -148,7 +148,7 @@ public class BasketballVisibilityTests
         BasketBall held = null;
         for (int i = 0; i < balls.Length; i++)
         {
-            object controller = FieldObject(balls[i], "playerController");
+            object controller = FieldObject(balls[i], "actor");
             FieldInfo hb = controller?.GetType().GetField("hasBasketball", Flags);
             if (hb != null && hb.GetValue(controller) is bool b && b)
             {
@@ -170,7 +170,7 @@ public class BasketballVisibilityTests
 
     private static void Report(string label, object ballComponent, GameObject ballObject)
     {
-        object controller = FieldObject(ballComponent, "playerController");
+        object controller = FieldObject(ballComponent, "actor");
         object owner = FieldObject(ballComponent, "player");
         GameObject ownerObject = owner as GameObject;
         object hold = FieldObject(ballComponent, "basketBallPosition");

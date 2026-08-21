@@ -104,7 +104,7 @@ public class Level5ShooterAttributesTests
         Assert.That(ShooterAttributes.IsThreePointBranch(kind), Is.EqualTo(expected));
     }
 
-    /// <summary>A default instance must be inert rather than throwing - see ShooterAttributesFactory.</summary>
+    /// <summary>A default instance must be inert rather than throwing - see ShooterAttributesMapper.</summary>
     [Test]
     public void ADefaultInstanceIsInert()
     {

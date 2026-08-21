@@ -115,6 +115,12 @@ public class BodyGuardController : MonoBehaviour, ICombatAgent
 
     private ICombatAgent currentThreat;
     private readonly List<ICombatAgent> threatCandidateBuffer = new List<ICombatAgent>();
+    // #57: the subset of threatCandidateBuffer close enough (to this guard or to the protected
+    // actor) to be worth breaking formation for - see IsActionableThreat. Selection prefers this
+    // subset; CheckReturnToPatrolStatus reads only the cached hasActionableThreat result, not this
+    // buffer directly.
+    private readonly List<ICombatAgent> actionableThreatBuffer = new List<ICombatAgent>();
+    private bool hasActionableThreat;
     private CombatTacticalState currentAiState = CombatTacticalState.Idle;
     private string lastTransitionReason = "spawn";
     public bool StateWalk { get => stateWalk; set => stateWalk = value; }
@@ -173,9 +179,10 @@ public class BodyGuardController : MonoBehaviour, ICombatAgent
 
     private void OnDisable()
     {
-        ReleaseAttackReservation();
+        CancelInvoke();
         UnregisterBodyGuard();
         currentThreat = null;
+        hasActionableThreat = false;
     }
 
     private void OnEnable()
@@ -185,6 +192,11 @@ public class BodyGuardController : MonoBehaviour, ICombatAgent
         currentAiState = CombatTacticalState.Idle;
         lastTransitionReason = "enable";
         nextThreatRefreshTime = 0f;
+        hasActionableThreat = false;
+        // #57: patrol ownership, migrated from BodyGuardDetection.CheckReturnToPatrolStatus onto
+        // this controller - cadence (3s) preserved from the original so return-to-patrol timing
+        // does not change feel, only the signal it is based on.
+        InvokeRepeating(nameof(CheckReturnToPatrolStatus), 0f, 3f);
     }
 
     private void FixedUpdate()
@@ -226,8 +238,16 @@ public class BodyGuardController : MonoBehaviour, ICombatAgent
             // STEP 1: no resolvable protected actor yet - stand down safely rather than reach
             // into a null chain (this used to be an unguarded
             // GameLevelManager.instance.PlayerController1.PlayerAttackQueue.GetFirstQueuedEnemy()).
+            //
+            // #57: hasActionableThreat must reset here too - it is only otherwise written by
+            // RefreshThreatTarget below, which this early return skips. Without this, a bodyguard
+            // whose protected actor disappears mid-life (destroyed/eliminated) keeps whatever
+            // hasActionableThreat value it last computed forever, since CheckReturnToPatrolStatus's
+            // own InvokeRepeating keeps running independently of this method and would otherwise
+            // never see it clear.
             stateIdle = true;
             stateWalk = false;
+            hasActionableThreat = false;
             rigidBody.linearVelocity = Vector3.zero;
             anim.SetBool("walk", false);
             return;
@@ -336,23 +356,87 @@ public class BodyGuardController : MonoBehaviour, ICombatAgent
     // ever fights enemies), scored by CombatTargetSelector.SelectBodyguardThreat so an enemy
     // actively closing on the protected actor outranks one that merely holds a queue reservation,
     // which outranks one simply nearby, which outranks any other valid hostile (STEP 3's tiers).
+    //
+    // #57: also partitions candidates into the actionable subset (see IsActionableThreat) and
+    // prefers it during selection - otherwise the reservation tier bonus above (500, see
+    // ReservedThreatScore) can make a reserved attacker on the far side of the map outrank an
+    // unreserved enemy already standing next to the protected actor (100, NearProtectedActorScore).
+    // Falls back to the full candidate list when nothing is actionable, which preserves this
+    // controller's prior behaviour of still tracking/facing/pursuing the best available candidate
+    // even when nothing is close enough to matter yet.
     private void RefreshThreatTarget()
     {
         threatCandidateBuffer.Clear();
+        actionableThreatBuffer.Clear();
         foreach (EnemyController enemy in EnemyController.ActiveEnemies)
         {
-            if (enemy != null)
+            if (enemy == null)
             {
-                threatCandidateBuffer.Add(enemy);
+                continue;
+            }
+
+            threatCandidateBuffer.Add(enemy);
+            if (IsActionableThreat(enemy))
+            {
+                actionableThreatBuffer.Add(enemy);
             }
         }
 
         currentThreat = CombatTargetSelector.SelectBodyguardThreat(
             threatCandidateBuffer,
+            actionableThreatBuffer,
             transform.position,
             protectedActor.transform.position,
             currentThreat,
-            protectionRadius);
+            protectionRadius,
+            out hasActionableThreat);
+    }
+
+    // #57: single owner of "is this threat worth breaking formation for", replacing
+    // BodyGuardDetection's independent proximity scan over PlayerAttackQueue.EnemiesQueued (which
+    // only ever considered reservation-holding enemies and was measured purely from this guard's
+    // own position). See BodyGuardDetection.IsActionableRange for why both reference points matter.
+    private bool IsActionableThreat(ICombatAgent candidate)
+    {
+        if (candidate == null || protectedActor == null)
+        {
+            return false;
+        }
+
+        // #57: the highest-priority tier (reserved and about to land a hit) is always actionable,
+        // independent of this bodyguard's own authored maximumInterceptionDistance/sight - a
+        // misconfigured maximumInterceptionDistance smaller than
+        // CombatTargetSelector.ImminentThreatRange must not be able to filter out the one candidate
+        // CombatTargetSelector's own tiering would score highest.
+        if (CombatTargetSelector.IsImminentThreat(candidate, protectedActor.transform.position))
+        {
+            return true;
+        }
+
+        float distanceToProtectedActor = Vector3.Distance(protectedActor.transform.position, candidate.CombatTransform.position);
+        float distanceToGuard = Vector3.Distance(transform.position, candidate.CombatTransform.position);
+        float authoredSight = bodyGuardDetection != null ? bodyGuardDetection.EnemySightDistance : 0f;
+
+        return BodyGuardDetection.IsActionableRange(
+            distanceToProtectedActor, distanceToGuard, authoredSight, maximumInterceptionDistance);
+    }
+
+    // #57: patrol decision, migrated from BodyGuardDetection.CheckReturnToPatrolStatus. Same
+    // structure as before - idle, away from the spawn point, and nothing worth fighting - but the
+    // signal is now this controller's own cached hasActionableThreat (refreshed alongside
+    // currentThreat on decisionInterval) instead of BodyGuardDetection's independent 0.5s scan.
+    private void CheckReturnToPatrolStatus()
+    {
+        if (stateIdle
+            && transform.position != OriginalPosition
+            && !hasActionableThreat)
+        {
+            statePatrol = true;
+        }
+        else
+        {
+            statePatrol = false;
+        }
     }
 
     // STEP 7: default objective is staying near the protected actor; a high-priority threat
@@ -558,12 +642,9 @@ public class BodyGuardController : MonoBehaviour, ICombatAgent
         playAnimation("disintegrated");
         yield return new WaitForSeconds(1.5f);
 
-        if (bodyGuardDetection.Attacking)
-        {
-            //Debug.Log("========================== enemy killed : " + gameObject.name + " :  remove from attack queue");
-            int attackPositionId = bodyGuardDetection.AttackPositionId;
-            ReleaseAttackReservation(attackPositionId);
-        }
+        // #57: no reservation release here - bodyguards never hold a PlayerAttackQueue reservation
+        // (only EnemyDetection calls TryAddToQueue/TryReserve), so BodyGuardDetection no longer
+        // carries reservation state to check.
         UnregisterBodyGuard();
         //yield return new WaitUntil( ()=> PlayerAttackQueue.instance.AttackSlotOpen);
         Destroy(gameObject);
@@ -675,23 +756,6 @@ public class BodyGuardController : MonoBehaviour, ICombatAgent
         targetQueue?.UnregisterBodyGuard(transform.root.gameObject);
     }
 
-    private void ReleaseAttackReservation(int attackPositionId = -1)
-    {
-        PlayerAttackQueue queue = targetQueue;
-        if (queue == null)
-        {
-            return;
-        }
-
-        if (attackPositionId >= 0)
-        {
-            queue.RemoveFromQueue(gameObject, attackPositionId);
-            return;
-        }
-
-        queue.ReleaseReservation(this);
-    }
-
     public GameObject CombatObject => gameObject;
     public Transform CombatTransform => transform;
     public bool CanAct => isActiveAndEnabled && (bodyGuardHealth == null || !bodyGuardHealth.IsDead);
@@ -703,9 +767,11 @@ public class BodyGuardController : MonoBehaviour, ICombatAgent
     public PlayerIdentifier ProtectedActor => protectedActor;
 
     /// <summary>
-    /// The range at which this bodyguard already considers a threat worth breaking formation to
-    /// intercept. BG-2 exposes it so <see cref="BodyGuardDetection"/> cannot report "no enemy
-    /// sighted" at a range this controller would act on.
+    /// The range, measured from the protected actor, at which this bodyguard already considers a
+    /// threat worth breaking formation to intercept. #57: also one of the two reference points
+    /// <see cref="IsActionableThreat"/> uses (via <see cref="BodyGuardDetection.IsActionableRange"/>)
+    /// so patrol/actionability agrees with the interception behaviour this value already drives in
+    /// <see cref="ShouldMoveForProtection"/>/<see cref="pursuePlayer"/>.
     /// </summary>
     public float MaximumInterceptionDistance => maximumInterceptionDistance;
 

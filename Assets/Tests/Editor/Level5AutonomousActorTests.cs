@@ -208,6 +208,61 @@ public class Level5AutonomousActorTests
             "a zero reach sights nothing, even an enemy standing on top of the bodyguard");
     }
 
+    // ---------------------------------------------------------------- #57
+
+    [Test]
+    public void ActionableRangeTreatsSightAndInterceptionConsistentlyAtTheSameDistance()
+    {
+        // The invariant #57 replaces EffectiveSightDistance-only flooring with: a hostile at 5
+        // units must register as actionable whether it is guard-relative sight (authored 4, floored
+        // to 6 by EffectiveSightDistance) or the protected-actor-relative interception leash (6)
+        // that actually reaches it. The only authored enemySightDistance in the project is 4,
+        // against a leash of 6, so this is the exact configuration in play.
+        Assert.IsTrue(
+            BodyGuardDetection.IsActionableRange(
+                distanceToProtectedActor: 5f, distanceToGuard: 5f, authoredSightDistance: 4f, maximumInterceptionDistance: 6f),
+            "a hostile 5 units from both guard and protected actor is within the 6-unit leash and must be actionable");
+
+        Assert.IsFalse(
+            BodyGuardDetection.IsActionableRange(
+                distanceToProtectedActor: 20f, distanceToGuard: 20f, authoredSightDistance: 4f, maximumInterceptionDistance: 6f),
+            "a hostile far from both the guard and the protected actor is not actionable");
+    }
+
+    [Test]
+    public void ActionableRangeTreatsTheInterceptionEnvelopeAndGuardSightAsIndependentPaths()
+    {
+        // Two reference points, combined with OR - a hostile can be actionable via either one
+        // without the other bounding it. This is what let Enemy A (distant reserved) previously hide
+        // Enemy B (close, unreserved) from a naive "closest scored candidate" selection: the two
+        // reference points were never checked independently before #57.
+        Assert.IsTrue(
+            BodyGuardDetection.IsActionableRange(
+                distanceToProtectedActor: 3f, distanceToGuard: 100f, authoredSightDistance: 4f, maximumInterceptionDistance: 6f),
+            "inside the protected actor's interception envelope is actionable even if the guard itself is far away");
+
+        Assert.IsTrue(
+            BodyGuardDetection.IsActionableRange(
+                distanceToProtectedActor: 100f, distanceToGuard: 3f, authoredSightDistance: 4f, maximumInterceptionDistance: 6f),
+            "within the guard's own effective sight is actionable even if the protected actor is far away");
+
+        Assert.IsFalse(
+            BodyGuardDetection.IsActionableRange(
+                distanceToProtectedActor: 100f, distanceToGuard: 100f, authoredSightDistance: 4f, maximumInterceptionDistance: 6f),
+            "far from both the guard and the protected actor is not actionable");
+    }
+
+    [Test]
+    public void ActionableRangeHonoursAnAuthoredSightWiderThanTheInterceptionLeash()
+    {
+        // EffectiveSightDistance never lowers an authored reach that already exceeds the leash -
+        // IsActionableRange must preserve that.
+        Assert.IsTrue(
+            BodyGuardDetection.IsActionableRange(
+                distanceToProtectedActor: 100f, distanceToGuard: 15f, authoredSightDistance: 20f, maximumInterceptionDistance: 6f),
+            "an authored sight of 20 must reach a guard-relative distance of 15, even though the leash is only 6");
+    }
+
     // ---------------------------------------------------------------- DEF-1
 
     [Test]

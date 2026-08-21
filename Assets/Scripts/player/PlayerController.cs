@@ -3,9 +3,10 @@ using System;
 using System.Collections;
 using UnityEngine;
 using UnityEngine.UI;
+using Level5.Core;
 using Level5.Core.Match;
 
-public class PlayerController : MonoBehaviour
+public class PlayerController : MonoBehaviour, IShooterActor
 {
     [SerializeField]
     bool isPlayer1;
@@ -1067,5 +1068,46 @@ public class PlayerController : MonoBehaviour
     public CharacterProfile CharacterProfile { get => characterProfile; set => characterProfile = value; }
     public BasketBall Basketball { get => basketball; set => basketball = value; }
     public bool Disintegrated { get => _disintegrated; set => _disintegrated = value; }
+
+    // ==================== IShooterActor (player<->basketball cycle-cut slice) ====================
+    // Explicit implementation: these exist only for basketball-side code reaching this controller
+    // through PlayerIdentifier.Actor, so they stay off the ordinary public surface. FacingFront and
+    // Grounded already satisfy the interface implicitly via the properties above - no code needed.
+
+    bool IShooterActor.HasBasketball { get => hasBasketball; set => hasBasketball = value; }
+
+    bool IShooterActor.InDunkState => currentState == dunkState;
+
+    float IShooterActor.DistanceFromRim => playerDistanceFromRim;
+
+    private ShooterAttributes? _shooterAttributes;
+
+    // Lazily cached on first access rather than in Start(), so a basketball-side reader (e.g.
+    // ShotMeter.Start()) can never race this controller's own Start() - see the cycle-cut plan's
+    // execution-order note. Preserves ShooterAttributesMapper's "warn once on a missing profile"
+    // behavior, since the underlying CharacterProfile reference itself does not change after Awake.
+    ShooterAttributes IShooterActor.ShooterAttributes =>
+        _shooterAttributes ??= ShooterAttributesMapper.From(GetComponent<CharacterProfile>());
+
+    // Deliberately not memoized - see IShooterActor.Clutch. The human path never reads this, but the
+    // read has to stay live regardless, since a MonoBehaviour can't memoize a member only for one
+    // implementer.
+    int IShooterActor.Clutch => GetComponent<CharacterProfile>()?.Clutch ?? 0;
+
+    float IShooterActor.ShotMeterSliderValue => shotmeter.SliderValueOnButtonPress;
+
+    bool IShooterActor.ShotMeterEnded => shotmeter.MeterEnded;
+
+    void IShooterActor.SetAnimBool(string name, bool value) => SetPlayerAnim(name, value);
+
+    void IShooterActor.SetAnimTrigger(string name) => SetPlayerAnimTrigger(name);
+
+    void IShooterActor.LockCallBallToPlayer(bool locked) => callBallToPlayer.Locked = locked;
+
+    void IShooterActor.DisplayShotMeterMessage(string message) => shotmeter.displaySliderMessageText(message);
+
+    // No CPU-style shot-cycle reset on the human path - a no-op lets BasketBall.Launch call this
+    // unconditionally, symmetric with BasketBallAuto.Launch's call to the real CPU implementation.
+    void IShooterActor.EndShootCycle() { }
     public bool KilledOnIdle { get; internal set; }
 }

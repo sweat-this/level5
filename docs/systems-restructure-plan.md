@@ -1,6 +1,6 @@
 # Systems Restructure Plan
 
-Last updated: 2026-08-17 (revised after first review pass)
+Last updated: 2026-08-20 (Phase 2 detailed)
 
 The brief: no ship date, no feature deadline — the game is done when the systems are correct,
 structured and maintainable. That removes the usual reason to defer structural work, so this plan
@@ -86,19 +86,339 @@ package assembly it uses, and a wrong name is a project-wide compile failure (AU
 2026-08-07) — which is why this was never attempted blind.
 
 That second blocker is now resolved. `Library/ScriptAssemblies` shows which references are
-asmdef-based and which are precompiled:
+asmdef-based and which are precompiled. The 2a canary (below) proved this table rather than
+inferring it, and corrected one entry: `Analytics` does not need to be listed. The runtime code that
+looked like it needed it (`AnaylticsManager.cs`) uses `UnityEngine.Analytics.*`, which is the
+`UnityAnalyticsModule` engine module and is referenced automatically; the asmdef-based `Analytics`
+assembly is a separate, Editor-only assembly (`com.unity.analytics`'s Editor window code,
+`includePlatforms: ["Editor"]`) that no runtime code actually touches.
 
 | Reference | Kind |
 | --- | --- |
-| `Unity.InputSystem`, `Unity.Mathematics`, `Analytics` | asmdef assemblies — must be listed |
-| `Newtonsoft.Json`, `Mono.Data.Sqlite`, `Unity.IO.LowLevel.Unsafe` | precompiled or engine — automatic |
+| `Unity.InputSystem`, `Unity.Mathematics` | asmdef assemblies — must be listed |
+| `Newtonsoft.Json`, `Mono.Data.Sqlite`, `UnityEngine.Analytics` (`UnityAnalyticsModule`) | precompiled or engine — automatic |
+| `Unity.IO.LowLevel.Unsafe` | unused — a dead `using` in `AutoPlayerDefense.cs` with no API calls; no production type currently needs it |
 
-- **2a — Feasibility spike.** Smallest candidate asmdef, compiled headless in Unity batch mode before
-  anything migrates. The asmdef-free PlayMode workaround stays until this succeeds.
-- **2b — Migrate runtime assemblies** once the spike compiles clean.
+**2a result (2026-08-20):** `Level5.AssemblyFeasibility` compiled clean headless on 6000.5.7f1
+referencing only `Level5.Core`, `Unity.InputSystem` and `Unity.Mathematics`, while a probe method
+also called `Newtonsoft.Json.JsonConvert`, `Mono.Data.Sqlite.SqliteConnection` and
+`UnityEngine.Analytics.Analytics.CustomEvent` with no extra reference declared. Full EditMode
+(463/463) and PlayMode (9/9) suites passed with the canary present; both passed again after it was
+deleted. No production runtime source has moved assemblies yet.
 
-**Exit:** gameplay code lives in referenced assemblies; the asmdef-free test folder is deleted and
-play-mode tests reference gameplay code normally.
+Phase 2 establishes enforceable compile-time boundaries around Level5 runtime code without changing
+gameplay, scenes, prefabs, rendering, input behaviour, or public runtime behaviour. It is
+structurally invisible: URP assets, renderer data/features, volume profiles, post-processing,
+shaders, materials, lighting, cameras, scenes, prefab behaviour and import settings do not change. A
+visual difference during verification is a regression.
+
+Phase 2 begins only after the Phase 1d ratchet is in place as the current game-manager boundary
+guard. Remaining player↔basketball coupling does not block the 2a spike, but cyclic dependencies may
+block specific 2b production assembly boundaries.
+
+#### 2a — Runtime assembly feasibility canary
+
+Do not migrate a production gameplay folder as the spike. Create a temporary, disposable runtime
+assembly (e.g. `Level5.AssemblyFeasibility`) whose only purpose is to prove the exact
+assembly-reference behaviour the real migration needs:
+
+- runtime assembly, not Editor-only; `autoReferenced: true`; `overrideReferences: false` initially
+- references `Level5.Core` where useful, and explicitly references every asmdef-based package
+  assembly being proven
+- exercises representative public types from those assemblies in compile-only probe code
+- exercises representative precompiled/plugin dependencies without explicitly adding them, where
+  Unity should auto-reference them
+
+At minimum, verify the package assumptions already recorded above: `Unity.InputSystem`,
+`Unity.Mathematics`, the Analytics assembly this project uses, Newtonsoft.Json and
+Mono.Data.Sqlite automatic/precompiled reference behaviour, and `Unity.IO.LowLevel.Unsafe` if a
+production runtime candidate needs it. Do not add URP, Cinemachine, TMP, Addressables or other
+package references merely because the packages exist — only if relevant to a planned production
+assembly or needed to verify an unresolved assembly name.
+
+With the canary active: launch the pinned Unity version in batch mode, force script compilation and
+fail on any compiler error, run repository validation, and run the full EditMode and PlayMode
+suites. Record the exact successful assembly names, whether each dependency is asmdef-based or
+precompiled, and any plugin/platform constraints discovered. Then delete the canary and confirm the
+project returns to a green baseline.
+
+**2a exit:** headless compilation succeeds with the canary active; package assembly names and
+precompiled-reference assumptions are proven rather than inferred; full EditMode and PlayMode suites
+are green; the canary is removed; no production runtime source has moved assemblies yet.
+
+#### 2b0 — Production assembly boundary gate
+
+Before adding an asmdef around any production folder, calculate its actual dependency closure.
+Build a source-to-assembly dependency graph covering the Level5 runtime code intended for migration.
+For every proposed production assembly, determine: source files it owns; other Level5 assemblies it
+requires; remaining dependencies on `Assembly-CSharp`; package asmdef references; precompiled/plugin
+references; Editor-only dependencies; platform-specific constraints; unsafe-code requirements;
+generated-code ownership; serialization/reflection risks. Compute strongly connected components.
+
+A proposed production assembly may be created only when: it does not require a type remaining in
+`Assembly-CSharp`; its dependency graph is acyclic; all direct custom-assembly references can be
+declared explicitly; runtime source does not depend on an Editor assembly; its recursive folder
+ownership is understood.
+
+Do not treat the Phase 1d ratchet as proof the entire original three-way cycle is gone. Remeasure
+player→basketball, basketball→player, player→game manager, game manager→player, basketball→game
+manager and game manager→basketball specifically. If player and basketball still form a strongly
+connected component, do not create separate player and basketball asmdefs yet — prefer the smallest
+behaviour-preserving dependency inversion that removes the remaining cycle, and do not create a
+permanent coarse `Level5.Gameplay` assembly solely to hide a cyclic design unless that architecture
+is chosen for independent reasons.
+
+**Remeasured (2026-08-20), against `dev` at `3c15cd47c` (Phase 1d landed):** still a strongly
+connected component. The `game manager → player`/`game manager → basketball` direction is the one
+Phase 1d actually addressed, and `Level5GameManagerEdgeTests` (the ratchet) is authoritative for it
+rather than a fresh grep: it allowlists exactly 5 files —
+`GameLevelManager.cs`, `GameRules.cs`, `MatchHudPresenter.cs`, `SpawnCoordinator.cs`, `Pause.cs` —
+each with a documented reason (roster/spawn-identity bookkeeping, a `GameStats` read that is
+load-bearing for `getExperienceGainedFromSession()` and the persistence layer, or the deferred
+HUD-polling design pass). Reduced from the plan's raw ~68/~46 count, but not zero, and not eliminated
+— narrowed and pinned. The reverse direction (`player → game manager`, `basketball → game manager`)
+was never in Phase 1d's scope and remains extensive: a rough re-run of the coupling method (declared
+types per folder, whole-word matches, comment lines excluded) found non-trivial mentions in both
+directions for all three pairs (`player ↔ basketball`, `player ↔ game manager`,
+`basketball ↔ game manager`). **Conclusion: player, basketball and game manager remain one strongly
+connected component. None of the three gets its own production asmdef in this pass of 2b** — 2b picks
+a leaf candidate outside this triangle instead.
+
+Before changing the assembly identity of production types, search for `[SerializeReference]`,
+`Type.GetType`, `Assembly.Load`/`Assembly.LoadFrom`, assembly-qualified type-name strings, Newtonsoft
+`TypeNameHandling`, custom reflection serializers, and persistence code that records managed type
+names. If none exist for the candidate types, record that result; if they do, add migration/
+regression coverage before moving those types.
+
+**2b0 exit:** every production asmdef candidate has an explicit, acyclic dependency manifest.
+
+#### 2b — Incremental runtime assembly migration
+
+Migrate runtime code leaf-first. The current top-level folder layout is not assumed to equal the
+desired assembly architecture — boundaries follow dependencies and ownership. For each assembly:
+choose one dependency-closed candidate; add its asmdef without unrelated refactoring; keep source
+paths and `.meta` files stable wherever practical; preserve namespaces, serialized fields and
+component contracts; set `autoReferenced: true` and start with `overrideReferences: false`; add only
+required asmdef-to-asmdef/package references; compile immediately; run relevant focused tests, then
+the full EditMode suite, then the full PlayMode suite; do not begin the next assembly until green.
+One assembly boundary should be independently revertible.
+
+**Slice 1 — `Level5.Input` (2026-08-20).** `Assets/Scripts/input` is not a clean leaf as a whole (10
+of its 13 files reach into `game manager`/menu/player types); a 3-file subset was
+(`PlayerControls.cs` — the generated Input Actions wrapper, `PlayerControlsProvider.cs`,
+`PlayerTouchInputState.cs`), referencing only `Unity.InputSystem` and `UnityEngine`. Moved with their
+`.meta` files (GUIDs preserved) into a new `Assets/Scripts/input/Level5Input/` sub-folder — the
+disqualified 10 files stay put in `Assets/Scripts/input`, still in `Assembly-CSharp`. None of the
+three declares a `MonoBehaviour`, so no scene/prefab component reference was at risk; all three are in
+the global namespace already, so no consumer call site changed. `Level5.Input.asmdef`:
+`autoReferenced: true`, `overrideReferences: false`, references `["Unity.InputSystem"]`. Headless
+compile clean; full EditMode 463/463 and PlayMode 9/9 both passed with the new asmdef present;
+`validate-repository.ps1` passed. Consumers (`Pause.cs`, `GameLevelManager.cs`,
+`PlayerController.cs`, `SniperCameraController.cs`, `RacingGameManager.cs`,
+`UserAccountManager.cs`, `ProgressionManager.cs`, and the two `StartScreen*` menu files) needed no
+changes — `Assembly-CSharp` auto-references it the same way it already does `Level5.Core`.
+
+**Slice 2 — `Level5.Combat` (2026-08-20).** Same pattern: 7 of `combat`'s 9 files
+(`ICombatAgent.cs`, `ICombatDetection.cs`, `IDamageable.cs`, `CombatReservation.cs`,
+`CombatTacticalState.cs`, `CombatTargetSelector.cs`, `DamageInfo.cs`) reference only `System`/
+`UnityEngine`; the other two (`ActorHealth.cs` — `MatchRuntime.Rules.Hardcore`; `CombatCredit.cs` —
+`GameLevelManager`, `PlayerIdentifier`, `GameStats`, `BasketBall`) stay in `Assembly-CSharp`. Moved
+into `Assets/Scripts/combat/Level5Combat/` with `.meta` files intact. None of the seven is a
+`MonoBehaviour` (two interfaces, two structs, one enum, two static classes) — no scene/prefab
+component reference at risk. `Level5.Combat.asmdef`: no references needed at all — pure
+`System`/`UnityEngine`. Headless compile clean; full EditMode 463/463 and PlayMode 9/9 passed;
+`validate-repository.ps1` passed. Consumed by `enemy`, `bodyguard` and `player`, none of which
+needed changes.
+
+**Slices 3-9 (2026-08-20), one verification pass covering seven independent single-domain leaves.**
+Each was hand-verified file-by-file (full contents read, not just `using` statements — this project
+mostly doesn't use namespaces, so a grep for `using` misses same-namespace/global references) before
+moving, after a candidate the automated sweep called clean turned out not to be: `versus/VersusRuntime.cs`
+instantiates `FileVersusSeriesRepository`, which calls `AtomicFile.WriteAllText`, and `AtomicFile` is
+declared in `Assets/Scripts/player/CharacterProgressStore.cs` — inside the blocked triangle. Dropped
+that candidate; kept the following seven, each moved into a new `Level5<Name>/` sub-folder with
+`.meta` files intact, `autoReferenced: true`:
+
+| Assembly | Files (leaf subset only) | References |
+| --- | --- | --- |
+| `Level5.Enemy` | `EnemyAttackBox.cs` (MonoBehaviour, primitive fields only) | none |
+| `Level5.PlayerRacing` | `RacingVehicleProfile.cs` (MonoBehaviour, primitive fields only) | none |
+| `Level5.Vehicle` | `VehicleMove.cs` (MonoBehaviour, `UnityEngine` only) | none |
+| `Level5.MenuProgression` | `MatchProgressionResult.cs` (`[Serializable]`, `System` only, no Inspector exposure found) | none |
+| `Level5.Utility` | `LegacyAchievementRecord.cs`, `LegacyNextSceneMarker.cs`, `SceneObjects.cs`, `UtilityFunctions.cs` (uses `PercentChance`) | `Level5.Core` |
+| `Level5.Misc` | `ConfirmDialogue.cs`, `FPSDisplay.cs`, `PlayerTips.cs`, `SunglassesCollision.cs`, `TheyLiveManager.cs` (mutually self-contained: `SunglassesCollision` reads `TheyLiveManager.instance`) | none |
+| `Level5.Models` | `ServerMessageModel.cs`, `UserReportModel.cs` (`System` only) — `HighScoreModel.cs` in the same folder stays put, still reaching for `GameStats`/`MatchRuntime`/`PlayerIdentifier`/`GameOptions` | none |
+
+None of the MonoBehaviour types here (`EnemyAttackBox`, `RacingVehicleProfile`, `VehicleMove`,
+`LegacyAchievementRecord`, `LegacyNextSceneMarker`, `ConfirmDialogue`, `FPSDisplay`,
+`SunglassesCollision`, `TheyLiveManager`) is referenced by a `[SerializeField]` on another
+still-in-`Assembly-CSharp` type — checked by grep before moving — so no prefab/scene component
+reference was put at risk beyond the GUID-preservation the `.meta` move already guarantees. Headless
+compile clean; full EditMode 463/463 and PlayMode 9/9 both passed with all seven present;
+`validate-repository.ps1` passed. No consumer file needed a change.
+
+**Slice 10 — `Level5.MenuStart` (2026-08-20), and a correction to the automated sweep.** The sweep
+that found slices 3-9 also named an 8-file `menu_start` subset as clean
+(`CheerleaderProfile.cs`, `EndRoundData.cs`, `LevelCatalog.cs`, `LevelPreset.cs`, two
+`player_select/*` files, `StartMenuSelectionState.cs`, `StartMenuUiObjects.cs`). Hand-verifying it
+file-by-file (full contents, not a `using`-statement scan — this project mostly doesn't namespace
+its code) found half of it wrong: `EndRoundData.cs` holds a `List<LevelSelected>` field;
+`LevelPreset.cs` and `LevelCatalog.cs` both take a `LevelSelected` parameter; and `LevelSelected.cs`
+itself (`Assets/Scripts/menu_start/LevelSelected.cs`, not in the proposed set) reaches
+`cpuPlayer.GetComponent<CharacterProfile>()` — `CharacterProfile` is declared in the blocked `player`
+folder, so all three are transitively blocked. `StartMenuSelectionState.cs` reaches `GameOptions`
+(`Assets/Scripts/menu_start/GameOptions.cs`, the legacy global config class
+`Level5MatchArchitectureTests` is already migrating call sites off) directly. The four
+`player_select/*` files reach `CharacterProfile`, `EndRoundData`, `PlayerData` and `LoadedData` —
+all blocked. Only `CheerleaderProfile.cs` and `StartMenuUiObjects.cs` survive: both `MonoBehaviour`s
+with `UnityEngine`/`UnityEngine.UI`-typed fields only, no other type referenced. Moved into
+`Assets/Scripts/menu_start/Level5MenuStart/`; `Level5.MenuStart.asmdef` needs no references. Headless
+compile clean; full EditMode 463/463 and PlayMode 9/9 passed; `validate-repository.ps1` passed.
+
+**Correction (code review, 2026-08-21):** `CheerleaderProfile` *is* referenced by `[SerializeField]`
+elsewhere - `StartManager.cs`, `LoadedData.cs` and `LoadManager.cs` each hold a
+`[SerializeField] private List<CheerleaderProfile> ...` field, split across two lines. The single-
+line grep pattern used for slices 3-9 (`SerializeField.*TypeName` on one line) missed this shape.
+Still safe: Unity serializes a `List<T>` of `UnityEngine.Object`-derived elements (which
+`CheerleaderProfile`, a `MonoBehaviour`, is) by each element's GUID/fileID, not by an
+assembly-qualified type name, so moving which assembly the type compiles into doesn't touch the
+reference - confirmed independently by a full GUID diff across all 27 moved `.meta` files (unchanged)
+and a repo-wide `asm: Assembly-CSharp` grep across every `.unity`/`.prefab`/`.asset` (zero hits). The
+finding is a documentation-accuracy correction, not a functional regression: nothing needs to move
+back, but "checked by grep before moving" for the earlier slices should be read as "checked with a
+same-line pattern," not as a proof of absence for multi-line attribute/field pairs.
+
+The lesson for any further sweep: trust an automated "ruled out" finding (it cites a concrete
+disqualifying reference, easy to verify) more than an automated "this is clean" finding (an absence
+claim, and the one place it was checked by hand instead of trusted, it missed a two-hop chain through
+a getter property). Read full file contents before moving anything, every time.
+
+**Running total after slices 1-10:** 27 files across 10 leaf assemblies (`Level5.Input`,
+`Level5.Combat`, `Level5.Enemy`, `Level5.PlayerRacing`, `Level5.Vehicle`, `Level5.MenuProgression`,
+`Level5.Utility`, `Level5.Misc`, `Level5.Models`, `Level5.MenuStart`) plus the 4 pre-existing ones
+(`Level5.Core`, `Level5.Constants`, `Level5.Pooling`, `Level5.Audio`) — 14 production runtime
+assemblies total, out of roughly 218 `.cs` files in `Assets/Scripts` before this phase started. The
+remainder is either inside the blocked player/basketball/game-manager triangle, or reaches into it
+(directly or
+transitively) and so is blocked the same way `versus`/`analytics`/`Models/HighScoreModel` were.
+
+Prohibited in Phase 2: controller convergence, player/CPU behaviour cleanup, locomotion changes,
+input ownership changes, scene-search removal, namespace restructuring, API redesign, new service
+layers, DI/service locators, shader/material changes, URP configuration changes, and scene or
+environment polishing. If a dependency must be inverted solely to make an intended boundary legal,
+make the smallest possible behaviour-preserving change and protect it with a dependency regression
+test.
+
+#### 2c — Normalize gameplay PlayMode tests
+
+The asmdef-free `Assets/Tests/PlayModeGameplay` workaround remains until the runtime code it tests is
+available through proper asmdef references. Only once the required gameplay runtime assemblies
+exist: give gameplay PlayMode tests explicit references to those assemblies; move/consolidate them
+under the normal PlayMode test assembly structure as appropriate; remove the asmdef-free
+`Level5GameplayPlayModeTests` workaround; run the entire PlayMode suite. The workaround disappearing
+is an exit consequence of 2b, not an early migration step.
+
+**Checked (2026-08-20): still blocked, correctly.** All four files in the workaround folder
+(`Level5GameplayPlayModeTests.cs`, `BasketballVisibilityTests.cs`, `GameplayLevelUnpauseTests.cs`,
+`PlayerMovementPhysicsTests.cs`) instantiate or look up `GameStats`, `MatchController`,
+`PlayerController`, or `BasketBall` directly - all inside the blocked player/basketball/game-manager
+triangle. None of slices 1-10 touched that triangle (2b0's gate forbids it), so none of this phase's
+migrated assemblies are what these tests need. 2c cannot complete until the triangle itself is cut,
+which is not this phase's work - see 2b0's remeasurement above.
+
+#### 2d — Architecture guards and exit verification
+
+Add or extend tests asserting: intended runtime source no longer falls back into `Assembly-CSharp`;
+no forbidden custom-assembly dependency cycle exists; runtime assemblies do not reference
+Editor-only assemblies; new assemblies declare their required custom/package dependencies; assembly
+allowlists cannot silently grow; the asmdef-free gameplay PlayMode workaround no longer exists.
+
+**Landed (2026-08-20):** `Assets/Tests/Editor/Level5ProductionAssemblyBoundaryTests.cs`, asmdef-free
+like `Level5GameManagerEdgeTests` so it can read every folder as text without joining the dependency
+graph it checks. Two guards, covering every current and future production asmdef automatically
+(discovered at run time from every non-test `.asmdef` under `Assets/Scripts` and `Assets/Level5`, not
+a hand-maintained list):
+
+- `NoMigratedProductionAssemblyReachesIntoAssemblyCSharp` - collects every top-level `public` type
+  declared outside a production asmdef folder, then fails if any migrated file's identifiers hit that
+  set.
+- `NoProductionAssemblyReferencesAKnownEditorOnlyPackageAssembly` - fails if a production `.asmdef`
+  lists `"Analytics"` (the 2a-canary-confirmed Editor-only package assembly).
+
+Getting the first guard right took two real fixes, not just tuning: restricting the "Assembly-CSharp
+declared types" collection to unindented `public` declarations only (a private nested
+`StatsManager.mode` class was colliding with every unrelated local variable named `mode` across the
+codebase - nested/non-public types can't be reached by a bare identifier from another assembly at
+all, so they were never real hits); and stripping string/char literals **before** comments, not after
+- `Constants.cs`'s `"https://localhost:44362/..."` API-address constants contain `//`, and stripping
+comments first misread that as a comment start, truncating the string literal and desyncing every
+quote-pairing for the rest of the file, which was *why* a `"CharacterProfile"` table-name string
+survived stripping and read as a real reference. Both fixes are recorded in the test file's own
+comments. Full EditMode 465/465 (463 + these 2) and PlayMode 9/9 both passed with the guards active;
+`validate-repository.ps1` passed.
+
+**Two further code-review rounds (2026-08-21)** found and fixed real gaps in the guard itself, and
+one false alarm worth recording so it isn't re-litigated:
+
+- The type-declaration scan required `public` at column zero, silently excluding every type
+  declared inside a `namespace { }` block (most of this codebase's model/service types, e.g.
+  `HighScoreModel`). Replaced with a brace-depth walk (`CollectTypesNotNestedInAnotherType`): a
+  `public` type counts unless an *enclosing brace belongs to another type* - namespace nesting no
+  longer excludes it, class/struct nesting still does.
+- `EnumerateAssemblyCSharpScripts` only walked `Assets/Scripts` plus loose files directly under
+  `Assets/`, missing three vendored third-party folders with no asmdef of their own
+  (`Standard Assets`, `Joystick Pack`, `OmniSARTechnologies` - 50 files, genuinely part of
+  Assembly-CSharp). Generalized to scan all of `Assets/` for any `.cs` file with no ancestor
+  `.asmdef` and no `Editor`/`Tests` path segment, rather than hand-listing folders.
+- `StripComments`/`Relative` were re-typed byte-for-byte identical in six test files (the five
+  pre-existing architecture-guard tests plus this one) - extracted to a shared
+  `Level5TestSourceText` so a future fix to either only has to land once.
+- The Editor-only-assembly check switched from a raw substring-in-quotes regex over the whole
+  `.asmdef` file to parsing it with `JsonUtility` and checking the `references` array itself -
+  more precise, and the same `AsmdefInfo`/`JsonUtility` parse now backs the reference-declaration
+  data other guards need.
+- A speculative third guard (no production assembly reaches into a *different* production assembly
+  it didn't declare) was tried and dropped: bare-identifier matching false-positived
+  `GameModeCompatibility.cs`'s `public GameModeCatalog Modes => modes;` property against the
+  unrelated `Modes` type in `Level5.Constants` - a property name colliding with a foreign type name.
+  Nothing today needs this guard (no production assembly references another yet), so it wasn't
+  worth chasing false positives to keep.
+- **Rejected as a false alarm:** a review pass flagged `Level5.Misc.asmdef`/`Level5.MenuStart.asmdef`
+  as missing an explicit `UnityEngine.UI` reference (for `Text`/`Button`/`Image`) and predicted a
+  compile failure. Both packages' asmdefs have `"autoReferenced": true`, which - contrary to the
+  review's claim - cascades to *any* consuming asmdef with `overrideReferences: false` (which all of
+  this phase's asmdefs use), not only to Unity's predefined assemblies; the compiled
+  `Level5.Misc.dll`/`Level5.MenuStart.dll` with zero `CS0246` errors, across every verification run
+  in this phase, already proved this empirically before the claim was even checked against the
+  package's own `.asmdef`.
+
+Full EditMode 465/465 and PlayMode 9/9 both passed after every round; `validate-repository.ps1`
+passed throughout.
+
+**2d exit, checked against current state:** intended runtime source (the 10 slices) does not fall
+back into `Assembly-CSharp` - guarded, green. No forbidden cycle among production assemblies -
+trivially true today (none of the 10 new leaves reference each other, only `Level5.Core`/packages).
+Runtime assemblies don't reference a known Editor-only assembly - guarded, green. New assemblies
+declare required references explicitly - true by construction (`Level5.Utility` → `Level5.Core`,
+`Level5.Input` → `Unity.InputSystem`, the rest need none). **Not reachable this phase:** the asmdef-
+free gameplay PlayMode workaround is still present (2c, above) - this is the one 2d exit item that
+depends on cutting the player/basketball/game-manager cycle, which 2b0 correctly keeps out of scope
+here.
+
+**Full Phase 2 exit is therefore not reached in this pass**, and that is the expected outcome given
+2b0's gate, not a shortfall: 14 production runtime assemblies now exist (10 new + 4 pre-existing),
+the migrated portion of the graph is acyclic and guarded against regrowth, and everything not moved
+is either inside the blocked triangle or reaches into it. Finishing Phase 2 - removing the
+`Level5GameplayPlayModeTests` workaround and migrating `player`/`basketball`/`game manager` themselves
+- requires first inverting or cutting that remaining cycle, which is a Phase-1-scale slice of its own
+(see Phase 1's own slicing for the shape that work took), not a continuation of leaf-picking.
+
+**Exit:** production gameplay code targeted by this phase lives in proper referenced assemblies; the
+runtime assembly graph is acyclic; no migrated assembly depends on `Assembly-CSharp`; package
+references are explicit where Unity requires them; full repository validation, Unity batch
+compilation, and the full EditMode/PlayMode suites pass; the asmdef-free gameplay PlayMode workaround
+is gone; one representative gameplay mode and one representative menu flow pass manual Play Mode
+verification; gameplay and visuals are observably unchanged.
 
 ### Phase 3 — Converge the human/CPU pairs
 

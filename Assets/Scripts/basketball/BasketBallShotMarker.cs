@@ -1,5 +1,6 @@
 ﻿using UnityEngine;
 using UnityEngine.UI;
+using Level5.Core;
 using Level5.Core.Match;
 
 public class BasketBallShotMarker : MonoBehaviour
@@ -13,6 +14,7 @@ public class BasketBallShotMarker : MonoBehaviour
     private GameObject basketBallTarget;
     private SpriteRenderer spriteRenderer;
     private BasketBallState basketBallState;
+    private IShooterActor actor;
 
     [SerializeField] public int positionMarkerId; // identitfy specific marker
     // spcific marker's stats
@@ -44,6 +46,7 @@ public class BasketBallShotMarker : MonoBehaviour
 
         // get reference for accessing basketball state
         basketBallState = GameLevelManager.instance.players[0].basketBallState;
+        actor = GameLevelManager.instance.players[0].Actor;
         displayCurrentMarkerStats = GameObject.Find(displayStatsTextObject).GetComponent<Text>();
         displayCurrentMarkerStats.text = "";
 
@@ -112,8 +115,8 @@ public class BasketBallShotMarker : MonoBehaviour
             // max shot attempts reached
             // player NOT in air, player does NOT have ball, ball ! in air
             if (ShotAttempt >= maxShotAttempt && markerEnabled
-                && !GameLevelManager.instance.players[0].playerController.hasBasketball
-                && !GameLevelManager.instance.players[0].playerController.InAir
+                && !actor.HasBasketball
+                && !actor.InAir
                 && !basketBallState.InAir)
             {
                 markerEnabled = false;

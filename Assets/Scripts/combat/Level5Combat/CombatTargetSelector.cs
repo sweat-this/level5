@@ -28,9 +28,9 @@ public static class CombatTargetSelector
 
     // ---- Bodyguard threat tiers (STEP 3 of the AI architecture task) ----
     //
-    // ICombatDetection.Attacking is set true the moment PlayerAttackQueue grants a reservation,
-    // not only on the animation frame a swing lands (see ICombatDetection's doc comment) - so a
-    // reservation alone is "en route to attack", and a reservation held while already standing
+    // ICombatReservationState.HasAttackReservation becomes true the moment PlayerAttackQueue grants
+    // a reservation, not only on the animation frame a swing lands (see the interface's doc
+    // comment) - so a reservation alone is "en route to attack", and a reservation held while already standing
     // inside ImminentThreatRange of the protected actor is "about to land a hit". That distinction
     // is what lets reservation state keep informing bodyguard threat scoring without letting raw
     // queue order (first reserved == first attacked) stand in for tactical priority.
@@ -81,6 +81,38 @@ public static class CombatTargetSelector
         }
 
         return best;
+    }
+
+    /// <summary>
+    /// #57: overload that additionally accepts <paramref name="actionableCandidates"/> - a
+    /// caller-filtered subset of <paramref name="candidates"/> that are close enough (to the guard
+    /// or to the protected actor) to be worth breaking formation for right now. Selection prefers
+    /// that subset when it is non-empty, falling back to the full candidate list only when nothing
+    /// is actionable - so a reserved attacker on the far side of the map (tier score 500, see
+    /// ReservedThreatScore) cannot outrank an unreserved enemy already standing next to the
+    /// protected actor (tier score 100) purely because CombatTargetSelector's reservation bonus
+    /// dwarfs its distance penalty. <paramref name="hasActionableThreat"/> reports whether the
+    /// selected threat came from the actionable subset - callers use this for actionability
+    /// decisions (e.g. patrol) that must not treat "a threat exists" the same as "this threat is
+    /// close enough to matter".
+    /// </summary>
+    public static ICombatAgent SelectBodyguardThreat(
+        IReadOnlyList<ICombatAgent> candidates,
+        IReadOnlyList<ICombatAgent> actionableCandidates,
+        Vector3 guardPosition,
+        Vector3 protectedActorPosition,
+        ICombatAgent currentTarget,
+        float protectionRadius,
+        out bool hasActionableThreat)
+    {
+        bool anyActionable = actionableCandidates != null && actionableCandidates.Count > 0;
+        IReadOnlyList<ICombatAgent> pool = anyActionable ? actionableCandidates : candidates;
+
+        ICombatAgent selected = SelectBodyguardThreat(
+            pool, guardPosition, protectedActorPosition, currentTarget, protectionRadius);
+
+        hasActionableThreat = anyActionable && selected != null;
+        return selected;
     }
 
     /// <summary>
@@ -152,10 +184,32 @@ public static class CombatTargetSelector
         return best;
     }
 
+    /// <summary>
+    /// #57: true when <paramref name="candidate"/> qualifies for the ImminentThreatScore tier above
+    /// - reserved and already within <see cref="ImminentThreatRange"/> of the protected actor, i.e.
+    /// "about to land a hit". Exposed so a caller's own actionable-candidate filter (see
+    /// <c>BodyGuardController.IsActionableThreat</c>) can treat this tier as unconditionally
+    /// actionable, independent of that caller's own distance tuning
+    /// (<c>maximumInterceptionDistance</c>, authored sight) - otherwise a bodyguard prefab authored
+    /// with a <c>maximumInterceptionDistance</c> smaller than <see cref="ImminentThreatRange"/>
+    /// could filter the single highest-priority candidate out of the actionable pool before
+    /// selection ever sees it, letting a lower-tier candidate win instead.
+    /// </summary>
+    public static bool IsImminentThreat(ICombatAgent candidate, Vector3 protectedActorPosition)
+    {
+        if (!IsValidCandidate(candidate))
+        {
+            return false;
+        }
+
+        float distanceToProtectedActor = Vector3.Distance(protectedActorPosition, candidate.CombatTransform.position);
+        return HasActiveReservation(candidate) && distanceToProtectedActor <= ImminentThreatRange;
+    }
+
     private static bool HasActiveReservation(ICombatAgent candidate)
     {
-        ICombatDetection detection = candidate.CombatObject.GetComponent<ICombatDetection>();
-        return detection != null && detection.Attacking;
+        ICombatReservationState reservation = candidate.CombatObject.GetComponent<ICombatReservationState>();
+        return reservation != null && reservation.HasAttackReservation;
     }
 
     private static bool IsValidCandidate(ICombatAgent candidate)

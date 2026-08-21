@@ -82,7 +82,7 @@ public class Level5BasketballShotPipelineTests
             ball.transform,
             Vector3.zero,
             state.BasketBallTarget.transform.position,
-            ShooterAttributesFactory.From(profile),
+            ShooterAttributesMapper.From(profile),
             state,
             stats,
             lastShotDistance: 10f,
@@ -112,7 +112,7 @@ public class Level5BasketballShotPipelineTests
             ball.transform,
             Vector3.zero,
             state.BasketBallTarget.transform.position,
-            ShooterAttributesFactory.From(profile),
+            ShooterAttributesMapper.From(profile),
             state,
             stats,
             lastShotDistance: 10f,
@@ -142,7 +142,7 @@ public class Level5BasketballShotPipelineTests
             ball.transform,
             Vector3.zero,
             state.BasketBallTarget.transform.position,
-            ShooterAttributesFactory.From(profile),
+            ShooterAttributesMapper.From(profile),
             state,
             stats,
             lastShotDistance: 10f,
@@ -176,16 +176,17 @@ public class Level5BasketballShotPipelineTests
 
     /// <summary>
     /// Code review on the Phase 1c migration: a missing CharacterProfile used to throw at this call
-    /// site; ShooterAttributesFactory.From now returns an inert default instead. That fallback
-    /// predates this migration (Phase 1a) and is deliberately preserved - not thrown here - but it
-    /// must not go silent, since a real missing profile is a setup bug worth seeing in the console.
+    /// site; ShooterAttributesMapper.From now returns an inert default instead (moved from
+    /// ShooterAttributesFactory in the player↔basketball cycle-cut slice). That fallback predates
+    /// this migration (Phase 1a) and is deliberately preserved - not thrown here - but it must not go
+    /// silent, since a real missing profile is a setup bug worth seeing in the console.
     /// </summary>
     [Test]
     public void MissingCharacterProfileLogsAndFallsBackToAnInertShooter()
     {
-        LogAssert.Expect(LogType.Warning, new System.Text.RegularExpressions.Regex("ShooterAttributesFactory.From"));
+        LogAssert.Expect(LogType.Warning, new System.Text.RegularExpressions.Regex("ShooterAttributesMapper.From"));
 
-        ShooterAttributes shooter = ShooterAttributesFactory.From(null);
+        ShooterAttributes shooter = ShooterAttributesMapper.From(null);
 
         Assert.That(shooter.DisplayName, Is.Null);
         Assert.That(shooter.AccuracyFor(ShotKind.Two), Is.EqualTo(0f));
@@ -195,9 +196,9 @@ public class Level5BasketballShotPipelineTests
     [Test]
     public void MissingBasketBallStateLogsAndFallsBackToNoShotKind()
     {
-        LogAssert.Expect(LogType.Warning, new System.Text.RegularExpressions.Regex("ShooterAttributesFactory.KindFromPointFlags"));
+        LogAssert.Expect(LogType.Warning, new System.Text.RegularExpressions.Regex("BasketballShotPipeline.KindFromPointFlags"));
 
-        ShotKind kind = ShooterAttributesFactory.KindFromPointFlags(null);
+        ShotKind kind = BasketballShotPipeline.KindFromPointFlags(null);
 
         Assert.That(kind, Is.EqualTo(ShotKind.None));
     }
