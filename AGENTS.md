@@ -28,6 +28,21 @@ Read feature-specific documents when relevant, especially:
 
 Do not silently replace documented behavior with generic Unity advice. If code and documentation disagree, identify the discrepancy and establish current runtime behavior before changing it.
 
+## AI Workflow Entry Point
+
+[`docs/ai/PRESETS.md`](docs/ai/PRESETS.md) is the default entry point for routine AI-assisted work in this repository.
+
+- Begin with the smallest directly relevant implementation surface (issue/PR/branch/current implementation state) before broader investigation.
+- Inspect scenes, prefabs, ScriptableObjects, tests, project settings, architecture docs, and related systems when plausibly affected, rather than automatically for every task.
+- Trace behavior end-to-end when the requested change genuinely crosses systems.
+- Expand investigation only as needed to establish ownership, behavior, compatibility, or validation.
+- Reuse evidence that remains current instead of rereading unchanged files.
+- Do not perform whole-repository audits unless explicitly requested.
+- Detailed workflows under `docs/ai/skills/` are specialist/reference procedures, loaded only when the task genuinely requires them.
+- Keep completion reporting concise.
+
+This does not relax any rule elsewhere in this document, including the basketball/scoring, persistence, identity, versus, compatibility, legacy-behavior, and validation requirements below.
+
 ## Branching
 
 - `dev` is the repository's current default/integration branch.
@@ -179,7 +194,7 @@ For `LATER` work, preserve only the seam current work genuinely requires. Do not
 
 ## Specialized Workflows
 
-Task-specific workflows live under [`docs/ai/skills/`](docs/ai/skills/).
+Start from [`docs/ai/PRESETS.md`](docs/ai/PRESETS.md) to pick a route and mode. Task-specific workflows live under [`docs/ai/skills/`](docs/ai/skills/) and are loaded only when the preset, risk, or task requires them.
 
 Use only workflows relevant to the current task:
 
