@@ -436,10 +436,20 @@ public class Pause : MonoBehaviour
             PendingMatchPersistenceStore.QueueScore(dBHighScoreModelTemp);
         }
         // update all time stats
-        bool allTimeSaved = DBConnector.instance.savePlayerAllTimeStats(BasketBall.instance.GameStats);
+        // Reads through GameLevelManager's roster rather than BasketBall.instance, which is a
+        // reassignable shared reference (AUD-016) rather than this specific player's own stats.
+        // Guarded the same way GameRules.GetPrimaryGameStats() guards this identical chain.
+        PlayerIdentifier primaryPlayer = GameLevelManager.instance.Player1;
+        if (primaryPlayer == null || primaryPlayer.gameStats == null)
+        {
+            return;
+        }
+
+        GameStats primaryGameStats = primaryPlayer.gameStats;
+        bool allTimeSaved = DBConnector.instance.savePlayerAllTimeStats(primaryGameStats);
         if (!allTimeSaved)
         {
-            PendingMatchPersistenceStore.QueueAllTime(freePlayProgressionResultId, BasketBall.instance.GameStats);
+            PendingMatchPersistenceStore.QueueAllTime(freePlayProgressionResultId, primaryGameStats);
         }
         if (progressionService == null)
         {
@@ -449,7 +459,7 @@ public class Pause : MonoBehaviour
         progressionService.ApplyMatchResult(
             freePlayProgressionResultId,
             MatchRuntime.PrimaryCharacterId,
-            BasketBall.instance.GameStats.ExperienceGained);
+            primaryGameStats.Stats.ExperienceGained);
     }
 
     private IEnumerator WaitForDatabaseUnlock()

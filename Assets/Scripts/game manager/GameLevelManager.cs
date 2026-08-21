@@ -30,15 +30,9 @@ public class GameLevelManager : MonoBehaviour
     private GameObject _autoPlayer;
     [SerializeField]
     private PlayerController _playerController1;
-    [SerializeField]
-    private PlayerController _playerController2;
-    [SerializeField]
-    private AutoPlayerController _autoPlayerController;
-    private CharacterProfile _characterProfile;
     private PlayerHealth _playerHealth;
     [SerializeField]
     private PlayerAttackQueue _playerAttackQueue;
-    private GameStats _gameStats;
 
     private SpawnCoordinator.SpawnLocations _spawnLocations;
     private SpawnCoordinator _spawnCoordinator;
@@ -167,7 +161,6 @@ public class GameLevelManager : MonoBehaviour
         if (player1 != null && GameObject.FindWithTag("Player") != null)
         {
             _playerController1 = player1.GetComponent<PlayerController>();
-            _characterProfile = player1.GetComponent<CharacterProfile>();
             _playerAttackQueue = player1.GetComponent<PlayerAttackQueue>();
             _playerHealth = player1.GetComponentInChildren<PlayerHealth>();
 
@@ -177,11 +170,6 @@ public class GameLevelManager : MonoBehaviour
         if (GameObject.FindWithTag("autoPlayer") != null)
         {
             _autoPlayer = GameObject.FindWithTag("autoPlayer");
-
-            // CPU-6: the `_autoPlayerController.isCPU = true` that used to follow is gone with the
-            // field. It was the only writer of a value nothing read - PlayerIdentifier.isCpu on
-            // this same GameObject already says the same thing, and is what callers use.
-            _autoPlayerController = _autoPlayer.GetComponent<PlayerIdentifier>().isDefensivePlayer ? null : _autoPlayer.GetComponent<AutoPlayerController>();
         }
 
         ArenaBootstrap.Apply(_rules, MatchRuntime.HasConfiguration);
@@ -257,7 +245,6 @@ public class GameLevelManager : MonoBehaviour
     public PlayerIdentifier Player3 => registry.GetBySlot(2);
     public PlayerIdentifier Player4 => registry.GetBySlot(3);
     public PlayerController PlayerController1 => _playerController1;
-    public PlayerController PlayerController2 => _playerController2;
     public Animator Anim { get; private set; }
     public bool GameOver { get; set; }
     public PlayerControls Controls { get => controls; set => controls = value; }
@@ -266,7 +253,6 @@ public class GameLevelManager : MonoBehaviour
     public PlayerAttackQueue PlayerAttackQueue { get => _playerAttackQueue; set => _playerAttackQueue = value; }
     public PlayerHealth PlayerHealth { get => _playerHealth; set => _playerHealth = value; }
     public GameObject AutoPlayer { get => _autoPlayer; set => _autoPlayer = value; }
-    public GameStats GameStats { get => _gameStats; set => _gameStats = value; }
     public float TerrainHeight { get => terrainHeight; }
     public GameObject PlayerSpawnLocation => _spawnLocations != null ? _spawnLocations.Player1 : null;
 }

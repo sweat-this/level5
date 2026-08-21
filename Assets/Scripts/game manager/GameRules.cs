@@ -32,11 +32,6 @@ public class GameRules : MonoBehaviour
     /// </summary>
     private MatchHudPresenter hud;
 
-    public string player1DisplayName;
-    public string player2DisplayName;
-    public string player3DisplayName;
-    public string player4DisplayName;
-
     //private float timeCompleted;
 
     // all these specific game rules for each will need to moved to a different file eventually on refactor
@@ -148,11 +143,6 @@ public class GameRules : MonoBehaviour
         }
         hud.Initialize();
         timer = SceneObjects.Find<Timer>(timerObjectName, this);
-
-        player1DisplayName = GameLevelManager.instance.Player1 != null ? GameLevelManager.instance.players[0].characterProfile.PlayerDisplayName : "player1";
-        player2DisplayName = GameLevelManager.instance.Player2 != null ? GameLevelManager.instance.players[1].characterProfile.PlayerDisplayName : "player2";
-        player3DisplayName = GameLevelManager.instance.Player3 != null ? GameLevelManager.instance.players[2].characterProfile.PlayerDisplayName : "player3";
-        player4DisplayName = GameLevelManager.instance.Player4 != null ? GameLevelManager.instance.players[3].characterProfile.PlayerDisplayName : "player4";
 
         //updatePlayerScore();
 
