@@ -1,12 +1,9 @@
-﻿using System.Collections;
-using UnityEngine;
+﻿using UnityEngine;
 using Level5.Core.Match;
 
-public class EnemyDetection : MonoBehaviour, ICombatDetection
+public class EnemyDetection : MonoBehaviour, ICombatReservationState
 {
     EnemyController enemyController;
-    [SerializeField]
-    bool playerSighted;
     bool enemyDetectionEnabled = true;
     public float enemySightDistance;
     // STEP 6: detection and pursuit are different ranges - noticing a target happens within
@@ -16,28 +13,33 @@ public class EnemyDetection : MonoBehaviour, ICombatDetection
     // was the previous (undifferentiated) behaviour.
     [SerializeField]
     private float pursuitRange;
-    int attackPositionId;
+    int attackPositionId = -1;
     [SerializeField]
     bool attacking;
 
     /// <summary>
-    /// ENM-1: this reads as "the player is within sight", and it is not. The only thing that ever
-    /// sets it true is <c>PlayerAttackQueue.SetAttackerDetection</c>, when this enemy is granted an
-    /// attack reservation; proximity alone never sets it. <see cref="EnemyController"/> gates
-    /// <c>stateWalk</c> on it, so an enemy that cannot get a slot stands idle no matter how close
-    /// the player is.
+    /// ENM-1/#57: whether this enemy currently holds an attack-queue reservation. The only thing
+    /// that ever sets it true is <see cref="SetAttackReservation"/>, called from
+    /// <c>PlayerAttackQueue</c> when this enemy is granted a slot; proximity alone never sets it.
+    /// <see cref="EnemyController"/> gates <c>stateWalk</c> on it, so an enemy that cannot get a
+    /// slot stands idle no matter how close the player is.
     ///
     /// That is deliberate crowd control - it is what stops twenty battle-royal enemies converging
-    /// at once - and is left as-is. Renaming it to say so would touch the ICombatDetection contract
-    /// and both actor types; the behaviour is what matters and the behaviour is correct.
+    /// at once - and is left as-is. #57 removed the separate `PlayerSighted`/`TargetSighted` name
+    /// this same boolean used to be duplicated under (see the interface's history note on
+    /// ICombatReservationState) - it never meant anything different, so it was dropped rather than
+    /// kept as a second name for one flag.
     /// </summary>
-    public bool PlayerSighted { get => playerSighted; set => playerSighted = value; }
-
-    // AUD-005: the queue's name for the same flag - an enemy hunts the player
-    public bool TargetSighted { get => PlayerSighted; set => PlayerSighted = value; }
-    public int AttackPositionId { get => attackPositionId; set => attackPositionId = value; }
-    public bool Attacking { get => attacking; set => attacking = value; }
+    public bool Attacking => attacking;
+    public bool HasAttackReservation => attacking;
+    public int AttackPositionId => attackPositionId;
     public float PursuitRange => pursuitRange > 0f ? pursuitRange : enemySightDistance * 1.5f;
+
+    public void SetAttackReservation(bool active, int attackPositionId)
+    {
+        attacking = active;
+        this.attackPositionId = attackPositionId;
+    }
 
     // ENM-5: the value the prefab was authored with. OnEnable overwrites enemySightDistance for
     // certain rule sets, and this component is pooled - without capturing the authored value here,
@@ -53,7 +55,6 @@ public class EnemyDetection : MonoBehaviour, ICombatDetection
 
     private void OnEnable()
     {
-        playerSighted = false;
         attacking = false;
         attackPositionId = -1;
         enemyDetectionEnabled = true;
@@ -76,7 +77,6 @@ public class EnemyDetection : MonoBehaviour, ICombatDetection
     {
         CancelInvoke();
         StopAllCoroutines();
-        playerSighted = false;
         attacking = false;
     }
 
@@ -97,33 +97,23 @@ public class EnemyDetection : MonoBehaviour, ICombatDetection
                 playerAttackQueue.TryAddToQueue(gameObject);
             }
         }
-        // beyond pursuit range, disengage (STEP 6 - wider than the acquire range, not the same one)
+        // beyond pursuit range, disengage (STEP 6 - wider than the acquire range, not the same one).
+        // #57: the reservation release below is the sole writer of `attacking` for this path -
+        // PlayerAttackQueue.RemoveFromQueue calls back into SetAttackReservation(false, -1), so
+        // there is no separate direct field write here to keep in sync with it.
         if (enemyController.DistanceFromPlayer >= PursuitRange
-            && enemyDetectionEnabled)
+            && enemyDetectionEnabled
+            && attacking)
         {
-            playerSighted = false;
-            // if attacking, remove from queue
-            if (attacking)
-            {
-                attacking = false;
-                playerAttackQueue.RemoveFromQueue(gameObject, AttackPositionId);
-            }
+            playerAttackQueue.RemoveFromQueue(gameObject, AttackPositionId);
         }
-    }
-
-    IEnumerator DelayEnemySight(float seconds)
-    {
-        enemyDetectionEnabled = false;
-        playerSighted = false;
-        yield return new WaitForSeconds(seconds);
-        enemyDetectionEnabled = true;
     }
 
     void CheckReturnToPatrolStatus()
     {
         if (enemyController.stateIdle
             && gameObject.transform.position != enemyController.OriginalPosition
-            && !playerSighted
+            && !attacking
             && enemyDetectionEnabled)
         {
             enemyController.statePatrol = true;

@@ -18,12 +18,17 @@ public class Level5CombatTargetSelectorTests
         public bool CanAct => CanActValue;
     }
 
-    /// <summary>Minimal ICombatDetection double - a sibling component, matching how EnemyDetection/BodyGuardDetection sit next to their controller.</summary>
-    private sealed class FakeDetection : MonoBehaviour, ICombatDetection
+    /// <summary>Minimal ICombatReservationState double - a sibling component, matching how EnemyDetection/BodyGuardDetection sit next to their controller.</summary>
+    private sealed class FakeDetection : MonoBehaviour, ICombatReservationState
     {
-        public bool Attacking { get; set; }
-        public int AttackPositionId { get; set; } = -1;
-        public bool TargetSighted { get; set; }
+        public bool HasAttackReservation { get; private set; }
+        public int AttackPositionId { get; private set; } = -1;
+
+        public void SetAttackReservation(bool active, int attackPositionId)
+        {
+            HasAttackReservation = active;
+            AttackPositionId = attackPositionId;
+        }
     }
 
     private readonly List<GameObject> spawned = new List<GameObject>();
@@ -53,7 +58,7 @@ public class Level5CombatTargetSelectorTests
 
         if (reserved)
         {
-            go.AddComponent<FakeDetection>().Attacking = true;
+            go.AddComponent<FakeDetection>().SetAttackReservation(true, 0);
         }
 
         go.SetActive(active);
@@ -232,5 +237,117 @@ public class Level5CombatTargetSelectorTests
             candidates, guardPosition: new Vector3(10, 0, 0), protectedActorPosition, current, protectionRadius: 5f);
 
         Assert.That(result, Is.EqualTo(current));
+    }
+
+    // ---------- SelectBodyguardThreat actionable-pool overload (#57) ----------
+    //
+    // #57: CombatTargetSelector.SelectBodyguardThreat's reservation tier bonus (500, see
+    // ReservedThreatScore) can outrank a merely-nearby candidate (100, NearProtectedActorScore) even
+    // when the reserved candidate is far away and the nearby one is not. The overload under test
+    // here lets a caller (BodyGuardController) restrict selection to a pre-filtered "actionable"
+    // subset so a genuinely close threat cannot be hidden behind a distant reserved one.
+
+    [Test]
+    public void ActionablePoolOverloadPrefersAnActionableCandidateOverADistantReservedOne()
+    {
+        Vector3 protectedActorPosition = Vector3.zero;
+
+        // reserved, but far from the protected actor and far from the guard - not actionable
+        ICombatAgent distantReserved = CreateAgent("distantReserved", new Vector3(50, 0, 0), reserved: true);
+        // unreserved, standing right next to the protected actor - actionable
+        ICombatAgent nearActionable = CreateAgent("nearActionable", new Vector3(1, 0, 0));
+
+        List<ICombatAgent> all = new List<ICombatAgent> { distantReserved, nearActionable };
+        List<ICombatAgent> actionable = new List<ICombatAgent> { nearActionable };
+
+        ICombatAgent result = CombatTargetSelector.SelectBodyguardThreat(
+            all, actionable, guardPosition: new Vector3(2, 0, 0), protectedActorPosition, null,
+            protectionRadius: 5f, out bool hasActionableThreat);
+
+        Assert.That(result, Is.EqualTo(nearActionable),
+            "an actionable candidate must not be hidden behind a distant reserved one, even though the reserved one scores higher in raw tier terms");
+        Assert.That(hasActionableThreat, Is.True);
+    }
+
+    // ---------- IsImminentThreat (#57 review fix) ----------
+    //
+    // A caller's own actionable-candidate filter (BodyGuardController.IsActionableThreat) must be
+    // able to treat this tier as unconditionally actionable, regardless of that caller's own
+    // distance tuning - otherwise a bodyguard prefab authored with a maximumInterceptionDistance
+    // smaller than ImminentThreatRange could filter the single highest-priority candidate out of
+    // the actionable pool before selection ever sees it.
+
+    [Test]
+    public void IsImminentThreatIsTrueForAReservedCandidateWithinImminentThreatRange()
+    {
+        ICombatAgent imminent = CreateAgent("imminent", new Vector3(1f, 0, 0), reserved: true);
+
+        Assert.That(
+            CombatTargetSelector.IsImminentThreat(imminent, protectedActorPosition: Vector3.zero),
+            Is.True,
+            "reserved and within ImminentThreatRange (2.5) of the protected actor must be imminent");
+    }
+
+    [Test]
+    public void IsImminentThreatIsFalseForAReservedCandidateOutsideImminentThreatRange()
+    {
+        ICombatAgent approaching = CreateAgent("approaching", new Vector3(8f, 0, 0), reserved: true);
+
+        Assert.That(
+            CombatTargetSelector.IsImminentThreat(approaching, protectedActorPosition: Vector3.zero),
+            Is.False,
+            "reserved but still approaching from range is not imminent - only ReservedThreatScore tier");
+    }
+
+    [Test]
+    public void IsImminentThreatIsFalseForAnUnreservedCandidateEvenWhenAdjacent()
+    {
+        ICombatAgent adjacentButUnreserved = CreateAgent("adjacentButUnreserved", new Vector3(0.1f, 0, 0));
+
+        Assert.That(
+            CombatTargetSelector.IsImminentThreat(adjacentButUnreserved, protectedActorPosition: Vector3.zero),
+            Is.False,
+            "standing next to the protected actor without a reservation is NearProtectedActorScore tier, not imminent");
+    }
+
+    [Test]
+    public void IsImminentThreatRejectsNullDeadAndInactiveCandidates()
+    {
+        ICombatAgent dead = CreateAgent("dead", Vector3.zero, canAct: false, reserved: true);
+        ICombatAgent inactive = CreateAgent("inactive", Vector3.zero, active: false, reserved: true);
+
+        Assert.That(CombatTargetSelector.IsImminentThreat(null, Vector3.zero), Is.False);
+        Assert.That(CombatTargetSelector.IsImminentThreat(dead, Vector3.zero), Is.False);
+        Assert.That(CombatTargetSelector.IsImminentThreat(inactive, Vector3.zero), Is.False);
+    }
+
+    [Test]
+    public void ActionablePoolOverloadFallsBackToTheFullPoolWhenNothingIsActionable()
+    {
+        Vector3 protectedActorPosition = Vector3.zero;
+        ICombatAgent onlyCandidate = CreateAgent("onlyCandidate", new Vector3(50, 0, 0), reserved: true);
+
+        List<ICombatAgent> all = new List<ICombatAgent> { onlyCandidate };
+        List<ICombatAgent> actionable = new List<ICombatAgent>();
+
+        ICombatAgent result = CombatTargetSelector.SelectBodyguardThreat(
+            all, actionable, guardPosition: Vector3.zero, protectedActorPosition, null,
+            protectionRadius: 5f, out bool hasActionableThreat);
+
+        Assert.That(result, Is.EqualTo(onlyCandidate),
+            "with nothing actionable, the controller must still track/face the best available candidate rather than going target-less");
+        Assert.That(hasActionableThreat, Is.False,
+            "the tracked candidate came from the full pool, not the actionable one - it must not be reported as actionable");
+    }
+
+    [Test]
+    public void ActionablePoolOverloadReportsNoActionableThreatWhenNoCandidatesExistAtAll()
+    {
+        ICombatAgent result = CombatTargetSelector.SelectBodyguardThreat(
+            new List<ICombatAgent>(), new List<ICombatAgent>(), Vector3.zero, Vector3.zero, null,
+            protectionRadius: 5f, out bool hasActionableThreat);
+
+        Assert.That(result, Is.Null);
+        Assert.That(hasActionableThreat, Is.False);
     }
 }

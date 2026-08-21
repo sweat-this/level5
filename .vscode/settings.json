@@ -70,5 +70,6 @@
         "*.sln": "*.csproj",
         "*.slnx": "*.csproj"
     },
-    "dotnet.defaultSolution": "level5.slnx"
+    "dotnet.defaultSolution": "level5.slnx",
+    "dotnet.preferCSharpExtension": true
 }

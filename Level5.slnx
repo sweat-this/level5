@@ -1,13 +1,21 @@
 ﻿<Solution>
+  <Project Path="Assembly-CSharp-Editor.csproj" />
   <Project Path="Level5.Core.csproj" />
   <Project Path="Assembly-CSharp.csproj" />
-  <Project Path="Assembly-CSharp-Editor.csproj" />
   <Project Path="Assembly-CSharp-firstpass.csproj" />
-  <Project Path="NavMeshComponents.csproj" />
+  <Project Path="Level5.Misc.csproj" />
+  <Project Path="Level5.Combat.csproj" />
+  <Project Path="Level5.MenuStart.csproj" />
   <Project Path="Level5.PlayModeTests.csproj" />
+  <Project Path="Level5.Enemy.csproj" />
+  <Project Path="Level5.Input.csproj" />
   <Project Path="Level5.Constants.csproj" />
+  <Project Path="Level5.PlayerRacing.csproj" />
   <Project Path="Level5.Pooling.csproj" />
   <Project Path="MobileDependencyResolverLP.Installer.Editor.csproj" />
-  <Project Path="NavMeshComponentsEditor.csproj" />
+  <Project Path="Level5.MenuProgression.csproj" />
+  <Project Path="Level5.Utility.csproj" />
+  <Project Path="Level5.Models.csproj" />
+  <Project Path="Level5.Vehicle.csproj" />
   <Project Path="Level5.Audio.csproj" />
 </Solution>

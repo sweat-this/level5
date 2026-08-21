@@ -230,15 +230,16 @@ public class PlayerAttackQueue : MonoBehaviour
 
     private bool CanReserve(GameObject attacker)
     {
-        // AUD-005: an actor that already holds a slot cannot reserve another. This used to ask the
-        // two concrete detection components in turn; ICombatDetection answers for any of them.
-        ICombatDetection detection = attacker.GetComponent<ICombatDetection>();
-        if (detection != null)
+        // AUD-005/#57: an actor that already holds a slot cannot reserve another. This used to ask
+        // the two concrete detection components in turn; ICombatReservationState answers for any of
+        // them.
+        ICombatReservationState reservation = attacker.GetComponent<ICombatReservationState>();
+        if (reservation != null)
         {
-            return !detection.Attacking;
+            return !reservation.HasAttackReservation;
         }
 
-        // an actor with no detection component at all can still queue if it is a combat agent
+        // an actor with no reservation component at all can still queue if it is a combat agent
         return attacker.GetComponent<ICombatAgent>() != null;
     }
 
@@ -324,10 +325,11 @@ public class PlayerAttackQueue : MonoBehaviour
         }
     }
 
-    // AUD-005: these two used to name EnemyDetection and BodyGuardDetection explicitly, in four
-    // near-identical blocks. Everything about them was the same except which component held the
-    // "I can see my target" flag and what it was called. Going through ICombatDetection means a
-    // new melee actor type joins by implementing the interface, not by editing the queue.
+    // AUD-005/#57: these two used to name EnemyDetection and BodyGuardDetection explicitly, in four
+    // near-identical blocks. Going through ICombatReservationState means a new melee actor type
+    // joins by implementing the interface, not by editing the queue. #57 additionally stopped this
+    // writing any sight/perception flag - it grants and revokes exactly one thing, the reservation,
+    // through one atomic call.
     private void ApplyReservationState(GameObject attacker, PlayerAttackPosition slot)
     {
         if (slot == null)
@@ -335,15 +337,15 @@ public class PlayerAttackQueue : MonoBehaviour
             return;
         }
 
-        SetAttackerDetection(attacker, true, slot.attackPositionId);
+        SetAttackerReservation(attacker, true, slot.attackPositionId);
     }
 
     private void ClearAttackerDetection(GameObject attacker)
     {
-        SetAttackerDetection(attacker, false, -1);
+        SetAttackerReservation(attacker, false, -1);
     }
 
-    private void SetAttackerDetection(GameObject attacker, bool attacking, int attackPositionId)
+    private void SetAttackerReservation(GameObject attacker, bool active, int attackPositionId)
     {
         if (attacker == null)
         {
@@ -352,15 +354,8 @@ public class PlayerAttackQueue : MonoBehaviour
 
         // GetComponent, not TryGetComponent - this resolves an interface, which is the same
         // pattern CanReserve already uses for ICombatAgent
-        ICombatDetection detection = attacker.GetComponent<ICombatDetection>();
-        if (detection == null)
-        {
-            return;
-        }
-
-        detection.Attacking = attacking;
-        detection.AttackPositionId = attackPositionId;
-        detection.TargetSighted = attacking;
+        ICombatReservationState reservation = attacker.GetComponent<ICombatReservationState>();
+        reservation?.SetAttackReservation(active, attackPositionId);
     }
 
     private void CleanupStaleEntries()

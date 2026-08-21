@@ -262,7 +262,7 @@ public class EnemyController : MonoBehaviour, ICombatAgent, IPooledSpawnReset
         // ================== enemy idle ==========================
         if ((/*GameLevelManager.instance.PlayerController.KnockedDown*/
             !canAttack
-            || !enemyDetection.PlayerSighted)
+            || !enemyDetection.Attacking)
             && currentState != AnimatorState_Attack)
         {
             stateIdle = true;
@@ -297,7 +297,7 @@ public class EnemyController : MonoBehaviour, ICombatAgent, IPooledSpawnReset
             longRangeAttack = false;
         }
         // ================== enemy walk state ==========================
-        if (enemyDetection.PlayerSighted
+        if (enemyDetection.Attacking
             && !stateAttack
             && !stateIdle
             && canAttack
