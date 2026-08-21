@@ -275,12 +275,25 @@ with `UnityEngine`/`UnityEngine.UI`-typed fields only, no other type referenced.
 `Assets/Scripts/menu_start/Level5MenuStart/`; `Level5.MenuStart.asmdef` needs no references. Headless
 compile clean; full EditMode 463/463 and PlayMode 9/9 passed; `validate-repository.ps1` passed.
 
+**Correction (code review, 2026-08-21):** `CheerleaderProfile` *is* referenced by `[SerializeField]`
+elsewhere - `StartManager.cs`, `LoadedData.cs` and `LoadManager.cs` each hold a
+`[SerializeField] private List<CheerleaderProfile> ...` field, split across two lines. The single-
+line grep pattern used for slices 3-9 (`SerializeField.*TypeName` on one line) missed this shape.
+Still safe: Unity serializes a `List<T>` of `UnityEngine.Object`-derived elements (which
+`CheerleaderProfile`, a `MonoBehaviour`, is) by each element's GUID/fileID, not by an
+assembly-qualified type name, so moving which assembly the type compiles into doesn't touch the
+reference - confirmed independently by a full GUID diff across all 27 moved `.meta` files (unchanged)
+and a repo-wide `asm: Assembly-CSharp` grep across every `.unity`/`.prefab`/`.asset` (zero hits). The
+finding is a documentation-accuracy correction, not a functional regression: nothing needs to move
+back, but "checked by grep before moving" for the earlier slices should be read as "checked with a
+same-line pattern," not as a proof of absence for multi-line attribute/field pairs.
+
 The lesson for any further sweep: trust an automated "ruled out" finding (it cites a concrete
 disqualifying reference, easy to verify) more than an automated "this is clean" finding (an absence
 claim, and the one place it was checked by hand instead of trusted, it missed a two-hop chain through
 a getter property). Read full file contents before moving anything, every time.
 
-**Running total after slices 1-10:** 34 files across 10 leaf assemblies (`Level5.Input`,
+**Running total after slices 1-10:** 27 files across 10 leaf assemblies (`Level5.Input`,
 `Level5.Combat`, `Level5.Enemy`, `Level5.PlayerRacing`, `Level5.Vehicle`, `Level5.MenuProgression`,
 `Level5.Utility`, `Level5.Misc`, `Level5.Models`, `Level5.MenuStart`) plus the 4 pre-existing ones
 (`Level5.Core`, `Level5.Constants`, `Level5.Pooling`, `Level5.Audio`) — 14 production runtime
@@ -343,6 +356,44 @@ quote-pairing for the rest of the file, which was *why* a `"CharacterProfile"` t
 survived stripping and read as a real reference. Both fixes are recorded in the test file's own
 comments. Full EditMode 465/465 (463 + these 2) and PlayMode 9/9 both passed with the guards active;
 `validate-repository.ps1` passed.
+
+**Two further code-review rounds (2026-08-21)** found and fixed real gaps in the guard itself, and
+one false alarm worth recording so it isn't re-litigated:
+
+- The type-declaration scan required `public` at column zero, silently excluding every type
+  declared inside a `namespace { }` block (most of this codebase's model/service types, e.g.
+  `HighScoreModel`). Replaced with a brace-depth walk (`CollectTypesNotNestedInAnotherType`): a
+  `public` type counts unless an *enclosing brace belongs to another type* - namespace nesting no
+  longer excludes it, class/struct nesting still does.
+- `EnumerateAssemblyCSharpScripts` only walked `Assets/Scripts` plus loose files directly under
+  `Assets/`, missing three vendored third-party folders with no asmdef of their own
+  (`Standard Assets`, `Joystick Pack`, `OmniSARTechnologies` - 50 files, genuinely part of
+  Assembly-CSharp). Generalized to scan all of `Assets/` for any `.cs` file with no ancestor
+  `.asmdef` and no `Editor`/`Tests` path segment, rather than hand-listing folders.
+- `StripComments`/`Relative` were re-typed byte-for-byte identical in six test files (the five
+  pre-existing architecture-guard tests plus this one) - extracted to a shared
+  `Level5TestSourceText` so a future fix to either only has to land once.
+- The Editor-only-assembly check switched from a raw substring-in-quotes regex over the whole
+  `.asmdef` file to parsing it with `JsonUtility` and checking the `references` array itself -
+  more precise, and the same `AsmdefInfo`/`JsonUtility` parse now backs the reference-declaration
+  data other guards need.
+- A speculative third guard (no production assembly reaches into a *different* production assembly
+  it didn't declare) was tried and dropped: bare-identifier matching false-positived
+  `GameModeCompatibility.cs`'s `public GameModeCatalog Modes => modes;` property against the
+  unrelated `Modes` type in `Level5.Constants` - a property name colliding with a foreign type name.
+  Nothing today needs this guard (no production assembly references another yet), so it wasn't
+  worth chasing false positives to keep.
+- **Rejected as a false alarm:** a review pass flagged `Level5.Misc.asmdef`/`Level5.MenuStart.asmdef`
+  as missing an explicit `UnityEngine.UI` reference (for `Text`/`Button`/`Image`) and predicted a
+  compile failure. Both packages' asmdefs have `"autoReferenced": true`, which - contrary to the
+  review's claim - cascades to *any* consuming asmdef with `overrideReferences: false` (which all of
+  this phase's asmdefs use), not only to Unity's predefined assemblies; the compiled
+  `Level5.Misc.dll`/`Level5.MenuStart.dll` with zero `CS0246` errors, across every verification run
+  in this phase, already proved this empirically before the claim was even checked against the
+  package's own `.asmdef`.
+
+Full EditMode 465/465 and PlayMode 9/9 both passed after every round; `validate-repository.ps1`
+passed throughout.
 
 **2d exit, checked against current state:** intended runtime source (the 10 slices) does not fall
 back into `Assembly-CSharp` - guarded, green. No forbidden cycle among production assemblies -

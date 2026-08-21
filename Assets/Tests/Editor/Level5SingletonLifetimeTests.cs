@@ -108,14 +108,8 @@ public class Level5SingletonLifetimeTests
         }
     }
 
-    private static string Relative(string path)
-    {
-        return path.Substring(Directory.GetCurrentDirectory().Length + 1).Replace('\\', '/');
-    }
+    private static string Relative(string path) => Level5TestSourceText.Relative(path);
 
-    private static string StripComments(string text)
-    {
-        text = Regex.Replace(text, @"/\*.*?\*/", string.Empty, RegexOptions.Singleline);
-        return Regex.Replace(text, @"//.*?$", string.Empty, RegexOptions.Multiline);
-    }
+    /// <summary>Shared with the other architecture-guard tests as <see cref="Level5TestSourceText.StripComments"/>.</summary>
+    private static string StripComments(string text) => Level5TestSourceText.StripComments(text);
 }

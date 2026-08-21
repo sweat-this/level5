@@ -193,18 +193,12 @@ public class Level5MatchArchitectureTests
             .Where(path => !path.Contains("~") && !path.Contains(Path.Combine("Scripts", "Dev")));
     }
 
-    private static string Relative(string path)
-    {
-        return path.Substring(Directory.GetCurrentDirectory().Length + 1).Replace('\\', '/');
-    }
+    private static string Relative(string path) => Level5TestSourceText.Relative(path);
 
     /// <summary>
     /// Strips comments so a commented-out reference does not count. Deliberately simple: it does
-    /// not understand strings containing comment markers, which none of these files have.
+    /// not understand strings containing comment markers, which none of these files have. Shared
+    /// with the other architecture-guard tests as <see cref="Level5TestSourceText.StripComments"/>.
     /// </summary>
-    private static string StripComments(string text)
-    {
-        text = Regex.Replace(text, @"/\*.*?\*/", string.Empty, RegexOptions.Singleline);
-        return Regex.Replace(text, @"//.*?$", string.Empty, RegexOptions.Multiline);
-    }
+    private static string StripComments(string text) => Level5TestSourceText.StripComments(text);
 }
