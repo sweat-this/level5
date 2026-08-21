@@ -416,29 +416,31 @@ public class MatchHudPresenter : MonoBehaviour
     public void updatePlayerScore()
     {
         List<PlayerIdentifier> players = GameLevelManager.instance.getSortedGameStatsList();
-        Timer.instance.ScoreClockText.text = players[0].gameStats.TotalPoints.ToString();
+        Timer.instance.ScoreClockText.text = players[0].gameStats.Stats.TotalPoints.ToString();
         string playerType;
         if (players.Count > 0 && players[0] != null)
         {
+            MatchStats stats0 = players[0].gameStats.Stats;
             playerType = players[0].isCpu ? "CPU" : "Player";
             if (!players[0].isCpu) { displayP1ScoreText.color = Color.green; } else { displayP1ScoreText.color = Color.white; }
             displayP1ScoreText.text = playerType + " " + (players[0].pid + 1)
                 + "\n" + players[0].characterProfile.PlayerDisplayName
                 //+ "\n" + "lvl : "+ players[0].characterProfile.Level
-                + "\n" + "points : " + players[0].gameStats.TotalPoints
-                + "\n" + players[0].gameStats.ShotMade + "/" + players[0].gameStats.ShotAttempt
-                + " " + players[0].gameStats.getTotalPointAccuracy().ToString("0.00") + "%";
+                + "\n" + "points : " + stats0.TotalPoints
+                + "\n" + stats0.ShotMade + "/" + stats0.ShotAttempt
+                + " " + stats0.TotalPointAccuracy.ToString("0.00") + "%";
         }
         if (players.Count > 1 && players[1] != null)
         {
+            MatchStats stats1 = players[1].gameStats.Stats;
             playerType = players[1].isCpu ? "CPU" : "Player";
             if (!players[1].isCpu) { displayP2ScoreText.color = Color.green; } else { displayP2ScoreText.color = Color.white; }
             displayP2ScoreText.text = playerType + " " + (players[1].pid + 1)
                 + "\n" + players[1].characterProfile.PlayerDisplayName
                 //+ "\n" + "lvl : " + players[1].characterProfile.Level
-                + "\n" + "points : " + players[1].gameStats.TotalPoints
-                + "\n" + players[1].gameStats.ShotMade + "/" + players[1].gameStats.ShotAttempt
-                + " " + players[1].gameStats.getTotalPointAccuracy().ToString("0.00") + "%";
+                + "\n" + "points : " + stats1.TotalPoints
+                + "\n" + stats1.ShotMade + "/" + stats1.ShotAttempt
+                + " " + stats1.TotalPointAccuracy.ToString("0.00") + "%";
         }
         else
         {
@@ -446,14 +448,15 @@ public class MatchHudPresenter : MonoBehaviour
         }
         if (players.Count > 2 && players[2] != null)
         {
+            MatchStats stats2 = players[2].gameStats.Stats;
             playerType = players[2].isCpu ? "CPU" : "Player";
             if (!players[2].isCpu) { displayP3ScoreText.color = Color.green; } else { displayP3ScoreText.color = Color.white; }
             displayP3ScoreText.text = playerType + " " + (players[2].pid + 1)
                 + "\n" + players[2].characterProfile.PlayerDisplayName
                 //+ "\n" + "lvl : " + players[2].characterProfile.Level
-                + "\n" + "points : " + players[2].gameStats.TotalPoints
-                + "\n" + players[2].gameStats.ShotMade + "/" + players[2].gameStats.ShotAttempt
-                + " " + players[2].gameStats.getTotalPointAccuracy().ToString("0.00") + "%";
+                + "\n" + "points : " + stats2.TotalPoints
+                + "\n" + stats2.ShotMade + "/" + stats2.ShotAttempt
+                + " " + stats2.TotalPointAccuracy.ToString("0.00") + "%";
         }
         else
         {
@@ -461,14 +464,15 @@ public class MatchHudPresenter : MonoBehaviour
         }
         if (players.Count > 3 && players[3] != null)
         {
+            MatchStats stats3 = players[3].gameStats.Stats;
             playerType = players[3].isCpu ? "CPU" : "Player";
             if (!players[3].isCpu) { displayP4ScoreText.color = Color.green; } else { displayP4ScoreText.color = Color.white; }
             displayP4ScoreText.text = playerType + " " + (players[3].pid + 1)
                 + "\n" + players[3].characterProfile.PlayerDisplayName
                 //+ "\n" + "lvl : " + players[3].characterProfile.Level
-                + "\n" + "points : " + players[3].gameStats.TotalPoints
-                + "\n" + players[3].gameStats.ShotMade + "/" + players[3].gameStats.ShotAttempt
-                + " " + players[3].gameStats.getTotalPointAccuracy().ToString("0.00") + "%";
+                + "\n" + "points : " + stats3.TotalPoints
+                + "\n" + stats3.ShotMade + "/" + stats3.ShotAttempt
+                + " " + stats3.TotalPointAccuracy.ToString("0.00") + "%";
         }
         else
         {
@@ -485,16 +489,16 @@ public class MatchHudPresenter : MonoBehaviour
             //switch (gameModeId)
             //{
             //    case Modes.TotalPoints:
-            //        displayCurrentScoreText.text = "total points : " + gameStats.TotalPoints
+            //        displayCurrentScoreText.text = "total points : " + gameStats.Stats.TotalPoints
             //        + "\ncurrent shot : " + BasketBall.instance.BasketBallState.CurrentShotType;
-            //        Timer.instance.ScoreClockText.text = gameStats.TotalPoints.ToString();
+            //        Timer.instance.ScoreClockText.text = gameStats.Stats.TotalPoints.ToString();
             //        displayHighScoreText.text = "high score : " + PlayerData.instance.TotalPoints;
 
             //        break;
             //    case Modes.Total3Pointers:
-            //        displayCurrentScoreText.text = "3s made : " + gameStats.ThreePointerMade
+            //        displayCurrentScoreText.text = "3s made : " + gameStats.Stats.ThreePointerMade
             //        + "\ncurrent shot : " + BasketBall.instance.BasketBallState.CurrentShotType;
-            //        Timer.instance.ScoreClockText.text = gameStats.ThreePointerMade.ToString();
+            //        Timer.instance.ScoreClockText.text = gameStats.Stats.ThreePointerMade.ToString();
 
             //        displayHighScoreText.text = "high score : " + PlayerData.instance.ThreePointerMade;
             //        break;
@@ -516,45 +520,45 @@ public class MatchHudPresenter : MonoBehaviour
             //}
             if (gameModeId == Modes.TotalPoints)
             {
-                displayCurrentScoreText.text = "total points : " + gameStats.TotalPoints
+                displayCurrentScoreText.text = "total points : " + gameStats.Stats.TotalPoints
                     + "\ncurrent shot : " + BasketBall.instance.BasketBallState.CurrentShotType;
-                Timer.instance.ScoreClockText.text = gameStats.TotalPoints.ToString();
+                Timer.instance.ScoreClockText.text = gameStats.Stats.TotalPoints.ToString();
 
                 displayHighScoreText.text = "high score : " + PlayerData.instance.TotalPoints;
                 return;
             }
             if ( gameModeId == Modes.Lockdown)
             {
-                displayCurrentScoreText.text = "total points : " + gameStats.TotalPoints
+                displayCurrentScoreText.text = "total points : " + gameStats.Stats.TotalPoints
                     + "\ncurrent shot : " + BasketBall.instance.BasketBallState.CurrentShotType;
-                Timer.instance.ScoreClockText.text = gameStats.TotalPoints.ToString();
+                Timer.instance.ScoreClockText.text = gameStats.Stats.TotalPoints.ToString();
 
                 displayHighScoreText.text = "high score : " + PlayerData.instance.TotalPointsLockDown;
                 return;
             }
             if (gameModeId == Modes.Total3Pointers)
             {
-                displayCurrentScoreText.text = "3s made : " + gameStats.ThreePointerMade
+                displayCurrentScoreText.text = "3s made : " + gameStats.Stats.ThreePointerMade
                     + "\ncurrent shot : " + BasketBall.instance.BasketBallState.CurrentShotType;
-                Timer.instance.ScoreClockText.text = gameStats.ThreePointerMade.ToString();
+                Timer.instance.ScoreClockText.text = gameStats.Stats.ThreePointerMade.ToString();
 
                 displayHighScoreText.text = "high score : " + PlayerData.instance.ThreePointerMade;
                 return;
             }
             if (gameModeId == Modes.Total4Pointers)
             {
-                displayCurrentScoreText.text = "4s made : " + gameStats.FourPointerMade
+                displayCurrentScoreText.text = "4s made : " + gameStats.Stats.FourPointerMade
                     + "\ncurrent shot : " + BasketBall.instance.BasketBallState.CurrentShotType;
-                Timer.instance.ScoreClockText.text = gameStats.FourPointerMade.ToString();
+                Timer.instance.ScoreClockText.text = gameStats.Stats.FourPointerMade.ToString();
 
                 displayHighScoreText.text = "high score : " + PlayerData.instance.FourPointerMade;
                 return;
             }
             if (gameModeId == Modes.Total7Pointers)
             {
-                displayCurrentScoreText.text = "7s made : " + gameStats.SevenPointerMade
+                displayCurrentScoreText.text = "7s made : " + gameStats.Stats.SevenPointerMade
                                                             + "\ncurrent shot : " + BasketBall.instance.BasketBallState.CurrentShotType;
-                Timer.instance.ScoreClockText.text = gameStats.SevenPointerMade.ToString();
+                Timer.instance.ScoreClockText.text = gameStats.Stats.SevenPointerMade.ToString();
 
                 displayHighScoreText.text = "high score : " + PlayerData.instance.SevenPointerMade;
                 return;
@@ -567,9 +571,9 @@ public class MatchHudPresenter : MonoBehaviour
             //}
             if (gameModeId == Modes.TotalDistance)
             {
-                displayCurrentScoreText.text = "total distance : " + (gameStats.TotalDistance).ToString("0.00")
+                displayCurrentScoreText.text = "total distance : " + (gameStats.Stats.TotalDistance).ToString("0.00")
                 + "\ncurrent distance : " + (BasketBall.instance.BasketBallState.PlayerDistanceFromRim * 6).ToString("0.00");
-                Timer.instance.ScoreClockText.text = (gameStats.TotalDistance).ToString("0.00");
+                Timer.instance.ScoreClockText.text = (gameStats.Stats.TotalDistance).ToString("0.00");
 
                 displayHighScoreText.text = "high score : " + PlayerData.instance.TotalDistance.ToString("0.00");
                 return;
@@ -597,7 +601,7 @@ public class MatchHudPresenter : MonoBehaviour
                 //                                                 + "\ncurrent distance : " + (BasketBall.instance.BasketBallState.BallDistanceFromRim * 6).ToString("0.00");
                 //displayHighScoreText.text = "high score : " + PlayerData.instance.TotalDistance.ToString("0.00");
                 displayHighScoreText.text = "high score : " + PlayerData.instance.MakeSevenPointersLowTime;
-                Timer.instance.ScoreClockText.text = gameStats.TotalPoints.ToString();
+                Timer.instance.ScoreClockText.text = gameStats.Stats.TotalPoints.ToString();
                 //displayMoneyText.text = "$" + PlayerStats.instance.Money;
             }
             if (gameModeId == Modes.SpotUpAll)
@@ -633,9 +637,9 @@ public class MatchHudPresenter : MonoBehaviour
             if (gameModeId == Modes.ConsecutiveShots)
             {
                 displayCurrentScoreText.text = "Consecutive Shots"
-                    + "\nCurrent : " + GameLevelManager.instance.Player1.gameStats.ConsecutiveShotsMade
-                    + "\nHigh Shots : " + gameStats.MostConsecutiveShots;
-                Timer.instance.ScoreClockText.text = GameLevelManager.instance.Player1.gameStats.ConsecutiveShotsMade.ToString();
+                    + "\nCurrent : " + GameLevelManager.instance.Player1.gameStats.Stats.ConsecutiveShotsMade
+                    + "\nHigh Shots : " + gameStats.Stats.MostConsecutiveShots;
+                Timer.instance.ScoreClockText.text = GameLevelManager.instance.Player1.gameStats.Stats.ConsecutiveShotsMade.ToString();
 
                 displayHighScoreText.text = "high score : " + PlayerData.instance.MostConsecutiveShots;
                 //displayMoneyText.text = "$" + PlayerStats.instance.Money;
@@ -643,13 +647,13 @@ public class MatchHudPresenter : MonoBehaviour
             }
             if (gameModeId == Modes.InThePocket)
             {
-                displayCurrentScoreText.text = "total points : " + gameStats.TotalPoints
+                displayCurrentScoreText.text = "total points : " + gameStats.Stats.TotalPoints
                     + "\ncurrent shot : " + BasketBall.instance.BasketBallState.CurrentShotType
-                    + "\nCurrent Consecutive: " + GameLevelManager.instance.players[0].gameStats.ConsecutiveShotsMade;
-                Timer.instance.ScoreClockText.text = gameStats.TotalPoints.ToString();
+                    + "\nCurrent Consecutive: " + GameLevelManager.instance.players[0].gameStats.Stats.ConsecutiveShotsMade;
+                Timer.instance.ScoreClockText.text = gameStats.Stats.TotalPoints.ToString();
 
                 // in the pocket is active, display text notifier
-                if (GameLevelManager.instance.Player1.gameStats.ConsecutiveShotsMade >= inThePocketActivateValue)
+                if (GameLevelManager.instance.Player1.gameStats.Stats.ConsecutiveShotsMade >= inThePocketActivateValue)
                 {
                     displayOtherMessageText.text = "In The Pocket";
                 }
@@ -664,19 +668,19 @@ public class MatchHudPresenter : MonoBehaviour
             if (gameModeId == Modes.ThreePointContest)
             {
                 displayHighScoreText.text = "high score : " + PlayerData.instance.ThreePointContestScore;
-                Timer.instance.ScoreClockText.text = gameStats.TotalPoints.ToString();
+                Timer.instance.ScoreClockText.text = gameStats.Stats.TotalPoints.ToString();
                 return;
             }
             if (gameModeId == Modes.FourPointContest)
             {
                 displayHighScoreText.text = "high score : " + PlayerData.instance.FourPointContestScore;
-                Timer.instance.ScoreClockText.text = gameStats.TotalPoints.ToString();
+                Timer.instance.ScoreClockText.text = gameStats.Stats.TotalPoints.ToString();
                 return;
             }
             if (gameModeId == Modes.AllPointContest)
             {
                 displayHighScoreText.text = "high score : " + PlayerData.instance.AllPointContestScore;
-                Timer.instance.ScoreClockText.text = gameStats.TotalPoints.ToString();
+                Timer.instance.ScoreClockText.text = gameStats.Stats.TotalPoints.ToString();
                 return;
             }
             if (gameModeId == Modes.PointsByDistance)
@@ -686,9 +690,9 @@ public class MatchHudPresenter : MonoBehaviour
                 displayCurrentScoreText.text =
                     "current distance : " + (BasketBall.instance.BasketBallState.PlayerDistanceFromRim * 6).ToString("00.00")
                     + "\nlast shot : " + Mathf.FloorToInt((BasketBall.instance.LastShotDistance * 6) / 10)
-                    + "\ntotal points : " + gameStats.TotalPoints;
+                    + "\ntotal points : " + gameStats.Stats.TotalPoints;
 
-                Timer.instance.ScoreClockText.text = gameStats.TotalPoints.ToString();
+                Timer.instance.ScoreClockText.text = gameStats.Stats.TotalPoints.ToString();
                 return;
             }
             if (gameModeId == Modes.BashUpSomeNerds)
@@ -696,10 +700,10 @@ public class MatchHudPresenter : MonoBehaviour
                 displayHighScoreText.text = "high score : " + PlayerData.instance.EnemiesKilled;
 
                 displayCurrentScoreText.text =
-                    "nerds bashed : " + (gameStats.EnemiesKilled);
+                    "nerds bashed : " + (gameStats.Stats.EnemiesKilled);
                 if (Timer.instance.ScoreClockText != null)
                 {
-                    Timer.instance.ScoreClockText.text = (gameStats.EnemiesKilled).ToString();
+                    Timer.instance.ScoreClockText.text = (gameStats.Stats.EnemiesKilled).ToString();
                 }
                 return;
             }
@@ -708,10 +712,10 @@ public class MatchHudPresenter : MonoBehaviour
                 displayHighScoreText.text = "high score : " + PlayerData.instance.EnemiesKilledBattleRoyal;
 
                 displayCurrentScoreText.text =
-                    "nerds bashed : " + (gameStats.EnemiesKilled);
+                    "nerds bashed : " + (gameStats.Stats.EnemiesKilled);
                 if (Timer.instance.ScoreClockText != null)
                 {
-                    Timer.instance.ScoreClockText.text = (gameStats.EnemiesKilled).ToString();
+                    Timer.instance.ScoreClockText.text = (gameStats.Stats.EnemiesKilled).ToString();
                 }
                 return;
             }
@@ -720,23 +724,23 @@ public class MatchHudPresenter : MonoBehaviour
                 displayHighScoreText.text = "high score : " + PlayerData.instance.EnemiesKilledCageMatch;
 
                 displayCurrentScoreText.text =
-                    "nerds bashed : " + (gameStats.EnemiesKilled);
+                    "nerds bashed : " + (gameStats.Stats.EnemiesKilled);
                 if (Timer.instance.ScoreClockText != null)
                 {
-                    Timer.instance.ScoreClockText.text = (gameStats.EnemiesKilled).ToString();
+                    Timer.instance.ScoreClockText.text = (gameStats.Stats.EnemiesKilled).ToString();
                 }
                 return;
             }
             if (gameModeId == Modes.VersusCpu || gameModeId == Modes.BeatThaComputahs)
             {
-                Timer.instance.ScoreClockText.text = gameStats.TotalPoints.ToString();
+                Timer.instance.ScoreClockText.text = gameStats.Stats.TotalPoints.ToString();
                 updatePlayerScore();
                 return;
             }
             if (gameModeId == Modes.SevenPointContest)
             {
                 displayHighScoreText.text = "high score : " + PlayerData.instance.SevenPointContestScore;
-                Timer.instance.ScoreClockText.text = gameStats.TotalPoints.ToString();
+                Timer.instance.ScoreClockText.text = gameStats.Stats.TotalPoints.ToString();
                 return;
             }
             //if (gameModeId == 21)
@@ -744,18 +748,18 @@ public class MatchHudPresenter : MonoBehaviour
             //    displayHighScoreText.text = "high score : " + PlayerData.instance.EnemiesKilled;
 
             //    displayCurrentScoreText.text =
-            //        "nerds bashed : " + (gameStats.EnemiesKilled);
+            //        "nerds bashed : " + (gameStats.Stats.EnemiesKilled);
             //    if (Timer.instance.ScoreClockText != null)
             //    {
-            //        Timer.instance.ScoreClockText.text = (gameStats.EnemiesKilled).ToString();
+            //        Timer.instance.ScoreClockText.text = (gameStats.Stats.EnemiesKilled).ToString();
             //    }
             //}
 
             if (gameModeId == 0 || gameModeId == Modes.FreePlay || gameModeId == Modes.ArcadeMode)
             {
-                displayCurrentScoreText.text = "longest shot : " + (gameStats1.LongestShotMade).ToString("0.00")
+                displayCurrentScoreText.text = "longest shot : " + (gameStats1.Stats.LongestShotMade).ToString("0.00")
                                                                  + "\ncurrent distance : " + (BasketBall.instance.BasketBallState.PlayerDistanceFromRim * 6).ToString("00.00");
-                Timer.instance.ScoreClockText.text = (gameStats1.LongestShotMade).ToString("0.00");
+                Timer.instance.ScoreClockText.text = (gameStats1.Stats.LongestShotMade).ToString("0.00");
 
                 if (gameModeId == Modes.FreePlay)
                 {
@@ -767,10 +771,10 @@ public class MatchHudPresenter : MonoBehaviour
                     displayHighScoreText.text = "high score : " + PlayerData.instance.LongestShotMadeFreePlay.ToString("0.00");
                 }
                 // if longest shot > saved longest shot
-                if ((gameStats.LongestShotMade) > PlayerData.instance.LongestShotMadeFreePlay)
+                if ((gameStats.Stats.LongestShotMade) > PlayerData.instance.LongestShotMadeFreePlay)
                 {
                     //PlayerData.instance.saveStats();
-                    PlayerData.instance.LongestShotMadeFreePlay = gameStats1.LongestShotMade;
+                    PlayerData.instance.LongestShotMadeFreePlay = gameStats1.Stats.LongestShotMade;
                     // save to db
                     DBHelper.instance.updateFloatValueByTableAndField("AllTimeStats", "longestShot", PlayerData.instance.LongestShotMadeFreePlay);
                 }
@@ -791,43 +795,45 @@ public class MatchHudPresenter : MonoBehaviour
             return displayText;
         }
 
+        MatchStats stats = gameStats1.Stats;
+
         if (gameModeId == Modes.TotalPoints)
         {
-            displayText = "You scored " + gameStats1.TotalPoints + " total points\n\n" + GetStatsTotals();
+            displayText = "You scored " + stats.TotalPoints + " total points\n\n" + GetStatsTotals();
         }
         if (gameModeId == Modes.Total3Pointers)
         {
-            displayText = "You made " + gameStats1.ThreePointerMade + " total 3 pointers\n\n" + GetStatsTotals();
+            displayText = "You made " + stats.ThreePointerMade + " total 3 pointers\n\n" + GetStatsTotals();
         }
         if (gameModeId == Modes.Total4Pointers)
         {
-            displayText = "You made " + gameStats1.FourPointerMade + " total 4 pointers\n\n" + GetStatsTotals();
+            displayText = "You made " + stats.FourPointerMade + " total 4 pointers\n\n" + GetStatsTotals();
         }
         if (gameModeId == Modes.Total7Pointers)
         {
-            displayText = "You made " + gameStats1.SevenPointerMade + " total 7 pointers\n\n" + GetStatsTotals();
+            displayText = "You made " + stats.SevenPointerMade + " total 7 pointers\n\n" + GetStatsTotals();
         }
         // mode 5 has no entry in Modes.cs - the enum skips from 4 straight to 6 (TotalDistance).
         if (gameModeId == 5)
         {
-            displayText = "Your longest shot made was " + (gameStats1.LongestShotMade).ToString("0.00") + " ft.\n\n" + GetStatsTotals();
+            displayText = "Your longest shot made was " + (stats.LongestShotMade).ToString("0.00") + " ft.\n\n" + GetStatsTotals();
         }
         if (gameModeId == Modes.TotalDistance)
         {
-            displayText = "Your total distance for shots made was " + (gameStats1.TotalDistance).ToString("0.00") + " ft.\n\n" + GetStatsTotals();
+            displayText = "Your total distance for shots made was " + (stats.TotalDistance).ToString("0.00") + " ft.\n\n" + GetStatsTotals();
         }
         // range covers modes 7-12 (SpotUp3s/SpotUp4s/SpotUpAll plus three more IDs with no
         // entries in Modes.cs) and 25 (SpotUp7s).
         if (gameModeId > 6 && gameModeId <= 12 || gameModeId == Modes.SpotUp7s)
         {
-            int minutes = Mathf.FloorToInt(gameStats1.TimePlayed / 60);
-            float seconds = (gameStats1.TimePlayed - (minutes * 60));
+            int minutes = Mathf.FloorToInt(stats.TimePlayed / 60);
+            float seconds = (stats.TimePlayed - (minutes * 60));
             //displayText = "Your time was " + (counterTime).ToString("0.000") + "\n\n" + getStatsTotals();
             displayText = "Your time was " + minutes.ToString("0") + ":" + seconds.ToString("00.000") + "\n\n" + GetStatsTotals();
         }
         if (gameModeId == Modes.ConsecutiveShots)
         {
-            displayText = "Your most consecutive shots was " + gameStats1.MostConsecutiveShots + "\n\n" + GetStatsTotals();
+            displayText = "Your most consecutive shots was " + stats.MostConsecutiveShots + "\n\n" + GetStatsTotals();
         }
         //if (gameModeId == 15)
         //{
@@ -837,23 +843,23 @@ public class MatchHudPresenter : MonoBehaviour
             || gameModeId == Modes.AllPointContest || gameModeId == Modes.PointsByDistance
             || gameModeId == Modes.SevenPointContest || gameModeId == Modes.Lockdown)
         {
-            displayText = "You scored " + gameStats1.TotalPoints + " total points\n\n" + GetStatsTotals();
+            displayText = "You scored " + stats.TotalPoints + " total points\n\n" + GetStatsTotals();
         }
         if (gameModeId == Modes.Lockdown)
         {
-            displayText = "You scored " + gameStats1.TotalPoints + " total points\nYou were blocked "
-                + gameStats1.blockedShots + " times \n\n" + GetStatsTotals();
+            displayText = "You scored " + stats.TotalPoints + " total points\nYou were blocked "
+                + stats.BlockedShots + " times \n\n" + GetStatsTotals();
         }
         if (gameModeId == Modes.BashUpSomeNerds)
         {
-            displayText = "You Bashed up " + gameStats1.EnemiesKilled + " nerds"
+            displayText = "You Bashed up " + stats.EnemiesKilled + " nerds"
                 + "\n\nexperience gained : " + gameStats1.getExperienceGainedFromSession();
         }
         if (gameModeId == Modes.BattleRoyal)
         {
-            int minutes = Mathf.FloorToInt(gameStats1.TimePlayed / 60);
-            float seconds = (gameStats1.TimePlayed - (minutes * 60));
-            displayText = "You Bashed up " + gameStats1.EnemiesKilled + " nerds"
+            int minutes = Mathf.FloorToInt(stats.TimePlayed / 60);
+            float seconds = (stats.TimePlayed - (minutes * 60));
+            displayText = "You Bashed up " + stats.EnemiesKilled + " nerds"
                 + "\n\nYou survived for  : " + minutes.ToString("0") + ":" + seconds.ToString("00.000") + "\n\n"
                 + "\n\nexperience gained : " + gameStats1.getExperienceGainedFromSession();
         }
@@ -870,18 +876,18 @@ public class MatchHudPresenter : MonoBehaviour
 
             displayText = players[0].characterProfile.PlayerDisplayName + " wins!"
                 + "\n---------------------------------"
-                + "\n" + players[0].characterProfile.PlayerDisplayName + " : " + players[0].gameStats.TotalPoints;
+                + "\n" + players[0].characterProfile.PlayerDisplayName + " : " + players[0].gameStats.Stats.TotalPoints;
             if (players.Count > 1)
             {
-                displayText += "\n" + players[1].characterProfile.PlayerDisplayName + " : " + players[1].gameStats.TotalPoints;
+                displayText += "\n" + players[1].characterProfile.PlayerDisplayName + " : " + players[1].gameStats.Stats.TotalPoints;
             }
             if (players.Count > 2)
             {
-                displayText += "\n" + players[2].characterProfile.PlayerDisplayName + " : " + players[2].gameStats.TotalPoints;
+                displayText += "\n" + players[2].characterProfile.PlayerDisplayName + " : " + players[2].gameStats.Stats.TotalPoints;
             }
             if (players.Count > 3)
             {
-                displayText += "\n" + players[3].characterProfile.PlayerDisplayName + " : " + players[3].gameStats.TotalPoints;
+                displayText += "\n" + players[3].characterProfile.PlayerDisplayName + " : " + players[3].gameStats.Stats.TotalPoints;
             }
         }
         if (gameModeId == Modes.ArcadeMode)
@@ -900,61 +906,62 @@ public class MatchHudPresenter : MonoBehaviour
     string GetStatsTotals()
     {
         // Percentages use gameStats1's own counts, not BasketBall.instance's mutable state.
+        MatchStats stats = gameStats1.Stats;
         string scoreText;
         if (rules.IsContest && !rules.SniperEnabled)
         {
-            scoreText = "shots  : " + gameStats1.ShotMade + " / " + gameStats1.ShotAttempt + " " + UtilityFunctions.getPercentageFloat(gameStats1.ShotMade, gameStats1.ShotAttempt).ToString("0.00") + "%\n"
-                             + "points : " + gameStats1.TotalPoints + "\n"
-                             //+ "bonus points : " + gameStats1.BonusPoints + "\n"
-                             + "2 pointers : " + gameStats1.TwoPointerMade + " / " + gameStats1.TwoPointerAttempts + "    "
-                             + UtilityFunctions.getPercentageFloat(gameStats1.TwoPointerMade, gameStats1.TwoPointerAttempts).ToString("00.0") + "%\n"
-                             + "3 pointers : " + gameStats1.ThreePointerMade + " / " + gameStats1.ThreePointerAttempts + "    "
-                             + UtilityFunctions.getPercentageFloat(gameStats1.ThreePointerMade, gameStats1.ThreePointerAttempts).ToString("00.0") + "%\n"
-                             + "4 pointers : " + gameStats1.FourPointerMade + " / " + gameStats1.FourPointerAttempts + "    "
-                             + UtilityFunctions.getPercentageFloat(gameStats1.FourPointerMade, gameStats1.FourPointerAttempts).ToString("00.0") + "%\n"
-                             + "7 pointers : " + gameStats1.SevenPointerMade + " / " + gameStats1.SevenPointerAttempts + "    "
-                             + UtilityFunctions.getPercentageFloat(gameStats1.SevenPointerMade, gameStats1.SevenPointerAttempts).ToString("00.0") + "%\n"
-                             + "money ball : " + gameStats1.MoneyBallMade + " / " + gameStats1.MoneyBallAttempts + "    "
-                             + UtilityFunctions.getPercentageFloat(gameStats1.MoneyBallMade, gameStats1.MoneyBallAttempts).ToString("00.0") + "%\n"
-                             + "longest shot distance : " + (Math.Round(gameStats1.LongestShotMade, 2)).ToString("0.00") + " ft.\n"
-                             + "total shots made distance : " + (Math.Round(gameStats1.TotalDistance, 2)).ToString("0.00") + " ft.\n"
-                             + "most consecutive shots : " + gameStats1.MostConsecutiveShots + "\n"
+            scoreText = "shots  : " + stats.ShotMade + " / " + stats.ShotAttempt + " " + UtilityFunctions.getPercentageFloat(stats.ShotMade, stats.ShotAttempt).ToString("0.00") + "%\n"
+                             + "points : " + stats.TotalPoints + "\n"
+                             //+ "bonus points : " + stats.BonusPoints + "\n"
+                             + "2 pointers : " + stats.TwoPointerMade + " / " + stats.TwoPointerAttempts + "    "
+                             + UtilityFunctions.getPercentageFloat(stats.TwoPointerMade, stats.TwoPointerAttempts).ToString("00.0") + "%\n"
+                             + "3 pointers : " + stats.ThreePointerMade + " / " + stats.ThreePointerAttempts + "    "
+                             + UtilityFunctions.getPercentageFloat(stats.ThreePointerMade, stats.ThreePointerAttempts).ToString("00.0") + "%\n"
+                             + "4 pointers : " + stats.FourPointerMade + " / " + stats.FourPointerAttempts + "    "
+                             + UtilityFunctions.getPercentageFloat(stats.FourPointerMade, stats.FourPointerAttempts).ToString("00.0") + "%\n"
+                             + "7 pointers : " + stats.SevenPointerMade + " / " + stats.SevenPointerAttempts + "    "
+                             + UtilityFunctions.getPercentageFloat(stats.SevenPointerMade, stats.SevenPointerAttempts).ToString("00.0") + "%\n"
+                             + "money ball : " + stats.MoneyBallMade + " / " + stats.MoneyBallAttempts + "    "
+                             + UtilityFunctions.getPercentageFloat(stats.MoneyBallMade, stats.MoneyBallAttempts).ToString("00.0") + "%\n"
+                             + "longest shot distance : " + (Math.Round(stats.LongestShotMade, 2)).ToString("0.00") + " ft.\n"
+                             + "total shots made distance : " + (Math.Round(stats.TotalDistance, 2)).ToString("0.00") + " ft.\n"
+                             + "most consecutive shots : " + stats.MostConsecutiveShots + "\n"
                              + "experience gained : " + gameStats1.getExperienceGainedFromSession();
         }
         else if (rules.SniperEnabled)
         {
-            scoreText = "shots  : " + gameStats1.ShotMade + " / " + gameStats1.ShotAttempt + " " + UtilityFunctions.getPercentageFloat(gameStats1.ShotMade, gameStats1.ShotAttempt).ToString("0.00") + "%\n"
-                 + "points : " + gameStats1.TotalPoints + "\n"
-                 + "2 pointers : " + gameStats1.TwoPointerMade + " / " + gameStats1.TwoPointerAttempts + "    "
-                 + UtilityFunctions.getPercentageFloat(gameStats1.TwoPointerMade, gameStats1.TwoPointerAttempts).ToString("00.0") + "%\n"
-                 + "3 pointers : " + gameStats1.ThreePointerMade + " / " + gameStats1.ThreePointerAttempts + "    "
-                 + UtilityFunctions.getPercentageFloat(gameStats1.ThreePointerMade, gameStats1.ThreePointerAttempts).ToString("00.0") + "%\n"
-                 + "4 pointers : " + gameStats1.FourPointerMade + " / " + gameStats1.FourPointerAttempts + "    "
-                 + UtilityFunctions.getPercentageFloat(gameStats1.FourPointerMade, gameStats1.FourPointerAttempts).ToString("00.0") + "%\n"
-                 + "7 pointers : " + gameStats1.SevenPointerMade + " / " + gameStats1.SevenPointerAttempts + "    "
-                 + UtilityFunctions.getPercentageFloat(gameStats1.SevenPointerMade, gameStats1.SevenPointerAttempts).ToString("00.0") + "%\n"
-                 + "longest shot distance : " + (Math.Round(gameStats1.LongestShotMade, 2)).ToString("0.00") + " ft.\n"
-                 + "total shots made distance : " + (Math.Round(gameStats1.TotalDistance, 2)).ToString("0.00") + " ft.\n"
-                 + "most consecutive shots : " + gameStats1.MostConsecutiveShots + "\n"
-                 + "sniper accuracy : " + gameStats1.SniperHits + " / " + gameStats1.SniperShots
-                    + " " + UtilityFunctions.getPercentageFloat(gameStats1.SniperHits, gameStats1.SniperShots).ToString("00.0") + "%\n"
+            scoreText = "shots  : " + stats.ShotMade + " / " + stats.ShotAttempt + " " + UtilityFunctions.getPercentageFloat(stats.ShotMade, stats.ShotAttempt).ToString("0.00") + "%\n"
+                 + "points : " + stats.TotalPoints + "\n"
+                 + "2 pointers : " + stats.TwoPointerMade + " / " + stats.TwoPointerAttempts + "    "
+                 + UtilityFunctions.getPercentageFloat(stats.TwoPointerMade, stats.TwoPointerAttempts).ToString("00.0") + "%\n"
+                 + "3 pointers : " + stats.ThreePointerMade + " / " + stats.ThreePointerAttempts + "    "
+                 + UtilityFunctions.getPercentageFloat(stats.ThreePointerMade, stats.ThreePointerAttempts).ToString("00.0") + "%\n"
+                 + "4 pointers : " + stats.FourPointerMade + " / " + stats.FourPointerAttempts + "    "
+                 + UtilityFunctions.getPercentageFloat(stats.FourPointerMade, stats.FourPointerAttempts).ToString("00.0") + "%\n"
+                 + "7 pointers : " + stats.SevenPointerMade + " / " + stats.SevenPointerAttempts + "    "
+                 + UtilityFunctions.getPercentageFloat(stats.SevenPointerMade, stats.SevenPointerAttempts).ToString("00.0") + "%\n"
+                 + "longest shot distance : " + (Math.Round(stats.LongestShotMade, 2)).ToString("0.00") + " ft.\n"
+                 + "total shots made distance : " + (Math.Round(stats.TotalDistance, 2)).ToString("0.00") + " ft.\n"
+                 + "most consecutive shots : " + stats.MostConsecutiveShots + "\n"
+                 + "sniper accuracy : " + stats.SniperHits + " / " + stats.SniperShots
+                    + " " + UtilityFunctions.getPercentageFloat(stats.SniperHits, stats.SniperShots).ToString("00.0") + "%\n"
                  + "experience gained : " + gameStats1.getExperienceGainedFromSession();
         }
         else
         {
-            scoreText = "shots  : " + gameStats1.ShotMade + " / " + gameStats1.ShotAttempt + " " + UtilityFunctions.getPercentageFloat(gameStats1.ShotMade, gameStats1.ShotAttempt).ToString("0.00") + "%\n"
-                 + "points : " + gameStats1.TotalPoints + "\n"
-                 + "2 pointers : " + gameStats1.TwoPointerMade + " / " + gameStats1.TwoPointerAttempts + "    "
-                 + UtilityFunctions.getPercentageFloat(gameStats1.TwoPointerMade, gameStats1.TwoPointerAttempts).ToString("00.0") + "%\n"
-                 + "3 pointers : " + gameStats1.ThreePointerMade + " / " + gameStats1.ThreePointerAttempts + "    "
-                 + UtilityFunctions.getPercentageFloat(gameStats1.ThreePointerMade, gameStats1.ThreePointerAttempts).ToString("00.0") + "%\n"
-                 + "4 pointers : " + gameStats1.FourPointerMade + " / " + gameStats1.FourPointerAttempts + "    "
-                 + UtilityFunctions.getPercentageFloat(gameStats1.FourPointerMade, gameStats1.FourPointerAttempts).ToString("00.0") + "%\n"
-                 + "7 pointers : " + gameStats1.SevenPointerMade + " / " + gameStats1.SevenPointerAttempts + "    "
-                 + UtilityFunctions.getPercentageFloat(gameStats1.SevenPointerMade, gameStats1.SevenPointerAttempts).ToString("00.0") + "%\n"
-                 + "longest shot distance : " + (Math.Round(gameStats1.LongestShotMade, 2)).ToString("0.00") + " ft.\n"
-                 + "total shots made distance : " + (Math.Round(gameStats1.TotalDistance, 2)).ToString("0.00") + " ft.\n"
-                 + "most consecutive shots : " + gameStats1.MostConsecutiveShots + "\n"
+            scoreText = "shots  : " + stats.ShotMade + " / " + stats.ShotAttempt + " " + UtilityFunctions.getPercentageFloat(stats.ShotMade, stats.ShotAttempt).ToString("0.00") + "%\n"
+                 + "points : " + stats.TotalPoints + "\n"
+                 + "2 pointers : " + stats.TwoPointerMade + " / " + stats.TwoPointerAttempts + "    "
+                 + UtilityFunctions.getPercentageFloat(stats.TwoPointerMade, stats.TwoPointerAttempts).ToString("00.0") + "%\n"
+                 + "3 pointers : " + stats.ThreePointerMade + " / " + stats.ThreePointerAttempts + "    "
+                 + UtilityFunctions.getPercentageFloat(stats.ThreePointerMade, stats.ThreePointerAttempts).ToString("00.0") + "%\n"
+                 + "4 pointers : " + stats.FourPointerMade + " / " + stats.FourPointerAttempts + "    "
+                 + UtilityFunctions.getPercentageFloat(stats.FourPointerMade, stats.FourPointerAttempts).ToString("00.0") + "%\n"
+                 + "7 pointers : " + stats.SevenPointerMade + " / " + stats.SevenPointerAttempts + "    "
+                 + UtilityFunctions.getPercentageFloat(stats.SevenPointerMade, stats.SevenPointerAttempts).ToString("00.0") + "%\n"
+                 + "longest shot distance : " + (Math.Round(stats.LongestShotMade, 2)).ToString("0.00") + " ft.\n"
+                 + "total shots made distance : " + (Math.Round(stats.TotalDistance, 2)).ToString("0.00") + " ft.\n"
+                 + "most consecutive shots : " + stats.MostConsecutiveShots + "\n"
                  + "experience gained : " + gameStats1.getExperienceGainedFromSession();
         }
         return scoreText;

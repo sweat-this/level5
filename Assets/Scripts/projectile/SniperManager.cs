@@ -143,7 +143,7 @@ public class SniperManager : MonoBehaviour
         // add shoot delay
         yield return new WaitForSeconds(shootdelay);
         // update stats
-        GameLevelManager.instance.players[0].gameStats.SniperShots++;
+        GameLevelManager.instance.players[0].gameStats.Stats.SniperShots++;
 
         // get player position to attack
         PlayerPosAtShoot = playerHitbox.transform.position;
@@ -174,7 +174,7 @@ public class SniperManager : MonoBehaviour
     {
         yield return new WaitForSeconds(shootdelay);
 
-        GameLevelManager.instance.players[0].gameStats.SniperShots++;
+        GameLevelManager.instance.players[0].gameStats.Stats.SniperShots++;
 
         // get player position to attack
         PlayerPosAtShoot = playerHitbox.transform.position;
@@ -188,7 +188,7 @@ public class SniperManager : MonoBehaviour
     {
         yield return new WaitForSeconds(shootdelay);
 
-        GameLevelManager.instance.players[0].gameStats.SniperShots++;
+        GameLevelManager.instance.players[0].gameStats.Stats.SniperShots++;
 
         // get player position to attack
         PlayerPosAtShoot = playerHitbox.transform.position;
@@ -231,7 +231,7 @@ public class SniperManager : MonoBehaviour
         Vector3 target = new Vector3(projectileForceSniper.x + random, projectileForceSniper.y, projectileForceSniper.z);
         InstantiateConfiguredProjectile(projectileAutomaticBulletPrefab, target);
         // update stats
-        GameLevelManager.instance.players[0].gameStats.SniperShots++;
+        GameLevelManager.instance.players[0].gameStats.Stats.SniperShots++;
     }
 
     IEnumerator InstantiateLaser(Vector3 projectileForceSniper)

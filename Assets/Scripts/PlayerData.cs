@@ -159,31 +159,18 @@ public class PlayerData : MonoBehaviour
         }
     }
 
+    /// <summary>
+    /// Folds one finished session into the campaign totals.
+    ///
+    /// This was 23 lines of hand-written per-field arithmetic, where the distinction between the
+    /// fields that sum, the two that take a maximum, and the nine that are deliberately not
+    /// accumulated at all was spread out far enough to be invisible. It now lives on the owner as
+    /// <see cref="Level5.Core.Match.MatchStats.Accumulate"/>, where the rules are stated in one place
+    /// and tested field by field. The behaviour is unchanged, omissions included.
+    /// </summary>
     public void updateCampaignStats(GameStats gameStats)
     {
-        campaignGameStats.TotalPoints += gameStats.TotalPoints;
-        campaignGameStats.TotalDistance += gameStats.TotalDistance;
-        campaignGameStats.ThreePointerMade += gameStats.ThreePointerMade;
-        campaignGameStats.FourPointerMade += gameStats.FourPointerMade;
-        campaignGameStats.SevenPointerMade += gameStats.SevenPointerMade;
-        campaignGameStats.ThreePointerAttempts += gameStats.ThreePointerAttempts;
-        campaignGameStats.FourPointerAttempts += gameStats.FourPointerAttempts;
-        campaignGameStats.SevenPointerAttempts += gameStats.SevenPointerAttempts;
-        campaignGameStats.LongestShotMade = gameStats.LongestShotMade > campaignGameStats.LongestShotMade ? gameStats.LongestShotMade : campaignGameStats.LongestShotMade;
-        campaignGameStats.TimePlayed += gameStats.TimePlayed;
-        campaignGameStats.CriticalRolled += gameStats.CriticalRolled;
-        campaignGameStats.EnemiesKilled += gameStats.EnemiesKilled;
-        campaignGameStats.BossKilled += gameStats.BossKilled;
-        campaignGameStats.MinionsKilled += gameStats.MinionsKilled;
-        campaignGameStats.MoneyBallMade += gameStats.MoneyBallMade;
-        campaignGameStats.MoneyBallAttempts += gameStats.MoneyBallAttempts;
-        campaignGameStats.ShotMade += gameStats.ShotMade;
-        campaignGameStats.ShotAttempt += gameStats.ShotAttempt;
-        campaignGameStats.SniperHits += gameStats.SniperHits;
-        campaignGameStats.SniperShots += gameStats.SniperShots;
-        campaignGameStats.TwoPointerMade += gameStats.TwoPointerMade;
-        campaignGameStats.TwoPointerAttempts += gameStats.TwoPointerAttempts;
-        campaignGameStats.MostConsecutiveShots = gameStats.MostConsecutiveShots > campaignGameStats.MostConsecutiveShots ? gameStats.MostConsecutiveShots : campaignGameStats.MostConsecutiveShots;
+        campaignGameStats.Stats.Accumulate(gameStats.Stats);
     }
 
     public float TotalPoints => _totalPoints;

@@ -29,8 +29,8 @@ public class CollisionCheckDefense : MonoBehaviour
         {
             isLocked = true;
             autoPlayerDefense.blockedShots++;
-            gameStats.blockedShots++;
-            gameStats.ShotAttempt++;
+            gameStats.Stats.BlockedShots++;
+            gameStats.Stats.ShotAttempt++;
             Debug.Log("shot blocked");
         }
     }

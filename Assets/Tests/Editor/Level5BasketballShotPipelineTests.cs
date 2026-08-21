@@ -1,6 +1,8 @@
 using System.Collections.Generic;
+using Level5.Core;
 using NUnit.Framework;
 using UnityEngine;
+using UnityEngine.TestTools;
 using UnityEngine.UI;
 
 /// <summary>
@@ -80,7 +82,7 @@ public class Level5BasketballShotPipelineTests
             ball.transform,
             Vector3.zero,
             state.BasketBallTarget.transform.position,
-            profile,
+            ShooterAttributesFactory.From(profile),
             state,
             stats,
             lastShotDistance: 10f,
@@ -110,7 +112,7 @@ public class Level5BasketballShotPipelineTests
             ball.transform,
             Vector3.zero,
             state.BasketBallTarget.transform.position,
-            profile,
+            ShooterAttributesFactory.From(profile),
             state,
             stats,
             lastShotDistance: 10f,
@@ -140,7 +142,7 @@ public class Level5BasketballShotPipelineTests
             ball.transform,
             Vector3.zero,
             state.BasketBallTarget.transform.position,
-            profile,
+            ShooterAttributesFactory.From(profile),
             state,
             stats,
             lastShotDistance: 10f,
@@ -170,5 +172,65 @@ public class Level5BasketballShotPipelineTests
         Assert.That(scoreText.text, Does.Contain("shots  : 3 / 4"));
         Assert.That(scoreText.text, Does.Contain("2 pointers : 2 / 2  100.00%"));
         Assert.That(scoreText.text, Does.Contain("3 pointers : 1 / 2  50.00%"));
+    }
+
+    /// <summary>
+    /// Code review on the Phase 1c migration: a missing CharacterProfile used to throw at this call
+    /// site; ShooterAttributesFactory.From now returns an inert default instead. That fallback
+    /// predates this migration (Phase 1a) and is deliberately preserved - not thrown here - but it
+    /// must not go silent, since a real missing profile is a setup bug worth seeing in the console.
+    /// </summary>
+    [Test]
+    public void MissingCharacterProfileLogsAndFallsBackToAnInertShooter()
+    {
+        LogAssert.Expect(LogType.Warning, new System.Text.RegularExpressions.Regex("ShooterAttributesFactory.From"));
+
+        ShooterAttributes shooter = ShooterAttributesFactory.From(null);
+
+        Assert.That(shooter.DisplayName, Is.Null);
+        Assert.That(shooter.AccuracyFor(ShotKind.Two), Is.EqualTo(0f));
+    }
+
+    /// <summary>Same as above for the other half of the seam: a missing BasketBallState.</summary>
+    [Test]
+    public void MissingBasketBallStateLogsAndFallsBackToNoShotKind()
+    {
+        LogAssert.Expect(LogType.Warning, new System.Text.RegularExpressions.Regex("ShooterAttributesFactory.KindFromPointFlags"));
+
+        ShotKind kind = ShooterAttributesFactory.KindFromPointFlags(null);
+
+        Assert.That(kind, Is.EqualTo(ShotKind.None));
+    }
+
+    /// <summary>
+    /// Code review on the Phase 1c migration: an inert (zeroed) ShooterAttributes has ShootAngle 0,
+    /// so tanAlpha is 0. With a target above the release point - the ordinary case, the rim is
+    /// higher than the ball - that leaves Sqrt(G * R^2 / (2 * H)) with a negative radicand, since G
+    /// (gravity) is always negative and H is positive. Sqrt of a negative number is NaN, not an
+    /// exception, and it would have flowed straight into the launch velocity applied to the ball's
+    /// Rigidbody. The fix clamps the radicand at 0 instead of letting it go negative, so a
+    /// degenerate shooter produces a shot that goes nowhere rather than NaN physics state.
+    /// </summary>
+    [Test]
+    public void ADegenerateShooterProducesAZeroVelocityShotRatherThanNaN()
+    {
+        BasketBallState state = MakeState(twoPoints: true);
+        state.BasketBallTarget.transform.position = new Vector3(0f, 5f, 20f);
+        GameStats stats = MakeStats();
+        GameObject ball = Spawn("ball");
+
+        BasketballShotPipeline.LaunchComputation result = BasketballShotPipeline.ComputeLaunch(
+            ball.transform,
+            Vector3.zero,
+            state.BasketBallTarget.transform.position,
+            default(ShooterAttributes),
+            state,
+            stats,
+            lastShotDistance: 10f,
+            shotMeterSliderValue: 50f);
+
+        Assert.That(float.IsNaN(result.GlobalVelocity.x), Is.False, "x component must not be NaN");
+        Assert.That(float.IsNaN(result.GlobalVelocity.y), Is.False, "y component must not be NaN");
+        Assert.That(float.IsNaN(result.GlobalVelocity.z), Is.False, "z component must not be NaN");
     }
 }

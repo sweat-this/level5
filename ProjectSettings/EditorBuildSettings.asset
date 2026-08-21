@@ -69,9 +69,6 @@ EditorBuildSettings:
     path: Assets/Scenes/level_11_forest.unity
     guid: 7040352076b719646a70033db9a19afa
   - enabled: 1
-    path: Assets/Scenes/level_12_theater.unity
-    guid: 7bb96e12db2c4ad4487f4d377e02ccde
-  - enabled: 1
     path: Assets/Scenes/level_13_rustys.unity
     guid: 078ee84a86f816f46bc5e7f2dc573cc0
   - enabled: 1

@@ -228,11 +228,11 @@ public class GameLevelManager : MonoBehaviour
     {
         List<PlayerIdentifier> sorted = players
             .Where(x => x != null && x.gameStats != null)
-            .OrderByDescending(x => x.gameStats.TotalPoints)
+            .OrderByDescending(x => x.gameStats.Stats.TotalPoints)
             .ToList();
         if (isMultiplePlayersTotalPoints)
         {
-            currentHighScoreTotalPoints = sorted.Count > 0 ? sorted[0].gameStats.TotalPoints : 0;
+            currentHighScoreTotalPoints = sorted.Count > 0 ? sorted[0].gameStats.Stats.TotalPoints : 0;
         }
         return sorted;
     }

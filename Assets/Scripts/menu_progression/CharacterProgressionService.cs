@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 
 public class CharacterProgressionService
 {
@@ -198,6 +198,10 @@ public class CharacterProgressionService
 
         draft.Luck = Mathf.Min(draft.OriginalLuck + draft.AddToLuck, progressionState.MaxLuck);
         draft.Release = Mathf.Min(draft.OriginalRelease + draft.AddToRelease, progressionState.MaxReleaseAccuraccy);
+        // Range is deliberately uncapped - see ProgressionState. The drift it is exposed to comes
+        // from LoadManager.getPointsUsed reconstructing spent points as (Range - 25) / 5, which is
+        // wrong for every character authored at range 55, so each save/load cycle credits phantom
+        // points. That reconstruction is the bug, not the absence of a ceiling.
         draft.Range = draft.OriginalRange + draft.AddToRange;
     }
 

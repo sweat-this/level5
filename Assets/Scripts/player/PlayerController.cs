@@ -800,6 +800,30 @@ public class PlayerController : MonoBehaviour
     /// </summary>
     private void ApplyHorizontalMovement()
     {
+        // Something else owns the body in these states, and writing locomotion over it erases the
+        // motion entirely rather than blending with it:
+        //   - PlayerDunk.Launch sets a ballistic velocity and then immediately clears Locked, so
+        //     FixedUpdate resumes while the dunk is still in flight. Zeroing x/z there means the
+        //     player never travels to the rim.
+        //   - PlayerAnimationEvents applies attack lunges and projectile recoil with
+        //     ForceMode.VelocityChange. Attacks never set Locked, so a lunge would be wiped one
+        //     physics step later.
+        if (currentState == inAirDunkState || currentState == attackState)
+        {
+            return;
+        }
+
+        bool steering = movementHorizontal != 0f || movementVertical != 0f;
+        if (!steering && !Grounded)
+        {
+            // Airborne and not steering: leave the body alone. The MovePosition this replaced added
+            // a zero delta here, which was a no-op, so zeroing would be new behaviour rather than
+            // restored behaviour - and it would flatten every jump and knockback arc.
+            return;
+        }
+
+        // Grounded with no input still writes zero, which is what stops a contact impulse from
+        // surviving into the next step.
         Vector3 velocity = rigidBody.linearVelocity;
         velocity.x = movementHorizontal * movementSpeed;
         velocity.z = movementVertical * movementSpeed;

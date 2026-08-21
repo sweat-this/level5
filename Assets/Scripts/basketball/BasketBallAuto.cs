@@ -5,6 +5,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using Assets.Scripts.Utility;
 using Random = UnityEngine.Random;
+using Level5.Core;
 using Level5.Core.Match;
 
 public class BasketBallAuto : MonoBehaviour
@@ -38,6 +39,20 @@ public class BasketBallAuto : MonoBehaviour
     [SerializeField]
     AutoPlayerController autoPlayerController;
     CharacterProfile characterProfile;
+
+    /// <summary>
+    /// Phase 1c seam: one place that reads <see cref="characterProfile"/> into the shot pipeline's
+    /// contract, so the three call sites that need it build it the same way rather than each calling
+    /// <c>ShooterAttributesFactory.From</c> separately.
+    ///
+    /// Code review: resolved once in <see cref="Start"/> rather than recomputed on every read.
+    /// <c>characterProfile</c> is assigned once and never reassigned, so a computed property gained
+    /// nothing but cost - and cost that mattered specifically on the missing-profile path, where
+    /// <c>displayUiStats</c>'s twice-a-second <c>InvokeRepeating</c> would have re-logged the same
+    /// warning forever instead of once at startup.
+    /// </summary>
+    private ShooterAttributes currentShooter;
+
     GameObject dropShadow;
 
     Text scoreText;
@@ -87,6 +102,7 @@ public class BasketBallAuto : MonoBehaviour
         autoPlayer = GetComponent<PlayerIdentifier>().autoPlayer;
         autoPlayerController = autoPlayer.GetComponent<AutoPlayerController>();
         characterProfile = autoPlayerController.GetComponent<CharacterProfile>();
+        currentShooter = ShooterAttributesFactory.From(characterProfile);
         basketBallPosition = autoPlayer.transform.Find("basketBall_position").gameObject;
         basketBallState = GetComponent<BasketBallState>();
         basketBallState.isCpu = true;
@@ -124,7 +140,7 @@ public class BasketBallAuto : MonoBehaviour
             if (UiStatsEnabled)
             {
                 updateScoreText();
-                BasketballShotPipeline.UpdateShooterProfileText(shootProfileText, characterProfile);
+                BasketballShotPipeline.UpdateShooterProfileText(shootProfileText, currentShooter);
                 uiStatsBackground.SetActive(true);
             }
             else
@@ -370,26 +386,26 @@ public class BasketBallAuto : MonoBehaviour
         if (two && !three )
         {
             basketBallState.TwoAttempt = true;
-            gameStats.TwoPointerAttempts++;
-            gameStats.ShotAttempt++;
+            gameStats.Stats.TwoPointerAttempts++;
+            gameStats.Stats.ShotAttempt++;
         }
         if (three && !four)
         {
             basketBallState.ThreeAttempt = true;
-            gameStats.ThreePointerAttempts++;
-            gameStats.ShotAttempt++;
+            gameStats.Stats.ThreePointerAttempts++;
+            gameStats.Stats.ShotAttempt++;
         }
         if (four && !three)
         {
             basketBallState.FourAttempt = true;
-            gameStats.FourPointerAttempts++;
-            gameStats.ShotAttempt++;
+            gameStats.Stats.FourPointerAttempts++;
+            gameStats.Stats.ShotAttempt++;
         }
         if (seven)
         {
             basketBallState.SevenAttempt = true;
-            gameStats.SevenPointerAttempts++;
-            gameStats.ShotAttempt++;
+            gameStats.Stats.SevenPointerAttempts++;
+            gameStats.Stats.ShotAttempt++;
         }
         //GameRules.instance.updatePlayerScore();
     }
@@ -401,7 +417,7 @@ public class BasketBallAuto : MonoBehaviour
             transform,
             ballPositionAtLaunch.transform.position,
             basketBallState.BasketBallTarget.transform.position,
-            characterProfile,
+            currentShooter,
             basketBallState,
             gameStats,
             LastShotDistance,
@@ -443,10 +459,10 @@ public class BasketBallAuto : MonoBehaviour
     public float  rollForAutoPlayerSliderValue()
     {
         float shootPercent = 0;
-        if (basketBallState.TwoPoints) { shootPercent = characterProfile.Accuracy2Pt / 2; }
-        if (basketBallState.ThreePoints) { shootPercent = characterProfile.Accuracy3Pt / 2; }
-        if (basketBallState.FourPoints) { shootPercent = characterProfile.Accuracy4Pt / 2; }
-        if (basketBallState.SevenPoints) { shootPercent = characterProfile.Accuracy7Pt / 2; }
+        if (basketBallState.TwoPoints) { shootPercent = currentShooter.AccuracyTwoPoint / 2; }
+        if (basketBallState.ThreePoints) { shootPercent = currentShooter.AccuracyThreePoint / 2; }
+        if (basketBallState.FourPoints) { shootPercent = currentShooter.AccuracyFourPoint / 2; }
+        if (basketBallState.SevenPoints) { shootPercent = currentShooter.AccuracySevenPoint / 2; }
         //default if none assigned
         if(shootPercent == 0) { shootPercent = 90; }
         // get base value
@@ -468,7 +484,7 @@ public class BasketBallAuto : MonoBehaviour
         float clutchBonus = Random.Range(1f, 10f);
         // consecutive shots (increase percent). shot streak ups percent
         // consecutive shots bonus capped at 10
-        int consecShotsModifier = gameStats.ConsecutiveShotsMade;
+        int consecShotsModifier = gameStats.Stats.ConsecutiveShotsMade;
         if (consecShotsModifier > 10)
         {
             consecShotsModifier = 10;
@@ -495,7 +511,7 @@ public class BasketBallAuto : MonoBehaviour
         if (UiStatsEnabled)
         {
             updateScoreText();
-            BasketballShotPipeline.UpdateShooterProfileText(shootProfileText, characterProfile);
+            BasketballShotPipeline.UpdateShooterProfileText(shootProfileText, currentShooter);
             uiStatsBackground.SetActive(true);
             return true;
         }

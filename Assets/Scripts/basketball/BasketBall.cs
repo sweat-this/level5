@@ -5,6 +5,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using Assets.Scripts.Utility;
 using Random = UnityEngine.Random;
+using Level5.Core;
 using Level5.Core.Match;
 
 public class BasketBall : MonoBehaviour
@@ -13,6 +14,20 @@ public class BasketBall : MonoBehaviour
     Rigidbody rigidbody;
     AudioSource audioSource;
     CharacterProfile characterProfile;
+
+    /// <summary>
+    /// Phase 1c seam: one place that reads <see cref="characterProfile"/> into the shot pipeline's
+    /// contract, so the three call sites that need it build it the same way rather than each calling
+    /// <c>ShooterAttributesFactory.From</c> separately.
+    ///
+    /// Code review: resolved once in <see cref="Start"/> rather than recomputed on every read.
+    /// <c>characterProfile</c> is assigned once and never reassigned, so a computed property gained
+    /// nothing but cost - and cost that mattered specifically on the missing-profile path, where
+    /// <c>displayUiStats</c>'s twice-a-second <c>InvokeRepeating</c> would have re-logged the same
+    /// warning forever instead of once at startup.
+    /// </summary>
+    private ShooterAttributes currentShooter;
+
     BasketBallState basketBallState;
     GameStats gameStats;
     Animator anim;
@@ -66,6 +81,7 @@ public class BasketBall : MonoBehaviour
         player = playerIdentifier.player;
         playerController = player.GetComponent<PlayerController>();
         characterProfile = playerController.GetComponent<CharacterProfile>();
+        currentShooter = ShooterAttributesFactory.From(characterProfile);
         basketBallPosition = player.transform.Find("basketBall_position").gameObject;
         rigidbody = GetComponent<Rigidbody>();
         gameStats =  GetComponent<GameStats>();
@@ -102,7 +118,7 @@ public class BasketBall : MonoBehaviour
             if (UiStatsEnabled)
             {
                 updateScoreText();
-                BasketballShotPipeline.UpdateShooterProfileText(shootProfileText, characterProfile);
+                BasketballShotPipeline.UpdateShooterProfileText(shootProfileText, currentShooter);
                 uiStatsBackground.SetActive(true);
             }
             else
@@ -358,26 +374,26 @@ public class BasketBall : MonoBehaviour
         if (two && !three)
         {
             basketBallState.TwoAttempt = true;
-            gameStats.TwoPointerAttempts++;
-            gameStats.ShotAttempt++;
+            gameStats.Stats.TwoPointerAttempts++;
+            gameStats.Stats.ShotAttempt++;
         }
         if (three && !four)
         {
             basketBallState.ThreeAttempt = true;
-            gameStats.ThreePointerAttempts++;
-            gameStats.ShotAttempt++;
+            gameStats.Stats.ThreePointerAttempts++;
+            gameStats.Stats.ShotAttempt++;
         }
         if (four && !three)
         {
             basketBallState.FourAttempt = true;
-            gameStats.FourPointerAttempts++;
-            gameStats.ShotAttempt++;
+            gameStats.Stats.FourPointerAttempts++;
+            gameStats.Stats.ShotAttempt++;
         }
         if (seven)
         {
             basketBallState.SevenAttempt = true;
-            gameStats.SevenPointerAttempts++;
-            gameStats.ShotAttempt++;
+            gameStats.Stats.SevenPointerAttempts++;
+            gameStats.Stats.ShotAttempt++;
         }
         //GameRules.instance.updatePlayerScore();
     }
@@ -389,7 +405,7 @@ public class BasketBall : MonoBehaviour
             transform,
             ballPositionAtLaunch.transform.position,
             basketBallState.BasketBallTarget.transform.position,
-            characterProfile,
+            currentShooter,
             basketBallState,
             gameStats,
             LastShotDistance,
@@ -443,7 +459,7 @@ public class BasketBall : MonoBehaviour
         if (UiStatsEnabled)
         {
             updateScoreText();
-            BasketballShotPipeline.UpdateShooterProfileText(shootProfileText, characterProfile);
+            BasketballShotPipeline.UpdateShooterProfileText(shootProfileText, currentShooter);
             uiStatsBackground.SetActive(true);
             return true;
         }

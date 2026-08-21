@@ -262,9 +262,12 @@ public class Pause : MonoBehaviour
     /// Wires the four pause actions to their buttons so pointer, touch, keyboard and gamepad all
     /// reach them through the one route (AUD-098).
     ///
-    /// setPauseScreen disables these buttons while the game is running, so onClick cannot fire when
-    /// the menu is hidden; each handler still checks <c>paused</c> because that is the invariant the
-    /// polled version relied on.
+    /// Each handler checks both <c>paused</c> and <c>startOnPause</c>. `paused` alone is not enough:
+    /// at the start-on-pause prompt `paused` is already true, and Start() skips
+    /// <c>setPauseScreen(false)</c> because it only runs at timeScale 1 - so the buttons are still
+    /// enabled and interactable, Update forces selection onto <c>load_scene</c>, and the UI module
+    /// enables Submit independently of PlayerControlsProvider's counter. Without the second check a
+    /// Submit or a mouse click at the "press start" prompt reloads the scene.
     /// </summary>
     private void RegisterPauseButtonCallbacks()
     {
@@ -285,7 +288,7 @@ public class Pause : MonoBehaviour
     private void PressReloadScene()
     {
         // mode 26 has no reload, same guard the polled dispatch carried
-        if (!paused || MatchRuntime.RawModeId == 26)
+        if (!paused || startOnPause || MatchRuntime.RawModeId == 26)
         {
             return;
         }
@@ -295,7 +298,7 @@ public class Pause : MonoBehaviour
 
     private void PressLoadStartScreen()
     {
-        if (!paused)
+        if (!paused || startOnPause)
         {
             return;
         }
@@ -306,7 +309,7 @@ public class Pause : MonoBehaviour
     private void PressCancelMenu()
     {
         bool gameOver = GameLevelManager.instance != null && GameLevelManager.instance.GameOver;
-        if (!paused || gameOver)
+        if (!paused || startOnPause || gameOver)
         {
             return;
         }
@@ -316,7 +319,7 @@ public class Pause : MonoBehaviour
 
     private void PressQuitGame()
     {
-        if (!paused)
+        if (!paused || startOnPause)
         {
             return;
         }
