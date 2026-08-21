@@ -4,9 +4,31 @@ These documents are reusable task workflows for coding agents working in the Lev
 
 They complement `AGENTS.md`; they do not replace repository documentation or issue acceptance criteria.
 
-## Use
+## Normal Flow
 
-Read only the workflows needed for the current task. Avoid loading every workflow by default.
+```text
+AGENTS.md
+→ docs/ai/PRESETS.md
+→ targeted evidence
+→ detailed specialist workflow only if necessary
+→ work
+→ affected validation
+```
+
+Most routine tasks are resolved by [`PRESETS.md`](PRESETS.md) alone. Read only the specialist workflows below when the preset, risk level, or task genuinely requires deeper procedure — avoid loading every workflow by default.
+
+## Specialist Workflows
+
+- `unity-repo-architect.md` — substantial ownership/lifecycle/system architecture work.
+- `implementation-plan-red-team.md` — planning review; deep mode retains the full two-pass adversarial review.
+- `unity-implementation-agent.md` — detailed implementation discipline when useful.
+- `unity-debug-investigator.md` — non-obvious failures and root-cause investigation.
+- `unity-playability-validator.md` — detailed player-facing regression/playability verification.
+- `level5-scope-guardian.md` — actual scope/modernization decisions.
+
+## Example Compositions (Complex/Deep Changes)
+
+These sequences remain valid for architecture-level or high-risk work. They are not the default for routine engineering — start from `PRESETS.md` first.
 
 ### Architecture or major refactor
 
