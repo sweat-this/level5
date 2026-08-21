@@ -179,7 +179,7 @@ For relevant changes:
 8. For mode-sensitive work, exercise the affected modes rather than validating only a generic scene.
 9. Report validation that could not be run and why; never claim it passed.
 
-CI runs a `Repository Validation` check on every pull request and push to `dev`, independent of Unity licensing. A separate `Unity Tests` job runs `game-ci/unity-test-runner` against the editor pinned by `ProjectSettings/ProjectVersion.txt` for EditMode and PlayMode, but only executes when the repository variable `UNITY_CI_ENABLED` is `true` and Unity credentials are configured as repository secrets; until an administrator enables that capability and confirms real EditMode/PlayMode runs in GitHub Actions, treat Unity CI as not executing and keep local validation aligned with the checks above instead of assuming CI coverage. See issue #63 for current status.
+CI runs a `Repository Validation` check on every pull request and push to `dev`, independent of Unity licensing. A separate `Unity Tests` job runs `game-ci/unity-test-runner` against the editor pinned by `ProjectSettings/ProjectVersion.txt` for EditMode and PlayMode. It only executes when the repository variable `UNITY_CI_ENABLED` is `true` and Unity credentials are configured as repository secrets. Until an administrator enables that capability and confirms real EditMode/PlayMode runs in GitHub Actions, treat Unity CI as not executing and keep local validation aligned with the checks above instead of assuming CI coverage. See issue #63 for current status.
 
 ## Scope Control
 

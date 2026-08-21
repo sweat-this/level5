@@ -6,6 +6,10 @@ on:
     branches:
       - dev
 
+concurrency:
+  group: repository-quality-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
@@ -13,6 +17,7 @@ jobs:
   repository-validation:
     name: Repository Validation
     runs-on: windows-latest
+    timeout-minutes: 10
     permissions:
       contents: read
     steps:
@@ -21,29 +26,31 @@ jobs:
         shell: pwsh
         run: ./scripts/validate-repository.ps1
 
-  unity-tests:
-    name: Unity Tests
+  unity-capability:
+    name: Unity CI capability
     runs-on: ubuntu-latest
-    # Fork PRs never receive repository secrets on the `pull_request` trigger; skip the job
-    # outright for them instead of letting it fail on empty credentials. Do not switch this
-    # workflow to pull_request_target to "fix" that — it would expose secrets to untrusted code.
+    timeout-minutes: 5
+    # Fork PRs never receive repository secrets on the `pull_request` trigger; skip outright
+    # instead of letting it fail on empty credentials. Do not switch this workflow to
+    # pull_request_target to "fix" that -- it would expose secrets to untrusted code.
     if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
     permissions:
       contents: read
-      checks: write
     env:
       UNITY_CI_ENABLED: ${{ vars.UNITY_CI_ENABLED }}
       UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
       UNITY_SERIAL: ${{ secrets.UNITY_SERIAL }}
       UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
       UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+    outputs:
+      run: ${{ steps.capability.outputs.run }}
     steps:
       - name: Check Unity CI capability
         id: capability
         shell: bash
         run: |
           if [ "$UNITY_CI_ENABLED" != "true" ]; then
-            echo "::notice::Unity CI is disabled (repository variable UNITY_CI_ENABLED is not 'true'). Unity EditMode/PlayMode tests were NOT executed."
+            echo "::notice::Unity CI is disabled (repository variable UNITY_CI_ENABLED is not 'true'). Unity EditMode/PlayMode tests will not run."
             echo "run=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -57,13 +64,21 @@ jobs:
           fi
           echo "run=true" >> "$GITHUB_OUTPUT"
 
+  unity-tests:
+    name: Unity Tests
+    needs: unity-capability
+    if: needs.unity-capability.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      checks: write
+    steps:
       - uses: actions/checkout@v4
-        if: steps.capability.outputs.run == 'true'
         with:
           lfs: true
 
       - uses: actions/cache@v4
-        if: steps.capability.outputs.run == 'true'
         with:
           path: Library
           key: Library-unity-${{ hashFiles('Assets/**', 'Packages/**', 'ProjectSettings/**') }}
@@ -71,11 +86,18 @@ jobs:
             Library-unity-
             Library-
 
+      # Runs only if checkout/cache succeeded (default `success()` gating). continue-on-error
+      # masks a real test failure as conclusion:success, so PlayMode still runs afterward, and
+      # the explicit gate step below still fails the job by checking `outcome`, not `conclusion`.
       - name: Run Unity EditMode tests
-        if: ${{ steps.capability.outputs.run == 'true' && !cancelled() }}
         id: editmode
         continue-on-error: true
         uses: game-ci/unity-test-runner@v4
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_SERIAL: ${{ secrets.UNITY_SERIAL }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
         with:
           testMode: editmode
           artifactsPath: editmode-artifacts
@@ -83,10 +105,14 @@ jobs:
           checkName: Unity EditMode test results
 
       - name: Run Unity PlayMode tests
-        if: ${{ steps.capability.outputs.run == 'true' && !cancelled() }}
         id: playmode
         continue-on-error: true
         uses: game-ci/unity-test-runner@v4
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_SERIAL: ${{ secrets.UNITY_SERIAL }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
         with:
           testMode: playmode
           artifactsPath: playmode-artifacts
@@ -94,24 +120,24 @@ jobs:
           checkName: Unity PlayMode test results
 
       - name: Upload EditMode test artifacts
-        if: ${{ steps.capability.outputs.run == 'true' && !cancelled() }}
         uses: actions/upload-artifact@v4
         with:
           name: unity-editmode-results
           path: ${{ steps.editmode.outputs.artifactsPath }}
 
       - name: Upload PlayMode test artifacts
-        if: ${{ steps.capability.outputs.run == 'true' && !cancelled() }}
         uses: actions/upload-artifact@v4
         with:
           name: unity-playmode-results
           path: ${{ steps.playmode.outputs.artifactsPath }}
 
       - name: Require both Unity suites to pass
-        if: steps.capability.outputs.run == 'true'
+        env:
+          EDITMODE_OUTCOME: ${{ steps.editmode.outcome }}
+          PLAYMODE_OUTCOME: ${{ steps.playmode.outcome }}
         shell: bash
         run: |
-          if [ "${{ steps.editmode.outcome }}" != "success" ] || [ "${{ steps.playmode.outcome }}" != "success" ]; then
-            echo "::error::Unity EditMode and/or PlayMode tests failed (editmode=${{ steps.editmode.outcome }}, playmode=${{ steps.playmode.outcome }})."
+          if [ "$EDITMODE_OUTCOME" != "success" ] || [ "$PLAYMODE_OUTCOME" != "success" ]; then
+            echo "::error::Unity EditMode and/or PlayMode tests failed (editmode=$EDITMODE_OUTCOME, playmode=$PLAYMODE_OUTCOME)."
             exit 1
           fi
