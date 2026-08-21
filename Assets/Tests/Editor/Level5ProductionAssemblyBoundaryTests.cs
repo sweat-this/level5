@@ -131,8 +131,25 @@ public class Level5ProductionAssemblyBoundaryTests
         }
     }
 
+    /// <summary>
+    /// Scans <c>Assets/Scripts</c> (recursively, minus migrated folders) plus loose <c>.cs</c> files
+    /// directly under <c>Assets/</c> itself - e.g. <c>Assets/DialogueManager.cs</c>, which has no
+    /// asmdef and so is part of Assembly-CSharp exactly like everything under Scripts. Does not walk
+    /// other top-level asset folders (vendored third-party packages, Editor-only code, Assets/Tests'
+    /// own asmdef-free test assemblies): those either compile into a different assembly than runtime
+    /// Assembly-CSharp or are out of this migration's scope, and pulling them in risks reintroducing
+    /// generic-name collisions like the one that motivated <see cref="CollectTypesNotNestedInAnotherType"/>.
+    /// </summary>
     private static IEnumerable<string> EnumerateAssemblyCSharpScripts(IReadOnlyCollection<string> migratedFolders)
     {
+        if (Directory.Exists(AssetsRoot))
+        {
+            foreach (string file in Directory.EnumerateFiles(AssetsRoot, "*.cs", SearchOption.TopDirectoryOnly))
+            {
+                yield return file;
+            }
+        }
+
         if (!Directory.Exists(ScriptsRoot))
         {
             yield break;
@@ -156,28 +173,66 @@ public class Level5ProductionAssemblyBoundaryTests
     }
 
     /// <summary>
-    /// Only top-level (column-zero, unindented) <c>public</c> declarations count: a nested or
-    /// non-public type cannot be named by a bare identifier from another assembly at all - matching
-    /// on those produced pure name collisions (e.g. a private nested <c>StatsManager.mode</c> class
-    /// colliding with every unrelated local variable named <c>mode</c> across the codebase).
+    /// Only <c>public</c> declarations not nested inside another type count: a type nested inside a
+    /// class/struct/interface can't be named by a bare identifier from another assembly at all -
+    /// matching on those produced pure name collisions (a private nested <c>StatsManager.mode</c>
+    /// class was colliding with every unrelated local variable named <c>mode</c> across the
+    /// codebase). Nesting inside a <c>namespace</c> block does not exclude a type the same way -
+    /// this project's identifier-based matching doesn't distinguish "needs a using directive" from
+    /// "is directly in scope" either, so a namespace-scoped type is still a real, reachable name and
+    /// belongs in the set (most of this codebase's Assembly-CSharp model/service types are declared
+    /// this way, e.g. <c>HighScoreModel</c>, <c>UserModel</c>).
     /// </summary>
     private static HashSet<string> CollectDeclaredTypeNames(IEnumerable<string> files)
     {
         HashSet<string> types = new HashSet<string>(StringComparer.Ordinal);
-        Regex declaration = new Regex(
-            @"^public\s+(?:sealed\s+|abstract\s+|static\s+|partial\s+)*(?:class|interface|struct|enum)\s+([A-Za-z_][A-Za-z0-9_]*)",
-            RegexOptions.Multiline);
-
         foreach (string file in files)
         {
             string text = NormalizeSource(File.ReadAllText(file));
-            foreach (Match match in declaration.Matches(text))
-            {
-                types.Add(match.Groups[1].Value);
-            }
+            CollectTypesNotNestedInAnotherType(text, types);
         }
 
         return types;
+    }
+
+    /// <summary>
+    /// Walks brace depth, tracking whether each open brace belongs to a type (class/struct/interface/
+    /// enum) or something else (namespace, method body, block). A <c>public</c> type declaration is
+    /// recorded only when none of its enclosing braces belongs to a type.
+    /// </summary>
+    private static void CollectTypesNotNestedInAnotherType(string text, HashSet<string> types)
+    {
+        Regex token = new Regex(
+            @"(?<decl>\bpublic\s+(?:sealed\s+|abstract\s+|static\s+|partial\s+)*"
+            + @"(?:class|interface|struct|enum)\s+(?<name>[A-Za-z_][A-Za-z0-9_]*))"
+            + @"|(?<open>\{)|(?<close>\})",
+            RegexOptions.Singleline);
+
+        List<bool> enclosingIsType = new List<bool>();
+        string pendingTypeName = null;
+
+        foreach (Match match in token.Matches(text))
+        {
+            if (match.Groups["decl"].Success)
+            {
+                pendingTypeName = match.Groups["name"].Value;
+            }
+            else if (match.Groups["open"].Success)
+            {
+                bool opensType = pendingTypeName != null;
+                if (opensType && !enclosingIsType.Contains(true))
+                {
+                    types.Add(pendingTypeName);
+                }
+
+                enclosingIsType.Add(opensType);
+                pendingTypeName = null;
+            }
+            else if (match.Groups["close"].Success && enclosingIsType.Count > 0)
+            {
+                enclosingIsType.RemoveAt(enclosingIsType.Count - 1);
+            }
+        }
     }
 
     /// <summary>
