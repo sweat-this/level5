@@ -9,9 +9,10 @@ using UnityEngine;
 using UnityEngine.UI;
 using Random = UnityEngine.Random;
 using Touch = UnityEngine.Touch;
+using Level5.Core;
 using Level5.Core.Match;
 
-public class AutoPlayerController : MonoBehaviour
+public class AutoPlayerController : MonoBehaviour, IShooterActor
 {
     // components
     // AUD-002: internal rather than private so AutoPlayerDamageReactions - a same-assembly helper
@@ -920,4 +921,45 @@ public class AutoPlayerController : MonoBehaviour
     public CallBallToPlayer CallBallToPlayer { get => callBallToPlayer; set => callBallToPlayer = value; }
     public Rigidbody RigidBody { get => rigidBody; set => rigidBody = value; }
     public CharacterProfile CharacterProfile { get => characterProfile; set => characterProfile = value; }
+
+    // ==================== IShooterActor (player<->basketball cycle-cut slice) ====================
+    // Explicit implementation: these exist only for basketball-side code reaching this controller
+    // through PlayerIdentifier.Actor, so they stay off the ordinary public surface. FacingFront and
+    // Grounded already satisfy the interface implicitly via the properties above, and EndShootCycle()
+    // already matches the interface signature exactly - no code needed for any of the three.
+
+    bool IShooterActor.HasBasketball { get => hasBasketball; set => hasBasketball = value; }
+
+    bool IShooterActor.InDunkState => currentState == inAirDunkState;
+
+    float IShooterActor.DistanceFromRim => playerDistanceFromRim;
+
+    private ShooterAttributes? _shooterAttributes;
+
+    // Lazily cached on first access rather than in Start(), so a basketball-side reader (e.g.
+    // ShotMeter.Start()) can never race this controller's own Start() - see the cycle-cut plan's
+    // execution-order note. Preserves ShooterAttributesMapper's "warn once on a missing profile"
+    // behavior, since the underlying CharacterProfile reference itself does not change after Awake.
+    ShooterAttributes IShooterActor.ShooterAttributes =>
+        _shooterAttributes ??= ShooterAttributesMapper.From(GetComponent<CharacterProfile>());
+
+    // Deliberately not memoized, unlike ShooterAttributes above: this is the CPU clutch-bonus roll
+    // stat, read live at roll time (BasketBallAuto.rollForAutoPlayerSliderValue), matching the
+    // pre-refactor behavior of reading CharacterProfile.Clutch directly at that same late point -
+    // see IShooterActor.Clutch for why folding it into the memoized ShooterAttributes struct would
+    // have been a regression. Reads via a fresh GetComponent rather than the characterProfile field
+    // so this carries no dependency on this controller's own Start() having already run either.
+    int IShooterActor.Clutch => GetComponent<CharacterProfile>()?.Clutch ?? 0;
+
+    float IShooterActor.ShotMeterSliderValue => shotmeter.SliderValueOnButtonPress;
+
+    bool IShooterActor.ShotMeterEnded => shotmeter.MeterEnded;
+
+    void IShooterActor.SetAnimBool(string name, bool value) => SetPlayerAnim(name, value);
+
+    void IShooterActor.SetAnimTrigger(string name) => SetPlayerAnimTrigger(name);
+
+    void IShooterActor.LockCallBallToPlayer(bool locked) => callBallToPlayer.Locked = locked;
+
+    void IShooterActor.DisplayShotMeterMessage(string message) => shotmeter.displaySliderMessageText(message);
 }

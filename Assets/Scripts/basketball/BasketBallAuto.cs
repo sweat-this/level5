@@ -36,17 +36,16 @@ public class BasketBallAuto : MonoBehaviour
     //GameObject player;
     [SerializeField]
     GameObject autoPlayer;
-    [SerializeField]
-    AutoPlayerController autoPlayerController;
-    CharacterProfile characterProfile;
+    IShooterActor actor;
 
     /// <summary>
-    /// Phase 1c seam: one place that reads <see cref="characterProfile"/> into the shot pipeline's
-    /// contract, so the three call sites that need it build it the same way rather than each calling
-    /// <c>ShooterAttributesFactory.From</c> separately.
+    /// Phase 1c seam: one place that reads the shooter into the shot pipeline's contract, so the
+    /// call sites that need it build it the same way. Player↔basketball cycle-cut slice: now read
+    /// once from <see cref="IShooterActor.ShooterAttributes"/> in <see cref="Start"/> rather than
+    /// resolved from a <c>CharacterProfile</c> directly - <c>actor</c> owns that mapping now.
     ///
     /// Code review: resolved once in <see cref="Start"/> rather than recomputed on every read.
-    /// <c>characterProfile</c> is assigned once and never reassigned, so a computed property gained
+    /// The underlying actor is assigned once and never reassigned, so a computed property gained
     /// nothing but cost - and cost that mattered specifically on the missing-profile path, where
     /// <c>displayUiStats</c>'s twice-a-second <c>InvokeRepeating</c> would have re-logged the same
     /// warning forever instead of once at startup.
@@ -99,10 +98,10 @@ public class BasketBallAuto : MonoBehaviour
     void Start()
     {
         instance = this;
-        autoPlayer = GetComponent<PlayerIdentifier>().autoPlayer;
-        autoPlayerController = autoPlayer.GetComponent<AutoPlayerController>();
-        characterProfile = autoPlayerController.GetComponent<CharacterProfile>();
-        currentShooter = ShooterAttributesFactory.From(characterProfile);
+        PlayerIdentifier playerIdentifier = GetComponent<PlayerIdentifier>();
+        autoPlayer = playerIdentifier.autoPlayer;
+        actor = playerIdentifier.Actor;
+        currentShooter = actor.ShooterAttributes;
         basketBallPosition = autoPlayer.transform.Find("basketBall_position").gameObject;
         basketBallState = GetComponent<BasketBallState>();
         basketBallState.isCpu = true;
@@ -177,7 +176,7 @@ public class BasketBallAuto : MonoBehaviour
             dropShadow.transform.position = new Vector3(transform.root.position.x, 0.01f, transform.root.position.z);
 
             // change this to reduce opacity
-            if (!autoPlayerController.hasBasketball)
+            if (!actor.HasBasketball)
             {
                 SetBallVisible(true);
                 dropShadow.SetActive(true);
@@ -186,15 +185,15 @@ public class BasketBallAuto : MonoBehaviour
             }
 
             //if player has ball and hasnt shot
-            if (autoPlayerController.hasBasketball
-                && autoPlayerController.currentState != autoPlayerController.inAirDunkState)//&& !basketBallState.Thrown)
+            if (actor.HasBasketball
+                && !actor.InDunkState)//&& !basketBallState.Thrown)
             {
                 basketBallState.CanPullBall = false;
                 SetBallVisible(false);
                 dropShadow.SetActive(false);
-                autoPlayerController.SetPlayerAnim("hasBasketball", true);
+                actor.SetAnimBool("hasBasketball", true);
                 //autoPlayerState.setPlayerAnim("walking", false);
-                autoPlayerController.SetPlayerAnim("moonwalking", false);
+                actor.SetAnimBool("moonwalking", false);
 
                 // move basketball to launch position and disable sprite
                 transform.position = new Vector3(basketBallPosition.transform.position.x,
@@ -254,7 +253,7 @@ public class BasketBallAuto : MonoBehaviour
         // collision : basketball + rim
         if (gameObject.CompareTag("basketballAuto") && other.gameObject.CompareTag("basketballrim")
             && playHitRimSound
-            && !autoPlayerController.hasBasketball)
+            && !actor.HasBasketball)
         {
             playHitRimSound = false;
             audioSource.PlayOneShot(SFXBB.instance.basketballHitRim);
@@ -264,7 +263,7 @@ public class BasketBallAuto : MonoBehaviour
         }
         // collision : basketball + ground
         if (gameObject.CompareTag("basketballAuto") && other.gameObject.CompareTag("ground")
-            && !autoPlayerController.hasBasketball)
+            && !actor.HasBasketball)
         {
             basketBallState.CanPullBall = true;
             //reset rotation
@@ -276,7 +275,7 @@ public class BasketBallAuto : MonoBehaviour
         }
         // collision : basketball + fence
         if (gameObject.CompareTag("basketballAuto") && other.gameObject.CompareTag("fence")
-            && !autoPlayerController.hasBasketball)
+            && !actor.HasBasketball)
         {
             audioSource.PlayOneShot(SFXBB.instance.basketballHitFence);
             basketBallState.CanPullBall = true;
@@ -300,7 +299,7 @@ public class BasketBallAuto : MonoBehaviour
             && other.gameObject.CompareTag("autoPlayerHitbox")
             && !basketBallState.Thrown)
         {
-            autoPlayerController.hasBasketball = true;
+            actor.HasBasketball = true;
             basketBallState.Thrown = false;
         }
     }
@@ -321,13 +320,13 @@ public class BasketBallAuto : MonoBehaviour
     {
         //Debug.Log("-----shootBasketBall");
         // set side or front shooting animation
-        if (autoPlayerController.FacingFront) // facing straight toward bball goal
+        if (actor.FacingFront) // facing straight toward bball goal
         {
-            autoPlayerController.SetPlayerAnimTrigger("basketballShootFront");
+            actor.SetAnimTrigger("basketballShootFront");
         }
         else // side of goal, relative postion
         {
-            autoPlayerController.SetPlayerAnimTrigger("basketballShoot");
+            actor.SetAnimTrigger("basketballShoot");
         }
 
         // reset ball rotation
@@ -369,7 +368,7 @@ public class BasketBallAuto : MonoBehaviour
 
         //reset state flags
         basketBallState.Thrown = true;
-        autoPlayerController.CallBallToPlayer.Locked = false;
+        actor.LockCallBallToPlayer(false);
     }
 
     public void updateBasketBallStateShotTypeOnShoot(bool two, bool three, bool four, bool seven)
@@ -421,24 +420,24 @@ public class BasketBallAuto : MonoBehaviour
             basketBallState,
             gameStats,
             LastShotDistance,
-            autoPlayerController.Shotmeter.SliderValueOnButtonPress);
+            actor.ShotMeterSliderValue);
 
         if (computation.IsSwish && BehaviorNpcCritical.instance != null)
         {
             BehaviorNpcCritical.instance.playAnimationCriticalSuccesful();
         }
 
-        autoPlayerController.Shotmeter.displaySliderMessageText(computation.ShotMeterMessage);
+        actor.DisplayShotMeterMessage(computation.ShotMeterMessage);
 
         // launch the object by setting its initial velocity and flipping its state
         rigidbody.linearVelocity = computation.GlobalVelocity;
 
-        autoPlayerController.hasBasketball = false;
-        autoPlayerController.SetPlayerAnim("hasBasketball", false);
+        actor.HasBasketball = false;
+        actor.SetAnimBool("hasBasketball", false);
         // CPU-2: the ball reports that the shot is away - it is the only thing that knows - but
         // the CPU owns the state transition. This used to write `shootTrigger` and `Locked`
         // directly, which meant the CPU could not complete a shoot cycle unless this method ran.
-        autoPlayerController.EndShootCycle();
+        actor.EndShootCycle();
     }
 
     // ============================ Functions and Properties ==========================================
@@ -449,7 +448,7 @@ public class BasketBallAuto : MonoBehaviour
         // get position of ball when shot
         GameObject currentBallPosition = autoPlayer.transform.Find("basketBall_position").gameObject;
         // wait for shot meter to finish
-        yield return new WaitUntil(() => autoPlayerController.Shotmeter.MeterEnded == true);
+        yield return new WaitUntil(() => actor.ShotMeterEnded == true);
         //yield return new WaitUntil(() => Time.time >= (autoPlayerState.Shotmeter.MeterStartTime + 0.5f));
         //launch ball to goal      
         Launch(currentBallPosition);
@@ -489,7 +488,7 @@ public class BasketBallAuto : MonoBehaviour
         {
             consecShotsModifier = 10;
         }
-        if (UtilityFunctions.RollPercent((characterProfile.Clutch / 2f) + consecShotsModifier))
+        if (UtilityFunctions.RollPercent((actor.Clutch / 2f) + consecShotsModifier))
         {
             shootPercent += clutchBonus;
         }

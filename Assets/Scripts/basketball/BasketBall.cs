@@ -13,15 +13,15 @@ public class BasketBall : MonoBehaviour
     SpriteRenderer spriteRenderer;
     Rigidbody rigidbody;
     AudioSource audioSource;
-    CharacterProfile characterProfile;
 
     /// <summary>
-    /// Phase 1c seam: one place that reads <see cref="characterProfile"/> into the shot pipeline's
-    /// contract, so the three call sites that need it build it the same way rather than each calling
-    /// <c>ShooterAttributesFactory.From</c> separately.
+    /// Phase 1c seam: one place that reads the shooter into the shot pipeline's contract, so the
+    /// call sites that need it build it the same way. Player↔basketball cycle-cut slice: now read
+    /// once from <see cref="IShooterActor.ShooterAttributes"/> in <see cref="Start"/> rather than
+    /// resolved from a <c>CharacterProfile</c> directly - <c>actor</c> owns that mapping now.
     ///
     /// Code review: resolved once in <see cref="Start"/> rather than recomputed on every read.
-    /// <c>characterProfile</c> is assigned once and never reassigned, so a computed property gained
+    /// The underlying actor is assigned once and never reassigned, so a computed property gained
     /// nothing but cost - and cost that mattered specifically on the missing-profile path, where
     /// <c>displayUiStats</c>'s twice-a-second <c>InvokeRepeating</c> would have re-logged the same
     /// warning forever instead of once at startup.
@@ -31,7 +31,7 @@ public class BasketBall : MonoBehaviour
     BasketBallState basketBallState;
     GameStats gameStats;
     Animator anim;
-    PlayerController playerController;
+    IShooterActor actor;
     PlayerIdentifier playerIdentifier;
     GameObject basketBallSprite;
     GameObject basketBallPosition;
@@ -79,9 +79,8 @@ public class BasketBall : MonoBehaviour
 
         playerIdentifier = GetComponent<PlayerIdentifier>();
         player = playerIdentifier.player;
-        playerController = player.GetComponent<PlayerController>();
-        characterProfile = playerController.GetComponent<CharacterProfile>();
-        currentShooter = ShooterAttributesFactory.From(characterProfile);
+        actor = playerIdentifier.Actor;
+        currentShooter = actor.ShooterAttributes;
         basketBallPosition = player.transform.Find("basketBall_position").gameObject;
         rigidbody = GetComponent<Rigidbody>();
         gameStats =  GetComponent<GameStats>();
@@ -159,7 +158,7 @@ public class BasketBall : MonoBehaviour
             dropShadow.transform.position = new Vector3(transform.root.position.x, shadowHeight, transform.root.position.z);
 
             // change this to reduce opacity
-            if (!playerController.hasBasketball)
+            if (!actor.HasBasketball)
             {
                 SetBallVisible(true);
                 dropShadow.SetActive(true);
@@ -167,15 +166,15 @@ public class BasketBall : MonoBehaviour
                 basketBallSprite.transform.rotation = Quaternion.Euler(13.6f, 0, transform.root.position.z);
             }
             //if player has ball and hasnt shot
-            if (playerController.hasBasketball
-                && playerController.currentState != playerController.dunkState)//&& !basketBallState.Thrown)
+            if (actor.HasBasketball
+                && !actor.InDunkState)//&& !basketBallState.Thrown)
             {
                 basketBallState.CanPullBall = false;
                 SetBallVisible(false);
                 dropShadow.SetActive(false);
-                playerController.SetPlayerAnim("hasBasketball", true);
+                actor.SetAnimBool("hasBasketball", true);
                 //playerState.setPlayerAnim("walking", false);
-                playerController.SetPlayerAnim("moonwalking", false);
+                actor.SetAnimBool("moonwalking", false);
 
                 // move basketball to launch position and disable sprite
                 transform.position = new Vector3(basketBallPosition.transform.position.x,
@@ -240,7 +239,7 @@ public class BasketBall : MonoBehaviour
         // collision : basketball + rim
         if (gameObject.CompareTag("basketball") && other.gameObject.CompareTag("basketballrim")
             && playHitRimSound
-            && !playerController.hasBasketball)
+            && !actor.HasBasketball)
         {
             playHitRimSound = false;
             audioSource.PlayOneShot(SFXBB.instance.basketballHitRim);
@@ -250,7 +249,7 @@ public class BasketBall : MonoBehaviour
         }
         // collision : basketball + ground
         if (gameObject.CompareTag("basketball") && other.gameObject.CompareTag("ground")
-            && !playerController.hasBasketball)
+            && !actor.HasBasketball)
         {
             basketBallState.CanPullBall = true;
             //reset rotation
@@ -262,7 +261,7 @@ public class BasketBall : MonoBehaviour
         }
         // collision : basketball + fence
         if (gameObject.CompareTag("basketball") && other.gameObject.CompareTag("fence")
-            && !playerController.hasBasketball)
+            && !actor.HasBasketball)
         {
             audioSource.PlayOneShot(SFXBB.instance.basketballHitFence);
             basketBallState.CanPullBall = true;
@@ -286,7 +285,7 @@ public class BasketBall : MonoBehaviour
             && other.gameObject.CompareTag("playerHitbox")
             && !basketBallState.Thrown)
         {
-            playerController.hasBasketball = true;
+            actor.HasBasketball = true;
             basketBallState.Thrown = false;
         }
     }
@@ -307,13 +306,13 @@ public class BasketBall : MonoBehaviour
     {
 
         // set side or front shooting animation
-        if (playerController.FacingFront) // facing straight toward bball goal
+        if (actor.FacingFront) // facing straight toward bball goal
         {
-            playerController.SetPlayerAnimTrigger("basketballShootFront");
+            actor.SetAnimTrigger("basketballShootFront");
         }
         else // side of goal, relative postion
         {
-            playerController.SetPlayerAnimTrigger("basketballShoot");
+            actor.SetAnimTrigger("basketballShoot");
         }
 
         // reset ball rotation
@@ -358,7 +357,7 @@ public class BasketBall : MonoBehaviour
 
         //reset state flags
         basketBallState.Thrown = true;
-        playerController.CallBallToPlayer.Locked = false;
+        actor.LockCallBallToPlayer(false);
     }
 
     public void updateBasketBallStateShotTypeOnShoot(bool two, bool three, bool four, bool seven)
@@ -409,22 +408,24 @@ public class BasketBall : MonoBehaviour
             basketBallState,
             gameStats,
             LastShotDistance,
-            playerController.Shotmeter.SliderValueOnButtonPress);
+            actor.ShotMeterSliderValue);
 
         if (computation.IsSwish && BehaviorNpcCritical.instance != null && !playerIdentifier.isCpu)
         {
             BehaviorNpcCritical.instance.playAnimationCriticalSuccesful();
         }
 
-        playerController.Shotmeter.displaySliderMessageText(computation.ShotMeterMessage);
+        actor.DisplayShotMeterMessage(computation.ShotMeterMessage);
 
         // launch the object by setting its initial velocity and flipping its state
         rigidbody.linearVelocity = computation.GlobalVelocity;
-        playerController.hasBasketball = false;
-        playerController.SetPlayerAnim("hasBasketball", false);
+        actor.HasBasketball = false;
+        actor.SetAnimBool("hasBasketball", false);
+        // Symmetric with BasketBallAuto.Launch's CPU-2 call - a no-op on the human implementation.
+        actor.EndShootCycle();
 
         // analytics
-        AnaylticsManager.PlayerShoot(playerController.Shotmeter.SliderValueOnButtonPress);
+        AnaylticsManager.PlayerShoot(actor.ShotMeterSliderValue);
     }
 
     // ============================ Functions and Properties ==========================================
@@ -435,7 +436,7 @@ public class BasketBall : MonoBehaviour
         // get position of ball when shot
         GameObject currentBallPosition = player.transform.Find("basketBall_position").gameObject;
         // wait for shot meter to finish
-        yield return new WaitUntil(() => playerController.Shotmeter.MeterEnded == false);
+        yield return new WaitUntil(() => actor.ShotMeterEnded == false);
         //launch ball to goal      
         Launch(currentBallPosition);
     }

@@ -2,13 +2,13 @@
 using System.Collections;
 using UnityEngine;
 using UnityEngine.UI;
+using Level5.Core;
 using Level5.Core.Match;
 
 public class ShotMeter : MonoBehaviour
 {
     PlayerIdentifier playerIdentifier;
-    PlayerController playerController;
-    AutoPlayerController autoPlayerController;
+    IShooterActor actor;
 
     private const string sliderValueOnPressName = "slider_value_text";
     private const string sliderMessageName = "slider_message_text";
@@ -18,7 +18,7 @@ public class ShotMeter : MonoBehaviour
     float sliderValueOnButtonPress;
     public float SliderValueOnButtonPress{get => sliderValueOnButtonPress; set => sliderValueOnButtonPress = value;}
 
-    CharacterProfile shooterProfile;
+    ShooterAttributes shooterAttributes;
     Slider slider;
     public Slider Slider => slider;
 
@@ -63,16 +63,8 @@ public class ShotMeter : MonoBehaviour
     void Start()
     {
         playerIdentifier = GetComponentInParent<PlayerIdentifier>();
-        if (playerIdentifier.isCpu)
-        {
-            shooterProfile = playerIdentifier.autoPlayer.GetComponent<CharacterProfile>();
-            autoPlayerController = playerIdentifier.autoPlayer.GetComponent<AutoPlayerController>();
-        }
-        else
-        {
-            shooterProfile = playerIdentifier.player.GetComponent<CharacterProfile>();
-            playerController = playerIdentifier.player.GetComponent<PlayerController>();
-        }
+        actor = playerIdentifier.Actor;
+        shooterAttributes = actor.ShooterAttributes;
         slider = GetComponentInChildren<Slider>();
         meterFillTime = calculateSliderFillTime(); // time for shot meter active, based on player jump/time until jump peak
         sliderValueOnPress = transform.Find(sliderValueOnPressName).GetComponent<Text>();
@@ -96,12 +88,7 @@ public class ShotMeter : MonoBehaviour
     void Update()
     {
         // if player grounded reset slider
-        if (playerIdentifier.player && playerController.Grounded)
-        {
-            slider.value = 0;
-        }
-        // if player grounded reset slider
-        if (playerIdentifier.autoPlayer && autoPlayerController.Grounded)
+        if (actor != null && actor.Grounded)
         {
             slider.value = 0;
         }
@@ -173,7 +160,7 @@ public class ShotMeter : MonoBehaviour
     }
     float calculateSliderFillTime()
     {
-        float time = shooterProfile.JumpForce / Physics.gravity.y;
+        float time = shooterAttributes.JumpForce / Physics.gravity.y;
         return Math.Abs(time);
     }
     public bool MeterStarted

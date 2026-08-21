@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using Level5.Core;
 using Level5.Core.Match;
 
 public class PlayerIdentifier : MonoBehaviour
@@ -24,6 +25,20 @@ public class PlayerIdentifier : MonoBehaviour
     public CharacterProfile characterProfile;
     public GameStats gameStats;
 
+    /// <summary>
+    /// The neutral basketball-facing contract for whichever actor this identifier is wired to.
+    ///
+    /// Player↔basketball cycle-cut slice: this is the one new member on <see cref="PlayerIdentifier"/>
+    /// this slice adds. Basketball-side files (<c>BasketBall</c>, <c>BasketBallAuto</c>,
+    /// <c>ShotMeter</c>, <c>RangeMeter</c>) resolve their shooter through this instead of
+    /// <c>GetComponent&lt;PlayerController&gt;()</c>/<c>&lt;AutoPlayerController&gt;()</c>, which is what
+    /// lets them stop referencing those concrete types. Every existing field on this identifier
+    /// (including <see cref="playerController"/>/<see cref="autoPlayerController"/> below) is
+    /// unchanged - this is additive, not a replacement.
+    /// </summary>
+    public IShooterActor Actor => isCpu
+        ? autoPlayer != null ? autoPlayer.GetComponent<IShooterActor>() : null
+        : player != null ? player.GetComponent<IShooterActor>() : null;
 
     public void setIds(int pid, bool isCpu)
     {
