@@ -496,44 +496,81 @@ public class AutoPlayerController : MonoBehaviour, IShooterActor
         }
     }
 
+    /// <summary>
+    /// #54: this used to be three independent <c>if</c> statements, each mixing an accuracy
+    /// comparison with a score-gap override, silently overwriting one another's <c>targetPosition</c>
+    /// - including an unreachable 13-15 point deficit gap that fell through to
+    /// <c>Vector3.zero == targetPosition</c> as its "default". Strategy (which line to shoot from)
+    /// and geometry (where that line is in world space) are now separate: <see cref="SelectShotKind"/>
+    /// always returns one defined <see cref="ShotKind"/>, and <see cref="BuildShotTarget"/> turns
+    /// that into a position using the exact distances/margins the three original branches used.
+    /// </summary>
     private Vector3 getClosestPositionMarker()
     {
-        // * note factor in range and other variables for shot type
-        // also clutch
-        // and time based
-        // if( < 1 minute. clutch increases accuracy)
+        return BuildShotTarget(SelectShotKind());
+    }
 
-        float distance3 =( Constants.DISTANCE_3point - playerDistanceFromRim) + 0.5f;
-        float distance4 = (Constants.DISTANCE_4point - playerDistanceFromRim) + 0.5f;
-        // CPU-4: distance7 is gone - the seven point branch below no longer measures from where
-        // the CPU currently stands, so it does not need the remaining-distance form the other two
-        // use to convert a rim-relative vector into a target.
-        Vector3 finalDirection = new();
-        Vector3 targetPosition = new();
-        Vector3 directionOfTravelSeven = new();
+    /// <summary>
+    /// Which line this CPU should shoot from right now, given its runtime-resolved accuracies,
+    /// authored shooter identity and the current score situation. See
+    /// <see cref="Level5.Core.CpuShotSelectionPolicy"/> for the decision itself - this method only
+    /// gathers the inputs it needs from the scene.
+    /// </summary>
+    private ShotKind SelectShotKind()
+    {
+        bool canShootSeven = cpuShootSevenpointers();
+        int scoreDeficit = CpuScoreDeficit.Calculate(GameLevelManager.instance.players, playerIdentifier, gameStats.Stats.TotalPoints);
 
-        Vector3 directionOfTravel = transform.position - GameLevelManager.instance.BasketballRimVector;
+        CpuShotSelectionContext context = new CpuShotSelectionContext(
+            preferredKind: PreferredShotKind(characterProfile.CpuType),
+            accuracyThree: characterProfile.Accuracy3Pt,
+            accuracyFour: characterProfile.Accuracy4Pt,
+            accuracySeven: characterProfile.Accuracy7Pt,
+            canShootSeven: canShootSeven,
+            scoreDeficit: scoreDeficit);
 
-        // set direction of travel to 7pt line based on which side of goal player is on
-        if(playerRelativePositioning.x > 0) { directionOfTravelSeven = Vector3.right; }
-        else { directionOfTravelSeven = Vector3.left; }
-        // conditions for type of shot
-        if (characterProfile.Accuracy3Pt > characterProfile.Accuracy4Pt
-             && (GameLevelManager.instance.currentHighScoreTotalPoints - gameStats.Stats.TotalPoints) <= 12)
+        return CpuShotSelectionPolicy.Select(in context);
+    }
+
+    /// <summary>Maps the authored CPU shooter identity onto the shot-kind vocabulary the selection
+    /// policy uses.
+    ///
+    /// Public rather than private so <c>Level5CpuShotSelectionTests</c> (a separate Editor assembly,
+    /// with no <c>InternalsVisibleTo</c> declared for it) reuses this mapping instead of re-deriving
+    /// it: a second, independently-maintained copy in test code would not be forced to agree with
+    /// this one if the mapping ever changed.</summary>
+    public static ShotKind PreferredShotKind(CpuBaseStats.ShooterType cpuType)
+    {
+        switch (cpuType)
         {
+            case CpuBaseStats.ShooterType.Three:
+                return ShotKind.Three;
+            case CpuBaseStats.ShooterType.Seven:
+                return ShotKind.Seven;
+            default:
+                return ShotKind.Four;
+        }
+    }
+
+    /// <summary>
+    /// Where <paramref name="shotKind"/>'s line is in world space, for this CPU right now.
+    ///
+    /// Preserves every distance/margin the original branches used, including the CPU-4 fix that
+    /// anchors the seven-point target to the rim (fixed in world space) rather than to the CPU's own
+    /// position, and the z-plane clamp that keeps every target on the CPU's side of the rim.
+    /// </summary>
+    private Vector3 BuildShotTarget(ShotKind shotKind)
+    {
+        Vector3 rimVector = GameLevelManager.instance.BasketballRimVector;
+        Vector3 finalDirection;
+
+        if (shotKind == ShotKind.Three)
+        {
+            Vector3 directionOfTravel = transform.position - rimVector;
+            float distance3 = (Constants.DISTANCE_3point - playerDistanceFromRim) + 0.5f;
             finalDirection = directionOfTravel + directionOfTravel.normalized * distance3;
-            targetPosition = GameLevelManager.instance.BasketballRimVector + finalDirection;
         }
-        if (characterProfile.Accuracy3Pt <= characterProfile.Accuracy4Pt
-            || (GameLevelManager.instance.currentHighScoreTotalPoints - gameStats.Stats.TotalPoints) >= 16)
-        {
-            finalDirection = directionOfTravel + directionOfTravel.normalized * distance4;
-            targetPosition = GameLevelManager.instance.BasketballRimVector + finalDirection;
-        }
-        if (((characterProfile.Accuracy7Pt >= characterProfile.Accuracy4Pt
-            && characterProfile.Accuracy7Pt >= characterProfile.Accuracy3Pt)
-            || (GameLevelManager.instance.currentHighScoreTotalPoints - gameStats.Stats.TotalPoints) >= 21)
-            && cpuShootSevenpointers())
+        else if (shotKind == ShotKind.Seven)
         {
             // CPU-4: this was `transform.position + finalDirection` - the only branch here that
             // anchored its target to the CPU rather than to the rim. Update recomputes the marker
@@ -543,64 +580,39 @@ public class AutoPlayerController : MonoBehaviour, IShooterActor
             //
             // Expressed the same way the three and four point branches are: a point on the CPU's
             // own side of the rim, exactly the shot distance plus the same 0.5 margin away, fixed
-            // in world space so the CPU can actually arrive at it.
+            // in world space so the CPU can actually arrive at it. Unlike the three/four branches,
+            // this deliberately never reads the CPU's own position (no `directionOfTravel`) - that
+            // is the CPU-4 fix, not an oversight.
+            Vector3 directionOfTravelSeven = playerRelativePositioning.x > 0 ? Vector3.right : Vector3.left;
             finalDirection = directionOfTravelSeven * (Constants.DISTANCE_7point + 0.5f);
-            targetPosition = GameLevelManager.instance.BasketballRimVector + finalDirection;
         }
-        // Reachable: neither the three nor the four point branch fires when Accuracy3Pt is the
-        // higher of the two and the score gap sits between 13 and 15, so this is the genuine
-        // default rather than dead code.
-        if (targetPosition == Vector3.zero)
+        else
         {
+            // ShotKind.Four, plus ShotKind.None/Two as a defensive fallback: SelectShotKind's only
+            // caller contract (CpuShotSelectionPolicy.Select) guarantees Three/Four/Seven, so this
+            // branch should never see anything but Four. Kept defensive rather than throwing - a
+            // wrong shot location is recoverable mid-Update(), an exception is not.
+            Vector3 directionOfTravel = transform.position - rimVector;
+            float distance4 = (Constants.DISTANCE_4point - playerDistanceFromRim) + 0.5f;
             finalDirection = directionOfTravel + directionOfTravel.normalized * distance4;
-            targetPosition = GameLevelManager.instance.BasketballRimVector + finalDirection;
-        }
-        if (targetPosition.z < GameLevelManager.instance.BasketballRimVector.z + 3)
-        {
-            targetPosition = new Vector3(targetPosition.x, targetPosition.y, GameLevelManager.instance.BasketballRimVector.z);
         }
 
-        //Debug.Log("finalDirection : " + finalDirection);
-        //Debug.Log("directionOfTravel : " + finalDirection);
-        //Debug.Log("GameLevelManager.instance.BasketballRimVector : " + GameLevelManager.instance.BasketballRimVector);
-        //Debug.Log("targetPosition : " + targetPosition);
-        //Debug.Log("behind rim : " + ( targetPosition.z < GameLevelManager.instance.BasketballRimVector.z));
+        Vector3 targetPosition = rimVector + finalDirection;
+        if (targetPosition.z < rimVector.z + 3)
+        {
+            targetPosition = new Vector3(targetPosition.x, targetPosition.y, rimVector.z);
+        }
 
         return targetPosition;
     }
-    private bool cpuShootSevenpointers(){
-        bool returnValue = false;
-        // AUD-055: an unset Accuracy7Pt made this Infinity, which passed the > 70 test below and
-        // turned every CPU into a seven-point specialist. A character with no seven-point accuracy
-        // should never take the shot.
-        if (characterProfile.Accuracy7Pt <= 0)
-        {
-            return false;
-        }
 
-        float rangePercent = ((float)characterProfile.Range / characterProfile.Accuracy7Pt) * 100;
-        //Debug.Log("name : " + characterProfile.PlayerDisplayName);
-        //Debug.Log("rangePercent : " + rangePercent);
-        //Debug.Log("characterProfile.Accuracy7Pt : " + characterProfile.Accuracy7Pt);
-
-        if (MatchRuntime.LevelHasSevenPointers
-            && (rangePercent > 70)) 
-        { 
-            returnValue = true;
-        }
-        else {
-                //Random random = new Random();
-                //float percent = random.Next(1, 100);
-
-                //if (percent <= maxPercent)
-                //{
-                //    return true;
-                //}
-                //return false;
-            returnValue = false; 
-        }
-
-        return returnValue;
+    /// <summary>Whether a seven-point shot is legal right now. See
+    /// <see cref="Level5.Core.CpuSevenPointEligibility"/> for the formula, preserved unchanged from
+    /// before #54.</summary>
+    private bool cpuShootSevenpointers()
+    {
+        return CpuSevenPointEligibility.IsEligible(
+            MatchRuntime.LevelHasSevenPointers, characterProfile.Range, characterProfile.Accuracy7Pt);
     }
 
     private void getAnimatorStateHashes()

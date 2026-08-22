@@ -385,4 +385,8 @@ public class CharacterProfile : MonoBehaviour
     public int Clutch { get => clutch; set => clutch = value; }
     public int Userid { get => userid; set => userid = value; }
     public float InAirSpeed { get => inAirSpeed; set => inAirSpeed = value; }
+
+    /// <summary>The authored CPU shooter identity. Read-only: set by the character asset, not
+    /// gameplay code. Used by #54's shot-selection policy to break accuracy ties.</summary>
+    public CpuBaseStats.ShooterType CpuType => cpuType;
 }
