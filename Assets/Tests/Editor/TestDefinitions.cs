@@ -50,13 +50,17 @@ public static class TestDefinitions
         int levelId,
         ArenaCapability capabilities = ArenaCapability.Basketball | ArenaCapability.Multiplayer,
         string objectName = null,
-        string sceneDescriptor = null)
+        string sceneDescriptor = null,
+        bool selectable = true,
+        bool locked = false)
     {
         LevelDefinitionData data = LevelDefinitionData.Default(levelId);
         data.DisplayName = "level " + levelId;
         data.ObjectName = objectName ?? ("level_" + levelId);
         data.SceneDescriptor = sceneDescriptor ?? string.Empty;
         data.Capabilities = capabilities;
+        data.Selectable = selectable;
+        data.Locked = locked;
         return LevelDefinition.Create(data);
     }
 

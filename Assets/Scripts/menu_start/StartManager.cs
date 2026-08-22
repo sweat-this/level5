@@ -2,6 +2,7 @@
 using Assets.Scripts.Utility;
 using Level5.Core.Match;
 using Level5.Core.PlayerSelection;
+using Level5.Core.Progression;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -212,6 +213,23 @@ public class StartManager : MonoBehaviour
     /// methods - it composes this and the rest of the menu.
     /// </summary>
     private readonly PlayerSelectCoordinator playerSelectCoordinator = new PlayerSelectCoordinator();
+
+    /// <summary>
+    /// The authoritative account unlock answer for the current session, built once the loaded
+    /// profile/level data is available and rebuilt whenever <see cref="InitializeDisplay"/> reruns.
+    /// Cycling, player-select projection and launch validation all read this same snapshot instead
+    /// of each deciding unlock state independently.
+    ///
+    /// Starts null rather than <see cref="UnlockSnapshot.Empty"/> deliberately: null means "not
+    /// gated yet" to <see cref="LevelEligibility"/>/<see cref="MatchConfigurationBuilder"/> (the
+    /// previous, permissive mode/arena-only behavior), where <c>Empty</c> would mean "every level
+    /// and character is locked". Some cycling entry points
+    /// (<c>TouchInputStartScreenController</c>'s swipe handlers call <see cref="changeSelectedLevelUp"/>/
+    /// <see cref="changeSelectedModeUp"/> directly) do not go through <see cref="HasLoadedGameSetup"/>,
+    /// so an input during the brief window between the level catalog being ready and this session's
+    /// real snapshot being built must not appear to freeze the menu.
+    /// </summary>
+    private UnlockSnapshot unlockSnapshot;
 
     /// <summary>Read by the touch input controller to identify the primary select control by reference, not by name.</summary>
     public PlayerSelectCoordinator PlayerSelect => playerSelectCoordinator;
@@ -1025,7 +1043,12 @@ public class StartManager : MonoBehaviour
             yield break;
         }
 
-        playerSelectCoordinator.Initialize(playerSelectedData, cpuPlayerSelectedData, playerSelectView);
+        // Built here, from the same profile/level data the rest of this method projects into the
+        // menu, so player select and level cycling/launch cannot see a different unlock answer for
+        // the same session.
+        unlockSnapshot = UnlockSnapshotBuilder.Build(playerSelectedData, cpuPlayerSelectedData, Compatibility.Levels);
+
+        playerSelectCoordinator.Initialize(playerSelectedData, cpuPlayerSelectedData, playerSelectView, unlockSnapshot);
         playerSelectCoordinator.SetMatchContext(selection.CurrentMode(Compatibility), CurrentModifiers());
         playerSelectCoordinator.RenderIfNeeded();
 
@@ -1569,7 +1592,7 @@ public class StartManager : MonoBehaviour
             return;
         }
 
-        MatchBuildResult result = MatchCatalogs.Builder.Build(request);
+        MatchBuildResult result = MatchCatalogs.Builder.Build(request, unlockSnapshot);
         if (!result.Succeeded)
         {
             ShowLaunchError(result.Validation);
@@ -1734,21 +1757,21 @@ public class StartManager : MonoBehaviour
 
     public void changeSelectedLevelUp()
     {
-        selection.CycleLevel(Compatibility, -1);
+        selection.CycleLevel(Compatibility, -1, unlockSnapshot);
         initializeLevelDisplay();
         initializeModeDisplay();
     }
 
     public void changeSelectedLevelDown()
     {
-        selection.CycleLevel(Compatibility, 1);
+        selection.CycleLevel(Compatibility, 1, unlockSnapshot);
         initializeLevelDisplay();
         initializeModeDisplay();
     }
 
     public void changeSelectedModeUp()
     {
-        selection.CycleMode(Compatibility, -1);
+        selection.CycleMode(Compatibility, -1, unlockSnapshot);
         initializeModeDisplay();
         initializeLevelDisplay();
         playerSelectCoordinator.SetMatchContext(selection.CurrentMode(Compatibility), CurrentModifiers());
@@ -1756,7 +1779,7 @@ public class StartManager : MonoBehaviour
 
     public void changeSelectedModeDown()
     {
-        selection.CycleMode(Compatibility, 1);
+        selection.CycleMode(Compatibility, 1, unlockSnapshot);
         initializeModeDisplay();
         initializeLevelDisplay();
         playerSelectCoordinator.SetMatchContext(selection.CurrentMode(Compatibility), CurrentModifiers());
