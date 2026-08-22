@@ -157,6 +157,35 @@ public class Level5UnlockSnapshotTests
         Assert.That(snapshot.IsLevelUnlocked(1), Is.False);
     }
 
+    // ---- UnlockSnapshotBuilder: primary roster wins over the CPU roster for a shared id -------
+
+    [Test]
+    public void APrimaryLockedCharacterStaysLockedEvenWhenTheSameIdIsAlsoACpuOption()
+    {
+        // LoadManager.loadCpuSelectDataList never sets CharacterProfile.IsLocked from SQLite the
+        // way loadPlayerSelectDataList does for the primary roster, so a CPU-list profile for the
+        // same character id always reports IsLocked = false regardless of account progress. If the
+        // CPU pass were allowed to win, a locked character would come back unlocked here.
+        CharacterProfile primary = MakeProfile(701, locked: true);
+        CharacterProfile cpu = MakeProfile(701, locked: false);
+
+        UnlockSnapshot snapshot = UnlockSnapshotBuilder.Build(new[] { primary }, new[] { cpu }, LevelDefinitionCatalog.Empty());
+
+        Assert.That(snapshot.IsCharacterUnlocked(701), Is.False, "the primary (SQLite-accurate) answer must win over the CPU roster's");
+    }
+
+    [Test]
+    public void ACpuOnlyCharacterFallsBackToTheCpuRosterAnswer()
+    {
+        // A character with no primary-roster entry at all still gets an answer from the CPU list -
+        // only a *conflicting* primary answer should be protected from being overwritten.
+        CharacterProfile cpu = MakeProfile(702, locked: false);
+
+        UnlockSnapshot snapshot = UnlockSnapshotBuilder.Build(new List<CharacterProfile>(), new[] { cpu }, LevelDefinitionCatalog.Empty());
+
+        Assert.That(snapshot.IsCharacterUnlocked(702), Is.True);
+    }
+
     // ---- UnlockSnapshotBuilder: character precedence (SQLite first, JSON fallback only) -------
 
     [Test]

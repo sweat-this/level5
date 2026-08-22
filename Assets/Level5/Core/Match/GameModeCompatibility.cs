@@ -156,6 +156,12 @@ namespace Level5.Core.Match
         /// catalog terminates whether or not any level is compatible, where the recursion did not -
         /// with no compatible level it recursed until the stack ran out. Returns
         /// <paramref name="startIndex"/> when nothing fits, so the menu holds still instead.
+        ///
+        /// Mode/arena compatibility only - deliberately, see this class's own doc comment. Menu
+        /// cycling and launch validation need account unlock state considered too, so they call
+        /// <see cref="LevelEligibility.NextEligibleLevelIndex"/> instead, which wraps this same walk
+        /// with that additional gate. Reach for this method directly only when unlock state is
+        /// genuinely not a concern for the caller.
         /// </summary>
         public int NextCompatibleLevelIndex(GameModeDefinition mode, int startIndex, int step)
         {
@@ -180,6 +186,10 @@ namespace Level5.Core.Match
         /// <summary>
         /// The compatible level index to hold after a mode change: the current one if it still
         /// fits, otherwise the nearest one in the given direction.
+        ///
+        /// Mode/arena compatibility only, same caveat as <see cref="NextCompatibleLevelIndex"/>:
+        /// prefer <see cref="LevelEligibility.EligibleLevelIndexFor"/> where account unlock state
+        /// matters.
         /// </summary>
         public int CompatibleLevelIndexFor(GameModeDefinition mode, int currentIndex, int step)
         {

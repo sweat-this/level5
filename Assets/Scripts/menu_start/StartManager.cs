@@ -219,8 +219,17 @@ public class StartManager : MonoBehaviour
     /// profile/level data is available and rebuilt whenever <see cref="InitializeDisplay"/> reruns.
     /// Cycling, player-select projection and launch validation all read this same snapshot instead
     /// of each deciding unlock state independently.
+    ///
+    /// Starts null rather than <see cref="UnlockSnapshot.Empty"/> deliberately: null means "not
+    /// gated yet" to <see cref="LevelEligibility"/>/<see cref="MatchConfigurationBuilder"/> (the
+    /// previous, permissive mode/arena-only behavior), where <c>Empty</c> would mean "every level
+    /// and character is locked". Some cycling entry points
+    /// (<c>TouchInputStartScreenController</c>'s swipe handlers call <see cref="changeSelectedLevelUp"/>/
+    /// <see cref="changeSelectedModeUp"/> directly) do not go through <see cref="HasLoadedGameSetup"/>,
+    /// so an input during the brief window between the level catalog being ready and this session's
+    /// real snapshot being built must not appear to freeze the menu.
     /// </summary>
-    private UnlockSnapshot unlockSnapshot = UnlockSnapshot.Empty;
+    private UnlockSnapshot unlockSnapshot;
 
     /// <summary>Read by the touch input controller to identify the primary select control by reference, not by name.</summary>
     public PlayerSelectCoordinator PlayerSelect => playerSelectCoordinator;

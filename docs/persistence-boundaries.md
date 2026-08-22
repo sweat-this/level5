@@ -122,6 +122,13 @@ filesystem read) on every call:
   first; the JSON store (`CharacterProgressStore`) fills in only characters absent from those lists,
   and never overrides a known SQLite answer. See `Level5UnlockSnapshotTests.cs` for the regression
   coverage proving disagreement resolves toward SQLite in both directions.
+  **Caught in code review before this reached `dev`:** the primary and CPU profile lists must not be
+  merged as equals. `LoadManager.loadCpuSelectDataList` never sets `CharacterProfile.IsLocked` from
+  SQLite the way `loadPlayerSelectDataList` does for the primary roster, so a CPU-list profile's lock
+  flag is always `false` regardless of account progress - and the same character id commonly appears
+  in both rosters. An id the primary roster already answered is never overwritten by the CPU pass;
+  see `APrimaryLockedCharacterStaysLockedEvenWhenTheSameIdIsAlsoACpuOption` in
+  `Level5UnlockSnapshotTests.cs`.
 - **`Level5.Core.Match.LevelEligibility`** - composes `LevelDefinition.Selectable` (authored
   content), `GameModeCompatibility.CanPlay` (mode/arena fit) and `UnlockSnapshot.IsLevelUnlocked`
   (account state) into the one "can this level be chosen right now" answer, used by both menu

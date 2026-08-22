@@ -12,6 +12,13 @@ using Level5.Core.Progression;
 /// production caller. The precedence here is unchanged from that code: SQLite first, JSON only for
 /// what SQLite does not know about, never the reverse - see docs/persistence-boundaries.md.
 ///
+/// <paramref name="cpuProfiles"/> never overrides an id <paramref name="primaryProfiles"/> already
+/// answered. <c>LoadManager.loadCpuSelectDataList</c> never sets <c>CharacterProfile.IsLocked</c>
+/// from SQLite the way it does for the primary roster (`loadPlayerSelectDataList`), so a CPU-list
+/// profile's lock flag defaults to false regardless of the account's real progress. Character ids
+/// commonly appear in both rosters (the same character can be your primary pick and a CPU
+/// opponent), so letting the CPU pass win would silently report a locked character as unlocked.
+///
 /// Level unlock has no JSON-backed account entitlement yet (see issue #39): a level's authored
 /// <see cref="LevelDefinition.Locked"/> flag is the only source until durable level progress is
 /// introduced, which this deliberately does not do without established completion semantics to
@@ -25,8 +32,8 @@ public static class UnlockSnapshotBuilder
         LevelDefinitionCatalog levelCatalog)
     {
         Dictionary<int, bool> characters = new Dictionary<int, bool>();
-        AddProfiles(characters, primaryProfiles);
-        AddProfiles(characters, cpuProfiles);
+        AddProfiles(characters, primaryProfiles, overwrite: true);
+        AddProfiles(characters, cpuProfiles, overwrite: false);
         AddJsonFallback(characters);
 
         Dictionary<int, bool> levels = new Dictionary<int, bool>();
@@ -44,7 +51,7 @@ public static class UnlockSnapshotBuilder
         return new UnlockSnapshot(characters, levels);
     }
 
-    private static void AddProfiles(Dictionary<int, bool> characters, IReadOnlyList<CharacterProfile> profiles)
+    private static void AddProfiles(Dictionary<int, bool> characters, IReadOnlyList<CharacterProfile> profiles, bool overwrite)
     {
         if (profiles == null)
         {
@@ -53,10 +60,17 @@ public static class UnlockSnapshotBuilder
 
         foreach (CharacterProfile profile in profiles)
         {
-            if (profile != null)
+            if (profile == null)
             {
-                characters[profile.PlayerId] = !profile.IsLocked;
+                continue;
             }
+
+            if (!overwrite && characters.ContainsKey(profile.PlayerId))
+            {
+                continue;
+            }
+
+            characters[profile.PlayerId] = !profile.IsLocked;
         }
     }
 

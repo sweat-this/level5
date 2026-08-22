@@ -3,8 +3,11 @@ using System.Collections.Generic;
 namespace Level5.Core.Progression
 {
     /// <summary>
-    /// The one authoritative answer to "is this character/level unlocked for the current account?",
-    /// as of the moment it was built.
+    /// The one authoritative answer to "is this character/level unlocked?", as of the moment it was
+    /// built. Character answers are account-scoped (see <c>UnlockSnapshotBuilder</c>'s SQLite/JSON
+    /// precedence); level answers currently reflect only authored content
+    /// (<c>LevelDefinition.Locked</c>) - there is no durable per-account level entitlement yet, see
+    /// docs/persistence-boundaries.md.
     ///
     /// A plain, immutable projection - not a service. Every menu item that needs an unlock answer
     /// reads this same snapshot instead of each independently reaching into SQLite, JSON, or a
