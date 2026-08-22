@@ -27,7 +27,9 @@ namespace Level5.Core.Match
         RosterTooLarge,
         ParticipantTypeNotSupported,
         CharacterCannotShoot,
-        CharacterCannotFight
+        CharacterCannotFight,
+        LevelNotSelectable,
+        LevelLocked
     }
 
     /// <summary>One rejection reason, with a message a launch screen can show as-is.</summary>

@@ -1,4 +1,5 @@
 using System;
+using Level5.Core.Progression;
 
 namespace Level5.Core.Match
 {
@@ -58,7 +59,15 @@ namespace Level5.Core.Match
 
         public GameModeCompatibility Compatibility => compatibility;
 
-        public MatchBuildResult Build(MatchRequest request)
+        /// <summary>
+        /// Builds and validates a configuration. <paramref name="unlock"/> is the launch-time
+        /// re-check of account unlock state - every launch path goes through here, so this is the
+        /// one place a stale menu index, a programmatic caller, or a future UI bug is stopped from
+        /// starting locked content, using the exact same <see cref="LevelEligibility"/> policy the
+        /// menu's cycling uses. Passing null skips the unlock/selectable re-check entirely (previous
+        /// behavior, for callers not yet migrated).
+        /// </summary>
+        public MatchBuildResult Build(MatchRequest request, UnlockSnapshot unlock = null)
         {
             ValidationResult validation = compatibility.Validate(request);
             if (!validation.IsValid)
@@ -69,6 +78,20 @@ namespace Level5.Core.Match
             GameModeDefinition mode = modes.Find(request.ModeId);
             LevelDefinition level = levels.Find(request.LevelId);
             MatchModifiers modifiers = request.Modifiers ?? MatchModifiers.Default;
+
+            if (unlock != null && !LevelEligibility.IsSelectableContent(level))
+            {
+                return MatchBuildResult.Failure(ValidationResult.Invalid(
+                    MatchValidationCode.LevelNotSelectable,
+                    $"'{level.DisplayName}' is not selectable"));
+            }
+
+            if (unlock != null && !LevelEligibility.IsUnlockedForAccount(level, unlock))
+            {
+                return MatchBuildResult.Failure(ValidationResult.Invalid(
+                    MatchValidationCode.LevelLocked,
+                    $"'{level.DisplayName}' is locked"));
+            }
 
             ResolvedMatchRules rules = Resolve(mode, level, request.Roster, modifiers);
 

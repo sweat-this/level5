@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using Level5.Core.Match;
 using Level5.Core.PlayerSelection;
+using Level5.Core.Progression;
 
 /// <summary>
 /// The narrow boundary <see cref="StartManager"/> talks to for everything player-select related.
@@ -65,11 +66,12 @@ public sealed class PlayerSelectCoordinator
     public void Initialize(
         IReadOnlyList<CharacterProfile> primaryProfiles,
         IReadOnlyList<CharacterProfile> cpuProfiles,
-        PlayerSelectView view)
+        PlayerSelectView view,
+        UnlockSnapshot unlock)
     {
         this.primaryProfiles = primaryProfiles ?? new List<CharacterProfile>();
         this.view = view;
-        catalog = PlayerSelectCatalogAdapter.Project(primaryProfiles, cpuProfiles);
+        catalog = PlayerSelectCatalogAdapter.Project(primaryProfiles, cpuProfiles, unlock);
 
         state.PrimaryCharacterId = PlayerSelectionSession.PrimaryCharacterId;
         controller.EnsurePrimarySelected(catalog.PrimaryOptions);

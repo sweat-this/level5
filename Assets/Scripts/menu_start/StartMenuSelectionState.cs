@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Level5.Core.Match;
+using Level5.Core.Progression;
 
 /// <summary>
 /// What the start menu currently has selected for mode/level/friend/options, and nothing else.
@@ -65,12 +66,16 @@ public sealed class StartMenuSelectionState
     // ---- bounded cycling ----------------------------------------------------------------------
 
     /// <summary>
-    /// Moves the level selection by one, skipping arenas the current mode cannot use.
+    /// Moves the level selection by one, skipping arenas the current mode cannot use, that are not
+    /// selectable, or that this account has not unlocked.
     ///
     /// The old version called itself until it found one, so a mode with no compatible level
     /// recursed until the stack ran out. This walks the catalog at most once and stops.
+    ///
+    /// <paramref name="unlock"/> may be null - callers that have not been migrated get the previous
+    /// mode/arena-only behavior, unchanged.
     /// </summary>
-    public void CycleLevel(GameModeCompatibility compatibility, int step)
+    public void CycleLevel(GameModeCompatibility compatibility, int step, UnlockSnapshot unlock = null)
     {
         if (compatibility == null || compatibility.Levels.Count == 0)
         {
@@ -78,11 +83,11 @@ public sealed class StartMenuSelectionState
         }
 
         GameModeDefinition mode = CurrentMode(compatibility);
-        LevelIndex = compatibility.NextCompatibleLevelIndex(mode, LevelIndex, step);
+        LevelIndex = LevelEligibility.NextEligibleLevelIndex(compatibility, mode, LevelIndex, step, unlock);
     }
 
-    /// <summary>Moves the mode selection by one, then pulls the level to something the mode can use.</summary>
-    public void CycleMode(GameModeCompatibility compatibility, int step)
+    /// <summary>Moves the mode selection by one, then pulls the level to something eligible for it.</summary>
+    public void CycleMode(GameModeCompatibility compatibility, int step, UnlockSnapshot unlock = null)
     {
         if (compatibility == null || compatibility.Modes.Count == 0)
         {
@@ -90,7 +95,7 @@ public sealed class StartMenuSelectionState
         }
 
         ModeIndex = IndexMath.Wrap(ModeIndex + step, compatibility.Modes.Count);
-        LevelIndex = compatibility.CompatibleLevelIndexFor(CurrentMode(compatibility), LevelIndex, step);
+        LevelIndex = LevelEligibility.EligibleLevelIndexFor(compatibility, CurrentMode(compatibility), LevelIndex, step, unlock);
     }
 
     public void CycleFriend(int friendCount, int step)

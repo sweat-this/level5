@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Level5.Core.PlayerSelection;
+using Level5.Core.Progression;
 using UnityEngine;
 
 /// <summary>
@@ -10,6 +11,11 @@ using UnityEngine;
 /// does not become another source of character truth: everything here is derived from the same
 /// SQLite-backed profiles the rest of the menu already shows, recomputed whenever the loaded data
 /// changes rather than cached indefinitely.
+///
+/// <see cref="CharacterSelectOption.IsUnlocked"/> comes from the caller-supplied
+/// <see cref="UnlockSnapshot"/> rather than reading <c>CharacterProfile.IsLocked</c> directly, so
+/// this is no longer a second place that decides account unlock state - it defers to the same
+/// snapshot every other unlock-aware call site uses.
 /// </summary>
 public static class PlayerSelectCatalogAdapter
 {
@@ -21,7 +27,8 @@ public static class PlayerSelectCatalogAdapter
     /// </summary>
     public static PlayerSelectCatalog Project(
         IReadOnlyList<CharacterProfile> primaryProfiles,
-        IReadOnlyList<CharacterProfile> cpuProfiles)
+        IReadOnlyList<CharacterProfile> cpuProfiles,
+        UnlockSnapshot unlock)
     {
         List<CharacterSelectOption> primaryOptions = new List<CharacterSelectOption>();
         List<CharacterSelectOption> cpuOptions = new List<CharacterSelectOption>();
@@ -38,7 +45,7 @@ public static class PlayerSelectCatalogAdapter
                     continue;
                 }
 
-                primaryOptions.Add(ToOption(profile));
+                primaryOptions.Add(ToOption(profile, unlock));
                 visuals[profile.PlayerId] = ToVisuals(profile);
             }
         }
@@ -62,7 +69,7 @@ public static class PlayerSelectCatalogAdapter
                     continue;
                 }
 
-                cpuOptions.Add(ToOption(profile));
+                cpuOptions.Add(ToOption(profile, unlock));
                 if (!visuals.ContainsKey(profile.PlayerId))
                 {
                     visuals[profile.PlayerId] = ToVisuals(profile);
@@ -73,7 +80,7 @@ public static class PlayerSelectCatalogAdapter
         return new PlayerSelectCatalog(primaryOptions, cpuOptions, visuals, cpuNoneDisplayName, cpuNoneVisuals);
     }
 
-    private static CharacterSelectOption ToOption(CharacterProfile profile)
+    private static CharacterSelectOption ToOption(CharacterProfile profile, UnlockSnapshot unlock)
     {
         // Normalization boundary: the old view recalculated CharacterProfile.Level and
         // CharacterProfile.Clutch on every render. Gameplay reads Clutch directly off this same
@@ -106,7 +113,7 @@ public static class PlayerSelectCatalogAdapter
             profile.PlayerObjectName,
             profile.IsShooter,
             profile.IsFighter,
-            !profile.IsLocked,
+            unlock != null && unlock.IsCharacterUnlocked(profile.PlayerId),
             stats);
     }
 

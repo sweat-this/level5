@@ -9,7 +9,7 @@ is that "which store is the source of truth" was previously unanswerable without
 | Store | Location | Authority | Written by | Read by |
 | --- | --- | --- | --- | --- |
 | **SQLite** | `Application.persistentDataPath/level5.db` | **Authoritative for everything the game currently shows** | `DBHelper` (~30 methods, all lock-guarded via `DBConnector`) | `LoadManager`, `StartManager`, `ProgressionManager`, `StatsManager` |
-| **JSON per-account files** | `Application.persistentDataPath/accounts/<accountId>-characters.json` | Never authoritative; fallback only - see below | `ProgressionService` → `CharacterProgressStore.TryApplyProgressionSnapshot` | `UnlockService`, `CharacterRuntimeProvider` (both as a *fallback only*) |
+| **JSON per-account files** | `Application.persistentDataPath/accounts/<accountId>-characters.json` | Never authoritative; fallback only - see below | `ProgressionService` → `CharacterProgressStore.TryApplyProgressionSnapshot` | `UnlockSnapshotBuilder`, `CharacterRuntimeProvider` (both as a *fallback only*) |
 | **Server** | `Constants.API_ADDRESS_DEV_*` via `APIHelper` | Authoritative for leaderboards; the client cannot verify it | `APIHelper.PostHighscore`, `PostUnsubmittedHighscores` | `StatsManager` (online tab), `AccountManager` |
 
 ### The SQLite / JSON split is the thing to know
@@ -100,9 +100,60 @@ The client cannot enforce any of this; it is recorded so it can be confirmed aga
   before it holds any credential. Given that API shape the client has no better option, but the
   server must be returning a minimal projection - no password hash, no email, no PII.
 
+## Unlock authority (issue #39)
+
+**CHARACTER PROGRESSION AUTHORITY = SQLite.** Before this slice, unlock state was not actually
+centralized despite `UnlockService` existing: `PlayerSelectCatalogAdapter` computed
+`IsUnlocked = !profile.IsLocked` directly off the live SQLite-backed `CharacterProfile` list, while
+`UnlockService` (with the correct SQLite-first/JSON-fallback precedence) had zero production
+callers - it was dead code. Two independently-correct-looking answers to "is this unlocked" existed
+in the codebase at once, only one of which anything actually called.
+
+That is now consolidated into one query, built once per menu refresh rather than recomputed (with a
+filesystem read) on every call:
+
+- **`Level5.Core.Progression.UnlockSnapshot`** - a plain, immutable projection: `IsCharacterUnlocked(int)`
+  / `IsLevelUnlocked(int)`. No `UnityEngine`, database, singleton, or filesystem dependency. An id it
+  was not built with answers locked (a deterministic safe default, not "unknown").
+- **`UnlockSnapshotBuilder`** (`Assets/Scripts/menu_start/UnlockSnapshotBuilder.cs`) - the adapter
+  that builds a snapshot from live account data. Replaces `UnlockService`, which is deleted (it had
+  no callers, so this changed no runtime behavior). Character precedence is unchanged from
+  `UnlockService`'s: the SQLite-backed `CharacterProfile` lists the menu already loaded are checked
+  first; the JSON store (`CharacterProgressStore`) fills in only characters absent from those lists,
+  and never overrides a known SQLite answer. See `Level5UnlockSnapshotTests.cs` for the regression
+  coverage proving disagreement resolves toward SQLite in both directions.
+- **`Level5.Core.Match.LevelEligibility`** - composes `LevelDefinition.Selectable` (authored
+  content), `GameModeCompatibility.CanPlay` (mode/arena fit) and `UnlockSnapshot.IsLevelUnlocked`
+  (account state) into the one "can this level be chosen right now" answer, used by both menu
+  cycling (`StartMenuSelectionState.CycleLevel`/`CycleMode`) and launch validation
+  (`MatchConfigurationBuilder.Build`) - so a stale menu index or a future UI bug cannot start locked
+  content, the same way character selection was already protected via
+  `PlayerSelectionController.ValidateLaunch`.
+
+**Level unlock has no durable per-account state yet, deliberately.** `LevelDefinition.Locked` is
+authored, static data - nothing in the current codebase ever unlocks a level at runtime, and no
+"level completed" concept exists (campaign mode advances an in-memory `levelSelectedIndex` per run
+via `EndRoundMenuManager`/`CampaignRoundDecision`, never a durable per-account record). Introducing a
+`LevelProgressSave` without established completion semantics would mean inventing gameplay rules
+rather than migrating existing ones, so this slice stops at the query seam:
+`UnlockSnapshot.IsLevelUnlocked` currently answers `!LevelDefinition.Locked` for every level, which
+is exactly the previous (unenforced) authored intent, now actually enforced at selection and launch.
+Durable level progress remains a follow-up, blocked on a product decision about what "completing a
+level" means.
+
+**Not yet covered:** `Assets/Scripts/versus/VersusLauncher.cs` calls
+`MatchCatalogs.Builder.Build(request)` without an `UnlockSnapshot`, so versus/correspondence launches
+do not get the new launch-time unlock re-check. This is not a regression - no unlock check existed
+on that path before either - but closing it requires understanding whether "unlocked" even means the
+same thing for a network-driven match (whose account's unlock state would apply?), which is
+`docs/versus-architecture.md` territory and was out of scope for this slice.
+
 ## Open items
 
 - `ProgressionManager` and `StartManager` read progression from SQLite; `ProgressionService` writes
   it to JSON. Nothing reconciles them. Today that is invisible because the JSON side is only a
   fallback, but the two will drift the moment either becomes authoritative.
 - Confirm the two server-side expectations above against `Level5Backend`.
+- `VersusLauncher`'s launch path does not yet revalidate level unlock state (see "Unlock authority" above).
+- Durable level-progress/completion persistence remains unimplemented pending a product decision on
+  what "completing a level" means (see "Unlock authority" above).
