@@ -3,6 +3,7 @@ using System.Reflection;
 using Level5.Core.PlayerSelection;
 using Level5.Core.Progression;
 using NUnit.Framework;
+using UnityEditor;
 using UnityEngine;
 
 /// <summary>
@@ -178,5 +179,84 @@ public class Level5PlayerSelectCatalogAdapterTests
         Assert.That(catalog.PrimaryOptions[0].CharacterId, Is.EqualTo(3));
         Assert.That(catalog.PrimaryOptions[1].CharacterId, Is.EqualTo(1));
         Assert.That(catalog.PrimaryOptions[2].CharacterId, Is.EqualTo(2));
+    }
+
+    // ---- authored roster invariants (found while auditing #56's V2 setup) --------------------
+    //
+    // Found live: cpu_player_kamille and cpu_player_thom both authored playerId 4, and
+    // cpu_player_zilla and cpu_player_woody both authored playerId 6. PlayerSelectCatalogAdapter's
+    // visuals dictionary (`if (!visuals.ContainsKey(...))`) silently keeps only the first one added,
+    // so the second character in load order rendered the first one's portrait in its CPU slot -
+    // and PlayerSelectionController.RestoreCpuSlot/CharacterSelectOptions.Find, both keyed on this
+    // same id, could resolve a remembered session slot to the wrong character. Separately,
+    // cpu_player_johnny_dracula (id 3) and cpu_player_pony (id 8) didn't collide with anything in
+    // the CPU roster but didn't match their own primary-roster ids (15, 31) either - harmless today
+    // only because UnlockSnapshotBuilder lets the primary roster win whenever it already answered
+    // for an id, but still wrong authored data for a character that is also primary-selectable.
+    //
+    // These tests read the real authored prefabs rather than synthetic profiles (matching
+    // Level5AutonomousActorTests.TheLockdownDefenderOutrunsEveryAuthoredPlayerSpeed's approach) so a
+    // future authoring mistake of this exact shape is caught without needing a Play Mode session.
+
+    private const string PrimaryRosterPath = "Assets/Resources/Prefabs/menu_start/player_selected_objects";
+    private const string CpuRosterPath = "Assets/Resources/Prefabs/menu_start/cpu_players_selected_objects";
+
+    private static Dictionary<string, int> LoadRosterIdsByObjectName(string folder)
+    {
+        Dictionary<string, int> idsByObjectName = new Dictionary<string, int>();
+        foreach (string guid in AssetDatabase.FindAssets("t:Prefab", new[] { folder }))
+        {
+            string path = AssetDatabase.GUIDToAssetPath(guid);
+            GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(path);
+            CharacterProfile profile = prefab != null ? prefab.GetComponent<CharacterProfile>() : null;
+            if (profile == null || profile.PlayerId == 0)
+            {
+                // id 0 is the legacy CPU "none" record - not a real character.
+                continue;
+            }
+
+            idsByObjectName[profile.PlayerObjectName] = profile.PlayerId;
+        }
+
+        return idsByObjectName;
+    }
+
+    [Test]
+    public void NoTwoAuthoredCpuSelectCharactersShareAPlayerId()
+    {
+        Dictionary<string, int> cpuIds = LoadRosterIdsByObjectName(CpuRosterPath);
+
+        Dictionary<int, string> seen = new Dictionary<int, string>();
+        foreach (KeyValuePair<string, int> entry in cpuIds)
+        {
+            if (seen.TryGetValue(entry.Value, out string existingObjectName))
+            {
+                Assert.Fail(
+                    $"cpu_players_selected_objects has two characters sharing playerId {entry.Value}: "
+                        + $"'{existingObjectName}' and '{entry.Key}' - the second one's portrait/session-restore "
+                        + "loses to whichever the adapter/controller saw first.");
+            }
+
+            seen[entry.Value] = entry.Key;
+        }
+    }
+
+    [Test]
+    public void AnAuthoredCpuSelectCharacterThatIsAlsoPrimarySelectableAgreesOnItsPlayerId()
+    {
+        Dictionary<string, int> primaryIds = LoadRosterIdsByObjectName(PrimaryRosterPath);
+        Dictionary<string, int> cpuIds = LoadRosterIdsByObjectName(CpuRosterPath);
+
+        foreach (KeyValuePair<string, int> cpuEntry in cpuIds)
+        {
+            if (primaryIds.TryGetValue(cpuEntry.Key, out int primaryId))
+            {
+                Assert.That(
+                    cpuEntry.Value,
+                    Is.EqualTo(primaryId),
+                    $"'{cpuEntry.Key}' is playerId {primaryId} in the primary roster but "
+                        + $"{cpuEntry.Value} in the CPU roster - the two must agree.");
+            }
+        }
     }
 }
