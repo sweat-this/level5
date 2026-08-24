@@ -391,7 +391,33 @@ public sealed class SpawnCoordinator
         identifier.setIds(pid, true);
         identifier.autoPlayer = spawned;
         identifier.setAutoPlayer(identifier.autoPlayer);
+        PrepareCpuMatchContext(identifier);
         registry.Add(identifier);
+    }
+
+    /// <summary>
+    /// Gives the spawned CPU's CharacterProfile the primary human's Level and the resolved rules for
+    /// this match, before CharacterProfile.Start applies Hardcore/contest initialization (#71).
+    ///
+    /// Registered before this call: RegisterHuman for roster slot 0 always runs first in
+    /// SpawnPlayers, so registry.GetBySlot(0) is already the primary human by the time any CPU is
+    /// registered - including the Lockdown defender and a scene-supplied auto player, both of which
+    /// this prepares harmlessly; CharacterProfile.Start's own isDefensiveCpuPlayer gate still decides
+    /// whether the prepared context is ever applied.
+    /// </summary>
+    private void PrepareCpuMatchContext(PlayerIdentifier identifier)
+    {
+        if (identifier.characterProfile == null)
+        {
+            return;
+        }
+
+        PlayerIdentifier primary = registry.GetBySlot(0);
+        int primaryLevel = primary != null && primary.characterProfile != null
+            ? primary.characterProfile.Level
+            : identifier.characterProfile.Level;
+
+        identifier.characterProfile.PrepareCpuMatchContext(primaryLevel, rules);
     }
 
     private void GiveBall(int slotId, GameObject prefab, Vector3 position, bool forCpu)

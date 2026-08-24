@@ -10,7 +10,7 @@ using UnityEngine;
 ///
 /// The audit that preceded this fix found the issue's own diagnosis measured stale serialized
 /// <c>CharacterProfile</c> fields rather than the runtime-resolved values ordinary CPU initialization
-/// produces (<c>CharacterProfile.Start -> intializeCpuShooterStats -> calculateAccuracyAttributeRatings</c>).
+/// produces (<c>CharacterProfile.Start -> ApplyPreparedCpuMatchInitialization -> calculateAccuracyAttributeRatings</c>).
 /// These tests exercise <see cref="CpuShotSelectionPolicy"/> and <see cref="CpuSevenPointEligibility"/>
 /// directly (no MonoBehaviour needed), <see cref="CpuScoreDeficit"/> against constructed participants,
 /// and the real authored CPU shooter prefabs through the actual production stat calculation - never

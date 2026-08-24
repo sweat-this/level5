@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
+using Level5.Core;
 using Level5.Core.Match;
 
 public class CharacterProfile : MonoBehaviour
@@ -54,7 +55,17 @@ public class CharacterProfile : MonoBehaviour
     [SerializeField] private bool isShooter;
     [SerializeField] private bool isLocked;
     [SerializeField] private CpuBaseStats.ShooterType cpuType;
-  
+
+    // Match-only CPU context (#71). Runtime-only: never serialized into a prefab, and set by
+    // SpawnCoordinator - the only thing that knows both the roster's primary slot and the resolved
+    // match rules - rather than discovered here through GameLevelManager.instance. preparedBaseCpuLevel
+    // is captured at prepare time specifically so a repeated ApplyPreparedCpuMatchInitialization call
+    // (e.g. a hypothetical retry) always resolves the Hardcore bump from the same pre-Hardcore base,
+    // never from a level this method already boosted.
+    private bool hasPreparedMatchContext;
+    private int preparedBaseCpuLevel;
+    private int preparedPrimaryHumanLevel;
+    private ResolvedMatchRules preparedRules;
 
     void Start()
     {
@@ -67,7 +78,7 @@ public class CharacterProfile : MonoBehaviour
         InAirSpeed = (float)fadeaway / 100;
         if (isCpu && !isDefensiveCpuPlayer)
         {
-            intializeCpuShooterStats();
+            ApplyPreparedCpuMatchInitialization();
         }
         if (MatchRuntime.Rules.ArcadeMode || MatchDifficulties.ToInt(MatchRuntime.Rules.Difficulty) == 0 )
         {
@@ -153,27 +164,16 @@ public class CharacterProfile : MonoBehaviour
             Luck = temp.Luck + MatchRuntime.Cheerleader.BonusLuck;
         }
     }
-    public void intializeCpuShooterStats()
+    /// <summary>
+    /// Context-free CPU baseline calculation (#71): derives accuracy/release/range/luck/clutch from
+    /// this profile's current Level and CpuType only. Never reads MatchRuntime, GameOptions or
+    /// GameLevelManager, and never changes Level - safe to call during menu-boot CPU catalog
+    /// loading (no gameplay scene exists yet) and safe to call more than once on the same instance
+    /// (Resources.LoadAll returns cached asset instances a retry can revisit): calling it twice with
+    /// an unchanged Level/CpuType always produces the same output.
+    /// </summary>
+    public void InitializeCpuBaselineStats()
     {
-        // in hardcore if CPU level less than player level, set equal to player level+10
-        if (MatchRuntime.Rules.Hardcore)
-        {
-            int playerLevel = GameLevelManager.instance.players[0].characterProfile.level;
-            if(playerLevel > level)
-            {
-                level = playerLevel+10;
-            }
-            else
-            {
-                level += 10;
-            }
-            //Debug.Log(GameLevelManager.instance.players[0].characterProfile.PlayerDisplayName + " lvl : " + GameLevelManager.instance.players[0].characterProfile.level);
-        }
-        int release = level > 25 ? 25 : level;
-        int three = level > 50 ? 25 : level - release;
-        int four = level > 75 ? 25 : level - (three + release);
-        int seven = level > 100 ? 25 : level - (three + four + release);
-
         calculateAccuracyAttributeRatings();
 
         Range = CpuBaseStats.RANGE + (level * 5);
@@ -181,18 +181,60 @@ public class CharacterProfile : MonoBehaviour
         Luck = luckCalc <= 10 ? luckCalc : 10;
         clutch = level <= 100 ? level : 100;
 
+        if (isDefensiveCpuPlayer)
+        {
+            inAirSpeed = ((float)level / 100) * 3;
+        }
+    }
+
+    /// <summary>
+    /// Gives this CPU profile the match context Hardcore/contest initialization needs, before
+    /// <see cref="Start"/> applies it. Called by <c>SpawnCoordinator</c> - the only thing that knows
+    /// both the roster's primary slot and the resolved match rules - rather than this profile
+    /// discovering either through <c>GameLevelManager.instance</c> (#71).
+    /// </summary>
+    public void PrepareCpuMatchContext(int primaryHumanLevel, ResolvedMatchRules rules)
+    {
+        preparedBaseCpuLevel = level;
+        preparedPrimaryHumanLevel = primaryHumanLevel;
+        preparedRules = rules;
+        hasPreparedMatchContext = true;
+    }
+
+    /// <summary>
+    /// Applies the Hardcore level bump and contest Luck/Clutch suppression using the context
+    /// <see cref="PrepareCpuMatchContext"/> stored, then recalculates the baseline off the result.
+    ///
+    /// Falls back to a safe baseline - no Hardcore bump, no invented primary level - when no context
+    /// was prepared, which should only happen for a CPU that reached <see cref="Start"/> without
+    /// going through <c>SpawnCoordinator</c>.
+    /// </summary>
+    public void ApplyPreparedCpuMatchInitialization()
+    {
+        if (!hasPreparedMatchContext)
+        {
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            Debug.LogWarning(
+                $"CharacterProfile '{playerObjectName}' initialized as a CPU with no match context "
+                + "prepared by SpawnCoordinator. Using baseline CPU stats with no Hardcore level bump.",
+                this);
+#endif
+            InitializeCpuBaselineStats();
+            return;
+        }
+
+        level = CpuDifficultyLevelPolicy.Resolve(preparedBaseCpuLevel, preparedPrimaryHumanLevel, preparedRules.Hardcore);
+
+        InitializeCpuBaselineStats();
+
         // if 3/4/All point contest, disable Luck/citical %
-        if (MatchRuntime.Rules.IsThreePointContest
-            || MatchRuntime.Rules.IsFourPointContest
-            || MatchRuntime.Rules.IsSevenPointContest
-            || MatchRuntime.Rules.IsAllPointContest)
+        if (preparedRules.IsThreePointContest
+            || preparedRules.IsFourPointContest
+            || preparedRules.IsSevenPointContest
+            || preparedRules.IsAllPointContest)
         {
             Luck = 0;
             clutch = 0;
-        }
-        if (isDefensiveCpuPlayer)
-        {
-            inAirSpeed = ((float)level / 100 )* 3;
         }
     }
 

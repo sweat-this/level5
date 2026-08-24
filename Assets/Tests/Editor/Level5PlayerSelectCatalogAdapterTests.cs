@@ -380,7 +380,7 @@ public class Level5PlayerSelectCatalogAdapterTests
     // projection, which recalculated Level from Experience and wrote back an effective Clutch.
     // That is correct for a primary human profile (Level tracks XP), but wrong for a CPU profile:
     // a CPU's Level is authored AI tuning that feeds CharacterProfile.calculateAccuracyAttributeRatings,
-    // and its Clutch is already resolved by CharacterProfile.intializeCpuShooterStats before
+    // and its Clutch is already resolved by CharacterProfile.InitializeCpuBaselineStats before
     // selection ever sees it. A CPU authored at Level 40 / Experience 0 (e.g. cpu_player_ak47) was
     // rendering as Level 0 in the CPU slot.
 
@@ -403,7 +403,7 @@ public class Level5PlayerSelectCatalogAdapterTests
     {
         CharacterProfile cpu = MakeProfile(7, "AK-47", "ak47", experience: 0, isShooter: true);
         cpu.Level = 40;
-        cpu.Clutch = 40; // as CharacterProfile.intializeCpuShooterStats would already have set it
+        cpu.Clutch = 40; // as CharacterProfile.InitializeCpuBaselineStats would already have set it
 
         PlayerSelectCatalogAdapter.Project(new List<CharacterProfile>(), new[] { cpu }, Unlock(7));
 

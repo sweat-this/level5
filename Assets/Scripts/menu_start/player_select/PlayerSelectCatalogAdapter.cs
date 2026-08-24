@@ -104,7 +104,7 @@ public static class PlayerSelectCatalogAdapter
     /// Projects a CPU profile without the primary XP -> Level / effective-Clutch normalization: a
     /// CPU's Level is authored AI tuning (feeds CharacterProfile.calculateAccuracyAttributeRatings
     /// via CpuBaseStats), not human progress, and its Clutch is already resolved by
-    /// CharacterProfile.intializeCpuShooterStats. Running it through the primary path would
+    /// CharacterProfile.InitializeCpuBaselineStats. Running it through the primary path would
     /// overwrite both with human-progression values derived from Experience, which CPU profiles
     /// do not use (see #69 - a CPU authored at Level 40/Experience 0 was rendering as Level 0).
     ///

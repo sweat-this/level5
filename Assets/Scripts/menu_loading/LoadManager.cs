@@ -438,7 +438,7 @@ public class LoadManager : MonoBehaviour
                 Debug.LogError($"CPU selection prefab '{temp.PlayerObjectName}' (playerId {temp.PlayerId}) does not author isCpu = true.");
             }
 
-            temp.intializeCpuShooterStats();
+            temp.InitializeCpuBaselineStats();
             shooterList.Add(temp);
         }
         // sort list by  character id
