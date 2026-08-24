@@ -1,0 +1,1609 @@
+[Licensing::Module] Trying to connect to existing licensing client channel...
+Built from '6000.5/staging' branch; Version is '6000.5.7f1 (017862109af0) revision 96354'; Using compiler version '194234433'; Build Type 'Release'
+OS: 'Windows 10  (10.0.19045) 64bit Professional' Language: 'en' Physical Memory: 32595 MB
+[Licensing::IpcConnector] Successfully connected to: "LicenseClient-Patrick" at "2026-08-23T23:17:40.2850565Z"
+BatchMode: 1, IsHumanControllingUs: 0, StartBugReporterOnCrash: 0, Is64bit: 1
+System  architecture: x64
+Process architecture: x64
+Date: 2026-08-23T23:17:40Z
+
+COMMAND LINE ARGUMENTS:
+C:\Program Files\Unity\Hub\Editor\6000.5.7f1\Editor\Unity.exe
+-batchmode
+-quit
+-projectPath
+C:\Users\Patrick\Documents\github\level5
+-executeMethod
+Level5DocumentationExporter.ExportFromCommandLine
+-logFile
+C:\Users\Patrick\Documents\github\level5\TestResults\export-run2.log
+Successfully changed project path to: C:\Users\Patrick\Documents\github\level5
+C:/Users/Patrick/Documents/github/level5
+[UnityMemory] Configuration Parameters - Can be set up in boot.config
+    "memorysetup-temp-allocator-size-gi-baking-worker=262144"
+    "memorysetup-temp-allocator-size-gi-baking-worker=262144"
+    "memorysetup-temp-allocator-size-gi-baking-worker=262144"
+    "memorysetup-temp-allocator-size-gi-baking-worker=262144"
+    "memorysetup-temp-allocator-size-gi-baking-worker=262144"
+    "memorysetup-temp-allocator-size-nav-mesh-worker=65536"
+    "memorysetup-temp-allocator-size-audio-worker=65536"
+    "memorysetup-temp-allocator-size-cloud-worker=32768"
+    "memorysetup-temp-allocator-size-gfx=262144"
+    "memorysetup-temp-allocator-size-preload-manager=33554432"
+    "memorysetup-allocator-temp-initial-block-size-main=262144"
+    "memorysetup-allocator-temp-initial-block-size-worker=262144"
+    "memorysetup-temp-allocator-size-job-worker=262144"
+    "memorysetup-temp-allocator-size-background-worker=32768"
+    "memorysetup-bucket-allocator-granularity=16"
+    "memorysetup-bucket-allocator-bucket-count=8"
+    "memorysetup-bucket-allocator-block-size=33554432"
+    "memorysetup-bucket-allocator-block-count=8"
+    "memorysetup-main-allocator-block-size=16777216"
+    "memorysetup-thread-allocator-block-size=16777216"
+    "memorysetup-main-allocator-mimalloc-enabled=0"
+    "memorysetup-gfx-main-allocator-block-size=16777216"
+    "memorysetup-gfx-thread-allocator-block-size=16777216"
+    "memorysetup-cache-allocator-block-size=4194304"
+    "memorysetup-typetree-allocator-block-size=2097152"
+    "memorysetup-profiler-bucket-allocator-granularity=16"
+    "memorysetup-profiler-bucket-allocator-bucket-count=8"
+    "memorysetup-profiler-bucket-allocator-block-size=33554432"
+    "memorysetup-profiler-bucket-allocator-block-count=8"
+    "memorysetup-profiler-allocator-block-size=16777216"
+    "memorysetup-profiler-editor-allocator-block-size=1048576"
+    "memorysetup-temp-allocator-size-main=16777216"
+    "memorysetup-job-temp-allocator-block-size=2097152"
+    "memorysetup-job-temp-allocator-block-size-background=1048576"
+    "memorysetup-job-temp-allocator-reduction-small-platforms=262144"
+Logging is directed to a specific file, skipping project log.Player connection [86096]  Target information:
+
+Player connection [86096]  * "[IP] 172.21.64.1 [Port] 55504 [Flags] 2 [Guid] 2470404956 [EditorId] 2470404956 [Version] 1048832 [Id] WindowsEditor(7,DESKTOP-JB3731F) [Debug] 1 [PackageName] WindowsEditor [ProjectName] Editor" 
+
+Player connection [86096]  * "[IP] 172.20.32.1 [Port] 55504 [Flags] 2 [Guid] 2470404956 [EditorId] 2470404956 [Version] 1048832 [Id] WindowsEditor(7,DESKTOP-JB3731F) [Debug] 1 [PackageName] WindowsEditor [ProjectName] Editor" 
+
+Player connection [86096]  * "[IP] 192.168.68.50 [Port] 55504 [Flags] 2 [Guid] 2470404956 [EditorId] 2470404956 [Version] 1048832 [Id] WindowsEditor(7,DESKTOP-JB3731F) [Debug] 1 [PackageName] WindowsEditor [ProjectName] Editor" 
+
+Player connection [86096] Host joined multi-casting on [225.0.0.222:54997]...
+Player connection [86096] Host joined alternative multi-casting on [225.0.0.222:34997]...
+Input System module state changed to: Initialized.
+[Physics::Module] Initialized fallback backend.
+[Physics::Module] Id: 0xdecafbad
+[Package Manager] Connected to IPC stream "Upm-82540" after 0.2 seconds.
+[Licensing::Module] Licensing is not yet initialized.
+[Licensing::Client] Error: HandshakeResponse reported an error:
+	ResponseCode: 505
+	ResponseStatus: Unsupported protocol version '1.18.1'.
+[Licensing::Module] Error: Failed to handshake to channel: "LicenseClient-Patrick"
+[Licensing::IpcConnector] LicenseClient-Patrick channel disconnected successfully.
+[Licensing::IpcConnector] Channel LicenseClient-Patrick-6000.5.7 doesn't exist
+[Licensing::Module] Successfully launched the LicensingClient (PId: 98336)
+[Licensing::IpcConnector] Successfully connected to: "LicenseClient-Patrick-6000.5.7" at "2026-08-23T23:17:41.215253Z"
+[Licensing::Client] Code 10 while verifying Licensing Client signature (process Id: 98336, path: "C:/Program Files/Unity/Hub/Editor/6000.5.7f1/Editor/Data/Resources/Licensing/Client/Unity.Licensing.Client.exe")
+[Licensing::Module] LicensingClient has failed validation; ignoring
+[Licensing::Client] Handshaking with LicensingClient:
+  Version:                 1.18.1+9fbee8e
+  Session Id:              a522c8deefd342d69038724a25e72657
+  Correlation Id:          ad287f1efef41ce41ee02397331aba87
+  External correlation Id: 2269596399440827542
+  Machine Id:              OAUTwxj5yUYwCpKJkbjj5hx0Fow=
+[Licensing::Module] Successfully connected to LicensingClient on channel: "LicenseClient-Patrick-6000.5.7" (connect: 0.25s, validation: 0.11s, handshake: 0.00s)
+[Licensing::IpcConnector] Successfully connected to: "LicenseClient-Patrick-6000.5.7-notifications" at "2026-08-23T23:17:41.3294785Z"
+[Licensing::Module] Connected to LicensingClient (PId: 98336, launch time: 0.00, total connection time: 0.36s)
+[Licensing::Module] Error: Access token is unavailable; failed to update
+[Licensing::Client] Successfully resolved entitlement details
+[Licensing::Module] License group:
+  Id: F4-YCVD-TSRR-RRUF-SPVT-XXXX
+  Product: Unity Personal
+  Type: ULF
+  Expiration: Unlimited
+[Licensing::Module] License group:
+  Id: 2945148-UnityPersXXXX
+  Product: Unity Personal
+  Type: Assigned
+  Expiration: Unlimited
+[Licensing::Client] Successfully updated license, isAsync: True, time: 0.01
+[Licensing::Client] Successfully resolved entitlement details
+[Licensing::Module] License group:
+  Id: F4-YCVD-TSRR-RRUF-SPVT-XXXX
+  Product: Unity Personal
+  Type: ULF
+  Expiration: Unlimited
+[Licensing::Module] License group:
+  Id: 2945148-UnityPersXXXX
+  Product: Unity Personal
+  Type: Assigned
+  Expiration: Unlimited
+[Licensing::Module] Licensing Background thread has ended after 1.07s
+[Licensing::Module] Licensing is initialized (took 0.73s).
+[Licensing::Client] Successfully resolved entitlement details
+[Licensing::Module] License group:
+  Id: F4-YCVD-TSRR-RRUF-SPVT-XXXX
+  Product: Unity Personal
+  Type: ULF
+  Expiration: Unlimited
+[Licensing::Module] License group:
+  Id: 2945148-UnityPersXXXX
+  Product: Unity Personal
+  Type: Assigned
+  Expiration: Unlimited
+Library Redirect Path: Library/
+[Physics::Module] Selected backend.
+[Physics::Module] Name: PhysX
+[Physics::Module] Id: 0xf2b8ea05
+[Physics::Module] SDK Version: 4.1.2
+[Physics::Module] Integration Version: 1.0.0
+[Physics::Module] Threading Mode: Multi-Threaded
+Package Manager log level set to [2]
+[Package Manager] Restoring resolved packages state from cache
+[Licensing::Client] Successfully resolved entitlement details
+[Package Manager] Registered 60 packages:
+  Packages from [https://packages.unity.com]:
+    com.unity.analytics@3.8.2 (location: C:\Users\Patrick\Documents\github\level5\Library\PackageCache\com.unity.analytics@c9d14a6bdec6)
+    com.unity.burst@1.8.30 (location: C:\Users\Patrick\Documents\github\level5\Library\PackageCache\com.unity.burst@2f3d916873ea)
+    com.unity.ide.visualstudio@2.0.26 (location: C:\Users\Patrick\Documents\github\level5\Library\PackageCache\com.unity.ide.visualstudio@a99d56dec63f)
+    com.unity.inputsystem@1.20.0 (location: C:\Users\Patrick\Documents\github\level5\Library\PackageCache\com.unity.inputsystem@7a4e1a2a8194)
+    com.unity.mobile.android-logcat@1.4.7 (location: C:\Users\Patrick\Documents\github\level5\Library\PackageCache\com.unity.mobile.android-logcat@a8a404f035b3)
+    com.unity.mobile.notifications@2.4.3 (location: C:\Users\Patrick\Documents\github\level5\Library\PackageCache\com.unity.mobile.notifications@53b584f4d5cd)
+    com.unity.services.levelplay@8.10.2 (location: C:\Users\Patrick\Documents\github\level5\Library\PackageCache\com.unity.services.levelplay@1a1e0681a085)
+    com.unity.services.core@1.18.0 (location: C:\Users\Patrick\Documents\github\level5\Library\PackageCache\com.unity.services.core@3464cb68d709)
+    com.unity.services.analytics@6.3.0 (location: C:\Users\Patrick\Documents\github\level5\Library\PackageCache\com.unity.services.analytics@cde4e6cf92f9)
+    com.unity.nuget.newtonsoft-json@3.2.2 (location: C:\Users\Patrick\Documents\github\level5\Library\PackageCache\com.unity.nuget.newtonsoft-json@4dfd81071c64)
+    com.unity.searcher@4.9.4 (location: C:\Users\Patrick\Documents\github\level5\Library\PackageCache\com.unity.searcher@d45a78918735)
+    com.unity.nuget.mono-cecil@1.11.6 (location: C:\Users\Patrick\Documents\github\level5\Library\PackageCache\com.unity.nuget.mono-cecil@ecb9724e46ff)
+    com.unity.test-framework.performance@3.5.0 (location: C:\Users\Patrick\Documents\github\level5\Library\PackageCache\com.unity.test-framework.performance@8b56083ec0f0)
+  Built-in packages:
+    com.unity.2d.sprite@1.0.0 (location: C:\Users\Patrick\Documents\github\level5\Library\PackageCache\com.unity.2d.sprite@053a968eab56)
+    com.unity.ext.nunit@2.1.0 (location: C:\Users\Patrick\Documents\github\level5\Library\PackageCache\com.unity.ext.nunit@44f7d31723bd)
+    com.unity.multiplayer.center@1.0.1 (location: C:\Users\Patrick\Documents\github\level5\Library\PackageCache\com.unity.multiplayer.center@b860850997d0)
+    com.unity.render-pipelines.universal@17.5.0 (location: C:\Users\Patrick\Documents\github\level5\Library\PackageCache\com.unity.render-pipelines.universal@73b4c4ff130e)
+    com.unity.ugui@2.5.0 (location: C:\Users\Patrick\Documents\github\level5\Library\PackageCache\com.unity.ugui@67707a67a4ab)
+    com.unity.modules.accessibility@1.0.0 (location: C:\Users\Patrick\Documents\github\level5\Library\PackageCache\com.unity.modules.accessibility)
+    com.unity.modules.adaptiveperformance@1.0.0 (location: C:\Users\Patrick\Documents\github\level5\Library\PackageCache\com.unity.modules.adaptiveperformance)
+    com.unity.modules.ai@1.0.0 (location: C:\Users\Patrick\Documents\github\level5\Library\PackageCache\com.unity.modules.ai)
+    com.unity.modules.androidjni@1.0.0 (location: C:\Users\Patrick\Documents\github\level5\Library\PackageCache\com.unity.modules.androidjni)
+    com.unity.modules.animation@1.0.0 (location: C:\Users\Patrick\Documents\github\level5\Library\PackageCache\com.unity.modules.animation)
+    com.unity.modules.assetbundle@1.0.0 (location: C:\Users\Patrick\Documents\github\level5\Library\PackageCache\com.unity.modules.assetbundle)
+    com.unity.modules.audio@1.0.0 (location: C:\Users\Patrick\Documents\github\level5\Library\PackageCache\com.unity.modules.audio)
+    com.unity.modules.cloth@1.0.0 (location: C:\Users\Patrick\Documents\github\level5\Library\PackageCache\com.unity.modules.cloth)
+    com.unity.modules.director@1.0.0 (location: C:\Users\Patrick\Documents\github\level5\Library\PackageCache\com.unity.modules.director)
+    com.unity.modules.imageconversion@1.0.0 (location: C:\Users\Patrick\Documents\github\level5\Library\PackageCache\com.unity.modules.imageconversion)
+    com.unity.modules.imgui@1.0.0 (location: C:\Users\Patrick\Documents\github\level5\Library\PackageCache\com.unity.modules.imgui)
+    com.unity.modules.jsonserialize@1.0.0 (location: C:\Users\Patrick\Documents\github\level5\Library\PackageCache\com.unity.modules.jsonserialize)
+    com.unity.modules.particlesystem@1.0.0 (location: C:\Users\Patrick\Documents\github\level5\Library\PackageCache\com.unity.modules.particlesystem)
+    com.unity.modules.physics@1.0.0 (location: C:\Users\Patrick\Documents\github\level5\Library\PackageCache\com.unity.modules.physics)
+    com.unity.modules.physics2d@1.0.0 (location: C:\Users\Patrick\Documents\github\level5\Library\PackageCache\com.unity.modules.physics2d)
+    com.unity.modules.physicscore2d@1.0.0 (location: C:\Users\Patrick\Documents\github\level5\Library\PackageCache\com.unity.modules.physicscore2d)
+    com.unity.modules.screencapture@1.0.0 (location: C:\Users\Patrick\Documents\github\level5\Library\PackageCache\com.unity.modules.screencapture)
+    com.unity.modules.terrain@1.0.0 (location: C:\Users\Patrick\Documents\github\level5\Library\PackageCache\com.unity.modules.terrain)
+    com.unity.modules.terrainphysics@1.0.0 (location: C:\Users\Patrick\Documents\github\level5\Library\PackageCache\com.unity.modules.terrainphysics)
+    com.unity.modules.tilemap@1.0.0 (location: C:\Users\Patrick\Documents\github\level5\Library\PackageCache\com.unity.modules.tilemap)
+    com.unity.modules.ui@1.0.0 (location: C:\Users\Patrick\Documents\github\level5\Library\PackageCache\com.unity.modules.ui)
+    com.unity.modules.uielements@1.0.0 (location: C:\Users\Patrick\Documents\github\level5\Library\PackageCache\com.unity.modules.uielements)
+    com.unity.modules.umbra@1.0.0 (location: C:\Users\Patrick\Documents\github\level5\Library\PackageCache\com.unity.modules.umbra)
+    com.unity.modules.unityanalytics@1.0.0 (location: C:\Users\Patrick\Documents\github\level5\Library\PackageCache\com.unity.modules.unityanalytics)
+    com.unity.modules.unitywebrequest@1.0.0 (location: C:\Users\Patrick\Documents\github\level5\Library\PackageCache\com.unity.modules.unitywebrequest)
+    com.unity.modules.unitywebrequestassetbundle@1.0.0 (location: C:\Users\Patrick\Documents\github\level5\Library\PackageCache\com.unity.modules.unitywebrequestassetbundle)
+    com.unity.modules.unitywebrequestaudio@1.0.0 (location: C:\Users\Patrick\Documents\github\level5\Library\PackageCache\com.unity.modules.unitywebrequestaudio)
+    com.unity.modules.unitywebrequesttexture@1.0.0 (location: C:\Users\Patrick\Documents\github\level5\Library\PackageCache\com.unity.modules.unitywebrequesttexture)
+    com.unity.modules.unitywebrequestwww@1.0.0 (location: C:\Users\Patrick\Documents\github\level5\Library\PackageCache\com.unity.modules.unitywebrequestwww)
+    com.unity.modules.vectorgraphics@1.0.0 (location: C:\Users\Patrick\Documents\github\level5\Library\PackageCache\com.unity.modules.vectorgraphics)
+    com.unity.modules.vehicles@1.0.0 (location: C:\Users\Patrick\Documents\github\level5\Library\PackageCache\com.unity.modules.vehicles)
+    com.unity.modules.video@1.0.0 (location: C:\Users\Patrick\Documents\github\level5\Library\PackageCache\com.unity.modules.video)
+    com.unity.modules.wind@1.0.0 (location: C:\Users\Patrick\Documents\github\level5\Library\PackageCache\com.unity.modules.wind)
+    com.unity.modules.xr@1.0.0 (location: C:\Users\Patrick\Documents\github\level5\Library\PackageCache\com.unity.modules.xr)
+    com.unity.modules.subsystems@1.0.0 (location: C:\Users\Patrick\Documents\github\level5\Library\PackageCache\com.unity.modules.subsystems)
+    com.unity.modules.hierarchycore@1.0.0 (location: C:\Users\Patrick\Documents\github\level5\Library\PackageCache\com.unity.modules.hierarchycore)
+    com.unity.render-pipelines.core@17.5.0 (location: C:\Users\Patrick\Documents\github\level5\Library\PackageCache\com.unity.render-pipelines.core@645717f21c5f)
+    com.unity.shadergraph@17.5.0 (location: C:\Users\Patrick\Documents\github\level5\Library\PackageCache\com.unity.shadergraph@8d7376ec43ee)
+    com.unity.render-pipelines.universal-config@17.5.0 (location: C:\Users\Patrick\Documents\github\level5\Library\PackageCache\com.unity.render-pipelines.universal-config@fdda01c80fe3)
+    com.unity.test-framework@1.7.0 (location: C:\Users\Patrick\Documents\github\level5\Library\PackageCache\com.unity.test-framework@1405238725ab)
+    com.unity.mathematics@1.4.0 (location: C:\Users\Patrick\Documents\github\level5\Library\PackageCache\com.unity.mathematics@981956d94fb6)
+    com.unity.collections@6.5.0 (location: C:\Users\Patrick\Documents\github\level5\Library\PackageCache\com.unity.collections@ec2c217e4cb2)
+[Subsystems] No new subsystems found in resolved package list.
+[Package Manager] Done registering packages in 0.02 seconds
+Refreshing native plugins compatible for Editor in 7.84 ms, found 1 plugins.
+Initialize engine version: 6000.5.7f1 (017862109af0)
+[Subsystems] Discovering subsystems at path C:/Program Files/Unity/Hub/Editor/6000.5.7f1/Editor/Data/Resources/UnitySubsystems
+[Subsystems] Discovering subsystems at path C:/Users/Patrick/Documents/github/level5/Assets
+GfxDevice: creating device client; kGfxThreadingModeThreaded
+[vulkan] LoadVulkanLibrary vulkan-1.dll[vulkan] Loaded instance function vkGetInstanceProcAddr
+[vulkan] Loaded instance function vkGetInstanceProcAddr
+[vulkan] Loaded instance function vkCreateInstance
+[vulkan] Loaded instance function vkEnumerateInstanceExtensionProperties
+[vulkan] Loaded instance function vkEnumerateInstanceLayerProperties
+[vulkan] Loaded instance function vkEnumerateInstanceVersion
+[Vulkan init] extensions: count=17
+[Vulkan init] extensions: name=VK_EXT_debug_report [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_debug_utils [enabled=1, external=0]
+[Vulkan init] extensions: name=VK_EXT_surface_maintenance1 [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_swapchain_colorspace [enabled=1, external=0]
+[Vulkan init] extensions: name=VK_KHR_device_group_creation [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_external_fence_capabilities [enabled=1, external=0]
+[Vulkan init] extensions: name=VK_KHR_external_memory_capabilities [enabled=1, external=0]
+[Vulkan init] extensions: name=VK_KHR_external_semaphore_capabilities [enabled=1, external=0]
+[Vulkan init] extensions: name=VK_KHR_get_physical_device_properties2 [enabled=1, external=0]
+[Vulkan init] extensions: name=VK_KHR_get_surface_capabilities2 [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_portability_enumeration [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_surface [enabled=1, external=0]
+[Vulkan init] extensions: name=VK_KHR_surface_maintenance1 [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_surface_protected_capabilities [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_win32_surface [enabled=1, external=0]
+[Vulkan init] extensions: name=VK_LUNARG_direct_driver_loading [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_NV_external_memory_capabilities [enabled=0, external=0]
+[vulkan] Loaded instance function vkDestroyInstance
+[vulkan] Loaded instance function vkGetPhysicalDeviceProperties
+[vulkan] Loaded instance function vkEnumeratePhysicalDevices
+[Vulkan init] SelectPhysicalDevice requestedDeviceIndex=-1 xrDevice=0000000000000000
+[Vulkan init] Physical Device 0000024F72A505C0 [0]: "NVIDIA GeForce RTX 4060" deviceType=2 vendorID=10de deviceID=2882
+Vulkan detection: 2
+[Vulkan init] extensions: count=17
+[Vulkan init] extensions: name=VK_EXT_debug_report [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_debug_utils [enabled=1, external=0]
+[Vulkan init] extensions: name=VK_EXT_surface_maintenance1 [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_swapchain_colorspace [enabled=1, external=0]
+[Vulkan init] extensions: name=VK_KHR_device_group_creation [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_external_fence_capabilities [enabled=1, external=0]
+[Vulkan init] extensions: name=VK_KHR_external_memory_capabilities [enabled=1, external=0]
+[Vulkan init] extensions: name=VK_KHR_external_semaphore_capabilities [enabled=1, external=0]
+[Vulkan init] extensions: name=VK_KHR_get_physical_device_properties2 [enabled=1, external=0]
+[Vulkan init] extensions: name=VK_KHR_get_surface_capabilities2 [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_portability_enumeration [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_surface [enabled=1, external=0]
+[Vulkan init] extensions: name=VK_KHR_surface_maintenance1 [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_surface_protected_capabilities [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_win32_surface [enabled=1, external=0]
+[Vulkan init] extensions: name=VK_LUNARG_direct_driver_loading [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_NV_external_memory_capabilities [enabled=0, external=0]
+[vulkan] Loaded instance function vkDestroyInstance
+[vulkan] Loaded instance function vkGetPhysicalDeviceProperties
+[vulkan] Loaded instance function vkEnumeratePhysicalDevices
+[vulkan] Loaded instance function vkGetDeviceProcAddr
+[vulkan] Loaded instance function vkGetPhysicalDeviceFeatures
+[vulkan] Loaded instance function vkGetPhysicalDeviceFormatProperties
+[vulkan] Loaded instance function vkGetPhysicalDeviceImageFormatProperties
+[vulkan] Loaded instance function vkGetPhysicalDeviceQueueFamilyProperties
+[vulkan] Loaded instance function vkGetPhysicalDeviceMemoryProperties
+[vulkan] Loaded instance function vkCreateDevice
+[vulkan] Loaded instance function vkEnumerateDeviceExtensionProperties
+[vulkan] Loaded instance function vkEnumerateDeviceLayerProperties
+[vulkan] Loaded instance function vkGetPhysicalDeviceSparseImageFormatProperties
+[vulkan] Loaded instance function vkDestroySurfaceKHR
+[vulkan] Loaded instance function vkGetPhysicalDeviceSurfaceSupportKHR
+[vulkan] Loaded instance function vkGetPhysicalDeviceSurfaceCapabilitiesKHR
+[vulkan] Loaded instance function vkGetPhysicalDeviceSurfaceFormatsKHR
+[vulkan] Loaded instance function vkGetPhysicalDeviceSurfacePresentModesKHR
+[vulkan] Loaded instance function vkCreateSwapchainKHR
+[vulkan] Loaded instance function vkDestroySwapchainKHR
+[vulkan] Loaded instance function vkGetSwapchainImagesKHR
+[vulkan] Loaded instance function vkAcquireNextImageKHR
+[vulkan] Loaded instance function vkQueuePresentKHR
+[vulkan] Loaded instance function vkGetPhysicalDeviceDisplayPropertiesKHR
+[vulkan] Loaded instance function vkGetPhysicalDeviceDisplayPlanePropertiesKHR
+[vulkan] Loaded instance function vkGetDisplayPlaneSupportedDisplaysKHR
+[vulkan] Loaded instance function vkGetDisplayModePropertiesKHR
+[vulkan] Loaded instance function vkCreateDisplayModeKHR
+[vulkan] Loaded instance function vkGetDisplayPlaneCapabilitiesKHR
+[vulkan] Loaded instance function vkCreateDisplayPlaneSurfaceKHR
+[vulkan] Loaded instance function vkCreateSharedSwapchainsKHR
+[vulkan] Loaded instance function vkCreateWin32SurfaceKHR
+[vulkan] Loaded instance function vkGetPhysicalDeviceWin32PresentationSupportKHR
+[vulkan] Loaded instance function vkSetHdrMetadataEXT
+[vulkan] Loaded instance function vkGetPhysicalDeviceFeatures2KHR
+[vulkan] Loaded instance function vkGetPhysicalDeviceProperties2KHR
+[vulkan] Loaded instance function vkGetPhysicalDeviceFormatProperties2KHR
+[vulkan] Loaded instance function vkGetPhysicalDeviceImageFormatProperties2KHR
+[vulkan] Loaded instance function vkGetPhysicalDeviceQueueFamilyProperties2KHR
+[vulkan] Loaded instance function vkGetPhysicalDeviceMemoryProperties2KHR
+[vulkan] Loaded instance function vkGetPhysicalDeviceSparseImageFormatProperties2KHR
+[vulkan] Loaded instance function vkGetSemaphoreFdKHR
+[vulkan] Loaded instance function vkImportSemaphoreFdKHR
+[vulkan] Loaded instance function vkGetFenceFdKHR
+[vulkan] Loaded instance function vkImportFenceFdKHR
+[vulkan] Loaded instance function vkCreateSamplerYcbcrConversionKHR
+[vulkan] Loaded instance function vkDestroySamplerYcbcrConversionKHR
+[vulkan] Loaded instance function vkBindBufferMemory2KHR
+[vulkan] Loaded instance function vkBindImageMemory2KHR
+[vulkan] Loaded instance function vkWaitForPresentKHR
+[vulkan] Loaded instance function vkGetPhysicalDeviceExternalSemaphorePropertiesKHR
+[vulkan] Loaded instance function vkGetPhysicalDeviceExternalFencePropertiesKHR
+[vulkan] Loaded instance function vkGetPhysicalDeviceFragmentShadingRatesKHR
+[vulkan] Loaded instance function vkSetDebugUtilsObjectNameEXT
+[vulkan] Loaded instance function vkSetDebugUtilsObjectTagEXT
+[vulkan] Loaded instance function vkQueueBeginDebugUtilsLabelEXT
+[vulkan] Loaded instance function vkQueueEndDebugUtilsLabelEXT
+[vulkan] Loaded instance function vkQueueInsertDebugUtilsLabelEXT
+[vulkan] Loaded instance function vkCmdBeginDebugUtilsLabelEXT
+[vulkan] Loaded instance function vkCmdEndDebugUtilsLabelEXT
+[vulkan] Loaded instance function vkCmdInsertDebugUtilsLabelEXT
+[Vulkan init] SelectPhysicalDevice requestedDeviceIndex=-1 xrDevice=0000000000000000
+[Vulkan init] Physical Device 0000024F72A29FE0 [0]: "NVIDIA GeForce RTX 4060" deviceType=2 vendorID=10de deviceID=2882
+[Vulkan init] Selected physical device 0000024F72A29FE0
+[Vulkan init] Graphics queue count=1
+[Vulkan init] extensions: count=275
+[Vulkan init] extensions: name=VK_AMD_buffer_marker [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_4444_formats [enabled=1, external=0]
+[Vulkan init] extensions: name=VK_EXT_attachment_feedback_loop_dynamic_state [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_attachment_feedback_loop_layout [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_blend_operation_advanced [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_border_color_swizzle [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_buffer_device_address [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_calibrated_timestamps [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_color_write_enable [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_conditional_rendering [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_conservative_rasterization [enabled=1, external=0]
+[Vulkan init] extensions: name=VK_EXT_custom_border_color [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_custom_resolve [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_depth_bias_control [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_depth_clamp_control [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_depth_clamp_zero_one [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_depth_clip_control [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_depth_clip_enable [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_depth_range_unrestricted [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_descriptor_buffer [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_descriptor_heap [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_descriptor_indexing [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_device_address_binding_report [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_device_fault [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_device_generated_commands [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_discard_rectangles [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_dynamic_rendering_unused_attachments [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_extended_dynamic_state [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_extended_dynamic_state2 [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_extended_dynamic_state3 [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_external_memory_host [enabled=1, external=0]
+[Vulkan init] extensions: name=VK_EXT_fragment_shader_interlock [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_full_screen_exclusive [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_graphics_pipeline_library [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_hdr_metadata [enabled=1, external=0]
+[Vulkan init] extensions: name=VK_EXT_host_image_copy [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_host_query_reset [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_image_2d_view_of_3d [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_image_robustness [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_image_sliced_view_of_3d [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_image_view_min_lod [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_index_type_uint8 [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_inline_uniform_block [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_legacy_vertex_attributes [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_line_rasterization [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_load_store_op_none [enabled=1, external=0]
+[Vulkan init] extensions: name=VK_EXT_memory_budget [enabled=1, external=0]
+[Vulkan init] extensions: name=VK_EXT_memory_decompression [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_memory_priority [enabled=1, external=0]
+[Vulkan init] extensions: name=VK_EXT_mesh_shader [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_multi_draw [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_mutable_descriptor_type [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_nested_command_buffer [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_non_seamless_cube_map [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_opacity_micromap [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_pageable_device_local_memory [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_pci_bus_info [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_pipeline_creation_cache_control [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_pipeline_creation_feedback [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_pipeline_library_group_handles [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_pipeline_robustness [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_post_depth_coverage [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_present_mode_fifo_latest_ready [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_present_timing [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_primitive_topology_list_restart [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_primitives_generated_query [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_private_data [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_provoking_vertex [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_queue_family_foreign [enabled=1, external=0]
+[Vulkan init] extensions: name=VK_EXT_ray_tracing_invocation_reorder [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_robustness2 [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_sample_locations [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_sampler_filter_minmax [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_scalar_block_layout [enabled=1, external=0]
+[Vulkan init] extensions: name=VK_EXT_separate_stencil_usage [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_shader_64bit_indexing [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_shader_atomic_float [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_shader_demote_to_helper_invocation [enabled=1, external=0]
+[Vulkan init] extensions: name=VK_EXT_shader_float8 [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_shader_image_atomic_int64 [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_shader_long_vector [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_shader_module_identifier [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_shader_object [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_shader_replicated_composites [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_shader_subgroup_ballot [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_shader_subgroup_partitioned [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_shader_subgroup_vote [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_shader_uniform_buffer_unsized_array [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_shader_viewport_index_layer [enabled=1, external=0]
+[Vulkan init] extensions: name=VK_EXT_subgroup_size_control [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_swapchain_maintenance1 [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_texel_buffer_alignment [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_tooling_info [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_transform_feedback [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_vertex_attribute_divisor [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_vertex_attribute_robustness [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_vertex_input_dynamic_state [enabled=1, external=0]
+[Vulkan init] extensions: name=VK_EXT_ycbcr_2plane_444_formats [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_ycbcr_image_arrays [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_EXT_zero_initialize_device_memory [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_GOOGLE_hlsl_functionality1 [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_GOOGLE_user_type [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_16bit_storage [enabled=1, external=0]
+[Vulkan init] extensions: name=VK_KHR_8bit_storage [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_acceleration_structure [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_bind_memory2 [enabled=1, external=0]
+[Vulkan init] extensions: name=VK_KHR_buffer_device_address [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_calibrated_timestamps [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_compute_shader_derivatives [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_cooperative_matrix [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_copy_commands2 [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_copy_memory_indirect [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_create_renderpass2 [enabled=1, external=0]
+[Vulkan init] extensions: name=VK_KHR_dedicated_allocation [enabled=1, external=0]
+[Vulkan init] extensions: name=VK_KHR_deferred_host_operations [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_depth_clamp_zero_one [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_depth_stencil_resolve [enabled=1, external=0]
+[Vulkan init] extensions: name=VK_KHR_descriptor_update_template [enabled=1, external=0]
+[Vulkan init] extensions: name=VK_KHR_device_group [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_draw_indirect_count [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_driver_properties [enabled=1, external=0]
+[Vulkan init] extensions: name=VK_KHR_dynamic_rendering [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_dynamic_rendering_local_read [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_external_fence [enabled=1, external=0]
+[Vulkan init] extensions: name=VK_KHR_external_fence_win32 [enabled=1, external=0]
+[Vulkan init] extensions: name=VK_KHR_external_memory [enabled=1, external=0]
+[Vulkan init] extensions: name=VK_KHR_external_memory_win32 [enabled=1, external=0]
+[Vulkan init] extensions: name=VK_KHR_external_semaphore [enabled=1, external=0]
+[Vulkan init] extensions: name=VK_KHR_external_semaphore_win32 [enabled=1, external=0]
+[Vulkan init] extensions: name=VK_KHR_format_feature_flags2 [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_fragment_shader_barycentric [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_fragment_shading_rate [enabled=1, external=0]
+[Vulkan init] extensions: name=VK_KHR_get_memory_requirements2 [enabled=1, external=0]
+[Vulkan init] extensions: name=VK_KHR_global_priority [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_image_format_list [enabled=1, external=0]
+[Vulkan init] extensions: name=VK_KHR_imageless_framebuffer [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_index_type_uint8 [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_internally_synchronized_queues [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_line_rasterization [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_load_store_op_none [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_maintenance1 [enabled=1, external=0]
+[Vulkan init] extensions: name=VK_KHR_maintenance10 [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_maintenance2 [enabled=1, external=0]
+[Vulkan init] extensions: name=VK_KHR_maintenance3 [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_maintenance4 [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_maintenance5 [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_maintenance6 [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_maintenance7 [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_maintenance8 [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_maintenance9 [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_map_memory2 [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_multiview [enabled=1, external=0]
+[Vulkan init] extensions: name=VK_KHR_pipeline_binary [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_pipeline_executable_properties [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_pipeline_library [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_present_id [enabled=1, external=0]
+[Vulkan init] extensions: name=VK_KHR_present_id2 [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_present_mode_fifo_latest_ready [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_present_wait [enabled=1, external=0]
+[Vulkan init] extensions: name=VK_KHR_present_wait2 [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_push_descriptor [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_ray_query [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_ray_tracing_maintenance1 [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_ray_tracing_pipeline [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_ray_tracing_position_fetch [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_relaxed_block_layout [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_robustness2 [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_sampler_mirror_clamp_to_edge [enabled=1, external=0]
+[Vulkan init] extensions: name=VK_KHR_sampler_ycbcr_conversion [enabled=1, external=0]
+[Vulkan init] extensions: name=VK_KHR_separate_depth_stencil_layouts [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_shader_atomic_int64 [enabled=1, external=0]
+[Vulkan init] extensions: name=VK_KHR_shader_bfloat16 [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_shader_clock [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_shader_draw_parameters [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_shader_expect_assume [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_shader_float16_int8 [enabled=1, external=0]
+[Vulkan init] extensions: name=VK_KHR_shader_float_controls [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_shader_float_controls2 [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_shader_fma [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_shader_integer_dot_product [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_shader_maximal_reconvergence [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_shader_non_semantic_info [enabled=1, external=0]
+[Vulkan init] extensions: name=VK_KHR_shader_quad_control [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_shader_relaxed_extended_instruction [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_shader_subgroup_extended_types [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_shader_subgroup_rotate [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_shader_subgroup_uniform_control_flow [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_shader_terminate_invocation [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_shader_untyped_pointers [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_spirv_1_4 [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_storage_buffer_storage_class [enabled=1, external=0]
+[Vulkan init] extensions: name=VK_KHR_swapchain [enabled=1, external=0]
+[Vulkan init] extensions: name=VK_KHR_swapchain_maintenance1 [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_swapchain_mutable_format [enabled=1, external=0]
+[Vulkan init] extensions: name=VK_KHR_synchronization2 [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_timeline_semaphore [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_unified_image_layouts [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_uniform_buffer_standard_layout [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_variable_pointers [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_vertex_attribute_divisor [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_video_decode_av1 [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_video_decode_h264 [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_video_decode_h265 [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_video_decode_queue [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_video_decode_vp9 [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_video_encode_av1 [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_video_encode_h264 [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_video_encode_h265 [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_video_encode_intra_refresh [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_video_encode_quantization_map [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_video_encode_queue [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_video_maintenance1 [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_video_maintenance2 [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_video_queue [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_vulkan_memory_model [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_win32_keyed_mutex [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_workgroup_memory_explicit_layout [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_KHR_zero_initialize_workgroup_memory [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_NVX_binary_import [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_NVX_image_view_handle [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_NVX_multiview_per_view_attributes [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_NV_clip_space_w_scaling [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_NV_cluster_acceleration_structure [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_NV_compute_occupancy_priority [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_NV_compute_shader_derivatives [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_NV_cooperative_matrix [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_NV_cooperative_matrix2 [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_NV_cooperative_vector [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_NV_copy_memory_indirect [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_NV_corner_sampled_image [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_NV_coverage_reduction_mode [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_NV_cuda_kernel_launch [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_NV_dedicated_allocation [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_NV_dedicated_allocation_image_aliasing [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_NV_descriptor_pool_overallocation [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_NV_device_diagnostic_checkpoints [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_NV_device_diagnostics_config [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_NV_device_generated_commands [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_NV_device_generated_commands_compute [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_NV_disk_cache_utils [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_NV_external_compute_queue [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_NV_external_memory [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_NV_external_memory_win32 [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_NV_fill_rectangle [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_NV_fragment_coverage_to_color [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_NV_fragment_shader_barycentric [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_NV_fragment_shading_rate_enums [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_NV_framebuffer_mixed_samples [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_NV_geometry_shader_passthrough [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_NV_inherited_viewport_scissor [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_NV_internal_nvpresent [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_NV_linear_color_attachment [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_NV_low_latency [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_NV_low_latency2 [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_NV_memory_decompression [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_NV_mesh_shader [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_NV_optical_flow [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_NV_partitioned_acceleration_structure [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_NV_present_metering [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_NV_push_constant_bank [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_NV_raw_access_chains [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_NV_ray_tracing [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_NV_ray_tracing_invocation_reorder [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_NV_ray_tracing_motion_blur [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_NV_representative_fragment_test [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_NV_sample_mask_override_coverage [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_NV_scissor_exclusive [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_NV_shader_atomic_float16_vector [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_NV_shader_image_footprint [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_NV_shader_sm_builtins [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_NV_shader_subgroup_partitioned [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_NV_shading_rate_image [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_NV_viewport_array2 [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_NV_viewport_swizzle [enabled=0, external=0]
+[Vulkan init] extensions: name=VK_NV_win32_keyed_mutex [enabled=0, external=0]
+[vulkan] Loaded instance function vkDestroyDevice
+[vulkan] Loaded instance function vkGetDeviceQueue
+[vulkan] Loaded instance function vkQueueSubmit
+[vulkan] Loaded instance function vkQueueWaitIdle
+[vulkan] Loaded instance function vkDeviceWaitIdle
+[vulkan] Loaded instance function vkAllocateMemory
+[vulkan] Loaded instance function vkFreeMemory
+[vulkan] Loaded instance function vkMapMemory
+[vulkan] Loaded instance function vkUnmapMemory
+[vulkan] Loaded instance function vkFlushMappedMemoryRanges
+[vulkan] Loaded instance function vkInvalidateMappedMemoryRanges
+[vulkan] Loaded instance function vkGetDeviceMemoryCommitment
+[vulkan] Loaded instance function vkBindBufferMemory
+[vulkan] Loaded instance function vkBindImageMemory
+[vulkan] Loaded instance function vkGetBufferMemoryRequirements
+[vulkan] Loaded instance function vkGetImageMemoryRequirements
+[vulkan] Loaded instance function vkGetImageSparseMemoryRequirements
+[vulkan] Loaded instance function vkQueueBindSparse
+[vulkan] Loaded instance function vkCreateFence
+[vulkan] Loaded instance function vkDestroyFence
+[vulkan] Loaded instance function vkResetFences
+[vulkan] Loaded instance function vkGetFenceStatus
+[vulkan] Loaded instance function vkWaitForFences
+[vulkan] Loaded instance function vkCreateSemaphore
+[vulkan] Loaded instance function vkDestroySemaphore
+[vulkan] Loaded instance function vkCreateEvent
+[vulkan] Loaded instance function vkDestroyEvent
+[vulkan] Loaded instance function vkGetEventStatus
+[vulkan] Loaded instance function vkSetEvent
+[vulkan] Loaded instance function vkResetEvent
+[vulkan] Loaded instance function vkCreateQueryPool
+[vulkan] Loaded instance function vkDestroyQueryPool
+[vulkan] Loaded instance function vkGetQueryPoolResults
+[vulkan] Loaded instance function vkCreateBuffer
+[vulkan] Loaded instance function vkDestroyBuffer
+[vulkan] Loaded instance function vkCreateBufferView
+[vulkan] Loaded instance function vkDestroyBufferView
+[vulkan] Loaded instance function vkCreateImage
+[vulkan] Loaded instance function vkDestroyImage
+[vulkan] Loaded instance function vkGetImageSubresourceLayout
+[vulkan] Loaded instance function vkCreateImageView
+[vulkan] Loaded instance function vkDestroyImageView
+[vulkan] Loaded instance function vkCreateShaderModule
+[vulkan] Loaded instance function vkDestroyShaderModule
+[vulkan] Loaded instance function vkCreatePipelineCache
+[vulkan] Loaded instance function vkDestroyPipelineCache
+[vulkan] Loaded instance function vkGetPipelineCacheData
+[vulkan] Loaded instance function vkMergePipelineCaches
+[vulkan] Loaded instance function vkCreateGraphicsPipelines
+[vulkan] Loaded instance function vkCreateComputePipelines
+[vulkan] Loaded instance function vkDestroyPipeline
+[vulkan] Loaded instance function vkCreatePipelineLayout
+[vulkan] Loaded instance function vkDestroyPipelineLayout
+[vulkan] Loaded instance function vkCreateSampler
+[vulkan] Loaded instance function vkDestroySampler
+[vulkan] Loaded instance function vkCreateDescriptorSetLayout
+[vulkan] Loaded instance function vkDestroyDescriptorSetLayout
+[vulkan] Loaded instance function vkCreateDescriptorPool
+[vulkan] Loaded instance function vkDestroyDescriptorPool
+[vulkan] Loaded instance function vkResetDescriptorPool
+[vulkan] Loaded instance function vkAllocateDescriptorSets
+[vulkan] Loaded instance function vkFreeDescriptorSets
+[vulkan] Loaded instance function vkUpdateDescriptorSets
+[vulkan] Loaded instance function vkCreateFramebuffer
+[vulkan] Loaded instance function vkDestroyFramebuffer
+[vulkan] Loaded instance function vkCreateRenderPass
+[vulkan] Loaded instance function vkDestroyRenderPass
+[vulkan] Loaded instance function vkGetRenderAreaGranularity
+[vulkan] Loaded instance function vkCreateCommandPool
+[vulkan] Loaded instance function vkDestroyCommandPool
+[vulkan] Loaded instance function vkResetCommandPool
+[vulkan] Loaded instance function vkAllocateCommandBuffers
+[vulkan] Loaded instance function vkFreeCommandBuffers
+[vulkan] Loaded instance function vkBeginCommandBuffer
+[vulkan] Loaded instance function vkEndCommandBuffer
+[vulkan] Loaded instance function vkResetCommandBuffer
+[vulkan] Loaded instance function vkCmdBindPipeline
+[vulkan] Loaded instance function vkCmdSetViewport
+[vulkan] Loaded instance function vkCmdSetScissor
+[vulkan] Loaded instance function vkCmdSetLineWidth
+[vulkan] Loaded instance function vkCmdSetDepthBias
+[vulkan] Loaded instance function vkCmdSetBlendConstants
+[vulkan] Loaded instance function vkCmdSetDepthBounds
+[vulkan] Loaded instance function vkCmdSetStencilCompareMask
+[vulkan] Loaded instance function vkCmdSetStencilWriteMask
+[vulkan] Loaded instance function vkCmdSetStencilReference
+[vulkan] Loaded instance function vkCmdBindDescriptorSets
+[vulkan] Loaded instance function vkCmdBindIndexBuffer
+[vulkan] Loaded instance function vkCmdBindVertexBuffers
+[vulkan] Loaded instance function vkCmdDraw
+[vulkan] Loaded instance function vkCmdDrawIndexed
+[vulkan] Loaded instance function vkCmdDrawIndirect
+[vulkan] Loaded instance function vkCmdDrawIndexedIndirect
+[vulkan] Loaded instance function vkCmdDispatch
+[vulkan] Loaded instance function vkCmdDispatchIndirect
+[vulkan] Loaded instance function vkCmdCopyBuffer
+[vulkan] Loaded instance function vkCmdCopyImage
+[vulkan] Loaded instance function vkCmdBlitImage
+[vulkan] Loaded instance function vkCmdCopyBufferToImage
+[vulkan] Loaded instance function vkCmdCopyImageToBuffer
+[vulkan] Loaded instance function vkCmdUpdateBuffer
+[vulkan] Loaded instance function vkCmdFillBuffer
+[vulkan] Loaded instance function vkCmdClearColorImage
+[vulkan] Loaded instance function vkCmdClearDepthStencilImage
+[vulkan] Loaded instance function vkCmdClearAttachments
+[vulkan] Loaded instance function vkCmdResolveImage
+[vulkan] Loaded instance function vkCmdSetEvent
+[vulkan] Loaded instance function vkCmdResetEvent
+[vulkan] Loaded instance function vkCmdWaitEvents
+[vulkan] Loaded instance function vkCmdPipelineBarrier
+[vulkan] Loaded instance function vkCmdBeginQuery
+[vulkan] Loaded instance function vkCmdEndQuery
+[vulkan] Loaded instance function vkCmdResetQueryPool
+[vulkan] Loaded instance function vkCmdWriteTimestamp
+[vulkan] Loaded instance function vkCmdCopyQueryPoolResults
+[vulkan] Loaded instance function vkCmdPushConstants
+[vulkan] Loaded instance function vkCmdBeginRenderPass
+[vulkan] Loaded instance function vkCmdNextSubpass
+[vulkan] Loaded instance function vkCmdEndRenderPass
+[vulkan] Loaded instance function vkCmdExecuteCommands
+[vulkan] Loaded instance function vkGetImageMemoryRequirements2KHR
+[vulkan] Loaded instance function vkGetBufferMemoryRequirements2KHR
+[vulkan] Loaded instance function vkGetImageSparseMemoryRequirements2KHR
+[vulkan] Loaded instance function vkCreateDescriptorUpdateTemplateKHR
+[vulkan] Loaded instance function vkDestroyDescriptorUpdateTemplateKHR
+[vulkan] Loaded instance function vkUpdateDescriptorSetWithTemplateKHR
+[vulkan] Loaded instance function vkCmdBeginRenderPass2KHR
+[vulkan] Loaded instance function vkCmdEndRenderPass2KHR
+[vulkan] Loaded instance function vkCmdNextSubpass2KHR
+[vulkan] Loaded instance function vkCreateRenderPass2KHR
+[vulkan] Loaded instance function vkCmdSetVertexInputEXT
+[vulkan] Loaded instance function vkCmdSetFragmentShadingRateKHR
+[vulkan] Loaded instance function vkGetFramebufferTilePropertiesQCOM
+[vulkan] Loaded instance function vkDebugMarkerSetObjectTagEXT
+[vulkan] Loaded instance function vkDebugMarkerSetObjectNameEXT
+[vulkan] Loaded instance function vkCmdDebugMarkerBeginEXT
+[vulkan] Loaded instance function vkCmdDebugMarkerEndEXT
+[vulkan] Loaded instance function vkCmdDebugMarkerInsertEXT
+Vulkan API version 1.1.0 (1.4.341 supported by driver, 1.1.0 requested)
+Vulkan vendor=[NVIDIA] id=[10de]
+Vulkan renderer=[NVIDIA GeForce RTX 4060] id=[2882]
+Vulkan device type 2
+Vulkan driverversion=[610.352.0 (0x98960000)] uint=[-1735000064]
+Vulkan driverLibraryString=[NVIDIA (4), 610.88]
+Vulkan PSO: Cache data successfully loaded [size=656190,path=C:/Users/Patrick/AppData/Local/Temp/level5/level5/vulkan_pso_cache.bin]
+Shader 'TextMeshPro/Distance Field': fallback shader 'TextMeshPro/Mobile/Distance Field' not found
+Initialize mono
+Mono path[0] = 'C:/Program Files/Unity/Hub/Editor/6000.5.7f1/Editor/Data/Managed'
+Mono path[1] = 'C:/Program Files/Unity/Hub/Editor/6000.5.7f1/Editor/Data/BCLExtensions/runtime/netstandard2.1'
+Mono path[2] = 'C:/Program Files/Unity/Hub/Editor/6000.5.7f1/Editor/Data/MonoBleedingEdge/lib/mono/unityjit-win32'
+Mono config path = 'C:/Program Files/Unity/Hub/Editor/6000.5.7f1/Editor/Data/MonoBleedingEdge/etc'
+Using monoOptions --debugger-agent=transport=dt_socket,embedding=1,server=y,suspend=n,address=127.0.0.1:56540
+CodeReloadManager initialized
+ImportWorker Server TCP listen port: 0
+AcceleratorClientConnectionCallback - disconnected - :0
+Begin MonoManager ReloadAssembly
+Registering precompiled unity dll's ...
+Register platform support module: C:/Program Files/Unity/Hub/Editor/6000.5.7f1/Editor/Data/PlaybackEngines/WindowsStandaloneSupport/UnityEditor.WindowsStandalone.Extensions.dll
+Registered in 0.001695 seconds.
+Native extension for WindowsStandalone target not found
+ScheduleIndexationOnStartup MainProcess:False IndexOnStartup:True
+Mono: successfully reloaded assembly
+- Finished resetting the current domain, in  0.316 seconds
+Domain Reload Profiling: 739ms
+	BeginReloadAssembly (135ms)
+		CreateAndSetChildDomain (30ms)
+	RebuildCommonClasses (4ms)
+	RebuildNativeTypeToScriptingClass (12ms)
+	initialDomainReloadingComplete (52ms)
+	LoadAllAssembliesAndSetupDomain (218ms)
+		LoadAssemblies (102ms)
+		AnalyzeDomain (154ms)
+			TypeCache.Refresh (154ms)
+				TypeCache.ScanAssembly (142ms)
+	FinalizeReload (318ms)
+		SetupLoadedEditorAssemblies (0ms)
+			BeforeProcessingInitializeOnLoad (70ms)
+			ProcessInitializeOnLoadAttributes (80ms)
+			ProcessInitializeOnLoadMethodAttributes (106ms)
+[Licensing::Client] Successfully resolved entitlement details
+[Licensing::Module] License group:
+  Id: F4-YCVD-TSRR-RRUF-SPVT-XXXX
+  Product: Unity Personal
+  Type: ULF
+  Expiration: Unlimited
+[Licensing::Module] License group:
+  Id: 2945148-UnityPersXXXX
+  Product: Unity Personal
+  Type: Assigned
+  Expiration: Unlimited
+Application.AssetDatabase Initial Refresh Start
+Starting: C:\Program Files\Unity\Hub\Editor\6000.5.7f1\Editor\Data\Tools\BuildPipeline\bee_backend.exe --ipc --defer-dag-verification --dagfile="Library/Bee/1900b0aE.dag" --continue-on-failure --profile="Library/Bee/backend1.traceevents" ScriptAssemblies
+WorkingDir: C:/Users/Patrick/Documents/github/level5
+DisplayProgressbar: Compiling Scripts
+ExitCode: 0 Duration: 0s253ms
+[ 916/1193  0s] ILPP-Configuration Library/ilpp-configuration.nevergeneratedoutput
+*** Tundra build success (0.22 seconds), 1 items updated, 1193 evaluated
+AssetDatabase: script compilation time: 0.713206s
+Begin MonoManager ReloadAssembly
+Refreshing native plugins compatible for Editor in 7.34 ms, found 1 plugins.
+Native extension for WindowsStandalone target not found
+Refreshing native plugins compatible for Editor in 7.31 ms, found 1 plugins.
+Loaded VersionHandlerImpl
+UnityEngine.Debug:ExtractStackTraceNoAlloc (byte*,int,string)
+UnityEngine.StackTraceUtility:ExtractStackTrace ()
+UnityEngine.DebugLogHandler:Internal_Log (UnityEngine.LogType,UnityEngine.LogOption,string,UnityEngine.Object)
+UnityEngine.DebugLogHandler:LogFormat (UnityEngine.LogType,UnityEngine.Object,string,object[])
+UnityEngine.Logger:Log (UnityEngine.LogType,object)
+UnityEngine.Debug:Log (object)
+Google.Logger:Log (string,Google.LogLevel)
+Google.VersionHandlerImpl:Log (string,bool,Google.LogLevel)
+Google.VersionHandlerImpl:.cctor ()
+Google.VersionHandlerImpl/DotNetVersionUpdater:.cctor ()
+System.Runtime.CompilerServices.RuntimeHelpers:RunClassConstructor (System.RuntimeTypeHandle)
+UnityEditor.EditorAssemblies:ProcessInitializeOnLoadAttributes (System.ReadOnlySpan`1<intptr>)
+
+Assets\MobileDependencyResolver\Editor\Google.IOSResolver.dll metadata will be checked
+UnityEngine.Debug:ExtractStackTraceNoAlloc (byte*,int,string)
+UnityEngine.StackTraceUtility:ExtractStackTrace ()
+UnityEngine.DebugLogHandler:Internal_Log (UnityEngine.LogType,UnityEngine.LogOption,string,UnityEngine.Object)
+UnityEngine.DebugLogHandler:LogFormat (UnityEngine.LogType,UnityEngine.Object,string,object[])
+UnityEngine.Logger:Log (UnityEngine.LogType,object)
+UnityEngine.Debug:Log (object)
+Google.Logger:Log (string,Google.LogLevel)
+Google.VersionHandlerImpl:Log (string,bool,Google.LogLevel)
+Google.VersionHandlerImpl/FileMetadataSet:FindWithPendingUpdates (Google.VersionHandlerImpl/FileMetadataSet)
+Google.VersionHandlerImpl:UpdateVersionedAssets (bool,System.Action)
+Google.VersionHandlerImpl:UpdateVersionedAssets (bool)
+Google.VersionHandlerImpl:UpdateVersionedAssets ()
+Google.VersionHandlerImpl:UpdateVersionedAssetsOnUpdate ()
+Google.VersionHandlerImpl:<VersionHandlerImpl>m__B ()
+Google.RunOnMainThread:ExecuteNext ()
+Google.RunOnMainThread:<ExecuteAll>m__A ()
+Google.RunOnMainThread:RunAction (System.Action)
+Google.RunOnMainThread:ExecuteAll ()
+Google.RunOnMainThread:Run (System.Action,bool)
+Google.VersionHandlerImpl:.cctor ()
+Google.VersionHandlerImpl/DotNetVersionUpdater:.cctor ()
+System.Runtime.CompilerServices.RuntimeHelpers:RunClassConstructor (System.RuntimeTypeHandle)
+UnityEditor.EditorAssemblies:ProcessInitializeOnLoadAttributes (System.ReadOnlySpan`1<intptr>)
+
+Assets\MobileDependencyResolver\Editor\Google.JarResolver.dll metadata will be checked
+UnityEngine.Debug:ExtractStackTraceNoAlloc (byte*,int,string)
+UnityEngine.StackTraceUtility:ExtractStackTrace ()
+UnityEngine.DebugLogHandler:Internal_Log (UnityEngine.LogType,UnityEngine.LogOption,string,UnityEngine.Object)
+UnityEngine.DebugLogHandler:LogFormat (UnityEngine.LogType,UnityEngine.Object,string,object[])
+UnityEngine.Logger:Log (UnityEngine.LogType,object)
+UnityEngine.Debug:Log (object)
+Google.Logger:Log (string,Google.LogLevel)
+Google.VersionHandlerImpl:Log (string,bool,Google.LogLevel)
+Google.VersionHandlerImpl/FileMetadataSet:FindWithPendingUpdates (Google.VersionHandlerImpl/FileMetadataSet)
+Google.VersionHandlerImpl:UpdateVersionedAssets (bool,System.Action)
+Google.VersionHandlerImpl:UpdateVersionedAssets (bool)
+Google.VersionHandlerImpl:UpdateVersionedAssets ()
+Google.VersionHandlerImpl:UpdateVersionedAssetsOnUpdate ()
+Google.VersionHandlerImpl:<VersionHandlerImpl>m__B ()
+Google.RunOnMainThread:ExecuteNext ()
+Google.RunOnMainThread:<ExecuteAll>m__A ()
+Google.RunOnMainThread:RunAction (System.Action)
+Google.RunOnMainThread:ExecuteAll ()
+Google.RunOnMainThread:Run (System.Action,bool)
+Google.VersionHandlerImpl:.cctor ()
+Google.VersionHandlerImpl/DotNetVersionUpdater:.cctor ()
+System.Runtime.CompilerServices.RuntimeHelpers:RunClassConstructor (System.RuntimeTypeHandle)
+UnityEditor.EditorAssemblies:ProcessInitializeOnLoadAttributes (System.ReadOnlySpan`1<intptr>)
+
+Assets\MobileDependencyResolver\Editor\Google.VersionHandler.dll metadata will be checked
+UnityEngine.Debug:ExtractStackTraceNoAlloc (byte*,int,string)
+UnityEngine.StackTraceUtility:ExtractStackTrace ()
+UnityEngine.DebugLogHandler:Internal_Log (UnityEngine.LogType,UnityEngine.LogOption,string,UnityEngine.Object)
+UnityEngine.DebugLogHandler:LogFormat (UnityEngine.LogType,UnityEngine.Object,string,object[])
+UnityEngine.Logger:Log (UnityEngine.LogType,object)
+UnityEngine.Debug:Log (object)
+Google.Logger:Log (string,Google.LogLevel)
+Google.VersionHandlerImpl:Log (string,bool,Google.LogLevel)
+Google.VersionHandlerImpl/FileMetadataSet:FindWithPendingUpdates (Google.VersionHandlerImpl/FileMetadataSet)
+Google.VersionHandlerImpl:UpdateVersionedAssets (bool,System.Action)
+Google.VersionHandlerImpl:UpdateVersionedAssets (bool)
+Google.VersionHandlerImpl:UpdateVersionedAssets ()
+Google.VersionHandlerImpl:UpdateVersionedAssetsOnUpdate ()
+Google.VersionHandlerImpl:<VersionHandlerImpl>m__B ()
+Google.RunOnMainThread:ExecuteNext ()
+Google.RunOnMainThread:<ExecuteAll>m__A ()
+Google.RunOnMainThread:RunAction (System.Action)
+Google.RunOnMainThread:ExecuteAll ()
+Google.RunOnMainThread:Run (System.Action,bool)
+Google.VersionHandlerImpl:.cctor ()
+Google.VersionHandlerImpl/DotNetVersionUpdater:.cctor ()
+System.Runtime.CompilerServices.RuntimeHelpers:RunClassConstructor (System.RuntimeTypeHandle)
+UnityEditor.EditorAssemblies:ProcessInitializeOnLoadAttributes (System.ReadOnlySpan`1<intptr>)
+
+Assets\MobileDependencyResolver\Editor\Google.VersionHandlerImpl.dll metadata will be checked
+UnityEngine.Debug:ExtractStackTraceNoAlloc (byte*,int,string)
+UnityEngine.StackTraceUtility:ExtractStackTrace ()
+UnityEngine.DebugLogHandler:Internal_Log (UnityEngine.LogType,UnityEngine.LogOption,string,UnityEngine.Object)
+UnityEngine.DebugLogHandler:LogFormat (UnityEngine.LogType,UnityEngine.Object,string,object[])
+UnityEngine.Logger:Log (UnityEngine.LogType,object)
+UnityEngine.Debug:Log (object)
+Google.Logger:Log (string,Google.LogLevel)
+Google.VersionHandlerImpl:Log (string,bool,Google.LogLevel)
+Google.VersionHandlerImpl/FileMetadataSet:FindWithPendingUpdates (Google.VersionHandlerImpl/FileMetadataSet)
+Google.VersionHandlerImpl:UpdateVersionedAssets (bool,System.Action)
+Google.VersionHandlerImpl:UpdateVersionedAssets (bool)
+Google.VersionHandlerImpl:UpdateVersionedAssets ()
+Google.VersionHandlerImpl:UpdateVersionedAssetsOnUpdate ()
+Google.VersionHandlerImpl:<VersionHandlerImpl>m__B ()
+Google.RunOnMainThread:ExecuteNext ()
+Google.RunOnMainThread:<ExecuteAll>m__A ()
+Google.RunOnMainThread:RunAction (System.Action)
+Google.RunOnMainThread:ExecuteAll ()
+Google.RunOnMainThread:Run (System.Action,bool)
+Google.VersionHandlerImpl:.cctor ()
+Google.VersionHandlerImpl/DotNetVersionUpdater:.cctor ()
+System.Runtime.CompilerServices.RuntimeHelpers:RunClassConstructor (System.RuntimeTypeHandle)
+UnityEditor.EditorAssemblies:ProcessInitializeOnLoadAttributes (System.ReadOnlySpan`1<intptr>)
+
+Assets\MobileDependencyResolver\Editor\mobile-dependency-resolver.txt metadata will be checked
+UnityEngine.Debug:ExtractStackTraceNoAlloc (byte*,int,string)
+UnityEngine.StackTraceUtility:ExtractStackTrace ()
+UnityEngine.DebugLogHandler:Internal_Log (UnityEngine.LogType,UnityEngine.LogOption,string,UnityEngine.Object)
+UnityEngine.DebugLogHandler:LogFormat (UnityEngine.LogType,UnityEngine.Object,string,object[])
+UnityEngine.Logger:Log (UnityEngine.LogType,object)
+UnityEngine.Debug:Log (object)
+Google.Logger:Log (string,Google.LogLevel)
+Google.VersionHandlerImpl:Log (string,bool,Google.LogLevel)
+Google.VersionHandlerImpl/FileMetadataSet:FindWithPendingUpdates (Google.VersionHandlerImpl/FileMetadataSet)
+Google.VersionHandlerImpl:UpdateVersionedAssets (bool,System.Action)
+Google.VersionHandlerImpl:UpdateVersionedAssets (bool)
+Google.VersionHandlerImpl:UpdateVersionedAssets ()
+Google.VersionHandlerImpl:UpdateVersionedAssetsOnUpdate ()
+Google.VersionHandlerImpl:<VersionHandlerImpl>m__B ()
+Google.RunOnMainThread:ExecuteNext ()
+Google.RunOnMainThread:<ExecuteAll>m__A ()
+Google.RunOnMainThread:RunAction (System.Action)
+Google.RunOnMainThread:ExecuteAll ()
+Google.RunOnMainThread:Run (System.Action,bool)
+Google.VersionHandlerImpl:.cctor ()
+Google.VersionHandlerImpl/DotNetVersionUpdater:.cctor ()
+System.Runtime.CompilerServices.RuntimeHelpers:RunClassConstructor (System.RuntimeTypeHandle)
+UnityEditor.EditorAssemblies:ProcessInitializeOnLoadAttributes (System.ReadOnlySpan`1<intptr>)
+
+Detected .NET version 4.5
+UnityEngine.Debug:ExtractStackTraceNoAlloc (byte*,int,string)
+UnityEngine.StackTraceUtility:ExtractStackTrace ()
+UnityEngine.DebugLogHandler:Internal_Log (UnityEngine.LogType,UnityEngine.LogOption,string,UnityEngine.Object)
+UnityEngine.DebugLogHandler:LogFormat (UnityEngine.LogType,UnityEngine.Object,string,object[])
+UnityEngine.Logger:Log (UnityEngine.LogType,object)
+UnityEngine.Debug:Log (object)
+Google.Logger:Log (string,Google.LogLevel)
+Google.VersionHandlerImpl:Log (string,bool,Google.LogLevel)
+Google.VersionHandlerImpl/DotNetVersionUpdater:.cctor ()
+System.Runtime.CompilerServices.RuntimeHelpers:RunClassConstructor (System.RuntimeTypeHandle)
+UnityEditor.EditorAssemblies:ProcessInitializeOnLoadAttributes (System.ReadOnlySpan`1<intptr>)
+
+ScheduleIndexationOnStartup MainProcess:True IndexOnStartup:True
+Mono: successfully reloaded assembly
+- Finished resetting the current domain, in  2.476 seconds
+Domain Reload Profiling: 3247ms
+	BeginReloadAssembly (284ms)
+		DisableScriptedObjects (20ms)
+		CreateAndSetChildDomain (135ms)
+	RebuildCommonClasses (6ms)
+	RebuildNativeTypeToScriptingClass (12ms)
+	initialDomainReloadingComplete (45ms)
+	LoadAllAssembliesAndSetupDomain (423ms)
+		LoadAssemblies (284ms)
+		AnalyzeDomain (134ms)
+			TypeCache.Refresh (86ms)
+				TypeCache.ScanAssembly (76ms)
+			BuildScriptInfoCaches (42ms)
+			ResolveRequiredComponents (5ms)
+	FinalizeReload (2477ms)
+		SetupLoadedEditorAssemblies (0ms)
+			BeforeProcessingInitializeOnLoad (67ms)
+			ProcessInitializeOnLoadAttributes (1906ms)
+			ProcessInitializeOnLoadMethodAttributes (219ms)
+			AfterProcessingInitializeOnLoad (6ms)
+		AwakeInstancesAfterBackupRestoration (66ms)
+Starting new worker id: 0 with log in C:/Users/Patrick/Documents/github/level5/Logs/AssetImportWorkerHW0.log
+
+Asset Pipeline Refresh (id=be96a2e330cc63a45a4621188b4ff679): Total: 4.549 seconds - Initiated by InitialRefreshV2(ForceSynchronousImport)
+	(Values over 0.05ms)
+	Summary:
+		Imports: total=0 (actual=0, local cache=0, cache server=0)
+		Asset DB Process Time: managed=0 ms, native=2915 ms
+		Asset DB Callback time: managed=51 ms, native=0 ms
+		Scripting: domain reloads=1, domain reload time=819 ms, compile time=715 ms, other=46 ms
+		Project Asset Count: scripts=1638, non-scripts=4600
+		Asset File Changes: new=0, changed=0, moved=0, deleted=0
+		Scan Filter Count: 0
+	InvokePackagesCallback: 2.081ms
+	ApplyChangesToAssetFolders: 0.325ms
+	Scan: 123.800ms
+	Collect global state as custom dependencies: 16.455ms
+	CategorizeScriptCompilationAssets: 22.141ms
+	ProcessAssetsWithTransientArtifactChanges: 43.650ms
+	CategorizeAssets: 57.845ms
+	CompileScripts: 714.996ms
+	ImportOutOfDateAssets: 2551.722ms (2505.722ms without children)
+		UnloadImportedAssets: 0.543ms
+		EnsureUptoDateAssetsAreRegisteredWithGuidPM: 0.771ms
+		ImportSchedulerStart: 44.653ms
+	PostProcessAllAssets: 51.091ms
+		MonoPostProcessAllAssets: 51.044ms
+			SyncVS.PostprocessSyncProject 21.777ms
+			UniversalRenderPipelineGlobalSettingsPostprocessor.OnPostprocessAllAssets 12.598ms
+			WindowAssetPostprocessingWatcher.OnPostprocessAllAssets 1.818ms
+			SpeedTree9Postprocessor.OnPostprocessAllAssets 1.514ms
+			RenderPipelineGlobalSettingsPostprocessor.OnPostprocessAllAssets 0.817ms
+			EditModeScopePostprocessor.OnPostprocessAllAssets 0.763ms
+			ReferencedClipsPostProcessor.OnPostprocessAllAssets 0.356ms
+			ShaderReflectionAssetPostProcessor.OnPostprocessAllAssets 0.298ms
+			AssetDatabaseCallbacks.OnPostprocessAllAssets 0.233ms
+			InputActionAssetPostprocessor.OnPostprocessAllAssets 0.230ms
+			TerrainToolbarOverlayPostProcessor.OnPostprocessAllAssets 0.182ms
+			ProjectSettingsPostprocessor.OnPostprocessAllAssets 0.115ms
+	UnloadStreamsBegin: 1.995ms
+	PersistCurrentRevisions: 0.193ms
+	GenerateScriptTypeHashes: 3.506ms
+	GenerateScriptTypeSerializationHashes: 5.107ms
+	Untracked: 957.795ms
+
+Application.AssetDatabase Initial Refresh End
+Launched and connected shader compiler UnityShaderCompiler.exe after 0.01 seconds
+Shader 'TextMeshPro/Distance Field': fallback shader 'TextMeshPro/Mobile/Distance Field' not found
+Scanning for USB devices : 3.459ms
+Initializing Unity extensions:
+[MODES] ModeService[none].Initialize
+[MODES] ModeService[none].LoadModes
+[MODES] Loading mode Default (0) for mode-current-id-level5
+Unloading 25 Unused Serialized files (Serialized files now loaded: 0)
+Unloading 5016 unused Assets / (4.4 MB). Loaded Objects now: 5918.
+Memory consumption went from 500.7 MB to 496.3 MB.
+Total: 9.215600 ms (FindLiveObjects: 0.351300 ms CreateObjectMapping: 1.540200 ms MarkObjects: 4.691400 ms  DeleteObjects: 2.630200 ms)
+
+Opening scene 'Assets/Scenes/auto_player_test_level.unity'
+Unloading 851 Unused Serialized files (Serialized files now loaded: 0)
+LightingSettings: switching bake backend from 2 to 1.
+Loaded scene 'Assets/Scenes/auto_player_test_level.unity'
+	Deserialize:            11.665 ms
+	Integration:            180.299 ms
+	Integration of assets:  0.005 ms
+	Thread Wait Time:       0.007 ms
+	Total Operation Time:   191.977 ms
+Unloading 16495 unused Assets / (43.4 MB). Loaded Objects now: 12112.
+Memory consumption went from 0.60 GB to 0.56 GB.
+Total: 24.458400 ms (FindLiveObjects: 1.037000 ms CreateObjectMapping: 5.047700 ms MarkObjects: 4.986900 ms  DeleteObjects: 13.386000 ms)
+
+Opening scene 'Assets/Scenes/level_00_account.unity'
+Unloading 75 Unused Serialized files (Serialized files now loaded: 0)
+LightingSettings: switching bake backend from 2 to 1.
+Loaded scene 'Assets/Scenes/level_00_account.unity'
+	Deserialize:            3.540 ms
+	Integration:            112.001 ms
+	Integration of assets:  0.003 ms
+	Thread Wait Time:       0.006 ms
+	Total Operation Time:   115.550 ms
+Unloading 3986 unused Assets / (59.7 MB). Loaded Objects now: 6147.
+Memory consumption went from 0.54 GB to 497.4 MB.
+Total: 10.262600 ms (FindLiveObjects: 0.360800 ms CreateObjectMapping: 1.145400 ms MarkObjects: 4.649000 ms  DeleteObjects: 4.106600 ms)
+
+Opening scene 'Assets/Scenes/level_00_account_createNew.unity'
+Unloading 6 Unused Serialized files (Serialized files now loaded: 0)
+Loaded scene 'Assets/Scenes/level_00_account_createNew.unity'
+	Deserialize:            3.639 ms
+	Integration:            112.662 ms
+	Integration of assets:  0.182 ms
+	Thread Wait Time:       0.010 ms
+	Total Operation Time:   116.493 ms
+Unloading 5 unused Assets / (2.3 KB). Loaded Objects now: 6172.
+Memory consumption went from 492.5 MB to 492.5 MB.
+Total: 5.611200 ms (FindLiveObjects: 0.227900 ms CreateObjectMapping: 0.625800 ms MarkObjects: 4.726400 ms  DeleteObjects: 0.030300 ms)
+
+Opening scene 'Assets/Scenes/level_00_account_loginExisting.unity'
+Unloading 2 Unused Serialized files (Serialized files now loaded: 0)
+Loaded scene 'Assets/Scenes/level_00_account_loginExisting.unity'
+	Deserialize:            2.530 ms
+	Integration:            113.180 ms
+	Integration of assets:  0.002 ms
+	Thread Wait Time:       0.010 ms
+	Total Operation Time:   115.722 ms
+Unloading 1 unused Assets / (1.0 KB). Loaded Objects now: 6104.
+Memory consumption went from 492.2 MB to 492.2 MB.
+Total: 5.979200 ms (FindLiveObjects: 0.234100 ms CreateObjectMapping: 0.621700 ms MarkObjects: 5.098400 ms  DeleteObjects: 0.024000 ms)
+
+Opening scene 'Assets/Scenes/level_00_account_loginLocal.unity'
+Unloading 2 Unused Serialized files (Serialized files now loaded: 0)
+Loaded scene 'Assets/Scenes/level_00_account_loginLocal.unity'
+	Deserialize:            1.261 ms
+	Integration:            112.126 ms
+	Integration of assets:  0.021 ms
+	Thread Wait Time:       0.014 ms
+	Total Operation Time:   113.423 ms
+Unloading 11 unused Assets / (10.7 KB). Loaded Objects now: 6115.
+Memory consumption went from 492.8 MB to 492.8 MB.
+Total: 5.645600 ms (FindLiveObjects: 0.225900 ms CreateObjectMapping: 0.606600 ms MarkObjects: 4.752000 ms  DeleteObjects: 0.060600 ms)
+
+Opening scene 'Assets/Scenes/level_00_credits.unity'
+Unloading 7 Unused Serialized files (Serialized files now loaded: 0)
+LightingSettings: switching bake backend from 2 to 1.
+Loaded scene 'Assets/Scenes/level_00_credits.unity'
+	Deserialize:            0.767 ms
+	Integration:            111.837 ms
+	Integration of assets:  0.001 ms
+	Thread Wait Time:       0.009 ms
+	Total Operation Time:   112.614 ms
+Unloading 112 unused Assets / (13.5 KB). Loaded Objects now: 6335.
+Memory consumption went from 493.5 MB to 493.5 MB.
+Total: 5.575700 ms (FindLiveObjects: 0.243100 ms CreateObjectMapping: 0.615200 ms MarkObjects: 4.639000 ms  DeleteObjects: 0.077600 ms)
+
+Opening scene 'Assets/Scenes/level_00_end_round_screen.unity'
+Unloading 9 Unused Serialized files (Serialized files now loaded: 0)
+Loaded scene 'Assets/Scenes/level_00_end_round_screen.unity'
+	Deserialize:            3.020 ms
+	Integration:            107.231 ms
+	Integration of assets:  0.020 ms
+	Thread Wait Time:       0.010 ms
+	Total Operation Time:   110.281 ms
+Unloading 201 unused Assets / (20.6 KB). Loaded Objects now: 6121.
+Memory consumption went from 492.4 MB to 492.4 MB.
+Total: 5.539600 ms (FindLiveObjects: 0.223700 ms CreateObjectMapping: 0.601700 ms MarkObjects: 4.597200 ms  DeleteObjects: 0.116300 ms)
+
+Opening scene 'Assets/Scenes/level_00_loading.unity'
+Unloading 1 Unused Serialized files (Serialized files now loaded: 0)
+LightingSettings: switching bake backend from 2 to 1.
+Loaded scene 'Assets/Scenes/level_00_loading.unity'
+	Deserialize:            0.854 ms
+	Integration:            140.498 ms
+	Integration of assets:  0.001 ms
+	Thread Wait Time:       0.010 ms
+	Total Operation Time:   141.363 ms
+Unloading 4 unused Assets / (7.0 KB). Loaded Objects now: 8098.
+Memory consumption went from 0.50 GB to 0.50 GB.
+Total: 6.176300 ms (FindLiveObjects: 0.271200 ms CreateObjectMapping: 0.885400 ms MarkObjects: 4.986200 ms  DeleteObjects: 0.032700 ms)
+
+Opening scene 'Assets/Scenes/level_00_options.unity'
+Unloading 129 Unused Serialized files (Serialized files now loaded: 0)
+Loaded scene 'Assets/Scenes/level_00_options.unity'
+	Deserialize:            1.022 ms
+	Integration:            115.698 ms
+	Integration of assets:  0.001 ms
+	Thread Wait Time:       0.009 ms
+	Total Operation Time:   116.730 ms
+Unloading 2124 unused Assets / (5.1 MB). Loaded Objects now: 7069.
+Memory consumption went from 500.0 MB to 494.9 MB.
+Total: 6.954500 ms (FindLiveObjects: 0.340100 ms CreateObjectMapping: 0.932800 ms MarkObjects: 4.562300 ms  DeleteObjects: 1.118400 ms)
+
+Opening scene 'Assets/Scenes/level_00_progression.unity'
+Unloading 4 Unused Serialized files (Serialized files now loaded: 0)
+Loaded scene 'Assets/Scenes/level_00_progression.unity'
+	Deserialize:            0.875 ms
+	Integration:            143.388 ms
+	Integration of assets:  0.001 ms
+	Thread Wait Time:       0.009 ms
+	Total Operation Time:   144.273 ms
+Unloading 565 unused Assets / (41.2 KB). Loaded Objects now: 8521.
+Memory consumption went from 0.50 GB to 0.50 GB.
+Total: 6.852900 ms (FindLiveObjects: 0.359900 ms CreateObjectMapping: 1.011000 ms MarkObjects: 5.224200 ms  DeleteObjects: 0.257000 ms)
+
+Opening scene 'Assets/Scenes/level_00_start.unity'
+Unloading 108 Unused Serialized files (Serialized files now loaded: 0)
+Loaded scene 'Assets/Scenes/level_00_start.unity'
+	Deserialize:            8.420 ms
+	Integration:            110.487 ms
+	Integration of assets:  1.200 ms
+	Thread Wait Time:       0.011 ms
+	Total Operation Time:   120.118 ms
+Unloading 280 unused Assets / (18.4 KB). Loaded Objects now: 8705.
+Memory consumption went from 499.8 MB to 499.7 MB.
+Total: 6.111100 ms (FindLiveObjects: 0.360800 ms CreateObjectMapping: 0.968100 ms MarkObjects: 4.634900 ms  DeleteObjects: 0.146300 ms)
+
+Opening scene 'Assets/Scenes/level_00_stats.unity'
+Unloading 5 Unused Serialized files (Serialized files now loaded: 0)
+LightingSettings: switching bake backend from 2 to 1.
+Loaded scene 'Assets/Scenes/level_00_stats.unity'
+	Deserialize:            1.119 ms
+	Integration:            118.147 ms
+	Integration of assets:  0.002 ms
+	Thread Wait Time:       0.017 ms
+	Total Operation Time:   119.285 ms
+Unloading 2052 unused Assets / (5.1 MB). Loaded Objects now: 6772.
+Memory consumption went from 500.0 MB to 494.9 MB.
+Total: 7.068400 ms (FindLiveObjects: 0.314900 ms CreateObjectMapping: 0.917100 ms MarkObjects: 4.716900 ms  DeleteObjects: 1.118600 ms)
+
+Opening scene 'Assets/Scenes/level_01_scrapyard.unity'
+Unloading 4 Unused Serialized files (Serialized files now loaded: 0)
+Worker ready: AssetImportWorkerHW0 0
+LightingSettings: switching bake backend from 2 to 1.
+Loaded scene 'Assets/Scenes/level_01_scrapyard.unity'
+	Deserialize:            4.372 ms
+	Integration:            409.209 ms
+	Integration of assets:  0.003 ms
+	Thread Wait Time:       0.014 ms
+	Total Operation Time:   413.597 ms
+Unloading 420 unused Assets / (40.6 KB). Loaded Objects now: 10870.
+Memory consumption went from 0.56 GB to 0.56 GB.
+Total: 6.412000 ms (FindLiveObjects: 0.477600 ms CreateObjectMapping: 1.038600 ms MarkObjects: 4.695900 ms  DeleteObjects: 0.199200 ms)
+
+Opening scene 'Assets/Scenes/level_01_scrapyard_cpu_defense_test.unity'
+Unloading 243 Unused Serialized files (Serialized files now loaded: 0)
+Loaded scene 'Assets/Scenes/level_01_scrapyard_cpu_defense_test.unity'
+	Deserialize:            7.954 ms
+	Integration:            128.941 ms
+	Integration of assets:  1.814 ms
+	Thread Wait Time:       0.011 ms
+	Total Operation Time:   138.720 ms
+Unloading 2 unused Assets / (1.0 KB). Loaded Objects now: 11377.
+Memory consumption went from 0.54 GB to 0.54 GB.
+Total: 6.498600 ms (FindLiveObjects: 0.487900 ms CreateObjectMapping: 1.043900 ms MarkObjects: 4.933500 ms  DeleteObjects: 0.032700 ms)
+
+Opening scene 'Assets/Scenes/level_01_scrapyard_lights.unity'
+Unloading 49 Unused Serialized files (Serialized files now loaded: 0)
+Loaded scene 'Assets/Scenes/level_01_scrapyard_lights.unity'
+	Deserialize:            4.819 ms
+	Integration:            119.134 ms
+	Integration of assets:  0.002 ms
+	Thread Wait Time:       0.008 ms
+	Total Operation Time:   123.963 ms
+Unloading 232 unused Assets / (99.7 KB). Loaded Objects now: 10943.
+Memory consumption went from 0.54 GB to 0.54 GB.
+Total: 6.471300 ms (FindLiveObjects: 0.453800 ms CreateObjectMapping: 1.060800 ms MarkObjects: 4.729300 ms  DeleteObjects: 0.227000 ms)
+
+Opening scene 'Assets/Scenes/level_02_circlek.unity'
+Unloading 5 Unused Serialized files (Serialized files now loaded: 0)
+LightingSettings: switching bake backend from 2 to 1.
+Loaded scene 'Assets/Scenes/level_02_circlek.unity'
+	Deserialize:            3.066 ms
+	Integration:            121.065 ms
+	Integration of assets:  0.002 ms
+	Thread Wait Time:       0.008 ms
+	Total Operation Time:   124.142 ms
+Unloading 502 unused Assets / (5.3 MB). Loaded Objects now: 10018.
+Memory consumption went from 0.55 GB to 0.54 GB.
+Total: 6.664400 ms (FindLiveObjects: 0.419700 ms CreateObjectMapping: 1.002600 ms MarkObjects: 4.773700 ms  DeleteObjects: 0.467700 ms)
+
+Opening scene 'Assets/Scenes/level_03_snow.unity'
+Unloading 19 Unused Serialized files (Serialized files now loaded: 0)
+LightingSettings: switching bake backend from 2 to 1.
+Loaded scene 'Assets/Scenes/level_03_snow.unity'
+	Deserialize:            5.003 ms
+	Integration:            129.681 ms
+	Integration of assets:  0.002 ms
+	Thread Wait Time:       0.008 ms
+	Total Operation Time:   134.694 ms
+Unloading 506 unused Assets / (7.5 MB). Loaded Objects now: 9464.
+Memory consumption went from 0.55 GB to 0.54 GB.
+Total: 6.855200 ms (FindLiveObjects: 0.435400 ms CreateObjectMapping: 0.985800 ms MarkObjects: 4.905400 ms  DeleteObjects: 0.527800 ms)
+
+Opening scene 'Assets/Scenes/level_04_slab.unity'
+Unloading 22 Unused Serialized files (Serialized files now loaded: 0)
+LightingSettings: switching bake backend from 2 to 1.
+Loaded scene 'Assets/Scenes/level_04_slab.unity'
+	Deserialize:            8.016 ms
+	Integration:            137.155 ms
+	Integration of assets:  0.004 ms
+	Thread Wait Time:       0.005 ms
+	Total Operation Time:   145.180 ms
+Unloading 312 unused Assets / (0.6 MB). Loaded Objects now: 10848.
+Memory consumption went from 0.55 GB to 0.55 GB.
+Total: 6.789400 ms (FindLiveObjects: 0.463800 ms CreateObjectMapping: 1.056200 ms MarkObjects: 4.925100 ms  DeleteObjects: 0.343400 ms)
+
+Opening scene 'Assets/Scenes/level_05_aveb.unity'
+Unloading 67 Unused Serialized files (Serialized files now loaded: 0)
+LightingSettings: switching bake backend from 2 to 1.
+Loaded scene 'Assets/Scenes/level_05_aveb.unity'
+	Deserialize:            9.920 ms
+	Integration:            143.894 ms
+	Integration of assets:  0.038 ms
+	Thread Wait Time:       0.010 ms
+	Total Operation Time:   153.862 ms
+Unloading 692 unused Assets / (5.1 MB). Loaded Objects now: 11121.
+Memory consumption went from 0.56 GB to 0.55 GB.
+Total: 6.974600 ms (FindLiveObjects: 0.490500 ms CreateObjectMapping: 1.134200 ms MarkObjects: 4.827300 ms  DeleteObjects: 0.521900 ms)
+
+Opening scene 'Assets/Scenes/level_06_caffe.unity'
+Unloading 65 Unused Serialized files (Serialized files now loaded: 0)
+LightingSettings: switching bake backend from 2 to 1.
+Loaded scene 'Assets/Scenes/level_06_caffe.unity'
+	Deserialize:            2.556 ms
+	Integration:            119.072 ms
+	Integration of assets:  0.001 ms
+	Thread Wait Time:       0.008 ms
+	Total Operation Time:   121.637 ms
+Unloading 432 unused Assets / (5.4 MB). Loaded Objects now: 9908.
+Memory consumption went from 0.55 GB to 0.54 GB.
+Total: 7.035000 ms (FindLiveObjects: 0.434100 ms CreateObjectMapping: 1.022800 ms MarkObjects: 5.115200 ms  DeleteObjects: 0.462100 ms)
+
+Opening scene 'Assets/Scenes/level_07_sudan.unity'
+Unloading 19 Unused Serialized files (Serialized files now loaded: 0)
+Loaded scene 'Assets/Scenes/level_07_sudan.unity'
+	Deserialize:            2.923 ms
+	Integration:            121.193 ms
+	Integration of assets:  0.002 ms
+	Thread Wait Time:       0.009 ms
+	Total Operation Time:   124.128 ms
+Unloading 318 unused Assets / (167.7 KB). Loaded Objects now: 9801.
+Memory consumption went from 0.54 GB to 0.54 GB.
+Total: 6.718400 ms (FindLiveObjects: 0.412700 ms CreateObjectMapping: 1.005000 ms MarkObjects: 5.002100 ms  DeleteObjects: 0.297600 ms)
+
+Opening scene 'Assets/Scenes/level_08_tammys.unity'
+Unloading 15 Unused Serialized files (Serialized files now loaded: 0)
+Loaded scene 'Assets/Scenes/level_08_tammys.unity'
+	Deserialize:            4.587 ms
+	Integration:            125.611 ms
+	Integration of assets:  0.002 ms
+	Thread Wait Time:       0.008 ms
+	Total Operation Time:   130.208 ms
+Unloading 244 unused Assets / (117.6 KB). Loaded Objects now: 10138.
+Memory consumption went from 0.54 GB to 0.54 GB.
+Total: 6.790400 ms (FindLiveObjects: 0.415900 ms CreateObjectMapping: 1.002300 ms MarkObjects: 5.109800 ms  DeleteObjects: 0.261500 ms)
+
+Opening scene 'Assets/Scenes/level_09_party_mansion.unity'
+Unloading 32 Unused Serialized files (Serialized files now loaded: 0)
+Loaded scene 'Assets/Scenes/level_09_party_mansion.unity'
+	Deserialize:            2.391 ms
+	Integration:            149.152 ms
+	Integration of assets:  0.002 ms
+	Thread Wait Time:       0.008 ms
+	Total Operation Time:   151.553 ms
+Unloading 587 unused Assets / (6.9 MB). Loaded Objects now: 9461.
+Memory consumption went from 0.54 GB to 0.54 GB.
+Total: 7.014600 ms (FindLiveObjects: 0.565700 ms CreateObjectMapping: 1.002500 ms MarkObjects: 4.879100 ms  DeleteObjects: 0.566700 ms)
+
+Opening scene 'Assets/Scenes/level_10_time_jail.unity'
+Unloading 25 Unused Serialized files (Serialized files now loaded: 0)
+LightingSettings: switching bake backend from 2 to 1.
+Loaded scene 'Assets/Scenes/level_10_time_jail.unity'
+	Deserialize:            8.421 ms
+	Integration:            137.767 ms
+	Integration of assets:  0.004 ms
+	Thread Wait Time:       0.007 ms
+	Total Operation Time:   146.198 ms
+Unloading 347 unused Assets / (1.2 MB). Loaded Objects now: 10235.
+Memory consumption went from 0.56 GB to 0.55 GB.
+Total: 8.211000 ms (FindLiveObjects: 0.443000 ms CreateObjectMapping: 1.040300 ms MarkObjects: 6.334000 ms  DeleteObjects: 0.392800 ms)
+
+Opening scene 'Assets/Scenes/level_11_forest.unity'
+Unloading 34 Unused Serialized files (Serialized files now loaded: 0)
+LightingSettings: switching bake backend from 2 to 1.
+Loaded scene 'Assets/Scenes/level_11_forest.unity'
+	Deserialize:            13.932 ms
+	Integration:            141.885 ms
+	Integration of assets:  0.042 ms
+	Thread Wait Time:       0.010 ms
+	Total Operation Time:   155.869 ms
+Unloading 249 unused Assets / (149.8 KB). Loaded Objects now: 10970.
+Memory consumption went from 0.56 GB to 0.56 GB.
+Total: 6.673300 ms (FindLiveObjects: 0.469600 ms CreateObjectMapping: 0.948300 ms MarkObjects: 4.910100 ms  DeleteObjects: 0.344700 ms)
+
+Opening scene 'Assets/Scenes/level_13_rustys.unity'
+Unloading 75 Unused Serialized files (Serialized files now loaded: 0)
+LightingSettings: switching bake backend from 2 to 1.
+Loaded scene 'Assets/Scenes/level_13_rustys.unity'
+	Deserialize:            6.860 ms
+	Integration:            136.049 ms
+	Integration of assets:  0.004 ms
+	Thread Wait Time:       0.005 ms
+	Total Operation Time:   142.918 ms
+Unloading 304 unused Assets / (2.4 MB). Loaded Objects now: 10427.
+Memory consumption went from 0.56 GB to 0.56 GB.
+Total: 7.414900 ms (FindLiveObjects: 0.423500 ms CreateObjectMapping: 0.974300 ms MarkObjects: 5.632900 ms  DeleteObjects: 0.383500 ms)
+
+Opening scene 'Assets/Scenes/level_14_dome.unity'
+Unloading 77 Unused Serialized files (Serialized files now loaded: 0)
+LightingSettings: switching bake backend from 2 to 1.
+Loaded scene 'Assets/Scenes/level_14_dome.unity'
+	Deserialize:            4.528 ms
+	Integration:            153.751 ms
+	Integration of assets:  0.002 ms
+	Thread Wait Time:       0.008 ms
+	Total Operation Time:   158.289 ms
+Unloading 316 unused Assets / (7.6 MB). Loaded Objects now: 10323.
+Memory consumption went from 0.55 GB to 0.54 GB.
+Total: 7.466000 ms (FindLiveObjects: 0.434400 ms CreateObjectMapping: 0.976800 ms MarkObjects: 5.685300 ms  DeleteObjects: 0.368800 ms)
+
+Opening scene 'Assets/Scenes/level_15_cocaine_island.unity'
+Unloading 24 Unused Serialized files (Serialized files now loaded: 0)
+LightingSettings: switching bake backend from 2 to 1.
+Loaded scene 'Assets/Scenes/level_15_cocaine_island.unity'
+	Deserialize:            8.494 ms
+	Integration:            135.324 ms
+	Integration of assets:  0.003 ms
+	Thread Wait Time:       0.008 ms
+	Total Operation Time:   143.829 ms
+Unloading 572 unused Assets / (5.1 MB). Loaded Objects now: 10163.
+Memory consumption went from 0.56 GB to 0.55 GB.
+Total: 6.949500 ms (FindLiveObjects: 0.439800 ms CreateObjectMapping: 1.106400 ms MarkObjects: 4.886300 ms  DeleteObjects: 0.516000 ms)
+
+Opening scene 'Assets/Scenes/level_16_boner_mountain.unity'
+Unloading 62 Unused Serialized files (Serialized files now loaded: 0)
+LightingSettings: switching bake backend from 2 to 1.
+Loaded scene 'Assets/Scenes/level_16_boner_mountain.unity'
+	Deserialize:            2.654 ms
+	Integration:            128.209 ms
+	Integration of assets:  0.002 ms
+	Thread Wait Time:       0.010 ms
+	Total Operation Time:   130.875 ms
+Unloading 99 unused Assets / (95.4 KB). Loaded Objects now: 9618.
+Memory consumption went from 0.55 GB to 0.55 GB.
+Total: 7.279800 ms (FindLiveObjects: 0.399600 ms CreateObjectMapping: 0.908000 ms MarkObjects: 4.970600 ms  DeleteObjects: 1.001100 ms)
+
+Opening scene 'Assets/Scenes/level_17_rumble_pit.unity'
+Unloading 38 Unused Serialized files (Serialized files now loaded: 0)
+Loaded scene 'Assets/Scenes/level_17_rumble_pit.unity'
+	Deserialize:            21.822 ms
+	Integration:            123.812 ms
+	Integration of assets:  0.637 ms
+	Thread Wait Time:       0.006 ms
+	Total Operation Time:   146.277 ms
+Unloading 1006 unused Assets / (5.2 MB). Loaded Objects now: 9874.
+Memory consumption went from 0.55 GB to 0.54 GB.
+Total: 7.452000 ms (FindLiveObjects: 0.434700 ms CreateObjectMapping: 0.976400 ms MarkObjects: 5.288900 ms  DeleteObjects: 0.751400 ms)
+
+Opening scene 'Assets/Scenes/level_18_aveb2.unity'
+Unloading 31 Unused Serialized files (Serialized files now loaded: 0)
+Loaded scene 'Assets/Scenes/level_18_aveb2.unity'
+	Deserialize:            15.696 ms
+	Integration:            134.016 ms
+	Integration of assets:  0.007 ms
+	Thread Wait Time:       0.087 ms
+	Total Operation Time:   149.805 ms
+Unloading 64 unused Assets / (66.1 KB). Loaded Objects now: 10256.
+Memory consumption went from 0.54 GB to 0.54 GB.
+Total: 6.773400 ms (FindLiveObjects: 0.474700 ms CreateObjectMapping: 0.956800 ms MarkObjects: 5.194700 ms  DeleteObjects: 0.146600 ms)
+
+Opening scene 'Assets/Scenes/level_19_cedar_crest.unity'
+Unloading 38 Unused Serialized files (Serialized files now loaded: 0)
+LightingSettings: switching bake backend from 2 to 1.
+Loaded scene 'Assets/Scenes/level_19_cedar_crest.unity'
+	Deserialize:            3.089 ms
+	Integration:            131.428 ms
+	Integration of assets:  0.002 ms
+	Thread Wait Time:       0.010 ms
+	Total Operation Time:   134.529 ms
+Unloading 285 unused Assets / (192.2 KB). Loaded Objects now: 9852.
+Memory consumption went from 0.54 GB to 0.54 GB.
+Total: 6.780200 ms (FindLiveObjects: 0.413100 ms CreateObjectMapping: 0.943000 ms MarkObjects: 5.115300 ms  DeleteObjects: 0.308300 ms)
+
+Opening scene 'Assets/Scenes/level_20_jacksonville.unity'
+Unloading 38 Unused Serialized files (Serialized files now loaded: 0)
+LightingSettings: switching bake backend from 2 to 1.
+Loaded scene 'Assets/Scenes/level_20_jacksonville.unity'
+	Deserialize:            3.686 ms
+	Integration:            142.643 ms
+	Integration of assets:  0.003 ms
+	Thread Wait Time:       0.009 ms
+	Total Operation Time:   146.341 ms
+Unloading 73 unused Assets / (86.0 KB). Loaded Objects now: 10048.
+Memory consumption went from 0.55 GB to 0.55 GB.
+Total: 6.476600 ms (FindLiveObjects: 0.411500 ms CreateObjectMapping: 0.959000 ms MarkObjects: 4.941000 ms  DeleteObjects: 0.164700 ms)
+
+Opening scene 'Assets/Scenes/level_21_shore.unity'
+Unloading 51 Unused Serialized files (Serialized files now loaded: 0)
+LightingSettings: switching bake backend from 2 to 1.
+Loaded scene 'Assets/Scenes/level_21_shore.unity'
+	Deserialize:            15.464 ms
+	Integration:            127.344 ms
+	Integration of assets:  0.007 ms
+	Thread Wait Time:       0.006 ms
+	Total Operation Time:   142.821 ms
+Unloading 354 unused Assets / (0.7 MB). Loaded Objects now: 10467.
+Memory consumption went from 0.55 GB to 0.55 GB.
+Total: 6.736500 ms (FindLiveObjects: 0.439000 ms CreateObjectMapping: 0.919200 ms MarkObjects: 5.056800 ms  DeleteObjects: 0.320900 ms)
+
+Opening scene 'Assets/Scenes/level_22_rumble_pit_shooting.unity'
+Unloading 35 Unused Serialized files (Serialized files now loaded: 0)
+LightingSettings: switching bake backend from 2 to 1.
+Loaded scene 'Assets/Scenes/level_22_rumble_pit_shooting.unity'
+	Deserialize:            10.270 ms
+	Integration:            129.961 ms
+	Integration of assets:  0.002 ms
+	Thread Wait Time:       0.007 ms
+	Total Operation Time:   140.240 ms
+Unloading 250 unused Assets / (171.3 KB). Loaded Objects now: 11434.
+Memory consumption went from 0.55 GB to 0.55 GB.
+Total: 7.850300 ms (FindLiveObjects: 0.467700 ms CreateObjectMapping: 1.026100 ms MarkObjects: 6.047100 ms  DeleteObjects: 0.308600 ms)
+
+Opening scene 'Assets/Scenes/level_23_dev.unity'
+Unloading 36 Unused Serialized files (Serialized files now loaded: 0)
+Loaded scene 'Assets/Scenes/level_23_dev.unity'
+	Deserialize:            1.691 ms
+	Integration:            117.786 ms
+	Integration of assets:  0.002 ms
+	Thread Wait Time:       0.009 ms
+	Total Operation Time:   119.488 ms
+Unloading 350 unused Assets / (3.2 MB). Loaded Objects now: 10324.
+Memory consumption went from 0.54 GB to 0.54 GB.
+Total: 6.631800 ms (FindLiveObjects: 0.440300 ms CreateObjectMapping: 1.011500 ms MarkObjects: 4.878000 ms  DeleteObjects: 0.301600 ms)
+
+Opening scene 'Assets/Scenes/level_24_aveb_cemetary.unity'
+Unloading 5 Unused Serialized files (Serialized files now loaded: 0)
+LightingSettings: switching bake backend from 2 to 1.
+Loaded scene 'Assets/Scenes/level_24_aveb_cemetary.unity'
+	Deserialize:            10.700 ms
+	Integration:            134.510 ms
+	Integration of assets:  0.021 ms
+	Thread Wait Time:       0.008 ms
+	Total Operation Time:   145.239 ms
+Unloading 75 unused Assets / (35.5 KB). Loaded Objects now: 10545.
+Memory consumption went from 0.55 GB to 0.55 GB.
+Total: 7.345300 ms (FindLiveObjects: 0.497000 ms CreateObjectMapping: 0.969800 ms MarkObjects: 5.782300 ms  DeleteObjects: 0.095500 ms)
+
+Opening scene 'Assets/Scenes/minigame_racing.unity'
+Unloading 76 Unused Serialized files (Serialized files now loaded: 0)
+LightingSettings: switching bake backend from 2 to 1.
+Loaded scene 'Assets/Scenes/minigame_racing.unity'
+	Deserialize:            17.748 ms
+	Integration:            132.917 ms
+	Integration of assets:  1.438 ms
+	Thread Wait Time:       0.005 ms
+	Total Operation Time:   152.108 ms
+Unloading 1835 unused Assets / (11.5 MB). Loaded Objects now: 9008.
+Memory consumption went from 0.56 GB to 0.55 GB.
+Total: 7.796000 ms (FindLiveObjects: 0.432500 ms CreateObjectMapping: 0.965600 ms MarkObjects: 4.882100 ms  DeleteObjects: 1.514900 ms)
+
+Opening scene 'Assets/Scenes/sniper_multiplayer_test.unity'
+Unloading 66 Unused Serialized files (Serialized files now loaded: 0)
+Loaded scene 'Assets/Scenes/sniper_multiplayer_test.unity'
+	Deserialize:            5.392 ms
+	Integration:            148.359 ms
+	Integration of assets:  0.002 ms
+	Thread Wait Time:       0.007 ms
+	Total Operation Time:   153.761 ms
+Unloading 201 unused Assets / (122.2 KB). Loaded Objects now: 10974.
+Memory consumption went from 0.56 GB to 0.56 GB.
+Total: 6.662200 ms (FindLiveObjects: 0.450200 ms CreateObjectMapping: 1.001600 ms MarkObjects: 4.961800 ms  DeleteObjects: 0.247900 ms)
+
+Opening scene 'Assets/Scenes/test scene.unity'
+Unloading 92 Unused Serialized files (Serialized files now loaded: 0)
+Asset 'impact_ground_controller': Transition 'impact -> Exit' in state 'impact' doesn't have an Exit Time or any condition, transition will be ignored
+UnityEngine.Debug:ExtractStackTraceNoAlloc (byte*,int,string)
+UnityEngine.StackTraceUtility:ExtractStackTrace ()
+UnityEditor.SceneManagement.EditorSceneManager:OpenScene (string,UnityEditor.SceneManagement.OpenSceneMode)
+Level5DocumentationExporter:ExportScenes () (at Assets/Scripts/Documentation/Editor/Level5DocumentationExporter.cs:326)
+Level5DocumentationExporter:Export () (at Assets/Scripts/Documentation/Editor/Level5DocumentationExporter.cs:132)
+Level5DocumentationExporter:ExportFromCommandLine () (at Assets/Scripts/Documentation/Editor/Level5DocumentationExporter.cs:105)
+
+[Assets/Scripts/Documentation/Editor/Level5DocumentationExporter.cs line 326]
+
+Asset 'impact_player_controller': Transition 'impact -> Exit' in state 'impact' doesn't have an Exit Time or any condition, transition will be ignored
+UnityEngine.Debug:ExtractStackTraceNoAlloc (byte*,int,string)
+UnityEngine.StackTraceUtility:ExtractStackTrace ()
+UnityEditor.SceneManagement.EditorSceneManager:OpenScene (string,UnityEditor.SceneManagement.OpenSceneMode)
+Level5DocumentationExporter:ExportScenes () (at Assets/Scripts/Documentation/Editor/Level5DocumentationExporter.cs:326)
+Level5DocumentationExporter:Export () (at Assets/Scripts/Documentation/Editor/Level5DocumentationExporter.cs:132)
+Level5DocumentationExporter:ExportFromCommandLine () (at Assets/Scripts/Documentation/Editor/Level5DocumentationExporter.cs:105)
+
+[Assets/Scripts/Documentation/Editor/Level5DocumentationExporter.cs line 326]
+
+Asset 'projectile_flamethrower_controller': Transition 'flame -> Exit' in state 'flame' doesn't have an Exit Time or any condition, transition will be ignored
+UnityEngine.Debug:ExtractStackTraceNoAlloc (byte*,int,string)
+UnityEngine.StackTraceUtility:ExtractStackTrace ()
+UnityEditor.SceneManagement.EditorSceneManager:OpenScene (string,UnityEditor.SceneManagement.OpenSceneMode)
+Level5DocumentationExporter:ExportScenes () (at Assets/Scripts/Documentation/Editor/Level5DocumentationExporter.cs:326)
+Level5DocumentationExporter:Export () (at Assets/Scripts/Documentation/Editor/Level5DocumentationExporter.cs:132)
+Level5DocumentationExporter:ExportFromCommandLine () (at Assets/Scripts/Documentation/Editor/Level5DocumentationExporter.cs:105)
+
+[Assets/Scripts/Documentation/Editor/Level5DocumentationExporter.cs line 326]
+
+Asset 'projectile_flamethrower_controller': Transition 'AnyState -> flame' in state 'AnyState' doesn't have an Exit Time or any condition, transition will be ignored
+UnityEngine.Debug:ExtractStackTraceNoAlloc (byte*,int,string)
+UnityEngine.StackTraceUtility:ExtractStackTrace ()
+UnityEditor.SceneManagement.EditorSceneManager:OpenScene (string,UnityEditor.SceneManagement.OpenSceneMode)
+Level5DocumentationExporter:ExportScenes () (at Assets/Scripts/Documentation/Editor/Level5DocumentationExporter.cs:326)
+Level5DocumentationExporter:Export () (at Assets/Scripts/Documentation/Editor/Level5DocumentationExporter.cs:132)
+Level5DocumentationExporter:ExportFromCommandLine () (at Assets/Scripts/Documentation/Editor/Level5DocumentationExporter.cs:105)
+
+[Assets/Scripts/Documentation/Editor/Level5DocumentationExporter.cs line 326]
+
+Loaded scene 'Assets/Scenes/test scene.unity'
+	Deserialize:            0.861 ms
+	Integration:            115.254 ms
+	Integration of assets:  0.001 ms
+	Thread Wait Time:       0.009 ms
+	Total Operation Time:   116.127 ms
+Unloading 3064 unused Assets / (55.3 MB). Loaded Objects now: 6404.
+Memory consumption went from 0.55 GB to 504.8 MB.
+Total: 8.855000 ms (FindLiveObjects: 0.329400 ms CreateObjectMapping: 1.037100 ms MarkObjects: 5.020000 ms  DeleteObjects: 2.467900 ms)
+
+Unloading 28 Unused Serialized files (Serialized files now loaded: 0)
+Unloading 261 unused Assets / (2.9 MB). Loaded Objects now: 5928.
+Memory consumption went from 503.4 MB to 500.5 MB.
+Total: 6.041400 ms (FindLiveObjects: 0.165200 ms CreateObjectMapping: 0.521000 ms MarkObjects: 4.817500 ms  DeleteObjects: 0.537100 ms)
+
+Level 5 documentation data exported to: C:\Users\Patrick\Documents\github\level5\docs\generated\level5-authored-game-data.json
+UnityEngine.Debug:ExtractStackTraceNoAlloc (byte*,int,string)
+UnityEngine.StackTraceUtility:ExtractStackTrace ()
+UnityEngine.DebugLogHandler:Internal_Log (UnityEngine.LogType,UnityEngine.LogOption,string,UnityEngine.Object)
+UnityEngine.DebugLogHandler:LogFormat (UnityEngine.LogType,UnityEngine.Object,string,object[])
+UnityEngine.Logger:Log (UnityEngine.LogType,object)
+UnityEngine.Debug:Log (object)
+Level5DocumentationExporter:ExportFromCommandLine () (at Assets/Scripts/Documentation/Editor/Level5DocumentationExporter.cs:106)
+
+(Filename: Assets/Scripts/Documentation/Editor/Level5DocumentationExporter.cs Line: 106)
+
+Batchmode quit successfully invoked - shutting down!
+Importing 'GUID: 0000000000000000b000000000000000 - Path: ProjectSettings/EditorBuildSettings.asset' with importer (LibraryAssetImporter)
+Imported 'GUID: 0000000000000000b000000000000000' -> (Import Result ID: 'a9af2a059d06772f8257710b0c285384') in 0.003 seconds [static dependencies only]. Details - ImportResultOutputID=4647dd083cfc32cebcd7526e8846440c DependenciesID=ac857b5b46a31c3656da6050813de5b6 StaticDependenciesID=d6d047ec26e0025a08e5cb65aa61e8fc 
+Refreshing native plugins compatible for Editor in 6.88 ms, found 1 plugins.
+Asset Pipeline Refresh (id=a0e40bb8af4f6b5488847b4ace1a2b77): Total: 0.189 seconds - Initiated by StopAssetImportingV2(NoUpdateAssetOptions)
+[Physics::Module] Cleanup current backend.
+[Physics::Module] Id: 0xf2b8ea05
+Input System module state changed to: ShutdownInProgress.
+Input Polling Thread exited.
+Input System module state changed to: Shutdown.
+[Licensing::IpcConnector] LicenseClient-Patrick-6000.5.7-notifications channel disconnected successfully.
+[Licensing::IpcConnector] LicenseClient-Patrick-6000.5.7 channel disconnected successfully.
+AcceleratorClientConnectionCallback - disconnected - :0
+Cleanup mono
+CodeReloadManager destroyed
+Exiting batchmode successfully now!
+Exiting without the bug reporter. Application will terminate with return code 0

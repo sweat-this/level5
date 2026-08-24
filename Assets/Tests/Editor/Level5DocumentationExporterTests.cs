@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Reflection;
 using NUnit.Framework;
 using UnityEditor;
@@ -93,6 +94,69 @@ public class Level5DocumentationExporterTests
     }
 
     [Test]
+    public void TargetedPrefabExportPreservesAllDuplicateComponents()
+    {
+        EnsureTempRoot();
+        const string prefabPath = TempRoot + "/duplicate-components.prefab";
+
+        GameObject root = new GameObject("Root");
+        root.AddComponent<BoxCollider>();
+        root.AddComponent<BoxCollider>();
+
+        try
+        {
+            PrefabUtility.SaveAsPrefabAsset(root, prefabPath);
+        }
+        finally
+        {
+            Object.DestroyImmediate(root);
+        }
+
+        List<Level5DocumentationExporter.AssetRecord> records = InvokePrivate<List<Level5DocumentationExporter.AssetRecord>>(
+            "ExportPrefabsFromRoot",
+            TempRoot,
+            new System.Type[] { typeof(BoxCollider) });
+
+        Assert.That(records.Count, Is.EqualTo(1));
+        Level5DocumentationExporter.AssetRecord record = records[0];
+        Assert.That(record.components.Count, Is.EqualTo(2));
+        Assert.That(record.components[0].componentIndex, Is.EqualTo(0));
+        Assert.That(record.components[1].componentIndex, Is.EqualTo(1));
+        Assert.That(record.components[0].hierarchyPath, Is.EqualTo(record.components[1].hierarchyPath));
+    }
+
+    [Test]
+    public void RequiredRootsIncludeCpuSelectionCatalog()
+    {
+        string[] requiredRoots = GetRequiredRoots();
+
+        Assert.That(
+            requiredRoots,
+            Has.Some.EqualTo("Assets/Resources/Prefabs/menu_start/cpu_players_selected_objects"));
+    }
+
+    [Test]
+    public void RequiredRootsIncludeFallbackSupportCatalog()
+    {
+        string[] requiredRoots = GetRequiredRoots();
+
+        Assert.That(
+            requiredRoots,
+            Has.Some.EqualTo("Assets/Resources/Prefabs/menu_start/cheerleader_default_objects"));
+    }
+
+    [Test]
+    public void NormalizeLineEndingsProducesDeterministicUtf8LfOutput()
+    {
+        const string input = "line1\r\nline2\rline3\n\n\n";
+
+        string normalized = InvokePrivate<string>("NormalizeLineEndings", input);
+
+        Assert.That(normalized, Does.Not.Contain("\r"));
+        Assert.That(normalized, Is.EqualTo("line1\nline2\nline3\n"));
+    }
+
+    [Test]
     public void OrdinaryPersistentAssetsKeepConciseAssetPathReferences()
     {
         EnsureTempRoot();
@@ -120,6 +184,15 @@ public class Level5DocumentationExporterTests
             BindingFlags.NonPublic | BindingFlags.Static);
         Assert.That(method, Is.Not.Null, "Missing exporter helper: " + methodName);
         return (T)method.Invoke(null, arguments);
+    }
+
+    private static string[] GetRequiredRoots()
+    {
+        FieldInfo field = typeof(Level5DocumentationExporter).GetField(
+            "RequiredRoots",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.That(field, Is.Not.Null, "Missing exporter field: RequiredRoots");
+        return (string[])field.GetValue(null);
     }
 }
 

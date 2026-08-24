@@ -1,0 +1,210 @@
+<?xml version="1.0" encoding="utf-8"?>
+<test-run id="2" testcasecount="9" result="Passed" total="9" passed="9" failed="0" inconclusive="0" skipped="0" asserts="0" engine-version="3.5.0.0" clr-version="4.0.30319.42000" start-time="2026-08-23 23:15:08Z" end-time="2026-08-23 23:15:15Z" duration="7.4628159">
+  <test-suite type="TestSuite" id="1020" name="level5" fullname="level5" runstate="Runnable" testcasecount="9" result="Passed" start-time="2026-08-23 23:15:08Z" end-time="2026-08-23 23:15:15Z" duration="7.462816" total="9" passed="9" failed="0" inconclusive="0" skipped="0" asserts="0">
+    <properties>
+      <property name="platform" value="PlayMode" />
+    </properties>
+    <test-suite type="Assembly" id="1013" name="Assembly-CSharp.dll" fullname="C:/Users/Patrick/Documents/github/level5/Library/ScriptAssemblies/Assembly-CSharp.dll" runstate="Runnable" testcasecount="8" result="Passed" start-time="2026-08-23 23:15:08Z" end-time="2026-08-23 23:15:15Z" duration="7.453579" total="8" passed="8" failed="0" inconclusive="0" skipped="0" asserts="0">
+      <properties>
+        <property name="_PID" value="69020" />
+        <property name="_APPDOMAIN" value="Unity Child Domain" />
+        <property name="platform" value="PlayMode" />
+        <property name="EditorOnly" value="False" />
+      </properties>
+      <test-suite type="TestFixture" id="1001" name="BasketballVisibilityTests" fullname="BasketballVisibilityTests" classname="BasketballVisibilityTests" runstate="Runnable" testcasecount="1" result="Passed" start-time="2026-08-23 23:15:08Z" end-time="2026-08-23 23:15:10Z" duration="1.627241" total="1" passed="1" failed="0" inconclusive="0" skipped="0" asserts="0">
+        <properties />
+        <test-case id="1002" name="TheHeldBallIsNotDrawnAbovethePlayersHead" fullname="BasketballVisibilityTests.TheHeldBallIsNotDrawnAbovethePlayersHead" methodname="TheHeldBallIsNotDrawnAbovethePlayersHead" classname="BasketballVisibilityTests" runstate="Runnable" seed="873456127" result="Passed" start-time="2026-08-23 23:15:08Z" end-time="2026-08-23 23:15:10Z" duration="1.617808" asserts="0">
+          <properties>
+            <property name="_JOINTYPE" value="UnityCombinatorial" />
+            <property name="retryIteration" value="0" />
+            <property name="repeatIteration" value="0" />
+          </properties>
+          <output><![CDATA[
+IgnoreFailingMessages:true
+Asset 'johnny_dracula_animation_controller': Transition 'idle -> inair' in state 'idle' doesn't have an Exit Time or any condition, transition will be ignored
+The match HUD created fallback text objects for this legacy scene: display_p1_score, display_p2_score, display_p3_score, display_p4_score
+BoxCollider does not support negative scale or size.
+The effective box size has been forced positive and is likely to give unexpected collision geometry.
+If you absolutely need to use negative scaling you can use the convex MeshCollider. Scene hierarchy path "Boundaries/boundary right"
+BoxCollider does not support negative scale or size.
+The effective box size has been forced positive and is likely to give unexpected collision geometry.
+If you absolutely need to use negative scaling you can use the convex MeshCollider. Scene hierarchy path "Boundaries/boundary left"
+BoxCollider does not support negative scale or size.
+The effective box size has been forced positive and is likely to give unexpected collision geometry.
+If you absolutely need to use negative scaling you can use the convex MeshCollider. Scene hierarchy path "Boundaries/boundary front"
+BoxCollider does not support negative scale or size.
+The effective box size has been forced positive and is likely to give unexpected collision geometry.
+If you absolutely need to use negative scaling you can use the convex MeshCollider. Scene hierarchy path "Boundaries/boundary back (1)"
+BoxCollider does not support negative scale or size.
+The effective box size has been forced positive and is likely to give unexpected collision geometry.
+If you absolutely need to use negative scaling you can use the convex MeshCollider. Scene hierarchy path "basketball(Clone)/groundCheck"
+DIAG scene: level_01_scrapyard
+DIAG forced hasBasketball=true on player_drblood(Clone)
+DIAG human balls (BasketBall): 1
+DIAG BasketBall[0] owner=player_drblood(Clone) hasBasketball=True ballPos=(-1.23, 1.00, -4.06) holdPos=(-1.23, 1.00, -4.06) atHoldPoint=True | renderer=basketball_sprite enabled=False alpha=0.00 isVisible=False
+DIAG cpu balls (BasketBallAuto): 0
+]]></output>
+        </test-case>
+      </test-suite>
+      <test-suite type="TestFixture" id="1003" name="GameplayLevelUnpauseTests" fullname="GameplayLevelUnpauseTests" classname="GameplayLevelUnpauseTests" runstate="Runnable" testcasecount="1" result="Passed" start-time="2026-08-23 23:15:10Z" end-time="2026-08-23 23:15:10Z" duration="0.823693" total="1" passed="1" failed="0" inconclusive="0" skipped="0" asserts="0">
+        <properties />
+        <test-case id="1004" name="GameplayLevelCanBeUnpaused" fullname="GameplayLevelUnpauseTests.GameplayLevelCanBeUnpaused" methodname="GameplayLevelCanBeUnpaused" classname="GameplayLevelUnpauseTests" runstate="Runnable" seed="1495995390" result="Passed" start-time="2026-08-23 23:15:10Z" end-time="2026-08-23 23:15:10Z" duration="0.822651" asserts="0">
+          <properties>
+            <property name="_JOINTYPE" value="UnityCombinatorial" />
+            <property name="retryIteration" value="0" />
+            <property name="repeatIteration" value="0" />
+          </properties>
+          <output><![CDATA[The match HUD created fallback text objects for this legacy scene: display_p1_score, display_p2_score, display_p3_score, display_p4_score
+DIAG gameplay scene     : level_01_scrapyard
+DIAG startOnPause       : True
+DIAG Time.timeScale     : 0
+DIAG Player map enabled : True
+DIAG   (submit action)  : True
+DIAG after StartGame()  : timeScale=1 startOnPause=False
+]]></output>
+        </test-case>
+      </test-suite>
+      <test-suite type="TestFixture" id="1005" name="Level5GameplayPlayModeTests" fullname="Level5GameplayPlayModeTests" classname="Level5GameplayPlayModeTests" runstate="Runnable" testcasecount="3" result="Passed" start-time="2026-08-23 23:15:10Z" end-time="2026-08-23 23:15:10Z" duration="0.041485" total="3" passed="3" failed="0" inconclusive="0" skipped="0" asserts="0">
+        <properties />
+        <test-case id="1008" name="AnOrdinaryMatchReportsNothingToTheVersusSystem" fullname="Level5GameplayPlayModeTests.AnOrdinaryMatchReportsNothingToTheVersusSystem" methodname="AnOrdinaryMatchReportsNothingToTheVersusSystem" classname="Level5GameplayPlayModeTests" runstate="Runnable" seed="1796050738" result="Passed" start-time="2026-08-23 23:15:10Z" end-time="2026-08-23 23:15:10Z" duration="0.005905" asserts="0">
+          <properties>
+            <property name="_JOINTYPE" value="UnityCombinatorial" />
+            <property name="retryIteration" value="0" />
+            <property name="repeatIteration" value="0" />
+          </properties>
+        </test-case>
+        <test-case id="1007" name="ASceneScopedSingletonReleasesItsStaticWhenDestroyed" fullname="Level5GameplayPlayModeTests.ASceneScopedSingletonReleasesItsStaticWhenDestroyed" methodname="ASceneScopedSingletonReleasesItsStaticWhenDestroyed" classname="Level5GameplayPlayModeTests" runstate="Runnable" seed="773073668" result="Passed" start-time="2026-08-23 23:15:10Z" end-time="2026-08-23 23:15:10Z" duration="0.001389" asserts="0">
+          <properties>
+            <property name="_JOINTYPE" value="UnityCombinatorial" />
+            <property name="retryIteration" value="0" />
+            <property name="repeatIteration" value="0" />
+          </properties>
+        </test-case>
+        <test-case id="1006" name="AVersusTurnIsReportedFromLiveMatchStats" fullname="Level5GameplayPlayModeTests.AVersusTurnIsReportedFromLiveMatchStats" methodname="AVersusTurnIsReportedFromLiveMatchStats" classname="Level5GameplayPlayModeTests" runstate="Runnable" seed="428246006" result="Passed" start-time="2026-08-23 23:15:10Z" end-time="2026-08-23 23:15:10Z" duration="0.033242" asserts="0">
+          <properties>
+            <property name="_JOINTYPE" value="UnityCombinatorial" />
+            <property name="retryIteration" value="0" />
+            <property name="repeatIteration" value="0" />
+          </properties>
+          <output><![CDATA[[versus] series series-1c219a6a56aa4411819f37447519cccb created: Patrick v Alex, best of 1, Asynchronous, SealedAttempt, from play mode test
+[versus] series series-1c219a6a56aa4411819f37447519cccb game 1: attempt attempt-46fd5464f0d244859ece9f7973d858fb issued to patrick under most-points v1
+[versus] series series-1c219a6a56aa4411819f37447519cccb: attempt attempt-46fd5464f0d244859ece9f7973d858fb started
+[versus] series series-1c219a6a56aa4411819f37447519cccb game 1: attempt attempt-46fd5464f0d244859ece9f7973d858fb completed by patrick
+[versus] series series-1c219a6a56aa4411819f37447519cccb game 1: attempt attempt-e0ac6df65d774c019dacdfc9c4ebd699 issued to alex under most-points v1
+[versus] series series-1c219a6a56aa4411819f37447519cccb: attempt attempt-e0ac6df65d774c019dacdfc9c4ebd699 started
+[versus] series series-1c219a6a56aa4411819f37447519cccb game 1: attempt attempt-e0ac6df65d774c019dacdfc9c4ebd699 completed by alex
+[versus] series series-1c219a6a56aa4411819f37447519cccb game 1 resolved: Decided: patrick. Series now 1-0
+[versus] series series-1c219a6a56aa4411819f37447519cccb completed: patrick wins 1-0
+]]></output>
+        </test-case>
+      </test-suite>
+      <test-suite type="TestFixture" id="1009" name="PlayerMovementPhysicsTests" fullname="PlayerMovementPhysicsTests" classname="PlayerMovementPhysicsTests" runstate="Runnable" testcasecount="3" result="Passed" start-time="2026-08-23 23:15:10Z" end-time="2026-08-23 23:15:15Z" duration="4.959362" total="3" passed="3" failed="0" inconclusive="0" skipped="0" asserts="0">
+        <properties />
+        <test-case id="1010" name="AContactImpulseDoesNotSendThePlayerFlying" fullname="PlayerMovementPhysicsTests.AContactImpulseDoesNotSendThePlayerFlying" methodname="AContactImpulseDoesNotSendThePlayerFlying" classname="PlayerMovementPhysicsTests" runstate="Runnable" seed="1078714742" result="Passed" start-time="2026-08-23 23:15:10Z" end-time="2026-08-23 23:15:12Z" duration="1.801817" asserts="0">
+          <properties>
+            <property name="_JOINTYPE" value="UnityCombinatorial" />
+            <property name="retryIteration" value="0" />
+            <property name="repeatIteration" value="0" />
+          </properties>
+          <output><![CDATA[
+IgnoreFailingMessages:true
+The match HUD created fallback text objects for this legacy scene: display_p1_score, display_p2_score, display_p3_score, display_p4_score
+BoxCollider does not support negative scale or size.
+The effective box size has been forced positive and is likely to give unexpected collision geometry.
+If you absolutely need to use negative scaling you can use the convex MeshCollider. Scene hierarchy path "Boundaries/boundary right"
+BoxCollider does not support negative scale or size.
+The effective box size has been forced positive and is likely to give unexpected collision geometry.
+If you absolutely need to use negative scaling you can use the convex MeshCollider. Scene hierarchy path "Boundaries/boundary left"
+BoxCollider does not support negative scale or size.
+The effective box size has been forced positive and is likely to give unexpected collision geometry.
+If you absolutely need to use negative scaling you can use the convex MeshCollider. Scene hierarchy path "Boundaries/boundary front"
+BoxCollider does not support negative scale or size.
+The effective box size has been forced positive and is likely to give unexpected collision geometry.
+If you absolutely need to use negative scaling you can use the convex MeshCollider. Scene hierarchy path "Boundaries/boundary back (1)"
+BoxCollider does not support negative scale or size.
+The effective box size has been forced positive and is likely to give unexpected collision geometry.
+If you absolutely need to use negative scaling you can use the convex MeshCollider. Scene hierarchy path "basketball(Clone)/groundCheck"
+DIAG horizontal speed after impulse: 0
+]]></output>
+        </test-case>
+        <test-case id="1012" name="AnImposedArcSurvivesWhileAirborneWithNoInput" fullname="PlayerMovementPhysicsTests.AnImposedArcSurvivesWhileAirborneWithNoInput" methodname="AnImposedArcSurvivesWhileAirborneWithNoInput" classname="PlayerMovementPhysicsTests" runstate="Runnable" seed="1054388913" result="Passed" start-time="2026-08-23 23:15:12Z" end-time="2026-08-23 23:15:13Z" duration="0.846802" asserts="0">
+          <properties>
+            <property name="_JOINTYPE" value="UnityCombinatorial" />
+            <property name="retryIteration" value="0" />
+            <property name="repeatIteration" value="0" />
+          </properties>
+          <output><![CDATA[
+IgnoreFailingMessages:true
+The match HUD created fallback text objects for this legacy scene: display_p1_score, display_p2_score, display_p3_score, display_p4_score
+BoxCollider does not support negative scale or size.
+The effective box size has been forced positive and is likely to give unexpected collision geometry.
+If you absolutely need to use negative scaling you can use the convex MeshCollider. Scene hierarchy path "Boundaries/boundary right"
+BoxCollider does not support negative scale or size.
+The effective box size has been forced positive and is likely to give unexpected collision geometry.
+If you absolutely need to use negative scaling you can use the convex MeshCollider. Scene hierarchy path "Boundaries/boundary left"
+BoxCollider does not support negative scale or size.
+The effective box size has been forced positive and is likely to give unexpected collision geometry.
+If you absolutely need to use negative scaling you can use the convex MeshCollider. Scene hierarchy path "Boundaries/boundary front"
+BoxCollider does not support negative scale or size.
+The effective box size has been forced positive and is likely to give unexpected collision geometry.
+If you absolutely need to use negative scaling you can use the convex MeshCollider. Scene hierarchy path "Boundaries/boundary back (1)"
+BoxCollider does not support negative scale or size.
+The effective box size has been forced positive and is likely to give unexpected collision geometry.
+If you absolutely need to use negative scaling you can use the convex MeshCollider. Scene hierarchy path "basketball(Clone)/groundCheck"
+DIAG horizontal retained mid-air: 5
+]]></output>
+        </test-case>
+        <test-case id="1011" name="JumpingDoesNotCompoundHorizontalVelocity" fullname="PlayerMovementPhysicsTests.JumpingDoesNotCompoundHorizontalVelocity" methodname="JumpingDoesNotCompoundHorizontalVelocity" classname="PlayerMovementPhysicsTests" runstate="Runnable" seed="1474094653" result="Passed" start-time="2026-08-23 23:15:13Z" end-time="2026-08-23 23:15:15Z" duration="2.309699" asserts="0">
+          <properties>
+            <property name="_JOINTYPE" value="UnityCombinatorial" />
+            <property name="retryIteration" value="0" />
+            <property name="repeatIteration" value="0" />
+          </properties>
+          <output><![CDATA[
+IgnoreFailingMessages:true
+The match HUD created fallback text objects for this legacy scene: display_p1_score, display_p2_score, display_p3_score, display_p4_score
+BoxCollider does not support negative scale or size.
+The effective box size has been forced positive and is likely to give unexpected collision geometry.
+If you absolutely need to use negative scaling you can use the convex MeshCollider. Scene hierarchy path "Boundaries/boundary right"
+BoxCollider does not support negative scale or size.
+The effective box size has been forced positive and is likely to give unexpected collision geometry.
+If you absolutely need to use negative scaling you can use the convex MeshCollider. Scene hierarchy path "Boundaries/boundary left"
+BoxCollider does not support negative scale or size.
+The effective box size has been forced positive and is likely to give unexpected collision geometry.
+If you absolutely need to use negative scaling you can use the convex MeshCollider. Scene hierarchy path "Boundaries/boundary front"
+BoxCollider does not support negative scale or size.
+The effective box size has been forced positive and is likely to give unexpected collision geometry.
+If you absolutely need to use negative scaling you can use the convex MeshCollider. Scene hierarchy path "Boundaries/boundary back (1)"
+BoxCollider does not support negative scale or size.
+The effective box size has been forced positive and is likely to give unexpected collision geometry.
+If you absolutely need to use negative scaling you can use the convex MeshCollider. Scene hierarchy path "basketball(Clone)/groundCheck"
+BoxCollider does not support negative scale or size.
+The effective box size has been forced positive and is likely to give unexpected collision geometry.
+If you absolutely need to use negative scaling you can use the convex MeshCollider. Scene hierarchy path "npc_rabbit"
+DIAG jumpForce=4.5 horizontal travel during jump: 1.097762E-05
+]]></output>
+        </test-case>
+      </test-suite>
+    </test-suite>
+    <test-suite type="Assembly" id="1016" name="Level5.PlayModeTests.dll" fullname="C:/Users/Patrick/Documents/github/level5/Library/ScriptAssemblies/Level5.PlayModeTests.dll" runstate="Runnable" testcasecount="1" result="Passed" start-time="2026-08-23 23:15:15Z" end-time="2026-08-23 23:15:15Z" duration="0.002190" total="1" passed="1" failed="0" inconclusive="0" skipped="0" asserts="0">
+      <properties>
+        <property name="_PID" value="69020" />
+        <property name="_APPDOMAIN" value="Unity Child Domain" />
+        <property name="platform" value="PlayMode" />
+        <property name="EditorOnly" value="False" />
+      </properties>
+      <test-suite type="TestFixture" id="1014" name="CampaignRoundPlayModeTests" fullname="CampaignRoundPlayModeTests" classname="CampaignRoundPlayModeTests" runstate="Runnable" testcasecount="1" result="Passed" start-time="2026-08-23 23:15:15Z" end-time="2026-08-23 23:15:15Z" duration="0.001873" total="1" passed="1" failed="0" inconclusive="0" skipped="0" asserts="0">
+        <properties />
+        <test-case id="1015" name="FinalLossRetriesWhileAContinueRemains" fullname="CampaignRoundPlayModeTests.FinalLossRetriesWhileAContinueRemains" methodname="FinalLossRetriesWhileAContinueRemains" classname="CampaignRoundPlayModeTests" runstate="Runnable" seed="362399003" result="Passed" start-time="2026-08-23 23:15:15Z" end-time="2026-08-23 23:15:15Z" duration="0.001209" asserts="0">
+          <properties>
+            <property name="_JOINTYPE" value="UnityCombinatorial" />
+            <property name="retryIteration" value="0" />
+            <property name="repeatIteration" value="0" />
+          </properties>
+          <output><![CDATA[Saving results to: C:/Users/Patrick/AppData/LocalLow/level5/level5\TestResults.xml
+]]></output>
+        </test-case>
+      </test-suite>
+    </test-suite>
+  </test-suite>
+</test-run>

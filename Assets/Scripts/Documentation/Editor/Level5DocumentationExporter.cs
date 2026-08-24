@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Text;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -22,6 +23,8 @@ public static class Level5DocumentationExporter
 
     private const string CharacterSelectionRoot =
         "Assets/Resources/Prefabs/menu_start/player_selected_objects";
+    private const string CpuCharacterSelectionRoot =
+        "Assets/Resources/Prefabs/menu_start/cpu_players_selected_objects";
     private const string DefaultCharacterRoot =
         "Assets/Resources/Prefabs/menu_start/default_shooter_profiles";
     private const string LevelSelectionRoot =
@@ -30,6 +33,8 @@ public static class Level5DocumentationExporter
         "Assets/Resources/Prefabs/menu_start/mode_selected_objects";
     private const string SupportSelectionRoot =
         "Assets/Resources/Prefabs/menu_start/cheerleader_selected_object";
+    private const string DefaultSupportSelectionRoot =
+        "Assets/Resources/Prefabs/menu_start/cheerleader_default_objects";
     private const string EnemyRoot = "Assets/Resources/Prefabs/enemies";
     private const string BodyGuardRoot = "Assets/Resources/Prefabs/bodyguards";
     private const string NavMeshVehicleRoot = "Assets/Resources/Prefabs/vehicles-navmesh";
@@ -37,13 +42,31 @@ public static class Level5DocumentationExporter
     private const string ResourcesPrefabRoot = "Assets/Resources/Prefabs";
     private const string SceneRoot = "Assets/Scenes";
 
+    // LoadManager resolves the primary catalog first and falls back to the CPU/default catalog
+    // only when the primary one is unusable (see LoadManager.loadCpuSelectDataList /
+    // loadDefaultCheerleaderProfiles). Both roots feed the same schema-v2 collection because
+    // AssetRecord.sourcePath already distinguishes which catalog a record came from.
+    private static readonly string[] CharacterSelectionRoots =
+    {
+        CharacterSelectionRoot,
+        CpuCharacterSelectionRoot
+    };
+
+    private static readonly string[] SupportSelectionRoots =
+    {
+        SupportSelectionRoot,
+        DefaultSupportSelectionRoot
+    };
+
     private static readonly string[] RequiredRoots =
     {
         CharacterSelectionRoot,
+        CpuCharacterSelectionRoot,
         DefaultCharacterRoot,
         LevelSelectionRoot,
         ModeSelectionRoot,
         SupportSelectionRoot,
+        DefaultSupportSelectionRoot,
         EnemyRoot,
         BodyGuardRoot,
         NavMeshVehicleRoot,
@@ -111,11 +134,11 @@ public static class Level5DocumentationExporter
             schemaVersion = SchemaVersion,
             unityVersion = Application.unityVersion,
             outputContract = OutputRelativePath,
-            characterSelections = ExportPrefabs(CharacterSelectionRoot, typeof(CharacterProfile)),
+            characterSelections = ExportPrefabs(CharacterSelectionRoots, typeof(CharacterProfile)),
             defaultCharacterProfiles = ExportPrefabs(DefaultCharacterRoot, typeof(CharacterProfile)),
             levelSelections = ExportPrefabs(LevelSelectionRoot, typeof(LevelSelected)),
             modeSelections = ExportPrefabs(ModeSelectionRoot, typeof(StartScreenModeSelected)),
-            supportSelections = ExportPrefabs(SupportSelectionRoot, typeof(CheerleaderProfile)),
+            supportSelections = ExportPrefabs(SupportSelectionRoots, typeof(CheerleaderProfile)),
             enemies = ExportPrefabs(EnemyRoot, typeof(EnemyController), typeof(EnemyHealth)),
             bodyGuards = ExportPrefabs(
                 BodyGuardRoot,
@@ -153,11 +176,43 @@ public static class Level5DocumentationExporter
         }
 
         Directory.CreateDirectory(directory);
-        File.WriteAllText(absolutePath, JsonUtility.ToJson(export, true) + Environment.NewLine);
+        string json = NormalizeLineEndings(JsonUtility.ToJson(export, true));
+        File.WriteAllText(absolutePath, json, new UTF8Encoding(false));
         return absolutePath;
     }
 
+    /// <summary>
+    /// Forces CRLF/CR to LF and exactly one trailing LF so the same authored input produces
+    /// byte-identical output regardless of the platform/editor that generated it.
+    /// </summary>
+    private static string NormalizeLineEndings(string text)
+    {
+        string normalized = (text ?? string.Empty).Replace("\r\n", "\n").Replace("\r", "\n");
+        return normalized.TrimEnd('\n') + "\n";
+    }
+
+    // Two overloads share this name (string root vs string[] roots), so reflection lookups by
+    // name alone (Type.GetMethod(name, flags)) throw AmbiguousMatchException. Tests that need
+    // reflection access should target ExportPrefabsFromRoot, which is not overloaded.
     private static List<AssetRecord> ExportPrefabs(string root, params Type[] componentTypes)
+    {
+        return ExportPrefabs(new[] { root }, componentTypes);
+    }
+
+    private static List<AssetRecord> ExportPrefabs(string[] roots, params Type[] componentTypes)
+    {
+        List<AssetRecord> records = new List<AssetRecord>();
+        foreach (string root in roots)
+        {
+            records.AddRange(ExportPrefabsFromRoot(root, componentTypes));
+        }
+
+        records.Sort((left, right) =>
+            StringComparer.Ordinal.Compare(left.sourcePath, right.sourcePath));
+        return records;
+    }
+
+    private static List<AssetRecord> ExportPrefabsFromRoot(string root, Type[] componentTypes)
     {
         List<AssetRecord> records = new List<AssetRecord>();
         foreach (string path in FindPrefabPaths(root))
@@ -189,14 +244,17 @@ public static class Level5DocumentationExporter
             {
                 foreach (Type componentType in componentTypes)
                 {
-                    Component component = prefab.GetComponentInChildren(componentType, true);
-                    if (component == null)
+                    Component[] matches = prefab.GetComponentsInChildren(componentType, true);
+                    if (matches.Length == 0)
                     {
                         record.findings.Add("Missing expected component: " + componentType.Name);
                         continue;
                     }
 
-                    record.components.Add(ExportComponent(component));
+                    foreach (Component component in matches)
+                    {
+                        record.components.Add(ExportComponent(component));
+                    }
                 }
 
                 record.components.Sort(CompareComponents);
@@ -222,8 +280,8 @@ public static class Level5DocumentationExporter
                 continue;
             }
 
-            RacingVehicleProfile profile = prefab.GetComponentInChildren<RacingVehicleProfile>(true);
-            if (profile == null)
+            RacingVehicleProfile[] profiles = prefab.GetComponentsInChildren<RacingVehicleProfile>(true);
+            if (profiles.Length == 0)
             {
                 continue;
             }
@@ -233,10 +291,13 @@ public static class Level5DocumentationExporter
                 sourcePath = path,
                 assetName = prefab.name
             };
-            record.components.Add(ExportComponent(profile));
+            foreach (RacingVehicleProfile profile in profiles)
+            {
+                record.components.Add(ExportComponent(profile));
+            }
 
-            RacingVehicleController controller = prefab.GetComponentInChildren<RacingVehicleController>(true);
-            if (controller != null)
+            foreach (RacingVehicleController controller
+                in prefab.GetComponentsInChildren<RacingVehicleController>(true))
             {
                 record.components.Add(ExportComponent(controller));
             }
