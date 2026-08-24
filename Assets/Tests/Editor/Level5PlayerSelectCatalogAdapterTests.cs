@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Reflection;
+using Level5.Core.Match;
 using Level5.Core.PlayerSelection;
 using Level5.Core.Progression;
 using NUnit.Framework;
@@ -258,5 +259,202 @@ public class Level5PlayerSelectCatalogAdapterTests
                         + $"{cpuEntry.Value} in the CPU roster - the two must agree.");
             }
         }
+    }
+
+    // ---- CPU selection/runtime parity (issue #69) ---------------------------------------------
+    //
+    // #69 started as "cpu_player_ak47 authors isCpu = false" but the audit that preceded this fix
+    // found the menu/selection prefab (Assets/Resources/Prefabs/menu_start/cpu_players_selected_objects)
+    // and the gameplay/runtime prefab SpawnCoordinator actually instantiates
+    // (Assets/Resources/Prefabs/characters/cpu_players) had drifted apart on IsShooter, IsFighter,
+    // CpuType and Level for more than a dozen characters - not just AK-47.
+    //
+    // The same audit also found the runtime catalog itself authors duplicate PlayerIds
+    // (drblood/drblood_white both 1, kamille/thom both 4, flash/zilla_baby both 5, pony/woody both
+    // 6) and rad_tony authoring the reserved "none" id 0. Deciding which side of those collisions
+    // is correct is a separate identity-migration decision (AGENTS.md treats stable ids as a
+    // contract), not something #69 resolves by guessing - so RequiredParityFieldsAgreeWithRuntimeWhereIdentityIsUnambiguous
+    // below only enforces parity where PlayerId already agrees and is unique in the runtime
+    // catalog. It starts covering the deferred characters automatically once that separate defect
+    // is fixed.
+
+    private const string RuntimeCpuRosterPath = "Assets/Resources/Prefabs/characters/cpu_players";
+
+    private static Dictionary<string, CharacterProfile> LoadCpuRuntimeProfilesByObjectName()
+    {
+        Dictionary<string, CharacterProfile> byObjectName = new Dictionary<string, CharacterProfile>();
+        foreach (string guid in AssetDatabase.FindAssets("t:Prefab", new[] { RuntimeCpuRosterPath }))
+        {
+            string path = AssetDatabase.GUIDToAssetPath(guid);
+            GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(path);
+            CharacterProfile profile = prefab != null ? prefab.GetComponentInChildren<CharacterProfile>(true) : null;
+            if (profile != null)
+            {
+                byObjectName[profile.PlayerObjectName] = profile;
+            }
+        }
+
+        return byObjectName;
+    }
+
+    private static List<CharacterProfile> LoadRealCpuSelectionProfiles()
+    {
+        List<CharacterProfile> profiles = new List<CharacterProfile>();
+        foreach (string guid in AssetDatabase.FindAssets("t:Prefab", new[] { CpuRosterPath }))
+        {
+            string path = AssetDatabase.GUIDToAssetPath(guid);
+            GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(path);
+            CharacterProfile profile = prefab != null ? prefab.GetComponent<CharacterProfile>() : null;
+            // id 0 is the legacy CPU "none" record - not a real character, excluded from parity.
+            if (profile != null && profile.PlayerId != 0)
+            {
+                profiles.Add(profile);
+            }
+        }
+
+        return profiles;
+    }
+
+    [Test]
+    public void EveryRealCpuSelectionCharacterHasARuntimeGameplayCounterpart()
+    {
+        Dictionary<string, CharacterProfile> runtimeByObjectName = LoadCpuRuntimeProfilesByObjectName();
+
+        foreach (CharacterProfile selection in LoadRealCpuSelectionProfiles())
+        {
+            Assert.That(
+                runtimeByObjectName.ContainsKey(selection.PlayerObjectName),
+                Is.True,
+                $"'{selection.PlayerObjectName}' has a CPU selection prefab but no runtime prefab under "
+                    + $"{RuntimeCpuRosterPath} - SpawnCoordinator resolves the gameplay actor by this ObjectName.");
+        }
+    }
+
+    [Test]
+    public void EveryRealCpuSelectionCharacterAuthorsIsCpuTrue()
+    {
+        foreach (CharacterProfile selection in LoadRealCpuSelectionProfiles())
+        {
+            Assert.That(
+                selection.isCpu,
+                Is.True,
+                $"'{selection.PlayerObjectName}' is a real CPU selection entry but authors isCpu = false (issue #69).");
+        }
+    }
+
+    [Test]
+    public void RequiredParityFieldsAgreeWithRuntimeWhereIdentityIsUnambiguous()
+    {
+        Dictionary<string, CharacterProfile> runtimeByObjectName = LoadCpuRuntimeProfilesByObjectName();
+        Dictionary<int, int> runtimeIdCounts = new Dictionary<int, int>();
+        foreach (CharacterProfile runtime in runtimeByObjectName.Values)
+        {
+            runtimeIdCounts.TryGetValue(runtime.PlayerId, out int count);
+            runtimeIdCounts[runtime.PlayerId] = count + 1;
+        }
+
+        foreach (CharacterProfile selection in LoadRealCpuSelectionProfiles())
+        {
+            if (!runtimeByObjectName.TryGetValue(selection.PlayerObjectName, out CharacterProfile runtime))
+            {
+                continue; // covered by EveryRealCpuSelectionCharacterHasARuntimeGameplayCounterpart
+            }
+
+            bool identityUnambiguous = selection.PlayerId == runtime.PlayerId && runtimeIdCounts[runtime.PlayerId] == 1;
+            if (!identityUnambiguous)
+            {
+                continue;
+            }
+
+            string who = $"'{selection.PlayerObjectName}' (playerId {selection.PlayerId})";
+            Assert.That(selection.IsShooter, Is.EqualTo(runtime.IsShooter), $"{who} IsShooter disagrees with its runtime prefab.");
+            Assert.That(selection.IsFighter, Is.EqualTo(runtime.IsFighter), $"{who} IsFighter disagrees with its runtime prefab.");
+            Assert.That(selection.CpuType, Is.EqualTo(runtime.CpuType), $"{who} CpuType disagrees with its runtime prefab.");
+            Assert.That(selection.Level, Is.EqualTo(runtime.Level), $"{who} Level disagrees with its runtime prefab.");
+        }
+    }
+
+    // ---- primary vs CPU projection (issue #69) -------------------------------------------------
+    //
+    // PlayerSelectCatalogAdapter used to run every profile - primary and CPU - through the same
+    // projection, which recalculated Level from Experience and wrote back an effective Clutch.
+    // That is correct for a primary human profile (Level tracks XP), but wrong for a CPU profile:
+    // a CPU's Level is authored AI tuning that feeds CharacterProfile.calculateAccuracyAttributeRatings,
+    // and its Clutch is already resolved by CharacterProfile.intializeCpuShooterStats before
+    // selection ever sees it. A CPU authored at Level 40 / Experience 0 (e.g. cpu_player_ak47) was
+    // rendering as Level 0 in the CPU slot.
+
+    [Test]
+    public void CpuProjectionDoesNotDeriveLevelFromExperience()
+    {
+        CharacterProfile cpu = MakeProfile(7, "AK-47", "ak47", experience: 0, isShooter: true);
+        cpu.Level = 40;
+
+        PlayerSelectCatalog catalog = PlayerSelectCatalogAdapter.Project(new List<CharacterProfile>(), new[] { cpu }, Unlock(7));
+
+        Assert.That(
+            catalog.FindCpu(7).Stats.Level,
+            Is.EqualTo(40),
+            "a CPU's authored Level is AI tuning, not XP progress - it must not be recalculated from Experience");
+    }
+
+    [Test]
+    public void CpuProjectionDoesNotOverwriteClutchAlreadyResolvedByCpuInitialization()
+    {
+        CharacterProfile cpu = MakeProfile(7, "AK-47", "ak47", experience: 0, isShooter: true);
+        cpu.Level = 40;
+        cpu.Clutch = 40; // as CharacterProfile.intializeCpuShooterStats would already have set it
+
+        PlayerSelectCatalogAdapter.Project(new List<CharacterProfile>(), new[] { cpu }, Unlock(7));
+
+        Assert.That(
+            cpu.Clutch,
+            Is.EqualTo(40),
+            "CPU projection must not rewrite Clutch that CPU initialization already resolved");
+    }
+
+    [Test]
+    public void PrimaryProjectionStillDerivesLevelFromExperienceForAFortyLevelProfile()
+    {
+        CharacterProfile primary = MakeProfile(1, "Hero", "hero_obj", experience: CharacterLevel.ExperiencePerLevel * 40);
+
+        PlayerSelectCatalog catalog = PlayerSelectCatalogAdapter.Project(new[] { primary }, new List<CharacterProfile>(), Unlock(1));
+
+        Assert.That(catalog.FindPrimary(1).Stats.Level, Is.EqualTo(40));
+    }
+
+    // ---- AK-47 roster validation (issue #69) ---------------------------------------------------
+
+    [Test]
+    public void AK47ProjectsIntoAShootingCpuSlotThatPassesRosterValidation()
+    {
+        string path = CpuRosterPath + "/cpu_player_ak47.prefab";
+        GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(path);
+        Assert.That(prefab, Is.Not.Null, $"cpu_player_ak47 selection prefab not found at {path}");
+        CharacterProfile ak47 = prefab.GetComponent<CharacterProfile>();
+
+        PlayerSelectCatalog catalog = PlayerSelectCatalogAdapter.Project(
+            new List<CharacterProfile>(), new[] { ak47 }, Unlock(ak47.PlayerId));
+        CharacterSelectOption cpuOption = catalog.FindCpu(ak47.PlayerId);
+        Assert.That(cpuOption, Is.Not.Null);
+        Assert.That(cpuOption.IsShooter, Is.True, "AK-47's CPU selection entry must be a shooter (issue #69)");
+
+        GameModeDefinition mode = TestDefinitions.Mode(GameModeId.TotalPoints);
+        GameModeCompatibility compatibility = new GameModeCompatibility(
+            new GameModeCatalog(new[] { mode }),
+            new LevelDefinitionCatalog(new[] { TestDefinitions.Level(1) }));
+
+        PlayerRoster roster = PlayerRoster.Build(new[]
+        {
+            PlayerRosterEntry.LocalHuman(TestDefinitions.Character("hero", isShooter: true, isFighter: false)),
+            PlayerRosterEntry.Cpu(cpuOption.ToSelection()),
+        });
+
+        ValidationResult verdict = compatibility.Validate(new MatchRequest(mode.Id, 1, roster));
+
+        Assert.That(
+            verdict.HasError(MatchValidationCode.CharacterCannotShoot),
+            Is.False,
+            "a real AK-47 CPU roster must pass shooting-mode validation now that its capability metadata matches its runtime archetype");
     }
 }

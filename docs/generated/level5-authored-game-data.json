@@ -40,7 +40,7 @@
                         {
                             "propertyPath": "cpuType",
                             "propertyType": "Enum",
-                            "value": "Three"
+                            "value": "Four"
                         },
                         {
                             "propertyPath": "experience",
@@ -60,7 +60,7 @@
                         {
                             "propertyPath": "isCpu",
                             "propertyType": "Boolean",
-                            "value": "false"
+                            "value": "true"
                         },
                         {
                             "propertyPath": "isDefensiveCpuPlayer",
@@ -80,7 +80,7 @@
                         {
                             "propertyPath": "isShooter",
                             "propertyType": "Boolean",
-                            "value": "false"
+                            "value": "true"
                         },
                         {
                             "propertyPath": "jumpForce",
@@ -219,7 +219,7 @@
                         {
                             "propertyPath": "cpuType",
                             "propertyType": "Enum",
-                            "value": "Three"
+                            "value": "Four"
                         },
                         {
                             "propertyPath": "experience",
@@ -438,7 +438,7 @@
                         {
                             "propertyPath": "isShooter",
                             "propertyType": "Boolean",
-                            "value": "false"
+                            "value": "true"
                         },
                         {
                             "propertyPath": "jumpForce",
@@ -448,7 +448,7 @@
                         {
                             "propertyPath": "level",
                             "propertyType": "Integer",
-                            "value": "30"
+                            "value": "25"
                         },
                         {
                             "propertyPath": "losePortrait",
@@ -1343,7 +1343,7 @@
                         {
                             "propertyPath": "level",
                             "propertyType": "Integer",
-                            "value": "25"
+                            "value": "15"
                         },
                         {
                             "propertyPath": "losePortrait",
@@ -1472,7 +1472,7 @@
                         {
                             "propertyPath": "cpuType",
                             "propertyType": "Enum",
-                            "value": "Three"
+                            "value": "Seven"
                         },
                         {
                             "propertyPath": "experience",
@@ -1512,7 +1512,7 @@
                         {
                             "propertyPath": "isShooter",
                             "propertyType": "Boolean",
-                            "value": "false"
+                            "value": "true"
                         },
                         {
                             "propertyPath": "jumpForce",
@@ -2188,7 +2188,7 @@
                         {
                             "propertyPath": "cpuType",
                             "propertyType": "Enum",
-                            "value": "Three"
+                            "value": "Four"
                         },
                         {
                             "propertyPath": "experience",
@@ -2228,7 +2228,7 @@
                         {
                             "propertyPath": "isShooter",
                             "propertyType": "Boolean",
-                            "value": "false"
+                            "value": "true"
                         },
                         {
                             "propertyPath": "jumpForce",
@@ -2238,7 +2238,7 @@
                         {
                             "propertyPath": "level",
                             "propertyType": "Integer",
-                            "value": "45"
+                            "value": "50"
                         },
                         {
                             "propertyPath": "losePortrait",
@@ -2775,7 +2775,7 @@
                         {
                             "propertyPath": "level",
                             "propertyType": "Integer",
-                            "value": "50"
+                            "value": "32"
                         },
                         {
                             "propertyPath": "losePortrait",
@@ -3262,7 +3262,7 @@
                         {
                             "propertyPath": "cpuType",
                             "propertyType": "Enum",
-                            "value": "Three"
+                            "value": "Four"
                         },
                         {
                             "propertyPath": "experience",
@@ -3302,7 +3302,7 @@
                         {
                             "propertyPath": "isShooter",
                             "propertyType": "Boolean",
-                            "value": "false"
+                            "value": "true"
                         },
                         {
                             "propertyPath": "jumpForce",

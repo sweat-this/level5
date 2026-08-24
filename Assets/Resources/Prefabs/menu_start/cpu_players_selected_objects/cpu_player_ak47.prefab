@@ -50,7 +50,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   playerId: 7
   userid: 0
-  isCpu: 0
+  isCpu: 1
   isDefensiveCpuPlayer: 0
   playerDisplayName: AK-47
   playerObjectName: ak47
@@ -81,6 +81,6 @@ MonoBehaviour:
   pointsAvailable: 0
   pointsUsed: 0
   isFighter: 0
-  isShooter: 0
+  isShooter: 1
   isLocked: 0
-  cpuType: 0
+  cpuType: 1

@@ -45,7 +45,7 @@ public static class PlayerSelectCatalogAdapter
                     continue;
                 }
 
-                primaryOptions.Add(ToOption(profile, unlock));
+                primaryOptions.Add(ToPrimaryOption(profile, unlock));
                 visuals[profile.PlayerId] = ToVisuals(profile);
             }
         }
@@ -61,7 +61,8 @@ public static class PlayerSelectCatalogAdapter
 
                 // Legacy CPU id 0 is the authored "no CPU here" record. It stays out of the
                 // selectable catalog entirely; the view renders an empty slot from the values
-                // below instead of treating it as a real option.
+                // below instead of treating it as a real option. See the matching comment in
+                // LoadManager.loadCpuSelectDataList for why id 0 must stay reserved.
                 if (profile.PlayerId == 0)
                 {
                     cpuNoneDisplayName = profile.PlayerDisplayName;
@@ -69,7 +70,7 @@ public static class PlayerSelectCatalogAdapter
                     continue;
                 }
 
-                cpuOptions.Add(ToOption(profile, unlock));
+                cpuOptions.Add(ToCpuOption(profile, unlock));
                 if (!visuals.ContainsKey(profile.PlayerId))
                 {
                     visuals[profile.PlayerId] = ToVisuals(profile);
@@ -80,22 +81,49 @@ public static class PlayerSelectCatalogAdapter
         return new PlayerSelectCatalog(primaryOptions, cpuOptions, visuals, cpuNoneDisplayName, cpuNoneVisuals);
     }
 
-    private static CharacterSelectOption ToOption(CharacterProfile profile, UnlockSnapshot unlock)
+    /// <summary>
+    /// Projects a primary (human progression) profile. Normalization boundary: the old view
+    /// recalculated CharacterProfile.Level and CharacterProfile.Clutch on every render. Gameplay
+    /// reads Clutch directly off this same profile object at match launch
+    /// (CharacterProfile.intializeShooterStatsFromProfile), so the effective-clutch rule
+    /// (min(level, 100)) still has to land on the profile somewhere - moved here, to the
+    /// projection step that runs when loaded data changes, instead of on every render.
+    ///
+    /// Primary-only: see <see cref="ToCpuOption"/> for why a CPU profile must not go through this
+    /// path.
+    /// </summary>
+    private static CharacterSelectOption ToPrimaryOption(CharacterProfile profile, UnlockSnapshot unlock)
     {
-        // Normalization boundary: the old view recalculated CharacterProfile.Level and
-        // CharacterProfile.Clutch on every render. Gameplay reads Clutch directly off this same
-        // profile object at match launch (CharacterProfile.intializeShooterStatsFromProfile), so
-        // the effective-clutch rule (min(level, 100)) still has to land on the profile somewhere -
-        // moved here, to the projection step that runs when loaded data changes, instead of on
-        // every render.
         profile.Level = CharacterLevel.FromExperience(profile.Experience);
-        int effectiveClutch = CharacterLevel.EffectiveClutchFromLevel(profile.Level);
-        profile.Clutch = effectiveClutch;
+        profile.Clutch = CharacterLevel.EffectiveClutchFromLevel(profile.Level);
 
+        return BuildOption(profile, unlock, CharacterLevel.ExperienceToNextLevel(profile.Experience));
+    }
+
+    /// <summary>
+    /// Projects a CPU profile without the primary XP -> Level / effective-Clutch normalization: a
+    /// CPU's Level is authored AI tuning (feeds CharacterProfile.calculateAccuracyAttributeRatings
+    /// via CpuBaseStats), not human progress, and its Clutch is already resolved by
+    /// CharacterProfile.intializeCpuShooterStats. Running it through the primary path would
+    /// overwrite both with human-progression values derived from Experience, which CPU profiles
+    /// do not use (see #69 - a CPU authored at Level 40/Experience 0 was rendering as Level 0).
+    ///
+    /// experienceToNextLevel is 0 rather than CharacterLevel.ExperienceToNextLevel(profile.Experience)
+    /// for the same reason: that helper answers "XP needed to reach the next level assuming Level
+    /// tracks Experience", which is false for a CPU and would pair an authored Level (e.g. 40) with
+    /// an XP-to-next-level figure computed as if the CPU were Level 0.
+    /// </summary>
+    private static CharacterSelectOption ToCpuOption(CharacterProfile profile, UnlockSnapshot unlock)
+    {
+        return BuildOption(profile, unlock, experienceToNextLevel: 0);
+    }
+
+    private static CharacterSelectOption BuildOption(CharacterProfile profile, UnlockSnapshot unlock, int experienceToNextLevel)
+    {
         CharacterSelectStats stats = new CharacterSelectStats(
             level: profile.Level,
             experience: profile.Experience,
-            experienceToNextLevel: CharacterLevel.ExperienceToNextLevel(profile.Experience),
+            experienceToNextLevel: experienceToNextLevel,
             pointsAvailable: profile.PointsAvailable,
             accuracy3Pt: profile.Accuracy3Pt,
             accuracy4Pt: profile.Accuracy4Pt,
@@ -104,8 +132,10 @@ public static class PlayerSelectCatalogAdapter
             range: profile.Range,
             speedPercent: profile.calculateSpeedToPercent(),
             jumpPercent: profile.calculateJumpValueToPercent(),
-            luck: profile.Luck,
-            effectiveClutch: effectiveClutch);
+            luck: profile.Luck);
+            // effectiveClutch omitted: CharacterSelectStats defaults it to the same
+            // CharacterLevel.EffectiveClutchFromLevel(level) formula both callers above would
+            // otherwise have computed and passed through unchanged.
 
         return new CharacterSelectOption(
             profile.PlayerId,

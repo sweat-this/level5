@@ -73,7 +73,7 @@ MonoBehaviour:
   luck: 8
   clutch: 25
   shootAngle: 50
-  level: 25
+  level: 15
   experience: 38917
   pointsAvailable: 0
   pointsUsed: 12

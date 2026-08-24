@@ -415,10 +415,30 @@ public class LoadManager : MonoBehaviour
                 Debug.LogError("A CPU selection prefab is missing CharacterProfile.");
                 continue;
             }
-            if (temp.isCpu)
+
+            // Legacy CPU id 0 is the authored "no CPU here" record - not a real character. It
+            // never gets CPU baseline stats; it exists only so the menu has something to render
+            // for an inactive CPU slot. This assumes id 0 is never reused for a real CPU selection
+            // entry - true today (confirmed by the parity audit in #69/#70) but not guaranteed by
+            // anything the type system enforces, so do not "fix" a real character's id to 0 to
+            // match a runtime prefab that misauthors it that way (see #70).
+            if (temp.PlayerId == 0)
             {
-                temp.intializeCpuShooterStats();
+                shooterList.Add(temp);
+                continue;
             }
+
+            // Catalog membership is what makes this entry a CPU, not the authored isCpu flag -
+            // that flag drifted stale before (issue #69) and left a real CPU initialized from raw
+            // serialized shooter stats instead of a computed baseline. Every real entry in this
+            // catalog is a CPU; isCpu = false here is an authoring defect to surface, not a
+            // legitimately different kind of entry to skip initializing.
+            if (!temp.isCpu)
+            {
+                Debug.LogError($"CPU selection prefab '{temp.PlayerObjectName}' (playerId {temp.PlayerId}) does not author isCpu = true.");
+            }
+
+            temp.intializeCpuShooterStats();
             shooterList.Add(temp);
         }
         // sort list by  character id

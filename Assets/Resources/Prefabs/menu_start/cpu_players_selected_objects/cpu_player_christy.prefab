@@ -83,4 +83,4 @@ MonoBehaviour:
   isFighter: 1
   isShooter: 1
   isLocked: 0
-  cpuType: 0
+  cpuType: 1

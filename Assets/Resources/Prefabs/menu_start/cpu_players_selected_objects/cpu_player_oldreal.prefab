@@ -75,11 +75,11 @@ MonoBehaviour:
   luck: 0
   clutch: 0
   shootAngle: 48
-  level: 45
+  level: 50
   experience: 0
   pointsAvailable: 0
   pointsUsed: 0
   isFighter: 0
-  isShooter: 0
+  isShooter: 1
   isLocked: 0
-  cpuType: 0
+  cpuType: 1

@@ -73,7 +73,7 @@ MonoBehaviour:
   luck: 3
   clutch: 0
   shootAngle: 47
-  level: 50
+  level: 32
   experience: 0
   pointsAvailable: 0
   pointsUsed: 0

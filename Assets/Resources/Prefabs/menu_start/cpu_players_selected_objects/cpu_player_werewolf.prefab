@@ -79,6 +79,6 @@ MonoBehaviour:
   pointsAvailable: 0
   pointsUsed: 0
   isFighter: 0
-  isShooter: 0
+  isShooter: 1
   isLocked: 0
-  cpuType: 0
+  cpuType: 1
