@@ -2098,6 +2098,8 @@ GameObject:
   m_Component:
   - component: {fileID: 848580986270241607}
   - component: {fileID: 2256039948058591818}
+  - component: {fileID: 5389519431177995645}
+  - component: {fileID: 8769691412688706018}
   m_Layer: 0
   m_Name: OptionManager
   m_TagString: Untagged
@@ -2139,21 +2141,47 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   currentHighlightedButton: 
+  ui: {fileID: 5389519431177995645}
+  footer: {fileID: 8769691412688706018}
+--- !u!114 &5389519431177995645
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 848580986270241606}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0a1a0f6b343447ed9b66b9d72a07978b, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::OptionsUiObjects
+  keyboardOnlyButton: {fileID: 3050459754141715883}
+  keyboardMouseButton: {fileID: 47332579652444679}
+  gamepadButton: {fileID: 9038477903598388880}
+  touchButton: {fileID: 3683677950230330730}
   keyboardOnlyObject: {fileID: 1113189500445855809}
   keyboardMouseObject: {fileID: 8141870297656394753}
   gamepadObject: {fileID: 1653165696145698773}
   touchObject: {fileID: 3911548404668452780}
-  mainMenuButton: {fileID: 0}
-  statsMenuButton: {fileID: 0}
-  quitButton: {fileID: 0}
-  optionsMenuButton: {fileID: 0}
-  creditsMenuButton: {fileID: 0}
-  progressionMenuButton: {fileID: 0}
-  accountMenuButton: {fileID: 0}
-  keyboardOnlyButton: {fileID: 0}
-  keyboardMouseButton: {fileID: 0}
-  gamepadButton: {fileID: 0}
-  touchButton: {fileID: 0}
+--- !u!114 &8769691412688706018
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 848580986270241606}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: daf6cfde28284a5c995bc4afcfac6d6a, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::MenuFooterUiObjects
+  startOrPlayButton: {fileID: 4617632313254161664}
+  statsButton: {fileID: 1970576959328079693}
+  optionsButton: {fileID: 1830707030557404426}
+  creditsButton: {fileID: 8645006377937373456}
+  progressionButton: {fileID: 1830707031146794297}
+  accountButton: {fileID: 1830707030675268345}
+  quitButton: {fileID: 1368336925534613361}
 --- !u!1 &848580986543878613
 GameObject:
   m_ObjectHideFlags: 0

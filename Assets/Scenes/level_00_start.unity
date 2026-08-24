@@ -9107,6 +9107,11 @@ PrefabInstance:
       objectReference: {fileID: 1584914564}
     - target: {fileID: 8478378552129387841, guid: 196a740822c466f45804f076ef2fdaf6,
         type: 3}
+      propertyPath: column3_friend_selected_stats_numbers
+      value: 
+      objectReference: {fileID: 816946874}
+    - target: {fileID: 8478378552129387841, guid: 196a740822c466f45804f076ef2fdaf6,
+        type: 3}
       propertyPath: column1_subgroup_column1_friend_select
       value: 
       objectReference: {fileID: 2073570410}
@@ -9220,11 +9225,6 @@ PrefabInstance:
       propertyPath: column3_friend_selected_stats_numbers_text
       value: 
       objectReference: {fileID: 816946877}
-    - target: {fileID: 8478378552129387841, guid: 196a740822c466f45804f076ef2fdaf6,
-        type: 3}
-      propertyPath: column3_friend_selected_stats_numbers
-      value: 
-      objectReference: {fileID: 816946874}
     - target: {fileID: 8478378552129387841, guid: 196a740822c466f45804f076ef2fdaf6,
         type: 3}
       propertyPath: column3_player_selected_stats_numbers_text
@@ -13795,6 +13795,11 @@ PrefabInstance:
       propertyPath: m_Name
       value: start_manager_test
       objectReference: {fileID: 0}
+    - target: {fileID: 888732875568130456, guid: cdc5cefe031cbfd43a44de3b7b45da4b,
+        type: 3}
+      propertyPath: footer
+      value: 
+      objectReference: {fileID: 7287042671854653712}
     - target: {fileID: 3957338159622468745, guid: cdc5cefe031cbfd43a44de3b7b45da4b,
         type: 3}
       propertyPath: m_Pivot.x
@@ -13903,8 +13908,37 @@ PrefabInstance:
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
-    m_AddedComponents: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 219882471661884237, guid: cdc5cefe031cbfd43a44de3b7b45da4b,
+        type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 7287042671854653712}
   m_SourcePrefab: {fileID: 100100000, guid: cdc5cefe031cbfd43a44de3b7b45da4b, type: 3}
+--- !u!1 &7287042671854653711 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 219882471661884237, guid: cdc5cefe031cbfd43a44de3b7b45da4b,
+    type: 3}
+  m_PrefabInstance: {fileID: 7287042671854653710}
+  m_PrefabAsset: {fileID: 0}
+--- !u!114 &7287042671854653712
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7287042671854653711}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: daf6cfde28284a5c995bc4afcfac6d6a, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::MenuFooterUiObjects
+  startOrPlayButton: {fileID: 4419524065302562184}
+  statsButton: {fileID: 7356780532817373125}
+  optionsButton: {fileID: 2692522641634265980}
+  creditsButton: {fileID: 5459209598576635750}
+  progressionButton: {fileID: 2692522641145801551}
+  accountButton: {fileID: 2692522641752065167}
+  quitButton: {fileID: 8051629678362691577}
 --- !u!1 &7322923472671272316
 GameObject:
   m_ObjectHideFlags: 0

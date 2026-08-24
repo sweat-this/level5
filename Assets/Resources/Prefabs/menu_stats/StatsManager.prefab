@@ -1358,6 +1358,7 @@ GameObject:
   m_Component:
   - component: {fileID: 3349661291546490389}
   - component: {fileID: 3349661291546490378}
+  - component: {fileID: 7349825817058890282}
   m_Layer: 0
   m_Name: StatsManager
   m_TagString: Untagged
@@ -1402,21 +1403,12 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   currentHighlightedButton: 
   previousHighlightedButton: 
+  ui: {fileID: 7349825817058890282}
   modeSelectButtonText: {fileID: 6411662954818762917}
   modeSelectButtonHardcoreText: {fileID: 6090855021367212467}
   modeSelectButtonOnlineText: {fileID: 4657257280939196078}
   pageNumberLocalSelectButtonText: {fileID: 1439828961}
   pageNumberOnlineSelectButtonText: {fileID: 598195718331416925}
-  modeSelectButton: {fileID: 0}
-  modeSelectOnlineButton: {fileID: 0}
-  allTimeSelectButton: {fileID: 0}
-  mainMenuButton: {fileID: 0}
-  pageNumberLocalButton: {fileID: 0}
-  pageNumberOnlineButton: {fileID: 0}
-  trafficOptionButton: {fileID: 0}
-  hardcoreOptionButton: {fileID: 0}
-  enemiesOptionButton: {fileID: 0}
-  sniperOptionButton: {fileID: 0}
   highScoreRowsDataList: []
   highScoreRowsObjectsList: []
   unsubmittedHighScores: []
@@ -1433,12 +1425,36 @@ MonoBehaviour:
   numUnsubmittedHighscoresText: {fileID: 758872848459177266}
   localResultsPageNumber: 0
   onlineResultsPageNumber: 0
-  highScoresRowsObject: {fileID: 0}
   highScoreRowPrefab: {fileID: 0}
   localLoaded: 0
   onlineLoaded: 0
   numLocalResults: 0
   numOnlineResults: 0
+--- !u!114 &7349825817058890282
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3349661291546490388}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a787d1c1b2364a0cbb7c318b3444ac8d, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::StatsUiObjects
+  highScoreTableObject: {fileID: 6411662955279528930}
+  allTimeTableObject: {fileID: 6411662955790654020}
+  highScoresRowsObject: {fileID: 6411662955005026506}
+  mainMenuButton: {fileID: 6411662955203533970}
+  modeSelectButton: {fileID: 6411662954818762843}
+  modeSelectOnlineButton: {fileID: 8348038897647632382}
+  allTimeSelectButton: {fileID: 6411662954432851061}
+  pageNumberLocalButton: {fileID: 1439828960}
+  pageNumberOnlineButton: {fileID: 61127161027665988}
+  trafficOptionButton: {fileID: 2458890614656978069}
+  hardcoreOptionButton: {fileID: 788830695366659532}
+  enemiesOptionButton: {fileID: 7289663736942712975}
+  sniperOptionButton: {fileID: 3419915774226073021}
 --- !u!1 &3349661293472765063
 GameObject:
   m_ObjectHideFlags: 0

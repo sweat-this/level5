@@ -1,5 +1,6 @@
 ﻿
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.SceneManagement;
@@ -10,7 +11,11 @@ public class OptionsManager : MonoBehaviour
     [SerializeField]
     public string currentHighlightedButton;
 
-    //footer object names
+    [SerializeField] private OptionsUiObjects ui;
+    [SerializeField] private MenuFooterUiObjects footer;
+
+    //footer object names - kept for TouchInputOptionsScreenController's name-selected dispatch
+    //(out of scope: legacy touch controller deletion is gated on device verification)
     private const string mainMenuButtonName = "press_start";
     private const string statsMenuButtonName = "stats_menu";
     private const string optionsButtonName = "options";
@@ -25,45 +30,25 @@ public class OptionsManager : MonoBehaviour
     private const string gamepadMenuButtonName = "controls_gamepad";
     private const string touchMenuButtonName = "controls_touch";
 
-    /// <summary>
-    /// Objects this manager resolves by name. Level5ProjectValidator asserts they exist in any
-    /// scene carrying an OptionsManager (AUD-112).
-    /// </summary>
-    public static readonly string[] RequiredSceneObjectNames =
-    {
-        mainMenuButtonName,
-        statsMenuButtonName,
-        quitButtonName,
-        optionsMenuButtonName,
-        creditsMenuButtonName,
-        progressionMenuButtonName,
-        accountMenuButtonName,
-        keyboardOnlyMenuButtonName,
-        keyboardMouseMenuButtonName,
-        gamepadMenuButtonName,
-        touchMenuButtonName
-    };
+    // RequiredSceneObjectNames retired: Level5ProjectValidator now asserts this screen's contract
+    // through ValidateMenuUi/CollectMenuUiObjectContractErrors instead of a name list (AUD-103).
 
-    [SerializeField]
     GameObject keyboardOnlyObject;
-    [SerializeField]
     GameObject keyboardMouseObject;
-    [SerializeField]
     GameObject gamepadObject;
-    [SerializeField]
     GameObject touchObject;
 
-    [SerializeField] Button mainMenuButton;
-    [SerializeField] Button statsMenuButton;
-    [SerializeField] Button quitButton;
-    [SerializeField] Button optionsMenuButton;
-    [SerializeField] Button creditsMenuButton;
-    [SerializeField] Button progressionMenuButton;
-    [SerializeField] Button accountMenuButton;
-    [SerializeField] Button keyboardOnlyButton;
-    [SerializeField] Button keyboardMouseButton;
-    [SerializeField] Button gamepadButton;
-    [SerializeField] Button touchButton;
+    Button mainMenuButton;
+    Button statsMenuButton;
+    Button quitButton;
+    Button optionsMenuButton;
+    Button creditsMenuButton;
+    Button progressionMenuButton;
+    Button accountMenuButton;
+    Button keyboardOnlyButton;
+    Button keyboardMouseButton;
+    Button gamepadButton;
+    Button touchButton;
 
     private bool initialized;
 
@@ -96,12 +81,59 @@ public class OptionsManager : MonoBehaviour
             return;
         }
 
+        List<string> missing = new List<string>();
+        if (!ValidateMenuUi(missing))
+        {
+            Debug.LogError(
+                "OptionsManager is missing required serialized UI references and will be disabled: "
+                    + string.Join(", ", missing.ToArray()),
+                this);
+            enabled = false;
+            return;
+        }
+
         UiSelectionAdapter.EnsureInputSystemUiModule();
         ResolveButtonReferences();
         RegisterButtonCallbacks();
         DisplayKeyboardOnlyControls();
         UiSelectionAdapter.EnsureSelected(GetDefaultSelectedButton());
         initialized = true;
+    }
+
+    /// <summary>
+    /// True once <see cref="ui"/>/<see cref="footer"/> carry every reference this screen needs.
+    /// Callable from editor tooling as a pure check - it only reads already-serialized references,
+    /// so it does not require the component to have run <see cref="Start"/>.
+    /// </summary>
+    public bool ValidateMenuUi(List<string> missing)
+    {
+        if (ui == null)
+        {
+            missing.Add("OptionsManager.ui");
+        }
+        else
+        {
+            ui.Validate(missing);
+        }
+
+        if (footer == null)
+        {
+            missing.Add("OptionsManager.footer");
+        }
+        else
+        {
+            footer.Validate(
+                missing,
+                (footer.StartOrPlayButton, "startOrPlayButton"),
+                (footer.StatsButton, "statsButton"),
+                (footer.OptionsButton, "optionsButton"),
+                (footer.CreditsButton, "creditsButton"),
+                (footer.ProgressionButton, "progressionButton"),
+                (footer.AccountButton, "accountButton"),
+                (footer.QuitButton, "quitButton"));
+        }
+
+        return missing.Count == 0;
     }
 
     /// <summary>
@@ -145,30 +177,29 @@ public class OptionsManager : MonoBehaviour
         }
     }
 
+    /// <summary>
+    /// Copies references out of the serialized <see cref="ui"/>/<see cref="footer"/> views, which
+    /// <see cref="ValidateMenuUi"/> has already confirmed are complete. This replaced a chain of
+    /// <c>GameObject.Find(name)</c> fallbacks (AUD-103): the Inspector/prefab is the only authority
+    /// for these references now.
+    /// </summary>
     private void ResolveButtonReferences()
     {
-        mainMenuButton = ResolveButton(mainMenuButton, mainMenuButtonName);
-        statsMenuButton = ResolveButton(statsMenuButton, statsMenuButtonName);
-        quitButton = ResolveButton(quitButton, quitButtonName);
-        optionsMenuButton = ResolveButton(optionsMenuButton, optionsMenuButtonName);
-        creditsMenuButton = ResolveButton(creditsMenuButton, creditsMenuButtonName);
-        progressionMenuButton = ResolveButton(progressionMenuButton, progressionMenuButtonName);
-        accountMenuButton = ResolveButton(accountMenuButton, accountMenuButtonName);
-        keyboardOnlyButton = ResolveButton(keyboardOnlyButton, keyboardOnlyMenuButtonName);
-        keyboardMouseButton = ResolveButton(keyboardMouseButton, keyboardMouseMenuButtonName);
-        gamepadButton = ResolveButton(gamepadButton, gamepadMenuButtonName);
-        touchButton = ResolveButton(touchButton, touchMenuButtonName);
-    }
-
-    private Button ResolveButton(Button button, string buttonName)
-    {
-        if (button != null)
-        {
-            return button;
-        }
-
-        GameObject buttonObject = GameObject.Find(buttonName);
-        return buttonObject != null ? buttonObject.GetComponent<Button>() : null;
+        mainMenuButton = footer.StartOrPlayButton;
+        statsMenuButton = footer.StatsButton;
+        quitButton = footer.QuitButton;
+        optionsMenuButton = footer.OptionsButton;
+        creditsMenuButton = footer.CreditsButton;
+        progressionMenuButton = footer.ProgressionButton;
+        accountMenuButton = footer.AccountButton;
+        keyboardOnlyButton = ui.KeyboardOnlyButton;
+        keyboardMouseButton = ui.KeyboardMouseButton;
+        gamepadButton = ui.GamepadButton;
+        touchButton = ui.TouchButton;
+        keyboardOnlyObject = ui.KeyboardOnlyObject;
+        keyboardMouseObject = ui.KeyboardMouseObject;
+        gamepadObject = ui.GamepadObject;
+        touchObject = ui.TouchObject;
     }
 
     private void RegisterButtonCallbacks()

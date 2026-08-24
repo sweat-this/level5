@@ -102,4 +102,23 @@ public class Level5SceneContractTests
             "Unity assets/settings have missing MonoBehaviour script references:\n- "
                 + string.Join("\n- ", errors.ToArray()));
     }
+
+    /// <summary>
+    /// AUD-103/AUD-104: OptionsManager/CreditsManager/StatsManager/ProgressionManager/AccountManager/
+    /// StartManager/Pause each carry a serialized `*UiObjects`/`MenuFooterUiObjects` view now instead
+    /// of a `GameObject.Find(name)` fallback. A rename cannot break a serialized reference, but a
+    /// forgotten or mis-wired field still needs to fail the build - this is that check, delegating to
+    /// each manager's own `ValidateMenuUi` rather than a separate name list.
+    /// </summary>
+    [Test]
+    public void EveryMenuManagerHasItsRequiredUiObjectReferencesWired()
+    {
+        List<string> errors = Level5ProjectValidator.CollectMenuUiObjectContractErrors();
+
+        Assert.That(
+            errors,
+            Is.Empty,
+            "Menu managers are missing serialized UI references:\n- "
+                + string.Join("\n- ", errors.ToArray()));
+    }
 }

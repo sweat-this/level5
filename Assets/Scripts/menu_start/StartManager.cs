@@ -55,13 +55,15 @@ public class StartManager : MonoBehaviour
     Button cpu1OptionButton;
     Button cpu2OptionButton;
     Button cpu3OptionButton;
-    [SerializeField] Button startButton;
-    [SerializeField] Button statsMenuButton;
-    [SerializeField] Button quitButton;
-    [SerializeField] Button optionsMenuButton;
-    [SerializeField] Button creditsMenuButton;
-    [SerializeField] Button updateMenuButton;
-    [SerializeField] Button accountMenuButton;
+    [SerializeField] private MenuFooterUiObjects footer;
+
+    Button startButton;
+    Button statsMenuButton;
+    Button quitButton;
+    Button optionsMenuButton;
+    Button creditsMenuButton;
+    Button updateMenuButton;
+    Button accountMenuButton;
 
     // player select rendering/state - owned by playerSelectCoordinator, not this class.
     // cpuSlotButtonObjects is the one array CPU slot 0/1/2 map to: TouchInputStartScreenController
@@ -121,22 +123,10 @@ public class StartManager : MonoBehaviour
     /// <summary>Shared message line, owned by the loading scene's prefab rather than this scene.</summary>
     private const string MessageDisplayObjectName = "messageDisplay";
 
-    /// <summary>
-    /// The footer command buttons this manager still resolves by name. Level5ProjectValidator
-    /// asserts they exist in any scene carrying a StartManager, so a rename fails the build rather
-    /// than the play session - the same contract GameRules, Pause and ProgressionManager carry
-    /// (AUD-028, AUD-047, AUD-112).
-    /// </summary>
-    public static readonly string[] RequiredSceneObjectNames =
-    {
-        startButtonName,
-        statsMenuButtonName,
-        quitButtonName,
-        optionsMenuButtonName,
-        creditsMenuButtonName,
-        updateMenuButtonName,
-        accountMenuButtonName
-    };
+    // RequiredSceneObjectNames retired: the footer buttons now come from the serialized
+    // MenuFooterUiObjects reference, asserted by ValidateMenuUi/CollectMenuUiObjectContractErrors
+    // instead of a name list (AUD-103) - a serialized reference survives a rename this name list
+    // would otherwise treat as broken.
 
     public const string playerSelectButtonName = "player_select";
     public const string playerSelectOptionButtonName = "player_selected_name";
@@ -353,6 +343,17 @@ public class StartManager : MonoBehaviour
             yield break;
         }
 
+        List<string> missing = new List<string>();
+        if (!ValidateMenuUi(missing))
+        {
+            Debug.LogError(
+                "StartManager is missing required serialized UI references and will be disabled: "
+                    + string.Join(", ", missing.ToArray()),
+                this);
+            enabled = false;
+            yield break;
+        }
+
         UiSelectionAdapter.EnsureInputSystemUiModule();
         ResolveCommandButtonReferences();
         RegisterButtonCallbacks();
@@ -361,6 +362,30 @@ public class StartManager : MonoBehaviour
         StartCoroutine(SetVersion());
         AnaylticsManager.MenuStartLoaded();
         initialized = true;
+    }
+
+    /// <summary>
+    /// True once <see cref="footer"/> carries the seven footer button references. Callable from
+    /// editor tooling as a pure check - it only reads an already-serialized reference.
+    /// </summary>
+    public bool ValidateMenuUi(List<string> missing)
+    {
+        if (footer == null)
+        {
+            missing.Add("StartManager.footer");
+            return false;
+        }
+
+        footer.Validate(
+            missing,
+            (footer.StartOrPlayButton, "startOrPlayButton"),
+            (footer.StatsButton, "statsButton"),
+            (footer.OptionsButton, "optionsButton"),
+            (footer.CreditsButton, "creditsButton"),
+            (footer.ProgressionButton, "progressionButton"),
+            (footer.AccountButton, "accountButton"),
+            (footer.QuitButton, "quitButton"));
+        return missing.Count == 0;
     }
 
     /// <summary>
@@ -522,38 +547,21 @@ public class StartManager : MonoBehaviour
         return -1;
     }
 
+    /// <summary>
+    /// Copies references out of the serialized <see cref="footer"/> view, which
+    /// <see cref="ValidateMenuUi"/> has already confirmed is complete. This replaced
+    /// <c>GameObject.Find(name)</c> falling back to <c>Resources.FindObjectsOfTypeAll&lt;Button&gt;()</c>
+    /// (AUD-103) - the Inspector/prefab is the only authority for these references now.
+    /// </summary>
     private void ResolveCommandButtonReferences()
     {
-        startButton = ResolveButton(startButton, startButtonName);
-        statsMenuButton = ResolveButton(statsMenuButton, statsMenuButtonName);
-        quitButton = ResolveButton(quitButton, quitButtonName);
-        optionsMenuButton = ResolveButton(optionsMenuButton, optionsMenuButtonName);
-        creditsMenuButton = ResolveButton(creditsMenuButton, creditsMenuButtonName);
-        updateMenuButton = ResolveButton(updateMenuButton, updateMenuButtonName);
-        accountMenuButton = ResolveButton(accountMenuButton, accountMenuButtonName);
-    }
-
-    private Button ResolveButton(Button button, string buttonName)
-    {
-        if (button != null && button.gameObject.scene.IsValid())
-        {
-            return button;
-        }
-
-        // AUD-103: the fallback here used to be Resources.FindObjectsOfTypeAll<Button>(), which
-        // walks every Button loaded in the process - prefab assets and hidden objects included -
-        // to find one by name. GameObject.Find still cannot see inactive objects, so a missing
-        // result is reported by name rather than silently returning null.
-        GameObject buttonObject = GameObject.Find(buttonName);
-        Button activeButton = buttonObject != null ? buttonObject.GetComponent<Button>() : null;
-        if (activeButton == null)
-        {
-            Debug.LogWarning(
-                "StartManager could not resolve the '" + buttonName + "' button in this scene.",
-                this);
-        }
-
-        return activeButton;
+        startButton = footer.StartOrPlayButton;
+        statsMenuButton = footer.StatsButton;
+        quitButton = footer.QuitButton;
+        optionsMenuButton = footer.OptionsButton;
+        creditsMenuButton = footer.CreditsButton;
+        updateMenuButton = footer.ProgressionButton;
+        accountMenuButton = footer.AccountButton;
     }
 
     private Button GetButton(GameObject buttonObject)
@@ -1114,6 +1122,23 @@ public class StartManager : MonoBehaviour
         if (StartMenuUiObjects.instance == null)
         {
             Debug.LogError("StartManager could not resolve StartMenuUiObjects.");
+            enabled = false;
+            yield break;
+        }
+
+        // This coroutine runs independently of InitializeStartMenu() (started from Awake, not
+        // Start) and reaches the same ResolveCommandButtonReferences() call below - which now
+        // dereferences the serialized `footer` view directly instead of falling back to
+        // GameObject.Find. That fallback used to make a missing footer non-fatal here; the
+        // guard InitializeStartMenu() already has needs to be repeated in this coroutine too, or a
+        // missing footer throws instead of failing loudly.
+        List<string> missing = new List<string>();
+        if (!ValidateMenuUi(missing))
+        {
+            Debug.LogError(
+                "StartManager is missing required serialized UI references and will be disabled: "
+                    + string.Join(", ", missing.ToArray()),
+                this);
             enabled = false;
             yield break;
         }

@@ -19,12 +19,12 @@ public class Pause : MonoBehaviour
     [SerializeField]
     private bool startOnPause = false;
 
+    [SerializeField] private PauseUiObjects ui;
+
     //fade texture to obscure background
-    [SerializeField]
     private Image fadeTexture;
 
     // ui text
-    [SerializeField]
     private Text loadSceneText;
     private Text loadStartScreenText;
     private Text cancelMenuText;
@@ -36,33 +36,12 @@ public class Pause : MonoBehaviour
     private Text toggleMaxStatsText;
     private Text toggleFpsText;
 
+    // kept for TouchInputController's name-selected dispatch (out of scope: legacy touch
+    // controller deletion is gated on device verification)
     const string toggleCameraName = "toggle_camera";
     const string toggleUiStatsName = "toggle_stats";
     const string toggleMaxStatsName = "toggle_max_stats";
     const string toggleFpsName = "toggle_fps";
-    const string footerName = "footer";
-    const string fadeTextureName = "fade_texture";
-    const string loadSceneName = "load_scene";
-    const string loadStartName = "load_start";
-    const string cancelMenuName = "cancel_menu";
-    const string quitGameName = "quit_game";
-
-    /// <summary>
-    /// Pause-menu objects every gameplay scene must provide. Level5ProjectValidator asserts
-    /// these exist at build time so a rename fails the build instead of the play session.
-    /// </summary>
-    public static readonly string[] RequiredPauseObjectNames =
-    {
-        footerName,
-        fadeTextureName,
-        loadSceneName,
-        loadStartName,
-        cancelMenuName,
-        quitGameName,
-        toggleUiStatsName,
-        toggleMaxStatsName,
-        toggleFpsName
-    };
 
     //ui buttons
     private Button loadSceneButton;
@@ -98,6 +77,24 @@ public class Pause : MonoBehaviour
         }
     }
 
+    /// <summary>
+    /// True once <see cref="ui"/> carries every reference this screen needs. <see cref="PauseUiObjects.Footer"/>
+    /// is intentionally not required here - Pause only shows/hides it and already treats a missing
+    /// footer as non-fatal, which this preserves. Callable from editor tooling as a pure check - it
+    /// only reads an already-serialized reference.
+    /// </summary>
+    public bool ValidateMenuUi(List<string> missing)
+    {
+        if (ui == null)
+        {
+            missing.Add("Pause.ui");
+            return false;
+        }
+
+        ui.Validate(missing);
+        return missing.Count == 0;
+    }
+
     void Awake()
     {
         instance = this;
@@ -114,42 +111,42 @@ public class Pause : MonoBehaviour
 #endif
         //startOnPause = false;
         paused = startOnPause;
-        // the footer is only shown/hidden, so a missing one is logged but not fatal
-        footer = SceneObjects.Find(footerName, this);
 
-        // resolved one at a time and collected, so a missing pause-menu object is reported by
-        // name instead of throwing partway through Awake and leaving Update to NRE every frame
+        // resolved from the serialized view, which ValidateMenuUi below has already confirmed is
+        // complete for everything except the footer - Pause only shows/hides it, so a missing one
+        // is logged but not fatal, same as before this migration (AUD-103).
+        footer = ui != null ? ui.Footer : null;
+
         List<string> missing = new List<string>();
-        fadeTexture = SceneObjects.Find<Image>(fadeTextureName, missing, this);
-        //text
-        loadSceneText = SceneObjects.Find<Text>(loadSceneName, missing, this);
-        cancelMenuText = SceneObjects.Find<Text>(cancelMenuName, missing, this);
-        loadStartScreenText = SceneObjects.Find<Text>(loadStartName, missing, this);
-        quitGameText = SceneObjects.Find<Text>(quitGameName, missing, this);
-        //buttons
-        loadSceneButton = SceneObjects.Find<Button>(loadSceneName, missing, this);
-        loadStartScreenButton = SceneObjects.Find<Button>(loadStartName, missing, this);
-        cancelMenuButton = SceneObjects.Find<Button>(cancelMenuName, missing, this);
-        quitGameButton = SceneObjects.Find<Button>(quitGameName, missing, this);
-
-        //toggleCameraText = GameObject.Find(toggleCameraName).GetComponent<Text>();
-        toggleUiStatsText = SceneObjects.Find<Text>(toggleUiStatsName, missing, this);
-        toggleMaxStatsText = SceneObjects.Find<Text>(toggleMaxStatsName, missing, this);
-
-        toggleFpsText = SceneObjects.Find<Text>(toggleFpsName, missing, this);
-
-        if (missing.Count > 0)
+        if (!ValidateMenuUi(missing))
         {
             // a half-wired pause menu cannot be driven safely, and Update would throw on
             // every frame trying. fail loudly once, with the names, and stay out of the way.
             Debug.LogError(
-                "Pause is disabled because this scene is missing required pause-menu objects: "
+                "Pause is disabled because it is missing required serialized UI references: "
                 + string.Join(", ", missing.ToArray()),
                 this);
             SceneTransition.RestoreTimeScale();
             enabled = false;
             return;
         }
+
+        fadeTexture = ui.FadeTexture;
+        //text
+        loadSceneText = ui.LoadSceneText;
+        cancelMenuText = ui.CancelMenuText;
+        loadStartScreenText = ui.LoadStartScreenText;
+        quitGameText = ui.QuitGameText;
+        //buttons
+        loadSceneButton = ui.LoadSceneButton;
+        loadStartScreenButton = ui.LoadStartScreenButton;
+        cancelMenuButton = ui.CancelMenuButton;
+        quitGameButton = ui.QuitGameButton;
+
+        //toggleCameraText = GameObject.Find(toggleCameraName).GetComponent<Text>();
+        toggleUiStatsText = ui.ToggleUiStatsText;
+        toggleMaxStatsText = ui.ToggleMaxStatsText;
+        toggleFpsText = ui.ToggleFpsText;
 
 //#if UNITY_ANDROID && !UNITY_EDITOR
 //            controlsDesktopObject.SetActive(false);
@@ -340,10 +337,11 @@ public class Pause : MonoBehaviour
 
     public void disableMobileOnlyPauseOptions()
     {
-        // mobile buttons
-        maxStatsObject = SceneObjects.Find(toggleMaxStatsName, this);
-        toggleFpsObject = SceneObjects.Find(toggleFpsName, this);
-        toggleUiStatsObject = SceneObjects.Find(toggleUiStatsName, this);
+        // mobile buttons - same objects toggleMaxStatsText/toggleFpsText/toggleUiStatsText already
+        // reference, fetched here as plain GameObjects to SetActive(false)
+        maxStatsObject = ui != null ? ui.ToggleMaxStatsObject : null;
+        toggleFpsObject = ui != null ? ui.ToggleFpsObject : null;
+        toggleUiStatsObject = ui != null ? ui.ToggleUiStatsObject : null;
 
         if (maxStatsObject == null || toggleFpsObject == null || toggleUiStatsObject == null)
         {

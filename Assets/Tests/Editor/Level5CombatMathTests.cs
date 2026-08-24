@@ -356,7 +356,7 @@ public class Level5CombatMathTests
     {
         AssertNamesAreUsable(GameRules.RequiredSceneObjectNames, "GameRules.RequiredSceneObjectNames");
         AssertNamesAreUsable(MatchHudPresenter.RequiredHudObjectNames, "MatchHudPresenter.RequiredHudObjectNames");
-        AssertNamesAreUsable(Pause.RequiredPauseObjectNames, "Pause.RequiredPauseObjectNames");
+        // Pause.RequiredPauseObjectNames retired: PauseUiObjects/ValidateMenuUi covers this now (AUD-103).
         AssertNamesAreUsable(
             ProgressionManager.RequiredProgressionObjectNames,
             "ProgressionManager.RequiredProgressionObjectNames");

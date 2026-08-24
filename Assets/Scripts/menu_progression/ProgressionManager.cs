@@ -12,19 +12,23 @@ public class ProgressionManager : MonoBehaviour
     private const float DataWaitTimeoutSeconds = 12f;
     [SerializeField]
     public string currentHighlightedButton;
+
+    [SerializeField] private ProgressionUiObjects ui;
+    [SerializeField] private MenuFooterUiObjects footer;
+
     // option select buttons, this will be disabled with touch input
-    [SerializeField] Button playerSelectButton;
-    [SerializeField] Button startButton;
-    [SerializeField] Button statsMenuButton;
-    [SerializeField] Button quitButton;
-    [SerializeField] Button playerSelectOptionButton;
-    [SerializeField] Button progression3AccuracyButton;
-    [SerializeField] Button progression4AccuracyButton;
-    [SerializeField] Button progression7AccuracyButton;
-    [SerializeField] Button confirmButton;
-    [SerializeField] Button cancelButton;
-    [SerializeField] Button saveButton;
-    [SerializeField] Button resetButton;
+    Button playerSelectButton;
+    Button startButton;
+    Button statsMenuButton;
+    Button quitButton;
+    Button playerSelectOptionButton;
+    Button progression3AccuracyButton;
+    Button progression4AccuracyButton;
+    Button progression7AccuracyButton;
+    Button confirmButton;
+    Button cancelButton;
+    Button saveButton;
+    Button resetButton;
 
     //list of all shooter profiles with player data
     private List<CharacterProfile> playerSelectedData;
@@ -61,7 +65,6 @@ public class ProgressionManager : MonoBehaviour
     //private const string optionsMenuButtonName = "options_menu";
 
     // button names
-    private const string playerSelectButtonName = "player_select_button";
     private const string playerSelectOptionButtonName = "player_selected_name";
     //private const string playerSelectStatsObjectName = "player_selected_stats_numbers";
     private const string playerSelectImageObjectName = "player_selected_image";
@@ -85,7 +88,6 @@ public class ProgressionManager : MonoBehaviour
     private const string saveButtonName = "save_button";
     private const string resetButtonName = "reset_button";
 
-    private const string confirmationDialogueBoxName = "confirm_update";
     private const string progression3AccuracyTextName = "3accuracy";
     private const string progression4AccuracyTextName = "4accuracy";
     private const string progression7AccuracyTextName = "7accuracy";
@@ -96,14 +98,19 @@ public class ProgressionManager : MonoBehaviour
     private const string progressionLuckName = "luck";
 
     /// <summary>
-    /// Objects this manager resolves by name. Level5ProjectValidator asserts they exist in any
-    /// scene carrying a ProgressionManager, so a rename fails the build rather than the play
-    /// session - the same contract GameRules and Pause carry (AUD-028, AUD-047).
+    /// Objects this manager still resolves by name through <see cref="SceneObjects.Find{T}"/> - the
+    /// Text/Image references <c>docs/ui-input-architecture.md</c> names as the intended fallback
+    /// mechanism for this screen. Level5ProjectValidator asserts they exist in any scene carrying a
+    /// ProgressionManager (AUD-028, AUD-047).
+    ///
+    /// This used to also list the button names (playerSelectButtonName,
+    /// playerSelectOptionButtonName, progression3/4/7AccuracyName); those moved to
+    /// <see cref="ProgressionUiObjects"/>'s serialized references and are asserted by
+    /// <see cref="ValidateMenuUi"/>/<c>CollectMenuUiObjectContractErrors</c> instead, since a
+    /// serialized reference survives a rename that this name list would otherwise treat as broken.
     /// </summary>
     public static readonly string[] RequiredProgressionObjectNames =
     {
-        playerSelectButtonName,
-        playerSelectOptionButtonName,
         playerSelectImageObjectName,
         playerProgressionStatsName,
         playerProgressionPointsAvailableName,
@@ -117,10 +124,7 @@ public class ProgressionManager : MonoBehaviour
         progressionLuckName,
         releaseBonusName,
         rangeBonusName,
-        luckBonusName,
-        progression3AccuracyName,
-        progression4AccuracyName,
-        progression7AccuracyName
+        luckBonusName
     };
 
     private int playerSelectedIndex;
@@ -202,12 +206,21 @@ public class ProgressionManager : MonoBehaviour
     void Awake()
     {
         instance = this;
-        // disable confirmation dialogue
-        confirmationDialogueBox = GameObject.Find(confirmationDialogueBoxName);
-        if (confirmationDialogueBox != null)
+
+        List<string> missing = new List<string>();
+        if (!ValidateMenuUi(missing))
         {
-            confirmationDialogueBox.SetActive(confirmationDialogueBoxEnabled);
+            Debug.LogError(
+                "ProgressionManager is missing required serialized UI references and will be disabled: "
+                    + string.Join(", ", missing.ToArray()),
+                this);
+            enabled = false;
+            return;
         }
+
+        // disable confirmation dialogue
+        confirmationDialogueBox = ui.ConfirmationDialogueBox;
+        confirmationDialogueBox.SetActive(confirmationDialogueBoxEnabled);
 
         progressionState = GetComponent<ProgressionState>();
         if (progressionState == null)
@@ -293,55 +306,59 @@ public class ProgressionManager : MonoBehaviour
         }
     }
 
+    /// <summary>
+    /// Copies references out of the serialized <see cref="ui"/>/<see cref="footer"/> views, which
+    /// <see cref="ValidateMenuUi"/> has already confirmed are complete. This replaces both the
+    /// <c>GameObject.Find(name)</c> fallback and <c>FindButtonInInactiveChildren</c> (AUD-103):
+    /// confirm/cancel live inside <see cref="confirmationDialogueBox"/>, which starts inactive, and a
+    /// serialized reference can address an inactive object directly.
+    /// </summary>
     private void ResolveButtonReferences()
     {
-        startButton = ResolveButton(startButton, startButtonName);
-        statsMenuButton = ResolveButton(statsMenuButton, statsMenuButtonName);
-        quitButton = ResolveButton(quitButton, quitButtonName);
-        playerSelectButton = ResolveButton(playerSelectButton, playerSelectButtonName);
-        playerSelectOptionButton = ResolveButton(playerSelectOptionButton, playerSelectOptionButtonName);
-        progression3AccuracyButton = ResolveButton(progression3AccuracyButton, progression3AccuracyName);
-        progression4AccuracyButton = ResolveButton(progression4AccuracyButton, progression4AccuracyName);
-        progression7AccuracyButton = ResolveButton(progression7AccuracyButton, progression7AccuracyName);
-        confirmButton = ResolveButton(confirmButton, confirmButtonName);
-        cancelButton = ResolveButton(cancelButton, cancelButtonName);
-        saveButton = ResolveButton(saveButton, saveButtonName);
-        resetButton = ResolveButton(resetButton, resetButtonName);
+        startButton = footer.StartOrPlayButton;
+        statsMenuButton = footer.StatsButton;
+        quitButton = footer.QuitButton;
+        playerSelectButton = ui.PlayerSelectButton;
+        playerSelectOptionButton = ui.PlayerSelectOptionButton;
+        progression3AccuracyButton = ui.Progression3AccuracyButton;
+        progression4AccuracyButton = ui.Progression4AccuracyButton;
+        progression7AccuracyButton = ui.Progression7AccuracyButton;
+        confirmButton = ui.ConfirmButton;
+        cancelButton = ui.CancelButton;
+        saveButton = ui.SaveButton;
+        resetButton = ui.ResetButton;
     }
 
-    private Button ResolveButton(Button button, string buttonName)
+    /// <summary>
+    /// True once <see cref="ui"/>/<see cref="footer"/> carry every reference this screen needs.
+    /// "quit_game" is not required on the footer: it does not exist anywhere reachable from
+    /// <c>level_00_progression.unity</c> today (confirmed against both prefabs that compose it), so
+    /// <see cref="quitButton"/> has always been a pre-existing always-null reference here.
+    /// </summary>
+    public bool ValidateMenuUi(List<string> missing)
     {
-        if (button != null)
+        if (ui == null)
         {
-            return button;
+            missing.Add("ProgressionManager.ui");
+        }
+        else
+        {
+            ui.Validate(missing);
         }
 
-        GameObject buttonObject = GameObject.Find(buttonName);
-        if (buttonObject != null)
+        if (footer == null)
         {
-            return buttonObject.GetComponent<Button>();
+            missing.Add("ProgressionManager.footer");
+        }
+        else
+        {
+            footer.Validate(
+                missing,
+                (footer.StartOrPlayButton, "startOrPlayButton"),
+                (footer.StatsButton, "statsButton"));
         }
 
-        return FindButtonInInactiveChildren(buttonName);
-    }
-
-    private Button FindButtonInInactiveChildren(string buttonName)
-    {
-        if (confirmationDialogueBox == null)
-        {
-            return null;
-        }
-
-        Button[] buttons = confirmationDialogueBox.GetComponentsInChildren<Button>(true);
-        foreach (Button button in buttons)
-        {
-            if (button.name.Equals(buttonName))
-            {
-                return button;
-            }
-        }
-
-        return null;
+        return missing.Count == 0;
     }
 
     /// <summary>
@@ -459,12 +476,11 @@ public class ProgressionManager : MonoBehaviour
             || selectedButtonName.Equals(progression7AccuracyName);
     }
 
-    private void SelectProgressionButton(Button button, string buttonName)
+    private void SelectProgressionButton(Button button)
     {
-        Button targetButton = ResolveButton(button, buttonName);
-        if (targetButton != null)
+        if (button != null)
         {
-            UiSelectionAdapter.TrySelect(targetButton.gameObject);
+            UiSelectionAdapter.TrySelect(button.gameObject);
         }
     }
 
@@ -613,7 +629,7 @@ public class ProgressionManager : MonoBehaviour
         RunProgressionAction(() =>
         {
             SetConfirmationDialogueActive(true);
-            SelectProgressionButton(confirmButton, confirmButtonName);
+            SelectProgressionButton(confirmButton);
         });
     }
 
@@ -622,7 +638,7 @@ public class ProgressionManager : MonoBehaviour
         RunProgressionAction(() =>
         {
             SetConfirmationDialogueActive(false);
-            SelectProgressionButton(progression3AccuracyButton, progression3AccuracyName);
+            SelectProgressionButton(progression3AccuracyButton);
         });
     }
 
@@ -651,7 +667,7 @@ public class ProgressionManager : MonoBehaviour
             ResetSelectedCharacterDraft();
             initializePlayerDisplay();
 
-            SelectProgressionButton(progression3AccuracyButton, progression3AccuracyName);
+            SelectProgressionButton(progression3AccuracyButton);
         });
     }
 
@@ -674,7 +690,7 @@ public class ProgressionManager : MonoBehaviour
 
         if (!progressionService.CommitDraft(progressionDraft, playerSelectedData[playerSelectedIndex]))
         {
-            SelectProgressionButton(confirmButton, confirmButtonName);
+            SelectProgressionButton(confirmButton);
             return;
         }
 
@@ -685,7 +701,7 @@ public class ProgressionManager : MonoBehaviour
         // display
         initializePlayerDisplay();
         // reset stats
-        SelectProgressionButton(progression3AccuracyButton, progression3AccuracyName);
+        SelectProgressionButton(progression3AccuracyButton);
     }
 
     public void resetUpdatePoints()
@@ -845,9 +861,6 @@ public class ProgressionManager : MonoBehaviour
     private bool getUiObjectReferences()
     {
         List<string> missing = new List<string>();
-
-        // buttons to disable for touch input
-        playerSelectButton = SceneObjects.Find<Button>(playerSelectButtonName, missing, this);
 
         // player object with lock texture and unlock text
         playerSelectOptionText = SceneObjects.Find<Text>(playerSelectOptionButtonName, missing, this);

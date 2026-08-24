@@ -679,11 +679,7 @@ public sealed class Level5ProjectValidator : IPreprocessBuildWithReport
             {
                 // scenes with none of these managers have nothing to satisfy
                 if (!SceneContainsComponent<GameRules>(scene)
-                    && !SceneContainsComponent<Pause>(scene)
-                    && !SceneContainsComponent<ProgressionManager>(scene)
-                    && !SceneContainsComponent<StartManager>(scene)
-                    && !SceneContainsComponent<OptionsManager>(scene)
-                    && !SceneContainsComponent<StatsManager>(scene))
+                    && !SceneContainsComponent<ProgressionManager>(scene))
                 {
                     continue;
                 }
@@ -701,12 +697,11 @@ public sealed class Level5ProjectValidator : IPreprocessBuildWithReport
                         objectNames);
                 }
 
-                if (SceneContainsComponent<Pause>(scene))
-                {
-                    AddMissingObjectErrors(errors, buildScene.path, "Pause", Pause.RequiredPauseObjectNames, objectNames);
-                }
-
-                // AUD-047: the progression menu resolves 19 objects by name, the same way
+                // AUD-047: the progression menu still resolves its Text/Image references this way -
+                // see docs/ui-input-architecture.md. The button names this array used to also carry
+                // (playerSelectButtonName, progression3/4/7AccuracyName, ...) moved to
+                // ProgressionUiObjects's serialized references, asserted by
+                // CollectMenuUiObjectContractErrors instead (AUD-103).
                 if (SceneContainsComponent<ProgressionManager>(scene))
                 {
                     AddMissingObjectErrors(
@@ -714,38 +709,6 @@ public sealed class Level5ProjectValidator : IPreprocessBuildWithReport
                         buildScene.path,
                         "ProgressionManager",
                         ProgressionManager.RequiredProgressionObjectNames,
-                        objectNames);
-                }
-
-                // AUD-112: the menu screens name-resolve more objects than the gameplay scenes do,
-                // and were outside this contract entirely.
-                if (SceneContainsComponent<StartManager>(scene))
-                {
-                    AddMissingObjectErrors(
-                        errors,
-                        buildScene.path,
-                        "StartManager",
-                        StartManager.RequiredSceneObjectNames,
-                        objectNames);
-                }
-
-                if (SceneContainsComponent<OptionsManager>(scene))
-                {
-                    AddMissingObjectErrors(
-                        errors,
-                        buildScene.path,
-                        "OptionsManager",
-                        OptionsManager.RequiredSceneObjectNames,
-                        objectNames);
-                }
-
-                if (SceneContainsComponent<StatsManager>(scene))
-                {
-                    AddMissingObjectErrors(
-                        errors,
-                        buildScene.path,
-                        "StatsManager",
-                        StatsManager.RequiredSceneObjectNames,
                         objectNames);
                 }
             }
@@ -759,6 +722,89 @@ public sealed class Level5ProjectValidator : IPreprocessBuildWithReport
         }
 
         return errors;
+    }
+
+    [MenuItem("Level5/Validate Menu UiObjects Contract")]
+    public static void ValidateMenuUiObjectsFromMenu()
+    {
+        List<string> errors = CollectMenuUiObjectContractErrors();
+        if (errors.Count > 0)
+        {
+            Debug.LogError("Menu UI reference validation failed:\n- " + string.Join("\n- ", errors.ToArray()));
+            return;
+        }
+
+        Debug.Log("Menu UI references validated.");
+    }
+
+    /// <summary>
+    /// Every menu manager's serialized <c>*UiObjects</c>/<see cref="MenuFooterUiObjects"/> view must
+    /// carry the references that manager's own <c>ValidateMenuUi</c> considers required. This
+    /// replaced <c>GameObject.Find(name)</c> fallbacks with serialized references (AUD-103/AUD-104),
+    /// so a rename no longer breaks anything - the fileID reference survives it - but a forgotten or
+    /// mis-wired field still needs to fail the build the same way the old name-list contract did.
+    ///
+    /// Delegating to each manager's own <c>ValidateMenuUi</c> (rather than re-deriving the required
+    /// field set here) means there is exactly one place that knows which references a given screen
+    /// needs, and it is the same code path the manager runs at <c>Start</c>/<c>Awake</c>.
+    /// </summary>
+    public static List<string> CollectMenuUiObjectContractErrors()
+    {
+        List<string> errors = new List<string>();
+        foreach (EditorBuildSettingsScene buildScene in EditorBuildSettings.scenes)
+        {
+            if (!buildScene.enabled || string.IsNullOrWhiteSpace(buildScene.path) || !File.Exists(buildScene.path))
+            {
+                continue;
+            }
+
+            Scene existing = SceneManager.GetSceneByPath(buildScene.path);
+            bool alreadyOpen = existing.IsValid() && existing.isLoaded;
+            Scene scene = alreadyOpen
+                ? existing
+                : EditorSceneManager.OpenScene(buildScene.path, OpenSceneMode.Additive);
+            try
+            {
+                AddMenuUiContractErrors<OptionsManager>(errors, buildScene.path, scene, (m, missing) => m.ValidateMenuUi(missing));
+                AddMenuUiContractErrors<CreditsManager>(errors, buildScene.path, scene, (m, missing) => m.ValidateMenuUi(missing));
+                AddMenuUiContractErrors<StatsManager>(errors, buildScene.path, scene, (m, missing) => m.ValidateMenuUi(missing));
+                AddMenuUiContractErrors<ProgressionManager>(errors, buildScene.path, scene, (m, missing) => m.ValidateMenuUi(missing));
+                AddMenuUiContractErrors<AccountManager>(errors, buildScene.path, scene, (m, missing) => m.ValidateMenuUi(missing));
+                AddMenuUiContractErrors<StartManager>(errors, buildScene.path, scene, (m, missing) => m.ValidateMenuUi(missing));
+                AddMenuUiContractErrors<Pause>(errors, buildScene.path, scene, (m, missing) => m.ValidateMenuUi(missing));
+            }
+            finally
+            {
+                if (!alreadyOpen)
+                {
+                    EditorSceneManager.CloseScene(scene, true);
+                }
+            }
+        }
+
+        return errors;
+    }
+
+    private static void AddMenuUiContractErrors<T>(
+        List<string> errors,
+        string scenePath,
+        Scene scene,
+        Func<T, List<string>, bool> validate)
+        where T : Component
+    {
+        foreach (GameObject root in scene.GetRootGameObjects())
+        {
+            foreach (T manager in root.GetComponentsInChildren<T>(true))
+            {
+                List<string> missing = new List<string>();
+                if (!validate(manager, missing))
+                {
+                    errors.Add(
+                        scenePath + " -> " + typeof(T).Name + " on '" + manager.gameObject.name
+                            + "' is missing: " + string.Join(", ", missing.ToArray()));
+                }
+            }
+        }
     }
 
     private static void AddMissingObjectErrors(

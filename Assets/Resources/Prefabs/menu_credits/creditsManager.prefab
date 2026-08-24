@@ -1312,6 +1312,8 @@ GameObject:
   m_Component:
   - component: {fileID: 951055246059580750}
   - component: {fileID: 951055246059580748}
+  - component: {fileID: 6191835257361064652}
+  - component: {fileID: 2737343572497214908}
   m_Layer: 0
   m_Name: creditsManager
   m_TagString: Untagged
@@ -1353,18 +1355,43 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   currentHighlightedButton: 
-  submitReportButtonObject: {fileID: 1133844604}
+  ui: {fileID: 6191835257361064652}
+  footer: {fileID: 2737343572497214908}
   reportInput: 
-  reportInputField: {fileID: 0}
-  mainMenuButton: {fileID: 0}
-  statsMenuButton: {fileID: 0}
+--- !u!114 &6191835257361064652
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 951055246059580751}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 65951fa6b36b40c6851f9f8ec2d6e145, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::CreditsUiObjects
+  reportInputField: {fileID: 9220260359324709900}
+  submitReportButton: {fileID: 1133844608}
+  optionsButton: {fileID: 3894862616493492753}
+--- !u!114 &2737343572497214908
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 951055246059580751}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: daf6cfde28284a5c995bc4afcfac6d6a, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::MenuFooterUiObjects
+  startOrPlayButton: {fileID: 5107416519018533641}
+  statsButton: {fileID: 2138353380244795716}
   optionsButton: {fileID: 0}
-  optionsMenuButton: {fileID: 0}
-  creditsMenuButton: {fileID: 0}
-  progressionMenuButton: {fileID: 0}
-  accountMenuButton: {fileID: 0}
-  quitButton: {fileID: 0}
-  submitReportButton: {fileID: 0}
+  creditsButton: {fileID: 0}
+  progressionButton: {fileID: 0}
+  accountButton: {fileID: 0}
+  quitButton: {fileID: 1443790103970615672}
 --- !u!1 &951055247365099484
 GameObject:
   m_ObjectHideFlags: 0

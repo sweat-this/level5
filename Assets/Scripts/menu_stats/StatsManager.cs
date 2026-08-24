@@ -16,6 +16,8 @@ public class StatsManager : MonoBehaviour
     [SerializeField]
     private string previousHighlightedButton;
 
+    [SerializeField] private StatsUiObjects ui;
+
     const string modeSelectButtonName = "mode_select_name";
     const string modeSelectButtonOnlineName = "mode_select_name_online";
     const string alltimeSelectButtonName = "all_time_select";
@@ -37,26 +39,8 @@ public class StatsManager : MonoBehaviour
     const int ResultsPerPage = StatsPaging.ResultsPerPage;
     //const string mainMenuSceneName = "level_00_start";
 
-    /// <summary>
-    /// Objects this manager resolves by name. Level5ProjectValidator asserts they exist in any
-    /// scene carrying a StatsManager (AUD-112).
-    /// </summary>
-    public static readonly string[] RequiredSceneObjectNames =
-    {
-        highScoreTableName,
-        allTimeTableName,
-        highScoresRowsName,
-        modeSelectButtonName,
-        modeSelectButtonOnlineName,
-        alltimeSelectButtonName,
-        mainMenuButtonName,
-        pageNumberLocalButtonName,
-        pageNumberOnlineButtonName,
-        trafficOptionButtonName,
-        hardcoreOptionButtonName,
-        enemiesOptionButtonName,
-        sniperOptionButtonName
-    };
+    // RequiredSceneObjectNames retired: Level5ProjectValidator now asserts this screen's contract
+    // through ValidateMenuUi/CollectMenuUiObjectContractErrors instead of a name list (AUD-103).
 
     GameObject allTimeTableObject;
     GameObject highScoreTableObject;
@@ -71,16 +55,16 @@ public class StatsManager : MonoBehaviour
     [SerializeField]
     Text pageNumberOnlineSelectButtonText;
 
-    [SerializeField] Button modeSelectButton;
-    [SerializeField] Button modeSelectOnlineButton;
-    [SerializeField] Button allTimeSelectButton;
-    [SerializeField] Button mainMenuButton;
-    [SerializeField] Button pageNumberLocalButton;
-    [SerializeField] Button pageNumberOnlineButton;
-    [SerializeField] Button trafficOptionButton;
-    [SerializeField] Button hardcoreOptionButton;
-    [SerializeField] Button enemiesOptionButton;
-    [SerializeField] Button sniperOptionButton;
+    Button modeSelectButton;
+    Button modeSelectOnlineButton;
+    Button allTimeSelectButton;
+    Button mainMenuButton;
+    Button pageNumberLocalButton;
+    Button pageNumberOnlineButton;
+    Button trafficOptionButton;
+    Button hardcoreOptionButton;
+    Button enemiesOptionButton;
+    Button sniperOptionButton;
 
     // list of high score rows
     [SerializeField]
@@ -131,7 +115,6 @@ public class StatsManager : MonoBehaviour
     // high score rows
     const string highScoreRowPrefabPath = "Prefabs/stats/highScoreRow";
     const string highScoresRowsName = "high_scores_rows";
-    [SerializeField]
     GameObject highScoresRowsObject;
     [SerializeField]
     GameObject highScoreRowPrefab;
@@ -204,16 +187,26 @@ public class StatsManager : MonoBehaviour
 
     void Awake()
     {
-
         instance = this;
 
+        List<string> missing = new List<string>();
+        if (!ValidateMenuUi(missing))
+        {
+            Debug.LogError(
+                "StatsManager is missing required serialized UI references and will be disabled: "
+                    + string.Join(", ", missing.ToArray()),
+                this);
+            enabled = false;
+            return;
+        }
+
         // table objects
-        highScoreTableObject = GameObject.Find(highScoreTableName);
-        allTimeTableObject = GameObject.Find(allTimeTableName);
+        highScoreTableObject = ui.HighScoreTableObject;
+        allTimeTableObject = ui.AllTimeTableObject;
 
         // parent object where rows will be instantiated
         // ex. usage Instantiate(prefab, position, quaternion, parent object);
-        highScoresRowsObject = GameObject.Find(highScoresRowsName);
+        highScoresRowsObject = ui.HighScoresRowsObject;
 
         // get mode ids and display names. mode ids will be used for queries to display data
         modesList = getModeSelectDataList();
@@ -327,29 +320,39 @@ public class StatsManager : MonoBehaviour
         initialized = true;
     }
 
+    /// <summary>
+    /// Copies references out of the serialized <see cref="ui"/> view, which
+    /// <see cref="ValidateMenuUi"/> has already confirmed is complete. Replaces the
+    /// <c>GameObject.Find(name)</c> chain this used to fall back to (AUD-103).
+    /// </summary>
     private void ResolveButtonReferences()
     {
-        modeSelectButton = ResolveButton(modeSelectButton, modeSelectButtonName);
-        modeSelectOnlineButton = ResolveButton(modeSelectOnlineButton, modeSelectButtonOnlineName);
-        allTimeSelectButton = ResolveButton(allTimeSelectButton, alltimeSelectButtonName);
-        mainMenuButton = ResolveButton(mainMenuButton, mainMenuButtonName);
-        pageNumberLocalButton = ResolveButton(pageNumberLocalButton, pageNumberLocalButtonName);
-        pageNumberOnlineButton = ResolveButton(pageNumberOnlineButton, pageNumberOnlineButtonName);
-        trafficOptionButton = ResolveButton(trafficOptionButton, trafficOptionButtonName);
-        hardcoreOptionButton = ResolveButton(hardcoreOptionButton, hardcoreOptionButtonName);
-        enemiesOptionButton = ResolveButton(enemiesOptionButton, enemiesOptionButtonName);
-        sniperOptionButton = ResolveButton(sniperOptionButton, sniperOptionButtonName);
+        modeSelectButton = ui.ModeSelectButton;
+        modeSelectOnlineButton = ui.ModeSelectOnlineButton;
+        allTimeSelectButton = ui.AllTimeSelectButton;
+        mainMenuButton = ui.MainMenuButton;
+        pageNumberLocalButton = ui.PageNumberLocalButton;
+        pageNumberOnlineButton = ui.PageNumberOnlineButton;
+        trafficOptionButton = ui.TrafficOptionButton;
+        hardcoreOptionButton = ui.HardcoreOptionButton;
+        enemiesOptionButton = ui.EnemiesOptionButton;
+        sniperOptionButton = ui.SniperOptionButton;
     }
 
-    private Button ResolveButton(Button button, string buttonName)
+    /// <summary>
+    /// True once <see cref="ui"/> carries every reference this screen needs. Callable from editor
+    /// tooling as a pure check - it only reads an already-serialized reference.
+    /// </summary>
+    public bool ValidateMenuUi(List<string> missing)
     {
-        if (button != null)
+        if (ui == null)
         {
-            return button;
+            missing.Add("StatsManager.ui");
+            return false;
         }
 
-        GameObject buttonObject = GameObject.Find(buttonName);
-        return buttonObject != null ? buttonObject.GetComponent<Button>() : null;
+        ui.Validate(missing);
+        return missing.Count == 0;
     }
 
     /// <summary>

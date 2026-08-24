@@ -31570,6 +31570,7 @@ GameObject:
   m_Component:
   - component: {fileID: 6222914242183418776}
   - component: {fileID: 8308615154302261085}
+  - component: {fileID: 8308615154302261086}
   m_Layer: 0
   m_Name: pause
   m_TagString: Untagged
@@ -46042,10 +46043,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   gameModeId: 0
-  player1DisplayName: 
-  player2DisplayName: 
-  player3DisplayName: 
-  player4DisplayName: 
   basketBallShotMarkerObjects: []
   _basketBallShotMarkersList: []
   markersRemaining: 0
@@ -52653,8 +52650,32 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   paused: 0
   startOnPause: 0
-  fadeTexture: {fileID: 0}
-  loadSceneText: {fileID: 0}
+  ui: {fileID: 8308615154302261086}
+--- !u!114 &8308615154302261086
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 576114927171214816}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: de200191bf884016880301428fa0a7fd, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::PauseUiObjects
+  footer: {fileID: 175615379915328326}
+  fadeTexture: {fileID: 8408471257853556992}
+  loadSceneText: {fileID: 8341599502982641373}
+  loadStartScreenText: {fileID: 7122100164437866071}
+  cancelMenuText: {fileID: 2880312988857411930}
+  quitGameText: {fileID: 6701509639301461007}
+  loadSceneButton: {fileID: 8161282514511558765}
+  loadStartScreenButton: {fileID: 2222157862305615312}
+  cancelMenuButton: {fileID: 4004867956533798394}
+  quitGameButton: {fileID: 2270710060211986761}
+  toggleUiStatsText: {fileID: 396369507}
+  toggleMaxStatsText: {fileID: 188729887}
+  toggleFpsText: {fileID: 875118123}
 --- !u!114 &8341599502982641373
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -53056,8 +53077,6 @@ MonoBehaviour:
   numPlayers: 0
   _autoPlayer: {fileID: 0}
   _playerController1: {fileID: 0}
-  _playerController2: {fileID: 0}
-  _autoPlayerController: {fileID: 0}
   _playerAttackQueue: {fileID: 0}
 --- !u!212 &8444628975444281252
 SpriteRenderer:

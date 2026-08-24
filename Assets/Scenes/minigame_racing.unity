@@ -23102,6 +23102,7 @@ GameObject:
   m_Component:
   - component: {fileID: 5440215763884816912}
   - component: {fileID: 7957189391674736341}
+  - component: {fileID: 7957189391674736342}
   m_Layer: 0
   m_Name: pause
   m_TagString: Untagged
@@ -36097,10 +36098,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   gameModeId: 0
-  player1DisplayName: 
-  player2DisplayName: 
-  player3DisplayName: 
-  player4DisplayName: 
   basketBallShotMarkerObjects: []
   _basketBallShotMarkersList: []
   markersRemaining: 0
@@ -39844,8 +39841,32 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   paused: 0
   startOnPause: 0
-  fadeTexture: {fileID: 0}
-  loadSceneText: {fileID: 0}
+  ui: {fileID: 7957189391674736342}
+--- !u!114 &7957189391674736342
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1935837112021382248}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: de200191bf884016880301428fa0a7fd, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::PauseUiObjects
+  footer: {fileID: 2255271661004169934}
+  fadeTexture: {fileID: 7607521977446371464}
+  loadSceneText: {fileID: 7989645691364351829}
+  loadStartScreenText: {fileID: 9220404167054172127}
+  cancelMenuText: {fileID: 4241073112685232338}
+  quitGameText: {fileID: 4621598542156340615}
+  loadSceneButton: {fileID: 7809540638080963045}
+  loadStartScreenButton: {fileID: 285147538339341400}
+  cancelMenuButton: {fileID: 3078099095241411698}
+  quitGameButton: {fileID: 189311873505364161}
+  toggleUiStatsText: {fileID: 2099729528346277867}
+  toggleMaxStatsText: {fileID: 2099729528151974807}
+  toggleFpsText: {fileID: 2099729528907847587}
 --- !u!114 &7989645691364351829
 MonoBehaviour:
   m_ObjectHideFlags: 0

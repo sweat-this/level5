@@ -3,6 +3,7 @@ using Assets.Scripts.restapi;
 using Assets.Scripts.Utility;
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.SceneManagement;
@@ -10,31 +11,30 @@ using UnityEngine.UI;
 
 public class AccountManager : MonoBehaviour
 {
+    // Exactly one of these three is assigned per scene - level_00_account uses hubUi,
+    // level_00_account_createNew uses createUi, level_00_account_loginExisting uses loginUi. Their
+    // required controls differ enough (inspected against the actual scenes) that one shared type
+    // would need optional fields most screens leave null; level_00_account_loginLocal has no
+    // AccountManager at all, so there is no fourth variant to wire.
+    [SerializeField] private AccountHubUiObjects hubUi;
+    [SerializeField] private AccountCreateUiObjects createUi;
+    [SerializeField] private AccountLoginUiObjects loginUi;
+    [SerializeField] private MenuFooterUiObjects footer;
+
     Text messageDisplay;
     string errorMessageEmail = "";
     string errorMessageUserName = "";
 
-    //buttonobject names
-    const string checkEmailButtonName = "checkEmail";
-    const string checkUserNameButtonName = "checkUserName";
-    const string loginNameButtonName = "login";
-    const string createUserNameButtonName = "createUser";
-    //input field object names
-    const string emailAddressInputFieldName = "EmailInputField";
-    const string userNameInputFieldName = "UserNameInputField";
-    const string passwordInputFieldName = "PasswordInputField";
-    const string firstNameInputFieldName = "FirstNameInputField";
-    const string lastNameInputFieldName = "LastNameInputField";
-    // scene link buttons
-    const string createNewButtonName = "createNew";
-    const string loginExistingButtonName = "loginExisting";
-    const string loginLocalButtonName = "loginLocal";
-    // footer button names
+    // kept for TouchInputAccountScreenController's name-selected dispatch (out of scope: legacy
+    // touch controller deletion is gated on device verification)
     const string mainMenuButtonName = "press_start";
     const string statsMenuButtonName = "stats_menu";
     const string progressionMenuButtonName = "update_menu";
     const string creditsMenuButtonName = "credits_menu";
     const string accountMenuButtonName = "account_menu";
+    const string createNewButtonName = "createNew";
+    const string loginExistingButtonName = "loginExisting";
+    const string loginLocalButtonName = "loginLocal";
 
     string emailInput;
     string userNameInput;
@@ -48,31 +48,24 @@ public class AccountManager : MonoBehaviour
     InputField firstNameInputField;
     InputField lastNameInputField;
 
-    [SerializeField] Button checkEmailButton;
-    [SerializeField] Button checkUserNameButton;
-    [SerializeField] Button mainMenuButton;
-    [SerializeField] Button statsMenuButton;
-    [SerializeField] Button progressionMenuButton;
-    [SerializeField] Button creditsMenuButton;
-    [SerializeField] Button accountMenuButton;
-    [SerializeField] Button createNewButton;
-    [SerializeField] Button loginExistingButton;
-    [SerializeField] Button loginLocalButton;
+    Button checkEmailButton;
+    Button checkUserNameButton;
+    Button mainMenuButton;
+    Button statsMenuButton;
+    Button progressionMenuButton;
+    Button creditsMenuButton;
+    Button accountMenuButton;
+    Button createNewButton;
+    Button loginExistingButton;
+    Button loginLocalButton;
 
     // button objects
-    [SerializeField]
     GameObject emailAddressTextButtonObject;
-    [SerializeField]
     GameObject checkEmailButtonObject;
-    [SerializeField]
     GameObject userNameTextButtonObject;
-    [SerializeField]
     GameObject checkUserNameButtonObject;
-    [SerializeField]
     GameObject passwordTextButtonObject;
-    [SerializeField]
     GameObject firstNameTextButtonObject;
-    [SerializeField]
     GameObject lastNameTextButtonObject;
 
     [SerializeField]
@@ -120,6 +113,17 @@ public class AccountManager : MonoBehaviour
             return;
         }
 
+        List<string> missing = new List<string>();
+        if (!ValidateMenuUi(missing))
+        {
+            Debug.LogError(
+                "AccountManager is missing required serialized UI references and will be disabled: "
+                    + string.Join(", ", missing.ToArray()),
+                this);
+            enabled = false;
+            return;
+        }
+
         UiSelectionAdapter.EnsureInputSystemUiModule();
         ResolveUiReferences();
 
@@ -145,72 +149,100 @@ public class AccountManager : MonoBehaviour
         UiSelectionAdapter.EnsureSelected(GetDefaultSelectedButton());
     }
 
+    /// <summary>
+    /// True once exactly one of <see cref="hubUi"/>/<see cref="createUi"/>/<see cref="loginUi"/>,
+    /// plus <see cref="footer"/>, carry every reference the corresponding scene needs. Callable from
+    /// editor tooling as a pure check - it only reads already-serialized references.
+    /// </summary>
+    public bool ValidateMenuUi(List<string> missing)
+    {
+        int assigned = (hubUi != null ? 1 : 0) + (createUi != null ? 1 : 0) + (loginUi != null ? 1 : 0);
+        if (assigned != 1)
+        {
+            missing.Add("AccountManager.hubUi/createUi/loginUi (exactly one must be assigned)");
+            return false;
+        }
+
+        if (footer == null)
+        {
+            missing.Add("AccountManager.footer");
+            return false;
+        }
+
+        if (hubUi != null)
+        {
+            hubUi.Validate(missing);
+            footer.Validate(
+                missing,
+                (footer.StartOrPlayButton, "startOrPlayButton"),
+                (footer.StatsButton, "statsButton"),
+                (footer.OptionsButton, "optionsButton"),
+                (footer.CreditsButton, "creditsButton"),
+                (footer.ProgressionButton, "progressionButton"),
+                (footer.AccountButton, "accountButton"),
+                (footer.QuitButton, "quitButton"));
+        }
+        else if (createUi != null)
+        {
+            createUi.Validate(missing);
+            footer.Validate(missing, (footer.AccountButton, "accountButton"));
+        }
+        else
+        {
+            loginUi.Validate(missing);
+            footer.Validate(missing, (footer.AccountButton, "accountButton"));
+        }
+
+        return missing.Count == 0;
+    }
+
+    /// <summary>
+    /// Copies references out of whichever screen-specific view <see cref="ValidateMenuUi"/> has
+    /// already confirmed is assigned and complete. Replaces the <c>GameObject.Find(name)</c> chain
+    /// this used to fall back to (AUD-103); fields the current screen's variant does not use stay
+    /// null, matching what the old lookup already returned for them.
+    /// </summary>
     private void ResolveUiReferences()
     {
-        emailInputField = ResolveInputField(emailInputField, emailAddressInputFieldName);
-        usernameInputField = ResolveInputField(usernameInputField, userNameInputFieldName);
-        passwordInputField = ResolveInputField(passwordInputField, passwordInputFieldName);
-        firstNameInputField = ResolveInputField(firstNameInputField, firstNameInputFieldName);
-        lastNameInputField = ResolveInputField(lastNameInputField, lastNameInputFieldName);
-
-        messageDisplay = ResolveText(messageDisplay, "messageDisplay");
-
-        emailAddressTextButtonObject = ResolveGameObject(emailAddressTextButtonObject, emailAddressInputFieldName);
-        userNameTextButtonObject = ResolveGameObject(userNameTextButtonObject, userNameInputFieldName);
-        passwordTextButtonObject = ResolveGameObject(passwordTextButtonObject, passwordInputFieldName);
-        firstNameTextButtonObject = ResolveGameObject(firstNameTextButtonObject, firstNameInputFieldName);
-        lastNameTextButtonObject = ResolveGameObject(lastNameTextButtonObject, lastNameInputFieldName);
-        checkEmailButtonObject = ResolveGameObject(checkEmailButtonObject, checkEmailButtonName);
-        checkUserNameButtonObject = ResolveGameObject(checkUserNameButtonObject, checkUserNameButtonName);
-
-        checkEmailButton = ResolveButton(checkEmailButton, checkEmailButtonName);
-        checkUserNameButton = ResolveButton(checkUserNameButton, checkUserNameButtonName);
-        mainMenuButton = ResolveButton(mainMenuButton, mainMenuButtonName);
-        statsMenuButton = ResolveButton(statsMenuButton, statsMenuButtonName);
-        progressionMenuButton = ResolveButton(progressionMenuButton, progressionMenuButtonName);
-        creditsMenuButton = ResolveButton(creditsMenuButton, creditsMenuButtonName);
-        accountMenuButton = ResolveButton(accountMenuButton, accountMenuButtonName);
-        createNewButton = ResolveButton(createNewButton, createNewButtonName);
-        loginExistingButton = ResolveButton(loginExistingButton, loginExistingButtonName);
-        loginLocalButton = ResolveButton(loginLocalButton, loginLocalButtonName);
-    }
-
-    private Button ResolveButton(Button button, string buttonName)
-    {
-        if (button != null)
+        if (hubUi != null)
         {
-            return button;
+            createNewButton = hubUi.CreateNewButton;
+            loginExistingButton = hubUi.LoginExistingButton;
+            loginLocalButton = hubUi.LoginLocalButton;
+        }
+        else if (createUi != null)
+        {
+            emailInputField = createUi.EmailInputField;
+            usernameInputField = createUi.UsernameInputField;
+            passwordInputField = createUi.PasswordInputField;
+            firstNameInputField = createUi.FirstNameInputField;
+            lastNameInputField = createUi.LastNameInputField;
+            messageDisplay = createUi.MessageDisplay;
+            checkEmailButton = createUi.CheckEmailButton;
+            checkUserNameButton = createUi.CheckUserNameButton;
+            emailAddressTextButtonObject = createUi.EmailAddressTargetObject;
+            userNameTextButtonObject = createUi.UserNameTargetObject;
+            passwordTextButtonObject = createUi.PasswordTargetObject;
+            firstNameTextButtonObject = createUi.FirstNameTargetObject;
+            lastNameTextButtonObject = createUi.LastNameTargetObject;
+            checkEmailButtonObject = createUi.CheckEmailButtonObject;
+            checkUserNameButtonObject = createUi.CheckUserNameButtonObject;
+        }
+        else
+        {
+            usernameInputField = loginUi.UsernameInputField;
+            passwordInputField = loginUi.PasswordInputField;
+            messageDisplay = loginUi.MessageDisplay;
+            checkUserNameButton = loginUi.CheckUserNameButton;
+            userNameTextButtonObject = loginUi.UserNameTargetObject;
+            checkUserNameButtonObject = checkUserNameButton != null ? checkUserNameButton.gameObject : null;
         }
 
-        GameObject buttonObject = GameObject.Find(buttonName);
-        return buttonObject != null ? buttonObject.GetComponent<Button>() : null;
-    }
-
-    private InputField ResolveInputField(InputField inputField, string inputFieldName)
-    {
-        if (inputField != null)
-        {
-            return inputField;
-        }
-
-        GameObject inputFieldObject = GameObject.Find(inputFieldName);
-        return inputFieldObject != null ? inputFieldObject.GetComponent<InputField>() : null;
-    }
-
-    private Text ResolveText(Text text, string objectName)
-    {
-        if (text != null)
-        {
-            return text;
-        }
-
-        GameObject textObject = GameObject.Find(objectName);
-        return textObject != null ? textObject.GetComponent<Text>() : null;
-    }
-
-    private GameObject ResolveGameObject(GameObject gameObjectReference, string objectName)
-    {
-        return gameObjectReference != null ? gameObjectReference : GameObject.Find(objectName);
+        mainMenuButton = footer.StartOrPlayButton;
+        statsMenuButton = footer.StatsButton;
+        progressionMenuButton = footer.ProgressionButton;
+        creditsMenuButton = footer.CreditsButton;
+        accountMenuButton = footer.AccountButton;
     }
 
     private void RegisterButtonCallbacks()

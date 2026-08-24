@@ -1,6 +1,8 @@
 ﻿using Assets.Scripts.Models;
 using Assets.Scripts.restapi;
+using Assets.Scripts.Utility;
 using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.SceneManagement;
@@ -11,11 +13,11 @@ public class CreditsManager : MonoBehaviour
     [SerializeField]
     public string currentHighlightedButton;
 
+    [SerializeField] private CreditsUiObjects ui;
+    [SerializeField] private MenuFooterUiObjects footer;
+
     //version text
     private Text versionText;
-
-    private const string inputFieldButtonName = "ReportInputField";
-    private const string submitReportButtonName = "submit_report";
 
     private const string webLinkMusic = "https://www.instagram.com/stustumaru/";
     private const string webLinkDevProgress = "https://www.instagram.com/patrickcharlez/";
@@ -36,22 +38,20 @@ public class CreditsManager : MonoBehaviour
     private const string progressionMenuButtonName = "update_menu";
     private const string accountMenuButtonName = "account_menu";
 
-    [SerializeField]
-    private GameObject submitReportButtonObject;
+    GameObject submitReportButtonObject;
     [SerializeField]
     string reportInput;
-    [SerializeField]
     InputField reportInputField;
 
-    [SerializeField] Button mainMenuButton;
-    [SerializeField] Button statsMenuButton;
-    [SerializeField] Button optionsButton;
-    [SerializeField] Button optionsMenuButton;
-    [SerializeField] Button creditsMenuButton;
-    [SerializeField] Button progressionMenuButton;
-    [SerializeField] Button accountMenuButton;
-    [SerializeField] Button quitButton;
-    [SerializeField] Button submitReportButton;
+    Button mainMenuButton;
+    Button statsMenuButton;
+    Button optionsButton;
+    Button optionsMenuButton;
+    Button creditsMenuButton;
+    Button progressionMenuButton;
+    Button accountMenuButton;
+    Button quitButton;
+    Button submitReportButton;
 
     bool buttonPressed = false;
 
@@ -105,12 +105,56 @@ public class CreditsManager : MonoBehaviour
             return;
         }
 
+        List<string> missing = new List<string>();
+        if (!ValidateMenuUi(missing))
+        {
+            Debug.LogError(
+                "CreditsManager is missing required serialized UI references and will be disabled: "
+                    + string.Join(", ", missing.ToArray()),
+                this);
+            enabled = false;
+            return;
+        }
+
         UiSelectionAdapter.EnsureInputSystemUiModule();
         ResolveUiReferences();
         RegisterButtonCallbacks();
         RegisterReportInputSubmit();
         UiSelectionAdapter.EnsureSelected(GetDefaultSelectedButton());
         initialized = true;
+    }
+
+    /// <summary>
+    /// True once <see cref="ui"/>/<see cref="footer"/> carry every reference this screen needs.
+    /// creditsButton/progressionButton/accountButton are not required: they do not exist on
+    /// creditsManager.prefab today (confirmed against the asset), so those three footer callbacks
+    /// have always been unreachable from this screen - preserved as-is, not treated as a wiring gap.
+    /// </summary>
+    public bool ValidateMenuUi(List<string> missing)
+    {
+        if (ui == null)
+        {
+            missing.Add("CreditsManager.ui");
+        }
+        else
+        {
+            ui.Validate(missing);
+        }
+
+        if (footer == null)
+        {
+            missing.Add("CreditsManager.footer");
+        }
+        else
+        {
+            footer.Validate(
+                missing,
+                (footer.StartOrPlayButton, "startOrPlayButton"),
+                (footer.StatsButton, "statsButton"),
+                (footer.QuitButton, "quitButton"));
+        }
+
+        return missing.Count == 0;
     }
 
     private void Update()
@@ -124,47 +168,25 @@ public class CreditsManager : MonoBehaviour
         currentHighlightedButton = selectedObject.name;
     }
 
+    /// <summary>
+    /// Copies references out of the serialized <see cref="ui"/>/<see cref="footer"/> views, which
+    /// <see cref="ValidateMenuUi"/> has already confirmed are complete. Replaces the
+    /// <c>GameObject.Find(name)</c> chain this used to fall back to (AUD-103).
+    /// </summary>
     private void ResolveUiReferences()
     {
-        reportInputField = ResolveInputField(reportInputField, inputFieldButtonName);
-        submitReportButton = ResolveButton(submitReportButton, submitReportButtonName);
-        if (submitReportButton == null && submitReportButtonObject != null)
-        {
-            submitReportButton = submitReportButtonObject.GetComponent<Button>();
-        }
+        reportInputField = ui.ReportInputField;
+        submitReportButton = ui.SubmitReportButton;
+        submitReportButtonObject = ui.SubmitReportButtonObject;
+        optionsButton = ui.OptionsButton;
 
-        submitReportButtonObject = submitReportButton != null ? submitReportButton.gameObject : submitReportButtonObject;
-
-        mainMenuButton = ResolveButton(mainMenuButton, mainMenuButtonName);
-        statsMenuButton = ResolveButton(statsMenuButton, statsMenuButtonName);
-        optionsButton = ResolveButton(optionsButton, optionsButtonName);
-        optionsMenuButton = ResolveButton(optionsMenuButton, optionsMenuButtonName);
-        creditsMenuButton = ResolveButton(creditsMenuButton, creditsMenuButtonName);
-        progressionMenuButton = ResolveButton(progressionMenuButton, progressionMenuButtonName);
-        accountMenuButton = ResolveButton(accountMenuButton, accountMenuButtonName);
-        quitButton = ResolveButton(quitButton, quitButtonName);
-    }
-
-    private Button ResolveButton(Button button, string buttonName)
-    {
-        if (button != null)
-        {
-            return button;
-        }
-
-        GameObject buttonObject = GameObject.Find(buttonName);
-        return buttonObject != null ? buttonObject.GetComponent<Button>() : null;
-    }
-
-    private InputField ResolveInputField(InputField inputField, string inputFieldName)
-    {
-        if (inputField != null)
-        {
-            return inputField;
-        }
-
-        GameObject inputFieldObject = GameObject.Find(inputFieldName);
-        return inputFieldObject != null ? inputFieldObject.GetComponent<InputField>() : null;
+        mainMenuButton = footer.StartOrPlayButton;
+        statsMenuButton = footer.StatsButton;
+        optionsMenuButton = footer.OptionsButton;
+        creditsMenuButton = footer.CreditsButton;
+        progressionMenuButton = footer.ProgressionButton;
+        accountMenuButton = footer.AccountButton;
+        quitButton = footer.QuitButton;
     }
 
     private void RegisterButtonCallbacks()
@@ -281,11 +303,16 @@ public class CreditsManager : MonoBehaviour
     // ============================  message display ==============================
     // used in this context to display if item is locked
 
+    /// <summary>
+    /// "messageDisplay" is not part of the credits screen - it comes from the loading scene's
+    /// prefab, same as the identical chain AUD-110 already fixed in StartManager - so it is resolved
+    /// through <see cref="SceneObjects"/>, which reports the missing name instead of an unguarded
+    /// <c>GameObject.Find(...).GetComponent&lt;Text&gt;()</c>.
+    /// </summary>
     public IEnumerator turnOffMessageLogDisplayAfterSeconds(float seconds)
     {
         yield return new WaitForSecondsRealtime(seconds);
-        GameObject messageObject = GameObject.Find("messageDisplay");
-        Text messageText = messageObject == null ? null : messageObject.GetComponent<Text>();
+        Text messageText = SceneObjects.Find<Text>("messageDisplay", this);
         if (messageText != null)
         {
             messageText.text = "";
