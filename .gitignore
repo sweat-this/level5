@@ -82,3 +82,6 @@ crashlytics-build.properties
 /[Aa]ssets/level5.db-shm
 /[Aa]ssets/level5.db-wal
 /[Aa]ssets/level5.db-journal
+
+# Machine-local validation output (exporter/test logs and XML), not project documentation
+/TestResults/

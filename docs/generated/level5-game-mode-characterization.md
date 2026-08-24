@@ -48,7 +48,6 @@ A change to any of these values is a gameplay change, not a refactor.
 | 9 | Party Mansion | level_09_party_mansion | Basketball, Combat, SevenPointLine, Multiplayer |
 | 10 | Time Jail | level_10_time_jail | Basketball, Combat, SevenPointLine, Multiplayer |
 | 11 | Nexus | level_11_forest | Basketball, Combat, SevenPointLine, Multiplayer |
-| 12 | Theater | level_12_theater | Basketball, Combat, SevenPointLine, Multiplayer |
 | 13 | Rustys | level_13_rustys | Basketball, Combat, SevenPointLine, TimeOfDay, Multiplayer |
 | 14 | The Dome | level_14_dome | Basketball, Combat, SevenPointLine, Multiplayer |
 | 15 | Cocaine Island | level_15_cocaine_island | Basketball, Combat, SevenPointLine, TimeOfDay, Multiplayer |
