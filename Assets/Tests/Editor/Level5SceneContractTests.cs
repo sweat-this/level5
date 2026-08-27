@@ -91,6 +91,25 @@ public class Level5SceneContractTests
                 + string.Join("\n- ", errors.ToArray()));
     }
 
+    /// <summary>
+    /// AUD-093 completion: Camera.allowHDR/allowMSAA still serialized true on every menu camera even
+    /// though their UniversalAdditionalCameraData already turns shadows, post-processing and
+    /// HDR-display output off. allowHDR is what actually enables HDR rendering - allowHDROutput only
+    /// controls HDR-capable display output - so a true allowHDR still rendered a full-resolution HDR
+    /// clear every frame behind an opaque menu canvas that never needed it.
+    /// </summary>
+    [Test]
+    public void MenuCamerasFollowRenderingContract()
+    {
+        List<string> errors = Level5ProjectValidator.CollectMenuCameraContractErrors();
+
+        Assert.That(
+            errors,
+            Is.Empty,
+            "Menu cameras do not follow the shared rendering contract:\n- "
+                + string.Join("\n- ", errors.ToArray()));
+    }
+
     [Test]
     public void UnityAssetsDoNotHaveMissingScriptReferences()
     {

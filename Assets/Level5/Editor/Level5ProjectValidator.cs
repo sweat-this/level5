@@ -8,6 +8,7 @@ using UnityEditor.SceneManagement;
 using UnityEditor.VersionControl;
 using UnityEngine;
 using UnityEngine.InputSystem;
+using UnityEngine.Rendering.Universal;
 using UnityEngine.SceneManagement;
 
 public sealed class Level5ProjectValidator : IPreprocessBuildWithReport
@@ -487,10 +488,131 @@ public sealed class Level5ProjectValidator : IPreprocessBuildWithReport
         }
     }
 
-    private static bool IsMenuScenePath(string path)
+    /// <summary>Internal so <see cref="MenuCameraRenderingContractMigration"/> shares this definition
+    /// rather than re-deriving what counts as a menu scene.</summary>
+    internal static bool IsMenuScenePath(string path)
     {
         return Path.GetFileNameWithoutExtension(path)
             .StartsWith("level_00_", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// The enabled/path/exists/menu-scene build-scene filter shared by
+    /// <see cref="CollectMenuCameraContractErrors"/> and <see cref="MenuCameraRenderingContractMigration"/>,
+    /// so the two cannot drift on what counts as an in-scope menu scene.
+    /// </summary>
+    internal static bool IsEnabledMenuBuildScene(EditorBuildSettingsScene buildScene)
+    {
+        return buildScene.enabled
+            && !string.IsNullOrWhiteSpace(buildScene.path)
+            && File.Exists(buildScene.path)
+            && IsMenuScenePath(buildScene.path);
+    }
+
+    /// <summary>
+    /// AUD-093 completion: menu Camera.allowHDR/allowMSAA still serialized true even though the
+    /// UniversalAdditionalCameraData (UACD) on the same cameras already turns shadows,
+    /// post-processing and HDR-display output off. Camera.allowHDR is what actually enables HDR
+    /// rendering; UniversalAdditionalCameraData.allowHDROutput is a separate setting that only
+    /// controls HDR-capable display output. The active Level5URP asset supports HDR, so a menu
+    /// camera with allowHDR=true still renders a full-resolution HDR clear every frame behind an
+    /// opaque Screen-Space-Overlay canvas that never needs it.
+    ///
+    /// Canvases inside assets that are still binary-serialized cannot be inspected, so as with
+    /// <see cref="CollectMenuCanvasContractErrors"/> those are reported by
+    /// <see cref="CollectBinarySerializedAssetErrors"/> instead of silently passing.
+    /// </summary>
+    public static List<string> CollectMenuCameraContractErrors()
+    {
+        List<string> errors = new List<string>();
+        foreach (EditorBuildSettingsScene buildScene in EditorBuildSettings.scenes)
+        {
+            if (!IsEnabledMenuBuildScene(buildScene))
+            {
+                continue;
+            }
+
+            Scene existing = SceneManager.GetSceneByPath(buildScene.path);
+            bool alreadyOpen = existing.IsValid() && existing.isLoaded;
+            Scene scene = alreadyOpen
+                ? existing
+                : EditorSceneManager.OpenScene(buildScene.path, OpenSceneMode.Additive);
+            try
+            {
+                foreach (GameObject root in scene.GetRootGameObjects())
+                {
+                    foreach (Camera camera in root.GetComponentsInChildren<Camera>(true))
+                    {
+                        AddMenuCameraContractErrors(errors, buildScene.path, camera);
+                    }
+                }
+            }
+            finally
+            {
+                if (!alreadyOpen)
+                {
+                    EditorSceneManager.CloseScene(scene, true);
+                }
+            }
+        }
+
+        return errors;
+    }
+
+    [MenuItem("Level5/Validate Menu Camera Rendering Contract")]
+    public static void ValidateMenuCameraContractFromMenu()
+    {
+        List<string> errors = CollectMenuCameraContractErrors();
+        if (errors.Count > 0)
+        {
+            Debug.LogError("Menu camera rendering contract validation failed:\n- " + string.Join("\n- ", errors.ToArray()));
+            return;
+        }
+
+        Debug.Log("Menu camera rendering contract validated.");
+    }
+
+    private static void AddMenuCameraContractErrors(List<string> errors, string scenePath, Camera camera)
+    {
+        string where = scenePath + " -> " + camera.gameObject.name;
+
+        if (camera.allowHDR)
+        {
+            errors.Add(where + " has Camera.allowHDR enabled; menu cameras must set it false.");
+        }
+
+        if (camera.allowMSAA)
+        {
+            errors.Add(where + " has Camera.allowMSAA enabled; menu cameras must set it false.");
+        }
+
+        // Camera.GetUniversalAdditionalCameraData() silently AddComponent<>()s one when missing,
+        // which a validator must never do as a side effect of reading state. TryGetComponent keeps
+        // this check actually read-only.
+        if (!camera.TryGetComponent(out UniversalAdditionalCameraData cameraData))
+        {
+            errors.Add(where + " has no UniversalAdditionalCameraData.");
+            return;
+        }
+
+        if (cameraData.renderShadows)
+        {
+            errors.Add(
+                where + " has UniversalAdditionalCameraData.renderShadows enabled; menu cameras must set it false.");
+        }
+
+        if (cameraData.renderPostProcessing)
+        {
+            errors.Add(
+                where
+                    + " has UniversalAdditionalCameraData.renderPostProcessing enabled; menu cameras must set it false.");
+        }
+
+        if (cameraData.allowHDROutput)
+        {
+            errors.Add(
+                where + " has UniversalAdditionalCameraData.allowHDROutput enabled; menu cameras must set it false.");
+        }
     }
 
     public static List<string> CollectMissingScriptReferenceErrors()
