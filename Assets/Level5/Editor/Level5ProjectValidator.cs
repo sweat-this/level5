@@ -58,6 +58,9 @@ public sealed class Level5ProjectValidator : IPreprocessBuildWithReport
         // could not be reserialized has been repaired or removed, so a binary asset appearing
         // here again is a regression rather than a known gap.
         errors.AddRange(CollectBinarySerializedAssetErrors());
+        // AUD-092 Phase 1: the Options screen TMP migration is complete in the same change that adds
+        // this check, so - like AUD-088 above - it is enforced immediately rather than deferred.
+        errors.AddRange(CollectOptionsTextRenderingContractErrors());
 
         if (errors.Count > 0)
         {
@@ -1002,6 +1005,31 @@ public sealed class Level5ProjectValidator : IPreprocessBuildWithReport
     public static List<string> CollectMenuLayoutOverrideContractErrors()
     {
         return MenuLayoutOwnershipMigration.CollectForbiddenChildLayoutOverrides();
+    }
+
+    [MenuItem("Level5/Validate Options Text Rendering Contract")]
+    public static void ValidateOptionsTextRenderingContractFromMenu()
+    {
+        List<string> errors = CollectOptionsTextRenderingContractErrors();
+        if (errors.Count > 0)
+        {
+            Debug.LogError("Options text rendering contract validation failed:\n- " + string.Join("\n- ", errors.ToArray()));
+            return;
+        }
+
+        Debug.Log("Options text rendering contract validated.");
+    }
+
+    /// <summary>
+    /// AUD-092 Phase 1: OptionManager.prefab's 103 legacy Text components were migrated to
+    /// TextMeshProUGUI on a project-owned Neon Pixel-7 SDF font asset. Delegates entirely to
+    /// <see cref="MenuTextMeshProMigration.CollectContractErrors"/> so there is exactly one place
+    /// classifying this screen's text-rendering contract, matching the
+    /// <see cref="CollectMenuLayoutOverrideContractErrors"/> precedent.
+    /// </summary>
+    public static List<string> CollectOptionsTextRenderingContractErrors()
+    {
+        return MenuTextMeshProMigration.CollectContractErrors();
     }
 
     private static void ValidateInputActions(List<string> errors)

@@ -342,11 +342,6 @@ PrefabInstance:
       propertyPath: m_IsActive
       value: 1
       objectReference: {fileID: 0}
-    - target: {fileID: 295666281108618534, guid: 2913809f12f0e7f488bc9e72117aa2e1,
-        type: 3}
-      propertyPath: m_Text
-      value: space, left mouse
-      objectReference: {fileID: 0}
     - target: {fileID: 848580986270241606, guid: 2913809f12f0e7f488bc9e72117aa2e1,
         type: 3}
       propertyPath: m_Name
@@ -461,11 +456,6 @@ PrefabInstance:
         type: 3}
       propertyPath: m_IsActive
       value: 1
-      objectReference: {fileID: 0}
-    - target: {fileID: 6354088218984400929, guid: 2913809f12f0e7f488bc9e72117aa2e1,
-        type: 3}
-      propertyPath: m_Text
-      value: shoot
       objectReference: {fileID: 0}
     - target: {fileID: 8141870297656394753, guid: 2913809f12f0e7f488bc9e72117aa2e1,
         type: 3}

@@ -160,4 +160,22 @@ public class Level5SceneContractTests
             "Menu scenes override prefab-owned child layout:\n- "
                 + string.Join("\n- ", errors.ToArray()));
     }
+
+    /// <summary>
+    /// AUD-092 Phase 1: OptionManager.prefab's legacy Text components were migrated to
+    /// TextMeshProUGUI, and the two level_00_options.unity m_Text scene overrides this used to carry
+    /// were resolved into the prefab beforehand so neither could be left dangling against a since-
+    /// destroyed Text component.
+    /// </summary>
+    [Test]
+    public void OptionsSceneHasNoLegacyTextComponentOverrides()
+    {
+        List<string> errors = Level5ProjectValidator.CollectOptionsTextRenderingContractErrors();
+
+        Assert.That(
+            errors,
+            Is.Empty,
+            "Options screen text-rendering contract violated:\n- "
+                + string.Join("\n- ", errors.ToArray()));
+    }
 }
