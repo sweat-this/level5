@@ -140,4 +140,24 @@ public class Level5SceneContractTests
             "Menu managers are missing serialized UI references:\n- "
                 + string.Join("\n- ", errors.ToArray()));
     }
+
+    /// <summary>
+    /// AUD-090: OptionManager/StatsManager/progressionScreen/creditsManager used to carry roughly a
+    /// hundred combined prefab-instance overrides on child RectTransform anchor/position/size/pivot
+    /// properties in their scenes - most redundant with the prefab, the rest genuinely divergent
+    /// drift. Both classes were resolved (removed or pushed into the prefab), making the prefab the
+    /// sole owner of internal child layout on these four screens; this is what tells you if a new
+    /// child-layout override has landed in one of those scenes since.
+    /// </summary>
+    [Test]
+    public void PrefabDrivenMenuScreensDoNotOverridePrefabOwnedChildLayout()
+    {
+        List<string> errors = Level5ProjectValidator.CollectMenuLayoutOverrideContractErrors();
+
+        Assert.That(
+            errors,
+            Is.Empty,
+            "Menu scenes override prefab-owned child layout:\n- "
+                + string.Join("\n- ", errors.ToArray()));
+    }
 }

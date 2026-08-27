@@ -972,6 +972,38 @@ public sealed class Level5ProjectValidator : IPreprocessBuildWithReport
         return names;
     }
 
+    [MenuItem("Level5/Validate Menu Layout Ownership Contract")]
+    public static void ValidateMenuLayoutOwnershipFromMenu()
+    {
+        List<string> errors = CollectMenuLayoutOverrideContractErrors();
+        if (errors.Count > 0)
+        {
+            Debug.LogError("Menu layout ownership validation failed:\n- " + string.Join("\n- ", errors.ToArray()));
+            return;
+        }
+
+        Debug.Log("Menu layout ownership validated.");
+    }
+
+    /// <summary>
+    /// AUD-090: <c>OptionManager</c>, <c>StatsManager</c>, <c>progressionScreen</c> and
+    /// <c>creditsManager</c> used to carry roughly a hundred combined prefab-instance overrides on
+    /// child RectTransform anchor/position/size/pivot properties in their scenes - most numerically
+    /// redundant with the prefab, a handful genuinely divergent. <c>MenuLayoutOwnershipMigration</c>
+    /// removed the redundant ones and deliberately resolved every divergence (into the prefab where the
+    /// scene held the real layout, or reverted where the prefab already did), so the prefab is now the
+    /// sole owner of internal child layout on these four screens. Root placement/order and semantic
+    /// state (active flags, text, wiring) remain legitimately scene-owned and are not checked here.
+    ///
+    /// Delegates entirely to <see cref="MenuLayoutOwnershipMigration.CollectForbiddenChildLayoutOverrides"/>
+    /// so there is exactly one place that classifies a modification as child layout versus everything
+    /// else this contract allows.
+    /// </summary>
+    public static List<string> CollectMenuLayoutOverrideContractErrors()
+    {
+        return MenuLayoutOwnershipMigration.CollectForbiddenChildLayoutOverrides();
+    }
+
     private static void ValidateInputActions(List<string> errors)
     {
         InputActionAsset actions = AssetDatabase.LoadAssetAtPath<InputActionAsset>(InputActionsPath);

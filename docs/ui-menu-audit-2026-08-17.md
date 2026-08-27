@@ -437,12 +437,58 @@ Deliberately left open:
 
 | ID | Why |
 | --- | --- |
-| AUD-090 | Reconciling roughly a hundred per-scene anchor overrides into the prefabs and onto layout groups is visual re-authoring. AUD-091 just changed every effective size, so this needs eyes on the result at several aspect ratios first. |
 | AUD-092 | The TMP migration is 94 `Text` components in the start menu alone. The plan stages it one screen per PR behind the view-object contract, gated on AUD-091 being visually settled. |
 | AUD-100 | Deleting the seven `TouchInput*Controller` scripts and dropping `activeInputHandler` to Input System only removes the fallback mobile input path. AUD-095 changed what drives UI input and that has not been verified on a device, so the fallback stays until it has. |
 | AUD-103 (rest) | A serialized `*UiObjects` view component per screen means wiring each one in its prefab by hand. Now unblocked, since the prefabs are text, but it is a per-screen job with no automated coverage to catch a mis-wire. |
 | AUD-104 | `MenuFooterNav` touches footer wiring in five managers at once, and nothing in the suite exercises menu button behaviour, so a silent break would not be caught. Best done alongside the AUD-103 view objects, one screen at a time. |
 | AUD-111 (rest) | Narrowing 23 catch scopes needs per-site judgement about which call can actually throw. Raising the log level was the part that could be made safe without that analysis. |
+
+### AUD-090 remediation — 2026-08-27
+
+A current-source audit at `e7dcce673c11f437e9bf78e6f9a5f7abb3ede9a3` revised the original AUD-090
+diagnosis: most of the ~100 per-scene overrides this finding described were not divergent layout at
+all, just stale overrides whose serialized value already equalled the prefab's. `PrefabUtility.
+GetPropertyModifications` was compared against each modification's own source-prefab
+`SerializedProperty` (never runtime RectTransform state, which the prefabs' `LayoutGroup`s can alter
+independently of authoring), classified into child-layout/root-composition/semantic/unknown, and
+child-layout entries split into redundant vs. genuinely divergent - all before anything was changed.
+Full characterization, root-cause evidence and per-property matrices live in the tool that did this,
+`Assets/Level5/Editor/MenuLayoutOwnershipMigration.cs`.
+
+| Screen | Total mods | Redundant child-layout (removed) | Divergent child-layout (resolved) | Root composition (kept) | Semantic (kept) | Unknown |
+| --- | --- | --- | --- | --- | --- | --- |
+| Options / `OptionManager.prefab` | 269 | 182 | 60 | 22 | 5 | 0 |
+| Stats / `StatsManager.prefab` | 270 | 244 | 0 | 22 | 0 | 4 (pre-existing dangling references to a deleted RectTransform; incidentally dropped as a side effect of `SetPropertyModifications`, not something this migration set out to touch) |
+| Progression / `progressionScreen.prefab` | 136 | 114 | 0 | 22 | 0 | 0 |
+| Credits / `creditsManager.prefab` | 118 | 83 | 9 | 22 | 4 | 0 |
+
+Redundant overrides (623 total) were stripped by `Level5/Normalize Menu Layout Overrides`, which never
+touches root or semantic properties and only reverts a child RectTransform override whose scene value
+already equals the prefab's.
+
+The two divergent clusters were resolved deliberately, not by a blanket apply/revert, via
+`Level5/Resolve Menu Layout Divergences`:
+
+- **Options `keyboardMouse_keys` (60 properties, accidental drift).** Every child under this panel was
+  zeroed (anchor 0/0, position 0,0) in the scene, while the prefab held a structured per-row vertical
+  list matching the sibling `keyboardOnly_keys`/`gamepad_keys`/`touch_keys` panels. `OptionsManager`
+  shows the panel purely via `SetActiveIfNotNull` (`OptionsManager.cs:268`, panel is inactive by
+  default - `Start()` selects `keyboardOnly` first) with no repositioning, so the scene's zeroed state
+  would have stacked every control row on top of itself the moment "keyboard+mouse" was selected. The
+  prefab was correct; the scene overrides were reverted. No change to the screen's default appearance.
+- **Credits `nft_airdrop` × 2 (9 properties, prefab should own the scene's value).** Both objects are
+  active and wired to `CreditsManager.OpenNftAirdrop()`, but the prefab collapsed each to a zero-size
+  point at its anchor origin - a real, clickable element with no authored layout. The scene already
+  held the sized, positioned values rendering today (unchanged effective visual result); they were
+  pushed into the prefab and the now-redundant scene overrides removed in the same pass.
+
+`Level5ProjectValidator.CollectMenuLayoutOverrideContractErrors()` (exercised by
+`Level5SceneContractTests.PrefabDrivenMenuScreensDoNotOverridePrefabOwnedChildLayout`) now fails if a
+child-layout override reappears on any of the four instances; it does not forbid root or semantic
+overrides. Verified idempotent: a second `Normalize`/`Resolve` pass changes nothing. Compile +
+576/576 EditMode + 13/13 PlayMode + `validate-repository.ps1` all pass after the change. No manual
+multi-resolution Play Mode/Game View pass was run in this session (no interactive GUI available to this
+agent) - see the AUD-090 completion report for what that leaves open.
 
 Found while fixing, not part of this audit:
 

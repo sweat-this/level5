@@ -58,6 +58,12 @@ and all of Phase 6. Per-finding detail is in the
 [audit's status table](ui-menu-audit-2026-08-17.md#status-by-finding). Nothing here has had a manual
 Play Mode pass or a device pass yet; that is the gate on Phase 6.
 
+**Update, 2026-08-27 (AUD-090).** The prefab-vs-scene layout ownership half of Phase 5 landed:
+`MenuLayoutOwnershipMigration` removed 623 stale, numerically-redundant child-layout overrides across
+the four prefab-driven menu scenes and resolved the two genuine divergences it found (see the
+[audit's AUD-090 remediation note](ui-menu-audit-2026-08-17.md#aud-090-remediation--2026-08-27)). The
+canvas-scaling contract (AUD-091) and the TMP migration (AUD-092) remain as described above.
+
 **Phase 0 — Make the UI reviewable.** Reserialize the ten binary prefabs to text (AUD-088); add a
 validator check that fails on any non-`%YAML` asset. Resolve the duplicate start menu (AUD-089). No
 behavioural change; this phase is mechanical and lands on its own.
