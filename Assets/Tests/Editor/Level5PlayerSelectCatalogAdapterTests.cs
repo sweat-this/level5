@@ -261,7 +261,7 @@ public class Level5PlayerSelectCatalogAdapterTests
         }
     }
 
-    // ---- CPU selection/runtime parity (issue #69) ---------------------------------------------
+    // ---- CPU selection/runtime parity (issues #69, #70) ----------------------------------------
     //
     // #69 started as "cpu_player_ak47 authors isCpu = false" but the audit that preceded this fix
     // found the menu/selection prefab (Assets/Resources/Prefabs/menu_start/cpu_players_selected_objects)
@@ -269,14 +269,18 @@ public class Level5PlayerSelectCatalogAdapterTests
     // (Assets/Resources/Prefabs/characters/cpu_players) had drifted apart on IsShooter, IsFighter,
     // CpuType and Level for more than a dozen characters - not just AK-47.
     //
-    // The same audit also found the runtime catalog itself authors duplicate PlayerIds
+    // The same audit found the runtime catalog itself authoring duplicate PlayerIds
     // (drblood/drblood_white both 1, kamille/thom both 4, flash/zilla_baby both 5, pony/woody both
-    // 6) and rad_tony authoring the reserved "none" id 0. Deciding which side of those collisions
-    // is correct is a separate identity-migration decision (AGENTS.md treats stable ids as a
-    // contract), not something #69 resolves by guessing - so RequiredParityFieldsAgreeWithRuntimeWhereIdentityIsUnambiguous
-    // below only enforces parity where PlayerId already agrees and is unique in the runtime
-    // catalog. It starts covering the deferred characters automatically once that separate defect
-    // is fixed.
+    // 6) and rad_tony authoring the reserved "none" id 0. #69 deliberately left those 8 characters'
+    // identity unambiguous-only, because guessing new ids while fixing an unrelated data-authoring
+    // bug is exactly what AGENTS.md's stable-id-as-contract rule forbids.
+    //
+    // #70 resolved that separately: the CPU-selection PlayerId is canonical (it already has the
+    // uniqueness/primary-agreement tests above), and the 8 runtime prefabs were corrected to match
+    // their own selection record's id. With every runtime PlayerId now unique, non-zero, and
+    // agreeing with its selection counterpart, the identity-ambiguity skip that #69 needed is gone:
+    // EveryRealCpuSelectionCharacterAgreesWithItsRuntimeCounterpartOnIdentityAndRequiredParityFields
+    // enforces full parity for every real CPU pair, with no exceptions.
 
     private const string RuntimeCpuRosterPath = "Assets/Resources/Prefabs/characters/cpu_players";
 
@@ -342,16 +346,100 @@ public class Level5PlayerSelectCatalogAdapterTests
         }
     }
 
+    // ---- permanent identity invariants (issue #70) ---------------------------------------------
+    //
+    // #70's repair is only as durable as the tests that keep it true. These have no allowlist and
+    // no ambiguity skip: every real runtime CPU must have a positive, unique PlayerId; every real
+    // selection/runtime pair must be joined one-to-one by PlayerObjectName; and every such pair must
+    // agree on identity and the gameplay-capability fields SpawnCoordinator/CharacterProfile depend
+    // on. A future authoring mistake of the #70 shape (a duplicate or zero runtime id, a drifted
+    // capability field) fails these immediately instead of silently reaching a real match.
+
     [Test]
-    public void RequiredParityFieldsAgreeWithRuntimeWhereIdentityIsUnambiguous()
+    public void EveryRealRuntimeCpuPlayerIdIsPositive()
+    {
+        foreach (KeyValuePair<string, CharacterProfile> entry in LoadCpuRuntimeProfilesByObjectName())
+        {
+            Assert.That(
+                entry.Value.PlayerId,
+                Is.GreaterThan(0),
+                $"runtime CPU '{entry.Key}' authors PlayerId {entry.Value.PlayerId} - 0 is reserved for the "
+                    + "legacy CPU 'none' record and is not a valid identity for a real character.");
+        }
+    }
+
+    [Test]
+    public void RuntimeCpuPlayerObjectNamesAreNonEmptyAndUnique()
+    {
+        Dictionary<string, int> seenAtGuidCount = new Dictionary<string, int>();
+        foreach (string guid in AssetDatabase.FindAssets("t:Prefab", new[] { RuntimeCpuRosterPath }))
+        {
+            string path = AssetDatabase.GUIDToAssetPath(guid);
+            GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(path);
+            CharacterProfile profile = prefab != null ? prefab.GetComponentInChildren<CharacterProfile>(true) : null;
+            Assert.That(profile, Is.Not.Null, $"runtime CPU prefab at '{path}' has no CharacterProfile.");
+            Assert.That(
+                string.IsNullOrEmpty(profile.PlayerObjectName),
+                Is.False,
+                $"runtime CPU prefab at '{path}' authors a blank PlayerObjectName - "
+                    + "SpawnCoordinator resolves the gameplay actor by this name.");
+
+            seenAtGuidCount.TryGetValue(profile.PlayerObjectName, out int count);
+            seenAtGuidCount[profile.PlayerObjectName] = count + 1;
+        }
+
+        foreach (KeyValuePair<string, int> entry in seenAtGuidCount)
+        {
+            Assert.That(
+                entry.Value,
+                Is.EqualTo(1),
+                $"'{entry.Key}' has {entry.Value} runtime CPU prefabs under {RuntimeCpuRosterPath} - "
+                    + "SpawnCoordinator's ObjectName-keyed Resources.Load can only resolve one.");
+        }
+    }
+
+    [Test]
+    public void RuntimeCpuPlayerIdsAreUnique()
+    {
+        Dictionary<int, string> seenByPlayerId = new Dictionary<int, string>();
+        foreach (KeyValuePair<string, CharacterProfile> entry in LoadCpuRuntimeProfilesByObjectName())
+        {
+            if (seenByPlayerId.TryGetValue(entry.Value.PlayerId, out string existingObjectName))
+            {
+                Assert.Fail(
+                    $"cpu_players (runtime) has two characters sharing playerId {entry.Value.PlayerId}: "
+                        + $"'{existingObjectName}' and '{entry.Key}'.");
+            }
+
+            seenByPlayerId[entry.Value.PlayerId] = entry.Key;
+        }
+    }
+
+    [Test]
+    public void EveryRuntimeCpuThatIsAlsoSelectableHasExactlyOneSelectionCounterpart()
+    {
+        Dictionary<string, int> selectionCountByObjectName = new Dictionary<string, int>();
+        foreach (CharacterProfile selection in LoadRealCpuSelectionProfiles())
+        {
+            selectionCountByObjectName.TryGetValue(selection.PlayerObjectName, out int count);
+            selectionCountByObjectName[selection.PlayerObjectName] = count + 1;
+        }
+
+        foreach (KeyValuePair<string, CharacterProfile> runtimeEntry in LoadCpuRuntimeProfilesByObjectName())
+        {
+            selectionCountByObjectName.TryGetValue(runtimeEntry.Key, out int matchCount);
+            Assert.That(
+                matchCount,
+                Is.LessThanOrEqualTo(1),
+                $"runtime CPU '{runtimeEntry.Key}' matches {matchCount} CPU selection prefabs by "
+                    + "PlayerObjectName - the join SpawnCoordinator's ObjectName resolution assumes must be one-to-one.");
+        }
+    }
+
+    [Test]
+    public void EveryRealCpuSelectionCharacterAgreesWithItsRuntimeCounterpartOnIdentityAndRequiredParityFields()
     {
         Dictionary<string, CharacterProfile> runtimeByObjectName = LoadCpuRuntimeProfilesByObjectName();
-        Dictionary<int, int> runtimeIdCounts = new Dictionary<int, int>();
-        foreach (CharacterProfile runtime in runtimeByObjectName.Values)
-        {
-            runtimeIdCounts.TryGetValue(runtime.PlayerId, out int count);
-            runtimeIdCounts[runtime.PlayerId] = count + 1;
-        }
 
         foreach (CharacterProfile selection in LoadRealCpuSelectionProfiles())
         {
@@ -360,13 +448,11 @@ public class Level5PlayerSelectCatalogAdapterTests
                 continue; // covered by EveryRealCpuSelectionCharacterHasARuntimeGameplayCounterpart
             }
 
-            bool identityUnambiguous = selection.PlayerId == runtime.PlayerId && runtimeIdCounts[runtime.PlayerId] == 1;
-            if (!identityUnambiguous)
-            {
-                continue;
-            }
-
-            string who = $"'{selection.PlayerObjectName}' (playerId {selection.PlayerId})";
+            // PlayerObjectName equality is not asserted here: runtimeByObjectName is keyed by
+            // PlayerObjectName, so a successful TryGetValue above already guarantees it - asserting
+            // it again would be tautological, never able to fail regardless of authored data.
+            string who = $"'{selection.PlayerObjectName}'";
+            Assert.That(selection.PlayerId, Is.EqualTo(runtime.PlayerId), $"{who} PlayerId disagrees with its runtime prefab.");
             Assert.That(selection.IsShooter, Is.EqualTo(runtime.IsShooter), $"{who} IsShooter disagrees with its runtime prefab.");
             Assert.That(selection.IsFighter, Is.EqualTo(runtime.IsFighter), $"{who} IsFighter disagrees with its runtime prefab.");
             Assert.That(selection.CpuType, Is.EqualTo(runtime.CpuType), $"{who} CpuType disagrees with its runtime prefab.");

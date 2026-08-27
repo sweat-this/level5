@@ -78,7 +78,7 @@ MonoBehaviour:
   experience: 0
   pointsAvailable: 0
   pointsUsed: 0
-  isFighter: 0
+  isFighter: 1
   isShooter: 1
   isLocked: 0
   cpuType: 2
