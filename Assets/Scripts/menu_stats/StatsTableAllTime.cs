@@ -1,7 +1,7 @@
 ﻿using System;
 using Assets.Scripts.Utility;
+using TMPro;
 using UnityEngine;
-using UnityEngine.UI;
 
 public class StatsTableAllTime : MonoBehaviour
 {
@@ -34,17 +34,17 @@ public class StatsTableAllTime : MonoBehaviour
     const string timePlayedDBField = "timePlayed";
 
 
-    Text twoText;
-    Text threeText;
-    Text fourText;
-    Text sevenText;
-    Text moneyBallText;
-    Text sniperText;
-    Text totalDistanceText;
-    Text totalShotsText;
-    Text consecutiveShotsText;
-    Text totalPointsText;
-    Text timePlayedText;
+    TextMeshProUGUI twoText;
+    TextMeshProUGUI threeText;
+    TextMeshProUGUI fourText;
+    TextMeshProUGUI sevenText;
+    TextMeshProUGUI moneyBallText;
+    TextMeshProUGUI sniperText;
+    TextMeshProUGUI totalDistanceText;
+    TextMeshProUGUI totalShotsText;
+    TextMeshProUGUI consecutiveShotsText;
+    TextMeshProUGUI totalPointsText;
+    TextMeshProUGUI timePlayedText;
 
     // Start is called before the first frame update
     void Awake()
@@ -77,7 +77,7 @@ public class StatsTableAllTime : MonoBehaviour
     }
 
     /// <summary>The named object's second child holds the value text; both are required.</summary>
-    private Text ResolveStatText(string objectName)
+    private TextMeshProUGUI ResolveStatText(string objectName)
     {
         GameObject found = SceneObjects.Find(objectName, this);
         if (found == null || found.transform.childCount < 2)
@@ -85,7 +85,7 @@ public class StatsTableAllTime : MonoBehaviour
             return null;
         }
 
-        return found.transform.GetChild(1).GetComponent<Text>();
+        return found.transform.GetChild(1).GetComponent<TextMeshProUGUI>();
     }
 
     // Update is called once per frame

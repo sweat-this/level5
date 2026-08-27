@@ -1,26 +1,25 @@
+using TMPro;
 using UnityEngine;
-using UnityEngine.UI;
 
 /// <summary>
 /// One row of the high score table.
 ///
-/// The <see cref="Text"/> references are serialized on the prefab. They used to be bound in
-/// <c>Start</c> by <c>transform.GetChild(0..5)</c>, which silently reassigned every column if
-/// anyone reordered the row's children, and the six values used to be pushed into those fields
-/// from <c>Update</c> every frame whether or not anything had changed (AUD-108). The values are
-/// now written once, when the row is given data.
+/// The <see cref="TextMeshProUGUI"/> references are serialized on the prefab (AUD-092 Phase 2; legacy
+/// <c>Text</c> before that). The values are written once, when the row is given data, not pushed from
+/// <c>Update</c> every frame (AUD-108).
 ///
-/// The child-index fallback is kept for rows whose references are not wired yet, so a prefab that
-/// has not been re-saved still renders instead of throwing. It logs, so the gap is visible.
+/// <see cref="StatsTableHighScoreRow"/> is also used as a data-only container by database/API query
+/// paths, which add this component to a throwaway GameObject purely to carry the string fields below -
+/// those instances have no label references and never call <see cref="Bind"/>.
 /// </summary>
 public class StatsTableHighScoreRow : MonoBehaviour
 {
-    [SerializeField] public Text userNameText;
-    [SerializeField] public Text scoreText;
-    [SerializeField] public Text characterText;
-    [SerializeField] public Text levelText;
-    [SerializeField] public Text dateText;
-    [SerializeField] public Text hardcoreText;
+    [SerializeField] public TextMeshProUGUI userNameLabel;
+    [SerializeField] public TextMeshProUGUI scoreLabel;
+    [SerializeField] public TextMeshProUGUI characterLabel;
+    [SerializeField] public TextMeshProUGUI levelLabel;
+    [SerializeField] public TextMeshProUGUI dateLabel;
+    [SerializeField] public TextMeshProUGUI hardcoreLabel;
 
     [SerializeField]
     public string Score;
@@ -41,65 +40,43 @@ public class StatsTableHighScoreRow : MonoBehaviour
     [SerializeField]
     public string Platform;
 
-    private bool textReferencesResolved;
-
-    // No Awake resolve on purpose. DBHelper carries query results as StatsTableHighScoreRow
-    // components added to its own GameObject, so most instances of this component are data only
-    // and have no Text children to find. Resolution happens the first time a row is actually
-    // bound to the table.
-
     /// <summary>
-    /// Falls back to the old child-index binding for any reference the prefab does not supply.
-    /// Runs once.
-    /// </summary>
-    private void ResolveTextReferences()
-    {
-        if (textReferencesResolved)
-        {
-            return;
-        }
-
-        textReferencesResolved = true;
-
-        userNameText = userNameText != null ? userNameText : TextAtChild(0);
-        scoreText = scoreText != null ? scoreText : TextAtChild(1);
-        characterText = characterText != null ? characterText : TextAtChild(2);
-        levelText = levelText != null ? levelText : TextAtChild(3);
-        dateText = dateText != null ? dateText : TextAtChild(4);
-        hardcoreText = hardcoreText != null ? hardcoreText : TextAtChild(5);
-    }
-
-    private Text TextAtChild(int index)
-    {
-        if (index < 0 || index >= transform.childCount)
-        {
-            Debug.LogWarning(
-                "StatsTableHighScoreRow has no serialized Text for column " + index
-                    + " and no child at that index.",
-                this);
-            return null;
-        }
-
-        return transform.GetChild(index).GetComponent<Text>();
-    }
-
-    /// <summary>
-    /// Pushes the current field values into the row's <see cref="Text"/> components. Called when
-    /// the row is given data, not every frame.
+    /// Pushes the current field values into the row's <see cref="TextMeshProUGUI"/> labels. Called when
+    /// the row is given data, not every frame. A data-only instance (no labels wired at all) is a silent
+    /// no-op; a row with only some labels wired logs, since that's not the data-only case - it means a
+    /// display row is missing a reference it should have.
     /// </summary>
     public void Bind()
     {
-        ResolveTextReferences();
+        bool anyLabelWired = userNameLabel != null || scoreLabel != null || characterLabel != null
+            || levelLabel != null || dateLabel != null || hardcoreLabel != null;
+        if (anyLabelWired)
+        {
+            WarnIfMissing(userNameLabel, nameof(userNameLabel));
+            WarnIfMissing(scoreLabel, nameof(scoreLabel));
+            WarnIfMissing(characterLabel, nameof(characterLabel));
+            WarnIfMissing(levelLabel, nameof(levelLabel));
+            WarnIfMissing(dateLabel, nameof(dateLabel));
+            WarnIfMissing(hardcoreLabel, nameof(hardcoreLabel));
+        }
 
-        SetText(userNameText, UserName);
-        SetText(scoreText, Score);
-        SetText(characterText, Character);
-        SetText(levelText, Level);
-        SetText(dateText, Date);
-        SetText(hardcoreText, HardcoreEnabled);
+        SetText(userNameLabel, UserName);
+        SetText(scoreLabel, Score);
+        SetText(characterLabel, Character);
+        SetText(levelLabel, Level);
+        SetText(dateLabel, Date);
+        SetText(hardcoreLabel, HardcoreEnabled);
     }
 
-    private static void SetText(Text target, string value)
+    private void WarnIfMissing(TextMeshProUGUI label, string fieldName)
+    {
+        if (label == null)
+        {
+            Debug.LogWarning("StatsTableHighScoreRow." + fieldName + " is not wired.", this);
+        }
+    }
+
+    private static void SetText(TextMeshProUGUI target, string value)
     {
         if (target != null)
         {

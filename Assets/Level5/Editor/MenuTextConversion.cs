@@ -1,0 +1,604 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using TMPro;
+using UnityEditor;
+using UnityEditor.SceneManagement;
+using UnityEngine;
+using UnityEngine.SceneManagement;
+using UnityEngine.TextCore.LowLevel;
+using UnityEngine.UI;
+using Object = UnityEngine.Object;
+
+/// <summary>
+/// AUD-092: low-level Text -&gt; TextMeshProUGUI conversion mechanics shared by every per-screen menu
+/// TMP migration (<see cref="MenuTextMeshProMigration"/> for Options, <see cref="StatsTextMeshProMigration"/>
+/// for Stats). Extracted from the Options Phase 1 implementation verbatim - screen-specific orchestration
+/// (which prefab/scene, which fields map to which UI view, the permanent per-screen contract) stays in
+/// each screen's own migration class; only the mechanics proven safe by Phase 1 live here.
+/// </summary>
+internal static class MenuTextConversion
+{
+    private const string SourceFontPath = "Assets/Fonts/neon_pixel-7.ttf";
+    private const string FontAssetFolder = "Assets/Fonts/TMP";
+    private const string FontAssetPath = "Assets/Fonts/TMP/Neon Pixel-7 SDF.asset";
+
+    /// <summary>
+    /// Creates (or reuses) the single project-wide Neon Pixel-7 SDF font asset every menu screen's TMP
+    /// migration must share - see <see cref="MenuTextMeshProMigration.EnsureNeonPixelFontAsset"/>'s
+    /// original doc comment for why <see cref="AtlasPopulationMode.Dynamic"/> is required.
+    /// </summary>
+    internal static TMP_FontAsset EnsureNeonPixelFontAsset()
+    {
+        TMP_FontAsset existing = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(FontAssetPath);
+        if (existing != null && existing.atlasPopulationMode == AtlasPopulationMode.Dynamic && existing.sourceFontFile != null)
+        {
+            return existing;
+        }
+
+        Font sourceFont = AssetDatabase.LoadAssetAtPath<Font>(SourceFontPath);
+        if (sourceFont == null)
+        {
+            Debug.LogError("MenuTextConversion: could not load source font at " + SourceFontPath);
+            return null;
+        }
+
+        if (!AssetDatabase.IsValidFolder(FontAssetFolder))
+        {
+            AssetDatabase.CreateFolder(Path.GetDirectoryName(FontAssetFolder).Replace('\\', '/'), Path.GetFileName(FontAssetFolder));
+        }
+
+        TMP_FontAsset fontAsset = TMP_FontAsset.CreateFontAsset(
+            sourceFont, 90, 9, GlyphRenderMode.SDFAA, 1024, 1024, AtlasPopulationMode.Dynamic, true);
+        if (fontAsset == null)
+        {
+            Debug.LogError("MenuTextConversion: TMP_FontAsset.CreateFontAsset returned null for " + SourceFontPath);
+            return null;
+        }
+
+        AssetDatabase.CreateAsset(fontAsset, FontAssetPath);
+        AssetDatabase.AddObjectToAsset(fontAsset.atlasTextures[0], fontAsset);
+        AssetDatabase.AddObjectToAsset(fontAsset.material, fontAsset);
+        AssetDatabase.SaveAssets();
+        AssetDatabase.ImportAsset(FontAssetPath, ImportAssetOptions.ForceUpdate);
+
+        Debug.Log("MenuTextConversion: created " + FontAssetPath + " (Dynamic atlas, source " + SourceFontPath + ").");
+        return AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(FontAssetPath);
+    }
+
+    /// <summary>
+    /// Converts a single <paramref name="text"/> on its own GameObject to <see cref="TextMeshProUGUI"/>,
+    /// preserving every visual property, same-GameObject legacy <see cref="Outline"/> effect (via TMP
+    /// Underlay, see <see cref="ApplyOutlineCompensation"/>), and any <see cref="Selectable"/> whose
+    /// <c>targetGraphic</c> pointed at it. See the original Phase 1 implementation for why the destroy
+    /// must happen before the add (two <see cref="Graphic"/>-derived components cannot coexist).
+    /// </summary>
+    internal static TextMeshProUGUI ConvertSingleText(GameObject scopeRoot, Text text, TMP_FontAsset font)
+    {
+        if (text == null || font == null)
+        {
+            return null;
+        }
+
+        string content = text.text;
+        FontStyles fontStyle = MapFontStyle(text.fontStyle);
+        TextAlignmentOptions alignment = MapAlignment(text.alignment);
+        Color color = text.color;
+        float fontSize = text.fontSize;
+        bool raycastTarget = text.raycastTarget;
+        bool maskable = text.maskable;
+        bool richText = text.supportRichText;
+        bool enabledState = text.enabled;
+        TextWrappingModes wrapping = text.horizontalOverflow == HorizontalWrapMode.Wrap
+            ? TextWrappingModes.Normal
+            : TextWrappingModes.NoWrap;
+        TextOverflowModes overflow = text.verticalOverflow == VerticalWrapMode.Truncate
+            ? TextOverflowModes.Truncate
+            : TextOverflowModes.Overflow;
+        float lineSpacing = (text.lineSpacing - 1f) * 100f;
+
+        List<Selectable> boundSelectables = new List<Selectable>();
+        foreach (Selectable selectable in scopeRoot.GetComponentsInChildren<Selectable>(true))
+        {
+            if (selectable.targetGraphic == text)
+            {
+                boundSelectables.Add(selectable);
+            }
+        }
+
+        GameObject go = text.gameObject;
+        Outline outline = go.GetComponent<Outline>();
+        bool compensateOutline = outline != null && outline.enabled;
+        Color outlineColor = compensateOutline ? outline.effectColor : default;
+        Vector2 outlineDistance = compensateOutline ? outline.effectDistance : default;
+
+        Object.DestroyImmediate(text, true);
+        if (outline != null)
+        {
+            Object.DestroyImmediate(outline, true);
+        }
+
+        TextMeshProUGUI tmp = go.AddComponent<TextMeshProUGUI>();
+        tmp.text = content;
+        tmp.font = font;
+        tmp.fontSize = fontSize;
+        tmp.fontStyle = fontStyle;
+        tmp.alignment = alignment;
+        tmp.color = color;
+        tmp.raycastTarget = raycastTarget;
+        tmp.maskable = maskable;
+        tmp.richText = richText;
+        tmp.textWrappingMode = wrapping;
+        tmp.overflowMode = overflow;
+        tmp.lineSpacing = lineSpacing;
+        tmp.enableAutoSizing = false;
+
+        if (compensateOutline)
+        {
+            ApplyOutlineCompensation(tmp, outlineColor, outlineDistance);
+        }
+
+        foreach (Selectable selectable in boundSelectables)
+        {
+            selectable.targetGraphic = tmp;
+        }
+
+        tmp.enabled = enabledState;
+        return tmp;
+    }
+
+    /// <summary>
+    /// Mid-level orchestration shared by every screen migration's "convert everything, wire the named
+    /// fields" shape (<see cref="StatsTextMeshProMigration.MigrateStatsManager"/> and
+    /// <see cref="StatsTextMeshProMigration.MigrateHighScoreRow"/> - Options' single-prefab migration
+    /// predates this and stays inline, matching its simpler one-target-object shape). Converts every
+    /// Text in <paramref name="ownedTexts"/> via <see cref="ConvertSingleText"/>, resolves
+    /// <paramref name="namedFields"/> by GameObject name against that same list (captured by the caller
+    /// before conversion, so identity survives the Text -&gt; TextMeshProUGUI swap), and writes the
+    /// resulting TextMeshProUGUI components into <paramref name="target"/>'s matching serialized fields.
+    /// Returns false with <paramref name="errors"/> populated - and <paramref name="target"/> left
+    /// unmodified - on any failure; the caller is expected to abort without saving.
+    /// </summary>
+    internal static bool ConvertOwnedTextsAndWireNamedFields(
+        GameObject root,
+        List<Text> ownedTexts,
+        TMP_FontAsset font,
+        (string GameObjectName, string FieldName)[] namedFields,
+        Object target,
+        bool checkSelectableTargetGraphics,
+        out int convertedCount,
+        out int outlineCompensatedCount,
+        List<string> errors)
+    {
+        convertedCount = 0;
+        outlineCompensatedCount = 0;
+
+        // Capture named field targets by GameObject identity before any Text is destroyed - the
+        // GameObject survives the Text -> TextMeshProUGUI swap, the Text component itself does not.
+        Dictionary<string, GameObject> namedTargets = new Dictionary<string, GameObject>();
+        foreach ((string gameObjectName, string fieldName) in namedFields)
+        {
+            GameObject found = null;
+            foreach (Text text in ownedTexts)
+            {
+                if (text.gameObject.name == gameObjectName)
+                {
+                    found = text.gameObject;
+                    break;
+                }
+            }
+
+            if (found == null)
+            {
+                errors.Add(
+                    "could not find an owned Text GameObject named '" + gameObjectName + "' for "
+                        + target.GetType().Name + "." + fieldName + ".");
+                return false;
+            }
+
+            namedTargets[fieldName] = found;
+        }
+
+        foreach (Text text in ownedTexts)
+        {
+            string path = BuildHierarchyPath(text.gameObject, root);
+            if (text.resizeTextForBestFit)
+            {
+                errors.Add(path + " has Best Fit enabled; this migration does not support autosizing conversion.");
+                continue;
+            }
+
+            bool hadEnabledOutline = text.TryGetComponent(out Outline outline) && outline.enabled;
+            TextMeshProUGUI tmp = ConvertSingleText(root, text, font);
+            if (tmp == null)
+            {
+                errors.Add(path + " : conversion failed to add TextMeshProUGUI.");
+                continue;
+            }
+
+            convertedCount++;
+            if (hadEnabledOutline)
+            {
+                outlineCompensatedCount++;
+            }
+        }
+
+        if (checkSelectableTargetGraphics)
+        {
+            foreach (Selectable selectable in root.GetComponentsInChildren<Selectable>(true))
+            {
+                if (IsPartOfNestedPrefabInstance(selectable.gameObject, root))
+                {
+                    continue;
+                }
+
+                if (selectable.targetGraphic == null)
+                {
+                    errors.Add(
+                        BuildHierarchyPath(selectable.gameObject, root) + " : " + selectable.GetType().Name
+                            + " has a null targetGraphic after migration.");
+                }
+            }
+        }
+
+        if (errors.Count > 0)
+        {
+            return false;
+        }
+
+        SerializedObject targetSerialized = new SerializedObject(target);
+        foreach (KeyValuePair<string, GameObject> mapping in namedTargets)
+        {
+            TextMeshProUGUI tmp = mapping.Value.GetComponent<TextMeshProUGUI>();
+            if (tmp == null)
+            {
+                errors.Add(mapping.Value.name + " has no TextMeshProUGUI after conversion.");
+                return false;
+            }
+
+            SerializedProperty property = targetSerialized.FindProperty(mapping.Key);
+            if (property == null)
+            {
+                errors.Add(target.GetType().Name + " has no field named '" + mapping.Key + "'.");
+                return false;
+            }
+
+            property.objectReferenceValue = tmp;
+        }
+
+        targetSerialized.ApplyModifiedProperties();
+        return true;
+    }
+
+    /// <summary>
+    /// See the Phase 1 original for why this uses TMP's Underlay feature (not <c>_OutlineWidth</c>, which
+    /// is a uniform ring rather than a directional shadow) via an explicit <c>fontSharedMaterial</c> clone
+    /// (not the <c>fontMaterial</c> instance-getter round trip, which silently dropped this modification).
+    /// </summary>
+    private static void ApplyOutlineCompensation(TextMeshProUGUI tmp, Color outlineColor, Vector2 outlineDistance)
+    {
+        Material material = new Material(tmp.fontSharedMaterial);
+        material.name = tmp.fontSharedMaterial.name + " (Underlay)";
+        material.EnableKeyword(ShaderUtilities.Keyword_Underlay);
+        material.SetColor(ShaderUtilities.ID_UnderlayColor, outlineColor);
+        material.SetFloat(ShaderUtilities.ID_UnderlayOffsetX, Mathf.Clamp(outlineDistance.x, -1f, 1f));
+        material.SetFloat(ShaderUtilities.ID_UnderlayOffsetY, Mathf.Clamp(outlineDistance.y, -1f, 1f));
+        material.SetFloat(ShaderUtilities.ID_UnderlaySoftness, 0f);
+        tmp.fontSharedMaterial = material;
+    }
+
+    /// <summary>
+    /// See <see cref="MenuTextMeshProMigration.PersistLooseUnderlayMaterials"/>'s original doc comment:
+    /// <see cref="PrefabUtility.SaveAsPrefabAsset"/> silently drops a loose (never-persisted) material
+    /// reference rather than embedding it, so every outline-compensated clone must become its own real
+    /// project asset before the prefab is saved. Deterministic, overwrite-safe path.
+    /// </summary>
+    internal static void PersistLooseUnderlayMaterials(GameObject root)
+    {
+        foreach (TextMeshProUGUI tmp in root.GetComponentsInChildren<TextMeshProUGUI>(true))
+        {
+            Material material = tmp.fontSharedMaterial;
+            if (material == null || !string.IsNullOrEmpty(AssetDatabase.GetAssetPath(material)))
+            {
+                continue;
+            }
+
+            string path = FontAssetFolder + "/Neon Pixel-7 SDF - " + tmp.gameObject.name + " Underlay.mat";
+            if (AssetDatabase.LoadAssetAtPath<Material>(path) != null)
+            {
+                AssetDatabase.DeleteAsset(path);
+            }
+
+            AssetDatabase.CreateAsset(material, path);
+            tmp.fontSharedMaterial = AssetDatabase.LoadAssetAtPath<Material>(path);
+        }
+    }
+
+    internal static FontStyles MapFontStyle(FontStyle style)
+    {
+        switch (style)
+        {
+            case FontStyle.Bold:
+                return FontStyles.Bold;
+            case FontStyle.Italic:
+                return FontStyles.Italic;
+            case FontStyle.BoldAndItalic:
+                return FontStyles.Bold | FontStyles.Italic;
+            default:
+                return FontStyles.Normal;
+        }
+    }
+
+    internal static TextAlignmentOptions MapAlignment(TextAnchor anchor)
+    {
+        switch (anchor)
+        {
+            case TextAnchor.UpperLeft:
+                return TextAlignmentOptions.TopLeft;
+            case TextAnchor.UpperCenter:
+                return TextAlignmentOptions.Top;
+            case TextAnchor.UpperRight:
+                return TextAlignmentOptions.TopRight;
+            case TextAnchor.MiddleLeft:
+                return TextAlignmentOptions.Left;
+            case TextAnchor.MiddleRight:
+                return TextAlignmentOptions.Right;
+            case TextAnchor.LowerLeft:
+                return TextAlignmentOptions.BottomLeft;
+            case TextAnchor.LowerCenter:
+                return TextAlignmentOptions.Bottom;
+            case TextAnchor.LowerRight:
+                return TextAlignmentOptions.BottomRight;
+            default:
+                return TextAlignmentOptions.Center;
+        }
+    }
+
+    /// <summary>
+    /// True when <paramref name="go"/> belongs to a nested prefab instance rather than being directly
+    /// owned by <paramref name="root"/> - see the Phase 1 original (<c>touch_joystick.prefab</c>, shared
+    /// by every critical/menu prefab) for why this matters: converting a shared nested instance's Text
+    /// from inside one screen would create a per-instance override and desync every other screen sharing
+    /// it.
+    /// </summary>
+    internal static bool IsPartOfNestedPrefabInstance(GameObject go, GameObject root)
+    {
+        GameObject nearestInstanceRoot = PrefabUtility.GetNearestPrefabInstanceRoot(go);
+        return nearestInstanceRoot != null && nearestInstanceRoot != root;
+    }
+
+    internal static void PartitionByNestedPrefabInstance(Text[] all, GameObject root, List<Text> owned, List<Text> nested)
+    {
+        foreach (Text text in all)
+        {
+            if (IsPartOfNestedPrefabInstance(text.gameObject, root))
+            {
+                nested.Add(text);
+            }
+            else
+            {
+                owned.Add(text);
+            }
+        }
+    }
+
+    internal static string Truncate(string value, int maxLength)
+    {
+        if (string.IsNullOrEmpty(value) || value.Length <= maxLength)
+        {
+            return value ?? string.Empty;
+        }
+
+        return value.Substring(0, maxLength) + "...";
+    }
+
+    /// <summary>Walks from <paramref name="target"/> up to <paramref name="root"/>, root-to-leaf.</summary>
+    internal static string BuildHierarchyPath(GameObject target, GameObject root)
+    {
+        List<string> segments = new List<string>();
+        Transform current = target.transform;
+        while (current != null)
+        {
+            segments.Add(current.name);
+            if (current.gameObject == root)
+            {
+                break;
+            }
+
+            current = current.parent;
+        }
+
+        segments.Reverse();
+        return string.Join("/", segments.ToArray());
+    }
+
+    /// <summary>
+    /// Walks every Transform in <paramref name="scene"/> (active or not) looking for the outermost
+    /// prefab instance root whose nearest source prefab is <paramref name="prefabAssetPath"/>.
+    /// </summary>
+    internal static GameObject FindPrefabInstanceRoot(Scene scene, string prefabAssetPath)
+    {
+        foreach (GameObject sceneRoot in scene.GetRootGameObjects())
+        {
+            foreach (Transform candidate in sceneRoot.GetComponentsInChildren<Transform>(true))
+            {
+                GameObject candidateObject = candidate.gameObject;
+                if (!PrefabUtility.IsOutermostPrefabInstanceRoot(candidateObject))
+                {
+                    continue;
+                }
+
+                string path = PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot(candidateObject);
+                if (string.Equals(path, prefabAssetPath, StringComparison.Ordinal))
+                {
+                    return candidateObject;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Scans every component under <paramref name="root"/> other than <see cref="Text"/> and
+    /// <see cref="Selectable"/> for a serialized object-reference property pointing at one of
+    /// <paramref name="textSet"/> - an unsupported consumer the migration would need to handle explicitly
+    /// before that Text can be safely destroyed.
+    /// </summary>
+    internal static void CollectUnsupportedConsumers(GameObject root, HashSet<Object> textSet, List<string> findings)
+    {
+        foreach (Transform transform in root.GetComponentsInChildren<Transform>(true))
+        {
+            foreach (Component component in transform.GetComponents<Component>())
+            {
+                if (component == null || component is Text || component is Selectable)
+                {
+                    continue;
+                }
+
+                SerializedObject serializedObject = new SerializedObject(component);
+                SerializedProperty property = serializedObject.GetIterator();
+                bool enterChildren = true;
+                while (property.NextVisible(enterChildren))
+                {
+                    enterChildren = false;
+                    if (property.propertyType != SerializedPropertyType.ObjectReference)
+                    {
+                        continue;
+                    }
+
+                    if (property.objectReferenceValue != null && textSet.Contains(property.objectReferenceValue))
+                    {
+                        findings.Add(
+                            BuildHierarchyPath(component.gameObject, root) + " (" + component.GetType().Name
+                                + "." + property.propertyPath + ") references a legacy Text component.");
+                    }
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Resolves every <c>m_Text</c> property modification in <paramref name="scenePath"/>'s instance of
+    /// <paramref name="prefabAssetPath"/> into the prefab's own <see cref="Text.text"/> default and drops
+    /// the now-redundant override - see <see cref="MenuTextMeshProMigration.ResolveSceneTextOverrides"/>'s
+    /// original doc comment for why this must run before any Text component is destroyed. Returns the
+    /// number of overrides resolved, or -1 if the scene/prefab instance could not be found.
+    /// </summary>
+    internal static int ResolveSceneTextOverrides(string scenePath, string prefabAssetPath)
+    {
+        if (!File.Exists(scenePath))
+        {
+            Debug.LogError("MenuTextConversion.ResolveSceneTextOverrides: scene file is missing: " + scenePath);
+            return -1;
+        }
+
+        Scene existing = SceneManager.GetSceneByPath(scenePath);
+        bool alreadyOpen = existing.IsValid() && existing.isLoaded;
+        Scene scene = alreadyOpen ? existing : EditorSceneManager.OpenScene(scenePath, OpenSceneMode.Additive);
+        try
+        {
+            GameObject instanceRoot = FindPrefabInstanceRoot(scene, prefabAssetPath);
+            if (instanceRoot == null)
+            {
+                Debug.LogError(
+                    "MenuTextConversion.ResolveSceneTextOverrides: no prefab instance of " + prefabAssetPath
+                        + " found in " + scenePath);
+                return -1;
+            }
+
+            PropertyModification[] modifications = PrefabUtility.GetPropertyModifications(instanceRoot)
+                ?? Array.Empty<PropertyModification>();
+            List<PropertyModification> kept = new List<PropertyModification>(modifications.Length);
+            int resolvedCount = 0;
+            bool prefabDirty = false;
+
+            foreach (PropertyModification modification in modifications)
+            {
+                if (modification.propertyPath == "m_Text" && modification.target is Text legacyText)
+                {
+                    SerializedObject serializedObject = new SerializedObject(legacyText);
+                    SerializedProperty property = serializedObject.FindProperty("m_Text");
+                    if (property != null && property.stringValue != modification.value)
+                    {
+                        property.stringValue = modification.value;
+                        serializedObject.ApplyModifiedProperties();
+                        EditorUtility.SetDirty(legacyText);
+                        prefabDirty = true;
+                    }
+
+                    resolvedCount++;
+                    continue; // drop this now-redundant override
+                }
+
+                kept.Add(modification);
+            }
+
+            if (resolvedCount == 0)
+            {
+                return 0;
+            }
+
+            if (prefabDirty)
+            {
+                AssetDatabase.SaveAssets();
+            }
+
+            PrefabUtility.SetPropertyModifications(instanceRoot, kept.ToArray());
+            EditorSceneManager.MarkSceneDirty(scene);
+            EditorSceneManager.SaveScene(scene);
+            return resolvedCount;
+        }
+        finally
+        {
+            if (!alreadyOpen)
+            {
+                EditorSceneManager.CloseScene(scene, true);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Permanent regression guard shared by every screen's contract: no leftover <c>m_Text*</c> property
+    /// modification in <paramref name="scenePath"/> still targets a legacy Text component.
+    /// </summary>
+    internal static void CollectDanglingSceneTextOverrides(string scenePath, string prefabAssetPath, List<string> errors)
+    {
+        if (!File.Exists(scenePath))
+        {
+            return;
+        }
+
+        Scene existing = SceneManager.GetSceneByPath(scenePath);
+        bool alreadyOpen = existing.IsValid() && existing.isLoaded;
+        Scene scene = alreadyOpen ? existing : EditorSceneManager.OpenScene(scenePath, OpenSceneMode.Additive);
+        try
+        {
+            GameObject instanceRoot = FindPrefabInstanceRoot(scene, prefabAssetPath);
+            if (instanceRoot == null)
+            {
+                return;
+            }
+
+            PropertyModification[] modifications = PrefabUtility.GetPropertyModifications(instanceRoot)
+                ?? Array.Empty<PropertyModification>();
+            foreach (PropertyModification modification in modifications)
+            {
+                if (modification.propertyPath.StartsWith("m_Text", StringComparison.Ordinal)
+                    && modification.target is Text)
+                {
+                    errors.Add(
+                        scenePath + " : leftover legacy Text scene override on property '"
+                            + modification.propertyPath + "'.");
+                }
+            }
+        }
+        finally
+        {
+            if (!alreadyOpen)
+            {
+                EditorSceneManager.CloseScene(scene, true);
+            }
+        }
+    }
+}

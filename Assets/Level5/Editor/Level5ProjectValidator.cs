@@ -61,6 +61,8 @@ public sealed class Level5ProjectValidator : IPreprocessBuildWithReport
         // AUD-092 Phase 1: the Options screen TMP migration is complete in the same change that adds
         // this check, so - like AUD-088 above - it is enforced immediately rather than deferred.
         errors.AddRange(CollectOptionsTextRenderingContractErrors());
+        // AUD-092 Phase 2: same treatment for the Stats screen and its high score row prefab.
+        errors.AddRange(CollectStatsTextRenderingContractErrors());
 
         if (errors.Count > 0)
         {
@@ -1030,6 +1032,31 @@ public sealed class Level5ProjectValidator : IPreprocessBuildWithReport
     public static List<string> CollectOptionsTextRenderingContractErrors()
     {
         return MenuTextMeshProMigration.CollectContractErrors();
+    }
+
+    [MenuItem("Level5/Validate Stats Text Rendering Contract")]
+    public static void ValidateStatsTextRenderingContractFromMenu()
+    {
+        List<string> errors = CollectStatsTextRenderingContractErrors();
+        if (errors.Count > 0)
+        {
+            Debug.LogError("Stats text rendering contract validation failed:\n- " + string.Join("\n- ", errors.ToArray()));
+            return;
+        }
+
+        Debug.Log("Stats text rendering contract validated.");
+    }
+
+    /// <summary>
+    /// AUD-092 Phase 2: StatsManager.prefab's directly-owned legacy Text components and
+    /// highScoreRow.prefab's six columns were migrated to TextMeshProUGUI on the same project-owned
+    /// Neon Pixel-7 SDF font asset Options used. Delegates entirely to
+    /// <see cref="StatsTextMeshProMigration.CollectContractErrors"/>, matching the
+    /// <see cref="CollectOptionsTextRenderingContractErrors"/> precedent.
+    /// </summary>
+    public static List<string> CollectStatsTextRenderingContractErrors()
+    {
+        return StatsTextMeshProMigration.CollectContractErrors();
     }
 
     private static void ValidateInputActions(List<string> errors)

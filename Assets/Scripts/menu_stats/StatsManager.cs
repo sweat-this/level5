@@ -4,6 +4,7 @@ using Assets.Scripts.restapi;
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.SceneManagement;
@@ -44,16 +45,14 @@ public class StatsManager : MonoBehaviour
 
     GameObject allTimeTableObject;
     GameObject highScoreTableObject;
-    [SerializeField]
-    Text modeSelectButtonText;
-    [SerializeField]
-    Text modeSelectButtonHardcoreText;
-    [SerializeField]
-    Text modeSelectButtonOnlineText;
-    [SerializeField]
-    Text pageNumberLocalSelectButtonText;
-    [SerializeField]
-    Text pageNumberOnlineSelectButtonText;
+    // AUD-092 Phase 2: these used to be [SerializeField] Text fields on StatsManager itself. They are
+    // now resolved from the serialized ui view in ResolveButtonReferences, matching the Button fields
+    // below (AUD-103).
+    TextMeshProUGUI modeSelectButtonText;
+    TextMeshProUGUI modeSelectButtonHardcoreText;
+    TextMeshProUGUI modeSelectButtonOnlineText;
+    TextMeshProUGUI pageNumberLocalSelectButtonText;
+    TextMeshProUGUI pageNumberOnlineSelectButtonText;
 
     Button modeSelectButton;
     Button modeSelectOnlineButton;
@@ -90,18 +89,12 @@ public class StatsManager : MonoBehaviour
     private bool sniperEnabled;
 
     //selectable option text
-    [SerializeField]
-    private Text trafficSelectOptionText;
-    [SerializeField]
-    private Text hardcoreSelectOptionText;
-    [SerializeField]
-    private Text enemySelectOptionText;
-    [SerializeField]
-    private Text sniperSelectOptionText;
-    [SerializeField]
-    private Text submittedHighscoresText;
-    [SerializeField]
-    private Text numUnsubmittedHighscoresText;
+    private TextMeshProUGUI trafficSelectOptionText;
+    private TextMeshProUGUI hardcoreSelectOptionText;
+    private TextMeshProUGUI enemySelectOptionText;
+    private TextMeshProUGUI sniperSelectOptionText;
+    private TextMeshProUGUI submittedHighscoresText;
+    private TextMeshProUGUI numUnsubmittedHighscoresText;
 
     int defaultModeSelectedIndex;
     int currentModeSelectedIndex;
@@ -337,6 +330,18 @@ public class StatsManager : MonoBehaviour
         hardcoreOptionButton = ui.HardcoreOptionButton;
         enemiesOptionButton = ui.EnemiesOptionButton;
         sniperOptionButton = ui.SniperOptionButton;
+
+        modeSelectButtonText = ui.ModeSelectText;
+        modeSelectButtonHardcoreText = ui.ModeSelectHardcoreText;
+        modeSelectButtonOnlineText = ui.ModeSelectOnlineText;
+        pageNumberLocalSelectButtonText = ui.PageNumberLocalText;
+        pageNumberOnlineSelectButtonText = ui.PageNumberOnlineText;
+        trafficSelectOptionText = ui.TrafficOptionValueText;
+        hardcoreSelectOptionText = ui.HardcoreOptionValueText;
+        enemySelectOptionText = ui.EnemiesOptionValueText;
+        sniperSelectOptionText = ui.SniperOptionValueText;
+        submittedHighscoresText = ui.SubmittedHighscoresText;
+        numUnsubmittedHighscoresText = ui.NumUnsubmittedHighscoresText;
     }
 
     /// <summary>
