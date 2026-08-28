@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -7,14 +8,19 @@ using UnityEngine.UI;
 /// "options" button distinct from the shared footer's "options_menu" (both call
 /// <c>LoadOptionsMenu</c> today - preserved as-is, not collapsed into one). Footer buttons live on
 /// <see cref="MenuFooterUiObjects"/>, not here.
+///
+/// AUD-092 Phase 4B: <see cref="reportInputField"/> is <see cref="TMP_InputField"/> - the legacy
+/// <c>UnityEngine.UI.InputField</c> it used to be was migrated along with its two structural Text
+/// dependencies (<c>textComponent</c>/<c>placeholder</c>), completing the Credits screen's TMP
+/// migration that AUD-092 Phase 4A deliberately left this one field out of.
 /// </summary>
 public class CreditsUiObjects : MonoBehaviour
 {
-    [SerializeField] private InputField reportInputField;
+    [SerializeField] private TMP_InputField reportInputField;
     [SerializeField] private Button submitReportButton;
     [SerializeField] private Button optionsButton;
 
-    public InputField ReportInputField => reportInputField;
+    public TMP_InputField ReportInputField => reportInputField;
     public Button SubmitReportButton => submitReportButton;
     public Button OptionsButton => optionsButton;
     public GameObject SubmitReportButtonObject => submitReportButton != null ? submitReportButton.gameObject : null;

@@ -126,7 +126,7 @@ public static class MenuUiObjectsWiring
 
         GameObject host = manager.gameObject;
         CreditsUiObjects ui = AddOrGet<CreditsUiObjects>(host);
-        SetField(ui, "reportInputField", FindComponentNamed<InputField>(root, "ReportInputField"));
+        SetField(ui, "reportInputField", FindComponentNamed<TMP_InputField>(root, "ReportInputField"));
         SetField(ui, "submitReportButton", FindComponentNamed<Button>(root, "submit_report"));
         SetField(ui, "optionsButton", FindComponentNamed<Button>(root, "options"));
 

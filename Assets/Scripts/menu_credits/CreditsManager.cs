@@ -3,6 +3,7 @@ using Assets.Scripts.restapi;
 using Assets.Scripts.Utility;
 using System.Collections;
 using System.Collections.Generic;
+using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.SceneManagement;
@@ -39,9 +40,7 @@ public class CreditsManager : MonoBehaviour
     private const string accountMenuButtonName = "account_menu";
 
     GameObject submitReportButtonObject;
-    [SerializeField]
-    string reportInput;
-    InputField reportInputField;
+    TMP_InputField reportInputField;
 
     Button mainMenuButton;
     Button statsMenuButton;
@@ -55,8 +54,6 @@ public class CreditsManager : MonoBehaviour
 
     bool buttonPressed = false;
 
-    private EventTrigger reportInputSubmitTrigger;
-    private EventTrigger.Entry reportInputSubmitEntry;
     private bool initialized;
 
     public static CreditsManager instance;
@@ -215,40 +212,35 @@ public class CreditsManager : MonoBehaviour
         UiSelectionAdapter.UnregisterButton(submitReportButton, SubmitReportIfAllowed);
     }
 
+    /// <summary>
+    /// AUD-092 Phase 4B: <c>TMP_InputField.onSubmit</c> fires on exactly the same trigger the manually
+    /// added <see cref="EventTrigger"/> used to listen for on the legacy InputField (pressing the UI
+    /// Submit action while the field is focused - see the field's placeholder text: "press enter to go
+    /// to submit button"). This only moves EventSystem selection to the submit button; it does not
+    /// submit the report itself, matching the pre-migration behavior exactly. RemoveListener before
+    /// AddListener keeps repeated calls idempotent, the same pattern <see cref="UiSelectionAdapter.RegisterButton"/>
+    /// uses for buttons.
+    /// </summary>
     private void RegisterReportInputSubmit()
     {
-        if (reportInputField == null || submitReportButtonObject == null || reportInputSubmitEntry != null)
+        if (reportInputField == null)
         {
             return;
         }
 
-        reportInputSubmitTrigger = reportInputField.GetComponent<EventTrigger>();
-        if (reportInputSubmitTrigger == null)
-        {
-            reportInputSubmitTrigger = reportInputField.gameObject.AddComponent<EventTrigger>();
-        }
-
-        reportInputSubmitEntry = new EventTrigger.Entry
-        {
-            eventID = EventTriggerType.Submit,
-            callback = new EventTrigger.TriggerEvent()
-        };
-        reportInputSubmitEntry.callback.AddListener(SelectSubmitReportButton);
-        reportInputSubmitTrigger.triggers.Add(reportInputSubmitEntry);
+        reportInputField.onSubmit.RemoveListener(SelectSubmitReportButton);
+        reportInputField.onSubmit.AddListener(SelectSubmitReportButton);
     }
 
     private void UnregisterReportInputSubmit()
     {
-        if (reportInputSubmitTrigger != null && reportInputSubmitEntry != null)
+        if (reportInputField != null)
         {
-            reportInputSubmitTrigger.triggers.Remove(reportInputSubmitEntry);
+            reportInputField.onSubmit.RemoveListener(SelectSubmitReportButton);
         }
-
-        reportInputSubmitEntry = null;
-        reportInputSubmitTrigger = null;
     }
 
-    private void SelectSubmitReportButton(BaseEventData eventData)
+    private void SelectSubmitReportButton(string submittedText)
     {
         UiSelectionAdapter.TrySelect(submitReportButtonObject);
     }
@@ -319,11 +311,6 @@ public class CreditsManager : MonoBehaviour
         }
     }
 
-    public void readReportInput(string s)
-    {
-        reportInput = reportInputField == null ? s : reportInputField.text;
-    }
-
     public void OpenMusicSite()
     {
         Application.OpenURL(webLinkMusic);
@@ -356,27 +343,47 @@ public class CreditsManager : MonoBehaviour
     {
         Application.OpenURL(webLinkNftAirdrop);
     }
+    /// <summary>
+    /// AUD-092 Phase 4B: reads <see cref="reportInputField"/>'s current text directly rather than a
+    /// separately mirrored cache - the legacy <c>reportInput</c> field/<c>readReportInput</c>
+    /// OnValueChanged listener this replaced only ever mirrored the same value this coroutine reads
+    /// here anyway (confirmed no other consumer read that cache; see AUD-092 Phase 4B notes).
+    /// </summary>
     private IEnumerator SubmitReportCoroutine()
     {
-        UserReportModel userReportModel = new UserReportModel();
-        userReportModel.Report = reportInput;
         if (reportInputField == null)
         {
             buttonPressed = false;
             yield break;
         }
 
-        yield return APIHelper.PostReport(userReportModel, reportInputField);
+        UserReportModel userReportModel = new UserReportModel();
+        userReportModel.Report = reportInputField.text;
 
+        ApiResult<bool> result = null;
+        yield return APIHelper.PostReport(userReportModel, apiResult => result = apiResult);
+
+        PresentReportResult(result);
         buttonPressed = false;
     }
-    private void SubmitReport()
+
+    /// <summary>
+    /// AUD-092 Phase 4B: renders the report submission outcome into <see cref="reportInputField"/>.
+    /// Moved here from <c>APIHelper.PostReport</c>, which used to write this text directly into the
+    /// InputField it was handed - see that method's own doc comment for why that UI ownership moved.
+    /// </summary>
+    private void PresentReportResult(ApiResult<bool> result)
     {
-        if (reportInputField != null)
+        if (reportInputField == null || result == null)
         {
-            reportInput = reportInputField.text;
+            return;
         }
 
+        reportInputField.text = result.Success ? "Report submitted." : result.Error;
+    }
+
+    private void SubmitReport()
+    {
         buttonPressed = true;
         StartCoroutine(SubmitReportCoroutine());
     }

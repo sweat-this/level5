@@ -8,7 +8,6 @@ using System.Text;
 using UnityEngine;
 using UnityEngine.Networking;
 using UnityEngine.SceneManagement;
-using UnityEngine.UI;
 
 namespace Assets.Scripts.restapi
 {
@@ -315,16 +314,22 @@ namespace Assets.Scripts.restapi
             yield return GetJson(url, false, completed);
         }
 
+        /// <summary>
+        /// AUD-092 Phase 4B: no longer takes a UI widget to write status text into - it used to accept
+        /// the caller's <c>InputField</c> and set its <c>text</c> directly (<c>SetInputMessage</c>),
+        /// which meant this networking helper owned a piece of Credits' UI presentation and would have
+        /// needed re-coupling to <c>TMP_InputField</c> to keep working through this migration. The
+        /// <paramref name="completed"/> callback's <see cref="ApiResult{T}"/> already carries
+        /// success/failure and the server's error message; <c>CreditsManager</c> renders that into its
+        /// own field, so this stays free of any concrete UI type.
+        /// </summary>
         public static IEnumerator PostReport(
             UserReportModel userReport,
-            InputField inputField,
             Action<ApiResult<bool>> completed = null)
         {
             if (userReport == null)
             {
-                ApiResult<bool> missing = ApiResult<bool>.Fail("No report was provided.");
-                SetInputMessage(inputField, missing.Error);
-                completed?.Invoke(missing);
+                completed?.Invoke(ApiResult<bool>.Fail("No report was provided."));
                 yield break;
             }
 
@@ -344,11 +349,9 @@ namespace Assets.Scripts.restapi
                 false,
                 result => response = result);
 
-            ApiResult<bool> finalResult = response.Success
+            completed?.Invoke(response.Success
                 ? ApiResult<bool>.Ok(true, response.StatusCode)
-                : ApiResult<bool>.Fail(response.Error, response.StatusCode);
-            SetInputMessage(inputField, finalResult.Success ? "Report submitted." : finalResult.Error);
-            completed?.Invoke(finalResult);
+                : ApiResult<bool>.Fail(response.Error, response.StatusCode));
         }
 
         public static IEnumerator PostToken(
@@ -556,14 +559,6 @@ namespace Assets.Scripts.restapi
             return request.result == UnityWebRequest.Result.ConnectionError
                 ? "Could not connect to the server."
                 : "The request failed. Try again.";
-        }
-
-        private static void SetInputMessage(InputField inputField, string message)
-        {
-            if (inputField != null)
-            {
-                inputField.text = message;
-            }
         }
 
         private static IEnumerator SetScoreSubmittedWhenAvailable(string scoreId, bool submitted)

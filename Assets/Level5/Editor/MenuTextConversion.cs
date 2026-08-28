@@ -420,7 +420,13 @@ internal static class MenuTextConversion
 
             List<string> errors = new List<string>();
             HashSet<Text> protectedTexts = null;
-            if (resolveProtectedTexts != null)
+            // AUD-092 Phase 4B: only ask the resolver to find something to protect when there is at
+            // least one directly-owned Text left to consider protecting. Once Credits' InputField
+            // itself is later migrated to TMP_InputField, zero legacy Text remain at all - re-running
+            // this Phase 4A entry point at that point must still report "nothing to do", not fail
+            // because ResolveProtectedInputFieldTexts can no longer find the (by then nonexistent)
+            // legacy InputField it used to protect Text for.
+            if (resolveProtectedTexts != null && texts.Count > 0)
             {
                 protectedTexts = resolveProtectedTexts(root, errors);
                 if (protectedTexts == null)
