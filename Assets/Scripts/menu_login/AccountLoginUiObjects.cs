@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -12,12 +13,12 @@ public class AccountLoginUiObjects : MonoBehaviour
 {
     [SerializeField] private InputField usernameInputField;
     [SerializeField] private InputField passwordInputField;
-    [SerializeField] private Text messageDisplay;
+    [SerializeField] private TMP_Text messageDisplay;
     [SerializeField] private Button checkUserNameButton;
 
     public InputField UsernameInputField => usernameInputField;
     public InputField PasswordInputField => passwordInputField;
-    public Text MessageDisplay => messageDisplay;
+    public TMP_Text MessageDisplay => messageDisplay;
     public Button CheckUserNameButton => checkUserNameButton;
 
     public GameObject UserNameTargetObject => usernameInputField != null ? usernameInputField.gameObject : null;

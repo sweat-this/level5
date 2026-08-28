@@ -4,6 +4,7 @@ using Assets.Scripts.Utility;
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.SceneManagement;
@@ -21,7 +22,7 @@ public class AccountManager : MonoBehaviour
     [SerializeField] private AccountLoginUiObjects loginUi;
     [SerializeField] private MenuFooterUiObjects footer;
 
-    Text messageDisplay;
+    TMP_Text messageDisplay;
     string errorMessageEmail = "";
     string errorMessageUserName = "";
 

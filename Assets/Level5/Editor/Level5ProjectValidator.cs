@@ -72,6 +72,10 @@ public sealed class Level5ProjectValidator : IPreprocessBuildWithReport
         // legacy ReportInputField and its two structural Text dependencies deliberately remain legacy
         // until Phase 4B migrates the InputField itself.
         errors.AddRange(CollectCreditsTextRenderingContractErrors());
+        // AUD-092 Phase 5A: the account hub/create/login screens' ordinary Text was migrated, while each
+        // screen's legacy InputFields and their structural textComponent/placeholder Text deliberately
+        // remain legacy until Phase 5B migrates the InputFields themselves.
+        errors.AddRange(CollectAccountTextRenderingContractErrors());
 
         if (errors.Count > 0)
         {
@@ -1125,6 +1129,38 @@ public sealed class Level5ProjectValidator : IPreprocessBuildWithReport
     public static List<string> CollectCreditsTextRenderingContractErrors()
     {
         return CreditsTextMeshProMigration.CollectContractErrors();
+    }
+
+    [MenuItem("Level5/Validate Account Text Rendering Contract")]
+    public static void ValidateAccountTextRenderingContractFromMenu()
+    {
+        List<string> errors = CollectAccountTextRenderingContractErrors();
+        if (errors.Count > 0)
+        {
+            Debug.LogError("Account text rendering contract validation failed:\n- " + string.Join("\n- ", errors.ToArray()));
+            return;
+        }
+
+        Debug.Log("Account text rendering contract validated.");
+    }
+
+    /// <summary>
+    /// AUD-092 Phase 5A: the account hub/create/login screens' ordinary directly scene-owned legacy Text
+    /// was migrated to TextMeshProUGUI on the shared Neon Pixel-7 SDF font asset, while each screen's
+    /// legacy InputField components and their structural textComponent/placeholder Text dependencies
+    /// deliberately remain legacy until Phase 5B migrates the InputFields themselves.
+    /// <c>level_00_account_loginLocal</c> has no legacy Text/InputField and is asserted unchanged.
+    /// Delegates entirely to <see cref="AccountTextMeshProMigration"/>, matching the
+    /// <see cref="CollectCreditsTextRenderingContractErrors"/> precedent.
+    /// </summary>
+    public static List<string> CollectAccountTextRenderingContractErrors()
+    {
+        List<string> errors = new List<string>();
+        errors.AddRange(AccountTextMeshProMigration.CollectHubContractErrors());
+        errors.AddRange(AccountTextMeshProMigration.CollectCreateNewContractErrors());
+        errors.AddRange(AccountTextMeshProMigration.CollectLoginExistingContractErrors());
+        errors.AddRange(AccountTextMeshProMigration.CollectLoginLocalContractErrors());
+        return errors;
     }
 
     private static void ValidateInputActions(List<string> errors)

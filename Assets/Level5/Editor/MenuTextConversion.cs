@@ -595,7 +595,12 @@ internal static class MenuTextConversion
         return value.Substring(0, maxLength) + "...";
     }
 
-    /// <summary>Walks from <paramref name="target"/> up to <paramref name="root"/>, root-to-leaf.</summary>
+    /// <summary>
+    /// Walks from <paramref name="target"/> up to <paramref name="root"/>, root-to-leaf.
+    /// AUD-092 Phase 5A: <paramref name="root"/> may be null - walks all the way to the scene root instead
+    /// of stopping early, for callers with no single natural root GameObject to stop at (a scene has
+    /// several root GameObjects, unlike a prefab's one).
+    /// </summary>
     internal static string BuildHierarchyPath(GameObject target, GameObject root)
     {
         List<string> segments = new List<string>();
@@ -708,6 +713,15 @@ internal static class MenuTextConversion
     /// <see cref="Selectable"/> for a serialized object-reference property pointing at one of
     /// <paramref name="textSet"/> - an unsupported consumer the migration would need to handle explicitly
     /// before that Text can be safely destroyed.
+    ///
+    /// Shared, safety-critical infrastructure: every AUD-092 phase's Migrate/CollectContractErrors and
+    /// permanent regression tests (Options/Stats/Progression/Credits/Account) call this as their "nothing
+    /// unknown still references a Text I'm about to destroy" gate. AUD-092 Phase 5A found and fixed a real
+    /// gap here - the traversal used to force <c>enterChildren = false</c> unconditionally after the first
+    /// property, which silently skipped every array/list-typed field's elements (missed
+    /// <c>ServerMessagesManager.serverMessagesText</c>, a <c>List&lt;Text&gt;</c>, entirely). Re-run the
+    /// full EditMode suite after touching this method - it can now surface previously-hidden consumers in
+    /// any already-migrated screen, not just the one motivating the next change.
     /// </summary>
     internal static void CollectUnsupportedConsumers(GameObject root, HashSet<Object> textSet, List<string> findings)
     {
@@ -725,7 +739,12 @@ internal static class MenuTextConversion
                 bool enterChildren = true;
                 while (property.NextVisible(enterChildren))
                 {
-                    enterChildren = false;
+                    // AUD-092 Phase 5A: must stay true for array/list properties (e.g.
+                    // ServerMessagesManager.serverMessagesText, a List<Text>) - unconditionally forcing this
+                    // false after the first property visited skips straight over every array's
+                    // Array.size/data[i] elements once positioned on the array property itself, silently
+                    // missing exactly this kind of consumer instead of reporting it.
+                    enterChildren = property.propertyType != SerializedPropertyType.ObjectReference;
                     if (property.propertyType != SerializedPropertyType.ObjectReference)
                     {
                         continue;

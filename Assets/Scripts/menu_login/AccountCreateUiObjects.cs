@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -21,7 +22,7 @@ public class AccountCreateUiObjects : MonoBehaviour
     [SerializeField] private InputField firstNameInputField;
     [SerializeField] private InputField lastNameInputField;
 
-    [SerializeField] private Text messageDisplay;
+    [SerializeField] private TMP_Text messageDisplay;
 
     [SerializeField] private Button checkEmailButton;
     [SerializeField] private Button checkUserNameButton;
@@ -32,7 +33,7 @@ public class AccountCreateUiObjects : MonoBehaviour
     public InputField FirstNameInputField => firstNameInputField;
     public InputField LastNameInputField => lastNameInputField;
 
-    public Text MessageDisplay => messageDisplay;
+    public TMP_Text MessageDisplay => messageDisplay;
 
     public Button CheckEmailButton => checkEmailButton;
     public Button CheckUserNameButton => checkUserNameButton;

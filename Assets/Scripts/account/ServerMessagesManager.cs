@@ -2,13 +2,13 @@ using Assets.Scripts.Models;
 using Assets.Scripts.restapi;
 using System.Collections;
 using System.Collections.Generic;
+using TMPro;
 using UnityEngine;
-using UnityEngine.UI;
 
 public class ServerMessagesManager : MonoBehaviour
 {
     [SerializeField]
-    List<Text> serverMessagesText;
+    List<TMP_Text> serverMessagesText;
     [SerializeField]
     List<ServerMessageModel> serverMessagesModels;
     // Start is called before the first frame update
