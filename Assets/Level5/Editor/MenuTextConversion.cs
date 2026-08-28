@@ -292,6 +292,18 @@ internal static class MenuTextConversion
     /// <see cref="PrefabUtility.SaveAsPrefabAsset"/> silently drops a loose (never-persisted) material
     /// reference rather than embedding it, so every outline-compensated clone must become its own real
     /// project asset before the prefab is saved. Deterministic, overwrite-safe path.
+    ///
+    /// AUD-092 Phase 3: the path is qualified by <paramref name="root"/>'s own name (the prefab's root
+    /// GameObject, e.g. "OptionManager"/"progressionScreen") as well as the converted GameObject's name.
+    /// Two different screens can legitimately share a footer object name (Progression's "stats_menu"
+    /// footer button collided with Options' pre-existing "Neon Pixel-7 SDF - stats_menu Underlay.mat"
+    /// this way, found when migrating Progression) - without the screen qualifier, this method's
+    /// find-or-delete-and-recreate at that path either overwrites the other screen's material out from
+    /// under it, or - as observed here - the two screens end up silently sharing one material instance,
+    /// so editing either screen's outline later would move both. Does not touch materials any earlier
+    /// migration already created under the old unqualified name; those stay where they are since their
+    /// TMP components' <c>fontSharedMaterial</c> already points at a persisted asset and this method
+    /// only ever acts on a still-loose (never-persisted) material.
     /// </summary>
     internal static void PersistLooseUnderlayMaterials(GameObject root)
     {
@@ -303,7 +315,7 @@ internal static class MenuTextConversion
                 continue;
             }
 
-            string path = FontAssetFolder + "/Neon Pixel-7 SDF - " + tmp.gameObject.name + " Underlay.mat";
+            string path = FontAssetFolder + "/Neon Pixel-7 SDF - " + root.name + " - " + tmp.gameObject.name + " Underlay.mat";
             if (AssetDatabase.LoadAssetAtPath<Material>(path) != null)
             {
                 AssetDatabase.DeleteAsset(path);

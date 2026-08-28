@@ -2,6 +2,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.SceneManagement;
@@ -37,26 +38,26 @@ public class ProgressionManager : MonoBehaviour
     private List<CheerleaderProfile> cheerleaderSelectedData;
 
     //player selected display
-    private Text playerSelectOptionText;
+    private TextMeshProUGUI playerSelectOptionText;
     private Image playerSelectOptionImage;
-    private Text playerProgressionStatsText;
-    private Text playerProgressionUpdatePointsText;
-    private Text progression3Accuracy;
-    private Text progression4Accuracy;
-    private Text progression7Accuracy;
-    private Text progressionRange;
-    private Text progressionRelease;
-    private Text progressionSpeed;
-    private Text progressionJump;
-    private Text progressionLuck;
+    private TextMeshProUGUI playerProgressionStatsText;
+    private TextMeshProUGUI playerProgressionUpdatePointsText;
+    private TextMeshProUGUI progression3Accuracy;
+    private TextMeshProUGUI progression4Accuracy;
+    private TextMeshProUGUI progression7Accuracy;
+    private TextMeshProUGUI progressionRange;
+    private TextMeshProUGUI progressionRelease;
+    private TextMeshProUGUI progressionSpeed;
+    private TextMeshProUGUI progressionJump;
+    private TextMeshProUGUI progressionLuck;
 
-    private Text bonusReleaseText;
-    private Text bonusRangeText;
-    private Text bonusLuckText;
+    private TextMeshProUGUI bonusReleaseText;
+    private TextMeshProUGUI bonusRangeText;
+    private TextMeshProUGUI bonusLuckText;
 
-    private Text addTo3Text;
-    private Text addTo4Text;
-    private Text addTo7Text;
+    private TextMeshProUGUI addTo3Text;
+    private TextMeshProUGUI addTo4Text;
+    private TextMeshProUGUI addTo7Text;
 
     //const object names
     private const string startButtonName = "press_start";
@@ -67,65 +68,27 @@ public class ProgressionManager : MonoBehaviour
     // button names
     private const string playerSelectOptionButtonName = "player_selected_name";
     //private const string playerSelectStatsObjectName = "player_selected_stats_numbers";
-    private const string playerSelectImageObjectName = "player_selected_image";
     //private const string playerSelectStatsCategoryName = "player_selected_stats_category";
     //private const string playerBonusName = "current_player_bonus";
 
     //private const string playerProgressionName = "player_progression";
-    private const string playerProgressionStatsName = "player_progression_stats";
-    private const string playerProgressionPointsAvailableName = "player_points_available";
 
     private const string progression3AccuracyName = "3accuracyButton";
     private const string progression4AccuracyName = "4accuracyButton";
     private const string progression7AccuracyName = "7accuracyButton";
-
-    private const string releaseBonusName = "release_bonus";
-    private const string rangeBonusName = "range_bonus";
-    private const string luckBonusName = "luck_bonus";
 
     private const string confirmButtonName = "confirm_button";
     private const string cancelButtonName = "cancel_button";
     private const string saveButtonName = "save_button";
     private const string resetButtonName = "reset_button";
 
-    private const string progression3AccuracyTextName = "3accuracy";
-    private const string progression4AccuracyTextName = "4accuracy";
-    private const string progression7AccuracyTextName = "7accuracy";
-    private const string progressionRangeName = "range";
-    private const string progressionReleaseName = "release";
-    private const string progressionSpeedName = "speed";
-    private const string progressionJumpName = "jump";
-    private const string progressionLuckName = "luck";
-
-    /// <summary>
-    /// Objects this manager still resolves by name through <see cref="SceneObjects.Find{T}"/> - the
-    /// Text/Image references <c>docs/ui-input-architecture.md</c> names as the intended fallback
-    /// mechanism for this screen. Level5ProjectValidator asserts they exist in any scene carrying a
-    /// ProgressionManager (AUD-028, AUD-047).
-    ///
-    /// This used to also list the button names (playerSelectButtonName,
-    /// playerSelectOptionButtonName, progression3/4/7AccuracyName); those moved to
-    /// <see cref="ProgressionUiObjects"/>'s serialized references and are asserted by
-    /// <see cref="ValidateMenuUi"/>/<c>CollectMenuUiObjectContractErrors</c> instead, since a
-    /// serialized reference survives a rename that this name list would otherwise treat as broken.
-    /// </summary>
-    public static readonly string[] RequiredProgressionObjectNames =
-    {
-        playerSelectImageObjectName,
-        playerProgressionStatsName,
-        playerProgressionPointsAvailableName,
-        progression3AccuracyTextName,
-        progression4AccuracyTextName,
-        progression7AccuracyTextName,
-        progressionRangeName,
-        progressionReleaseName,
-        progressionSpeedName,
-        progressionJumpName,
-        progressionLuckName,
-        releaseBonusName,
-        rangeBonusName,
-        luckBonusName
-    };
+    // AUD-092 Phase 3: the 14 display-text names and the player image name this comment used to list
+    // (playerSelectImageObjectName, playerProgressionStatsName, playerProgressionPointsAvailableName,
+    // progression3/4/7AccuracyTextName, progressionRangeName, progressionReleaseName,
+    // progressionSpeedName, progressionJumpName, progressionLuckName, releaseBonusName,
+    // rangeBonusName, luckBonusName) moved to ProgressionUiObjects's serialized TMP/Image references
+    // alongside the button names AUD-103 already moved there - RequiredProgressionObjectNames is
+    // retired, and ValidateMenuUi/CollectMenuUiObjectContractErrors covers all of it now.
 
     private int playerSelectedIndex;
 
@@ -233,13 +196,6 @@ public class ProgressionManager : MonoBehaviour
         progressionService = new CharacterProgressionService();
 
         controls = PlayerControlsProvider.Controls;
-        // find all button / text / etc and assign to variables. bail before starting any work if
-        // the scene cannot satisfy the UI contract, rather than half-initializing (AUD-047)
-        if (!getUiObjectReferences())
-        {
-            enabled = false;
-            return;
-        }
 
         // dont destroy on load / check for duplicate instance
         //destroyInstanceIfAlreadyExists();
@@ -312,6 +268,10 @@ public class ProgressionManager : MonoBehaviour
     /// <c>GameObject.Find(name)</c> fallback and <c>FindButtonInInactiveChildren</c> (AUD-103):
     /// confirm/cancel live inside <see cref="confirmationDialogueBox"/>, which starts inactive, and a
     /// serialized reference can address an inactive object directly.
+    ///
+    /// AUD-092 Phase 3: the display-text and player-image copies below replace
+    /// <c>getUiObjectReferences()</c>'s <c>SceneObjects.Find&lt;Text/Image&gt;</c> calls, matching how
+    /// StatsManager folded its own display-text resolution into this same method (AUD-092 Phase 2).
     /// </summary>
     private void ResolveButtonReferences()
     {
@@ -327,6 +287,25 @@ public class ProgressionManager : MonoBehaviour
         cancelButton = ui.CancelButton;
         saveButton = ui.SaveButton;
         resetButton = ui.ResetButton;
+
+        playerSelectOptionImage = ui.PlayerSelectOptionImage;
+        playerSelectOptionText = ui.PlayerSelectOptionText;
+        playerProgressionStatsText = ui.PlayerProgressionStatsText;
+        playerProgressionUpdatePointsText = ui.PlayerProgressionUpdatePointsText;
+        progression3Accuracy = ui.Progression3Accuracy;
+        progression4Accuracy = ui.Progression4Accuracy;
+        progression7Accuracy = ui.Progression7Accuracy;
+        progressionRange = ui.ProgressionRange;
+        progressionRelease = ui.ProgressionRelease;
+        progressionSpeed = ui.ProgressionSpeed;
+        progressionJump = ui.ProgressionJump;
+        progressionLuck = ui.ProgressionLuck;
+        bonusReleaseText = ui.BonusReleaseText;
+        bonusRangeText = ui.BonusRangeText;
+        bonusLuckText = ui.BonusLuckText;
+        addTo3Text = ui.AddTo3Text;
+        addTo4Text = ui.AddTo4Text;
+        addTo7Text = ui.AddTo7Text;
     }
 
     /// <summary>
@@ -848,55 +827,6 @@ public class ProgressionManager : MonoBehaviour
         initializePlayerDisplay();
 
     }
-    // ============================  get UI buttons / text references ==============================
-    /// <summary>
-    /// Resolves every UI object this manager drives, collecting the names that are missing rather
-    /// than throwing on the first one. Returns false if any is absent.
-    ///
-    /// This was 17 consecutive `GameObject.Find(name).GetComponent&lt;T&gt;()` chains (AUD-047, the
-    /// same shape AUD-028 fixed in GameRules and Pause). A single renamed object threw partway
-    /// through Awake, which left `instance` published, `playerSelectedIndex` never read from
-    /// GameOptions, and no message naming what was missing.
-    /// </summary>
-    private bool getUiObjectReferences()
-    {
-        List<string> missing = new List<string>();
-
-        // player object with lock texture and unlock text
-        playerSelectOptionText = SceneObjects.Find<Text>(playerSelectOptionButtonName, missing, this);
-        playerSelectOptionImage = SceneObjects.Find<Image>(playerSelectImageObjectName, missing, this);
-        playerProgressionStatsText = SceneObjects.Find<Text>(playerProgressionStatsName, missing, this);
-        playerProgressionUpdatePointsText = SceneObjects.Find<Text>(playerProgressionPointsAvailableName, missing, this);
-
-        progression3Accuracy = SceneObjects.Find<Text>(progression3AccuracyTextName, missing, this);
-        progression4Accuracy = SceneObjects.Find<Text>(progression4AccuracyTextName, missing, this);
-        progression7Accuracy = SceneObjects.Find<Text>(progression7AccuracyTextName, missing, this);
-        progressionRange = SceneObjects.Find<Text>(progressionRangeName, missing, this);
-        progressionRelease = SceneObjects.Find<Text>(progressionReleaseName, missing, this);
-        progressionSpeed = SceneObjects.Find<Text>(progressionSpeedName, missing, this);
-        progressionJump = SceneObjects.Find<Text>(progressionJumpName, missing, this);
-        progressionLuck = SceneObjects.Find<Text>(progressionLuckName, missing, this);
-
-        bonusReleaseText = SceneObjects.Find<Text>(releaseBonusName, missing, this);
-        bonusRangeText = SceneObjects.Find<Text>(rangeBonusName, missing, this);
-        bonusLuckText = SceneObjects.Find<Text>(luckBonusName, missing, this);
-
-        addTo3Text = SceneObjects.Find<Text>(progression3AccuracyName, missing, this);
-        addTo4Text = SceneObjects.Find<Text>(progression4AccuracyName, missing, this);
-        addTo7Text = SceneObjects.Find<Text>(progression7AccuracyName, missing, this);
-
-        if (missing.Count > 0)
-        {
-            Debug.LogError(
-                "ProgressionManager is missing scene objects and will be disabled: "
-                + string.Join(", ", missing.ToArray()),
-                this);
-            return false;
-        }
-
-        return true;
-    }
-
     private static IEnumerator WaitForCondition(Func<bool> condition)
     {
         float deadline = Time.realtimeSinceStartup + DataWaitTimeoutSeconds;

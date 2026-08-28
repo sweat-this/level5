@@ -142,6 +142,41 @@ public class Level5MenuUiObjectsTests
         Assert.That(missing, Contains.Item("ProgressionUiObjects.confirmationDialogueBox"));
     }
 
+    // AUD-092 Phase 3: the 17 display-text references and the player image moved onto
+    // ProgressionUiObjects alongside its existing buttons/dialogue box - this covers that Validate()
+    // reports every one of them missing by name, matching StatsUiObjects' equivalent coverage.
+    [Test]
+    public void ProgressionUiObjectsReportsMissingDisplayReferences()
+    {
+        ProgressionUiObjects ui = Spawn<ProgressionUiObjects>();
+
+        List<string> missing = new List<string>();
+        bool valid = ui.Validate(missing);
+
+        Assert.That(valid, Is.False);
+        Assert.That(missing, Is.SupersetOf(new[]
+        {
+            "ProgressionUiObjects.playerSelectOptionImage",
+            "ProgressionUiObjects.playerSelectOptionText",
+            "ProgressionUiObjects.playerProgressionStatsText",
+            "ProgressionUiObjects.playerProgressionUpdatePointsText",
+            "ProgressionUiObjects.progression3Accuracy",
+            "ProgressionUiObjects.progression4Accuracy",
+            "ProgressionUiObjects.progression7Accuracy",
+            "ProgressionUiObjects.progressionRange",
+            "ProgressionUiObjects.progressionRelease",
+            "ProgressionUiObjects.progressionSpeed",
+            "ProgressionUiObjects.progressionJump",
+            "ProgressionUiObjects.progressionLuck",
+            "ProgressionUiObjects.bonusReleaseText",
+            "ProgressionUiObjects.bonusRangeText",
+            "ProgressionUiObjects.bonusLuckText",
+            "ProgressionUiObjects.addTo3Text",
+            "ProgressionUiObjects.addTo4Text",
+            "ProgressionUiObjects.addTo7Text",
+        }));
+    }
+
     // ---------- PauseUiObjects ----------
 
     [Test]

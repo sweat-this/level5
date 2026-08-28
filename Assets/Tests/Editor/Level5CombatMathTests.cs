@@ -357,9 +357,8 @@ public class Level5CombatMathTests
         AssertNamesAreUsable(GameRules.RequiredSceneObjectNames, "GameRules.RequiredSceneObjectNames");
         AssertNamesAreUsable(MatchHudPresenter.RequiredHudObjectNames, "MatchHudPresenter.RequiredHudObjectNames");
         // Pause.RequiredPauseObjectNames retired: PauseUiObjects/ValidateMenuUi covers this now (AUD-103).
-        AssertNamesAreUsable(
-            ProgressionManager.RequiredProgressionObjectNames,
-            "ProgressionManager.RequiredProgressionObjectNames");
+        // ProgressionManager.RequiredProgressionObjectNames retired: ProgressionUiObjects/ValidateMenuUi
+        // covers this now (AUD-092 Phase 3).
     }
 
     // ---------- AUD-046: the progression menu shares the one XP curve ----------

@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using TMPro;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -224,6 +225,29 @@ public static class MenuUiObjectsWiring
         SetField(ui, "cancelButton", FindComponentNamedInRoots<Button>(roots, "cancel_button"));
         SetField(ui, "saveButton", FindComponentNamedInRoots<Button>(roots, "save_button"));
         SetField(ui, "resetButton", FindComponentNamedInRoots<Button>(roots, "reset_button"));
+
+        // AUD-092 Phase 3: the 17 display-text references and the player portrait image, wired here
+        // rather than by ProgressionTextMeshProMigration (which converts the Text -> TMP components
+        // this depends on) because ProgressionUiObjects is scene-owned, not prefab-owned - see that
+        // migration's class doc comment.
+        SetField(ui, "playerSelectOptionImage", FindComponentNamedInRoots<Image>(roots, "player_selected_image"));
+        SetField(ui, "playerSelectOptionText", FindComponentNamedInRoots<TextMeshProUGUI>(roots, "player_selected_name"));
+        SetField(ui, "playerProgressionStatsText", FindComponentNamedInRoots<TextMeshProUGUI>(roots, "player_progression_stats"));
+        SetField(ui, "playerProgressionUpdatePointsText", FindComponentNamedInRoots<TextMeshProUGUI>(roots, "player_points_available"));
+        SetField(ui, "progression3Accuracy", FindComponentNamedInRoots<TextMeshProUGUI>(roots, "3accuracy"));
+        SetField(ui, "progression4Accuracy", FindComponentNamedInRoots<TextMeshProUGUI>(roots, "4accuracy"));
+        SetField(ui, "progression7Accuracy", FindComponentNamedInRoots<TextMeshProUGUI>(roots, "7accuracy"));
+        SetField(ui, "progressionRange", FindComponentNamedInRoots<TextMeshProUGUI>(roots, "range"));
+        SetField(ui, "progressionRelease", FindComponentNamedInRoots<TextMeshProUGUI>(roots, "release"));
+        SetField(ui, "progressionSpeed", FindComponentNamedInRoots<TextMeshProUGUI>(roots, "speed"));
+        SetField(ui, "progressionJump", FindComponentNamedInRoots<TextMeshProUGUI>(roots, "jump"));
+        SetField(ui, "progressionLuck", FindComponentNamedInRoots<TextMeshProUGUI>(roots, "luck"));
+        SetField(ui, "bonusReleaseText", FindComponentNamedInRoots<TextMeshProUGUI>(roots, "release_bonus"));
+        SetField(ui, "bonusRangeText", FindComponentNamedInRoots<TextMeshProUGUI>(roots, "range_bonus"));
+        SetField(ui, "bonusLuckText", FindComponentNamedInRoots<TextMeshProUGUI>(roots, "luck_bonus"));
+        SetField(ui, "addTo3Text", FindComponentNamedInRoots<TextMeshProUGUI>(roots, "3accuracyButton"));
+        SetField(ui, "addTo4Text", FindComponentNamedInRoots<TextMeshProUGUI>(roots, "4accuracyButton"));
+        SetField(ui, "addTo7Text", FindComponentNamedInRoots<TextMeshProUGUI>(roots, "7accuracyButton"));
 
         MenuFooterUiObjects footer = AddOrGet<MenuFooterUiObjects>(host);
         WireFooterButtonsInRoots(footer, roots);

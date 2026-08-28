@@ -63,6 +63,8 @@ public sealed class Level5ProjectValidator : IPreprocessBuildWithReport
         errors.AddRange(CollectOptionsTextRenderingContractErrors());
         // AUD-092 Phase 2: same treatment for the Stats screen and its high score row prefab.
         errors.AddRange(CollectStatsTextRenderingContractErrors());
+        // AUD-092 Phase 3: same treatment for the Progression screen.
+        errors.AddRange(CollectProgressionTextRenderingContractErrors());
 
         if (errors.Count > 0)
         {
@@ -805,39 +807,20 @@ public sealed class Level5ProjectValidator : IPreprocessBuildWithReport
             try
             {
                 // scenes with none of these managers have nothing to satisfy
-                if (!SceneContainsComponent<GameRules>(scene)
-                    && !SceneContainsComponent<ProgressionManager>(scene))
+                if (!SceneContainsComponent<GameRules>(scene))
                 {
                     continue;
                 }
 
                 HashSet<string> objectNames = CollectObjectNames(scene);
 
-                if (SceneContainsComponent<GameRules>(scene))
-                {
-                    AddMissingObjectErrors(errors, buildScene.path, "GameRules", GameRules.RequiredSceneObjectNames, objectNames);
-                    AddMissingObjectErrors(
-                        errors,
-                        buildScene.path,
-                        "MatchHudPresenter",
-                        MatchHudPresenter.RequiredHudObjectNames,
-                        objectNames);
-                }
-
-                // AUD-047: the progression menu still resolves its Text/Image references this way -
-                // see docs/ui-input-architecture.md. The button names this array used to also carry
-                // (playerSelectButtonName, progression3/4/7AccuracyName, ...) moved to
-                // ProgressionUiObjects's serialized references, asserted by
-                // CollectMenuUiObjectContractErrors instead (AUD-103).
-                if (SceneContainsComponent<ProgressionManager>(scene))
-                {
-                    AddMissingObjectErrors(
-                        errors,
-                        buildScene.path,
-                        "ProgressionManager",
-                        ProgressionManager.RequiredProgressionObjectNames,
-                        objectNames);
-                }
+                AddMissingObjectErrors(errors, buildScene.path, "GameRules", GameRules.RequiredSceneObjectNames, objectNames);
+                AddMissingObjectErrors(
+                    errors,
+                    buildScene.path,
+                    "MatchHudPresenter",
+                    MatchHudPresenter.RequiredHudObjectNames,
+                    objectNames);
             }
             finally
             {
@@ -1057,6 +1040,30 @@ public sealed class Level5ProjectValidator : IPreprocessBuildWithReport
     public static List<string> CollectStatsTextRenderingContractErrors()
     {
         return StatsTextMeshProMigration.CollectContractErrors();
+    }
+
+    [MenuItem("Level5/Validate Progression Text Rendering Contract")]
+    public static void ValidateProgressionTextRenderingContractFromMenu()
+    {
+        List<string> errors = CollectProgressionTextRenderingContractErrors();
+        if (errors.Count > 0)
+        {
+            Debug.LogError("Progression text rendering contract validation failed:\n- " + string.Join("\n- ", errors.ToArray()));
+            return;
+        }
+
+        Debug.Log("Progression text rendering contract validated.");
+    }
+
+    /// <summary>
+    /// AUD-092 Phase 3: progressionScreen.prefab's directly-owned legacy Text components were migrated
+    /// to TextMeshProUGUI on the same project-owned Neon Pixel-7 SDF font asset Options/Stats used.
+    /// Delegates entirely to <see cref="ProgressionTextMeshProMigration.CollectContractErrors"/>,
+    /// matching the <see cref="CollectOptionsTextRenderingContractErrors"/> precedent.
+    /// </summary>
+    public static List<string> CollectProgressionTextRenderingContractErrors()
+    {
+        return ProgressionTextMeshProMigration.CollectContractErrors();
     }
 
     private static void ValidateInputActions(List<string> errors)
