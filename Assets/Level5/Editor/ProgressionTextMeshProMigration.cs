@@ -30,17 +30,17 @@ using Object = UnityEngine.Object;
 /// component and no legacy Best Fit usage (confirmed by direct inspection), so this migration needs no
 /// Underlay compensation and no autosizing mapping.
 ///
-/// <c>confirm_update.prefab</c> (Progression's confirm/cancel dialogue, nested inside
-/// progression_manager.prefab) is deliberately excluded from this migration: it is also nested inside
-/// <c>Assets/Resources/Prefabs/misc/DialogueManager.prefab</c>, a generic dialogue system actively used
-/// by Start/Account flows (StartManager, UserAccountManager, LocalAccount,
-/// StartScreenTipDialogueManager) that are out of scope for this phase. Converting it here would
-/// silently reach into those screens.
+/// This class also hosts the migration/contract for the SHARED <c>confirm_update.prefab</c> dialogue -
+/// see the "SHARED confirm_update dialogue" region below for why that is not Progression-owned despite
+/// living in this file.
 /// </summary>
 public static class ProgressionTextMeshProMigration
 {
     private const string ProgressionScreenPrefabPath = "Assets/Resources/Prefabs/menu_progression/progressionScreen.prefab";
     private const string ScenePath = "Assets/Scenes/level_00_progression.unity";
+
+    private const string ConfirmUpdatePrefabPath = "Assets/Resources/Prefabs/misc/confirm_update.prefab";
+    private const string ProgressionManagerPrefabPath = "Assets/Resources/Prefabs/menu_progression/progression_manager.prefab";
 
     // ---------------------------------------------------------------------------------------------
     // Characterization report (read-only)
@@ -135,100 +135,30 @@ public static class ProgressionTextMeshProMigration
     [MenuItem("Level5/Migrate Progression To TMP")]
     public static void Migrate()
     {
-        if (AssetDatabase.FindAssets("t:TMP_Settings").Length == 0)
-        {
-            Debug.LogError(
-                "ProgressionTextMeshProMigration.Migrate: TMP Essential Resources are not present. Run"
-                    + " Level5/Import TMP Essential Resources first, then re-run this.");
-            return;
-        }
+        MenuTextConversion.MigratePrefabTexts(ProgressionScreenPrefabPath, "ProgressionTextMeshProMigration.Migrate");
+    }
 
-        TMP_FontAsset font = MenuTextConversion.EnsureNeonPixelFontAsset();
-        if (font == null)
-        {
-            Debug.LogError("ProgressionTextMeshProMigration.Migrate: could not create/load the Neon Pixel-7 SDF font asset; aborting.");
-            return;
-        }
+    /// <summary>
+    /// Idempotent Text -&gt; TextMeshProUGUI conversion for every legacy <see cref="Text"/> directly owned
+    /// by the SHARED <see cref="ConfirmUpdatePrefabPath"/> (see this class's doc comment for why it is
+    /// migrated here rather than folded into <see cref="Migrate"/>). Same shape/guarantees as
+    /// <see cref="Migrate"/>: no-ops (logged) once no legacy Text remains, aborts without saving on any
+    /// per-Text failure or a <see cref="Selectable"/> left with a null <c>targetGraphic</c> it did not
+    /// have before. <c>confirm_update.prefab</c> has no nested prefab instances of its own, so every
+    /// owned <see cref="Text"/>/<see cref="Selectable"/> found here belongs to this prefab directly.
+    /// </summary>
+    [MenuItem("Level5/Migrate Confirm Dialogue To TMP")]
+    public static void MigrateConfirmDialogue()
+    {
+        MenuTextConversion.MigratePrefabTexts(ConfirmUpdatePrefabPath, "ProgressionTextMeshProMigration.MigrateConfirmDialogue");
+    }
 
-        GameObject root = PrefabUtility.LoadPrefabContents(ProgressionScreenPrefabPath);
-        try
-        {
-            Text[] allTexts = root.GetComponentsInChildren<Text>(true);
-            List<Text> texts = new List<Text>();
-            List<Text> nestedTexts = new List<Text>();
-            MenuTextConversion.PartitionByNestedPrefabInstance(allTexts, root, texts, nestedTexts);
-
-            if (texts.Count == 0 && root.GetComponentsInChildren<TextMeshProUGUI>(true).Length > 0)
-            {
-                Debug.Log(
-                    "ProgressionTextMeshProMigration.Migrate: no directly-owned legacy Text remains in "
-                        + ProgressionScreenPrefabPath + "; nothing to do (" + nestedTexts.Count
-                        + " Text component(s) inside nested prefab instances are intentionally left untouched).");
-                return;
-            }
-
-            List<string> errors = new List<string>();
-            int convertedCount = 0;
-            int outlineCompensatedCount = 0;
-
-            foreach (Text text in texts)
-            {
-                string path = MenuTextConversion.BuildHierarchyPath(text.gameObject, root);
-                if (text.resizeTextForBestFit)
-                {
-                    errors.Add(path + " has Best Fit enabled; this migration does not support autosizing conversion.");
-                    continue;
-                }
-
-                bool hadEnabledOutline = text.TryGetComponent(out Outline outline) && outline.enabled;
-                TextMeshProUGUI tmp = MenuTextConversion.ConvertSingleText(root, text, font);
-                if (tmp == null)
-                {
-                    errors.Add(path + " : conversion failed to add TextMeshProUGUI.");
-                    continue;
-                }
-
-                convertedCount++;
-                if (hadEnabledOutline)
-                {
-                    outlineCompensatedCount++;
-                }
-            }
-
-            foreach (Selectable selectable in root.GetComponentsInChildren<Selectable>(true))
-            {
-                if (MenuTextConversion.IsPartOfNestedPrefabInstance(selectable.gameObject, root))
-                {
-                    continue; // pre-existing state of a nested prefab instance (touch_joystick) - not this migration's concern
-                }
-
-                if (selectable.targetGraphic == null)
-                {
-                    errors.Add(
-                        MenuTextConversion.BuildHierarchyPath(selectable.gameObject, root) + " : " + selectable.GetType().Name
-                            + " has a null targetGraphic after migration.");
-                }
-            }
-
-            if (errors.Count > 0)
-            {
-                Debug.LogError(
-                    "ProgressionTextMeshProMigration.Migrate aborted without saving - " + errors.Count + " error(s):\n- "
-                        + string.Join("\n- ", errors));
-                return;
-            }
-
-            MenuTextConversion.PersistLooseUnderlayMaterials(root);
-            PrefabUtility.SaveAsPrefabAsset(root, ProgressionScreenPrefabPath);
-            Debug.Log(
-                "ProgressionTextMeshProMigration.Migrate complete: converted " + convertedCount
-                    + " Text component(s), compensated " + outlineCompensatedCount
-                    + " legacy Outline effect(s) via TMP underlay material.");
-        }
-        finally
-        {
-            PrefabUtility.UnloadPrefabContents(root);
-        }
+    /// <summary>Runs <see cref="Migrate"/> followed by <see cref="MigrateConfirmDialogue"/>.</summary>
+    [MenuItem("Level5/Migrate All Progression TMP")]
+    public static void MigrateAll()
+    {
+        Migrate();
+        MigrateConfirmDialogue();
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -347,5 +277,117 @@ public static class ProgressionTextMeshProMigration
                 EditorSceneManager.CloseScene(scene, true);
             }
         }
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Permanent contract for the SHARED confirm_update dialogue
+    // (backs Level5ProjectValidator.CollectConfirmationDialogueTextRenderingContractErrors)
+    // ---------------------------------------------------------------------------------------------
+
+    /// <summary>
+    /// AUD-092 Phase 3 permanent regression guard for the SHARED <see cref="ConfirmUpdatePrefabPath"/>
+    /// (used by both progression_manager.prefab and DialogueManager.prefab - see this class's doc
+    /// comment): zero legacy Text remain, every TextMeshProUGUI has a font asset, <c>confirm_button</c>
+    /// and <c>cancel_button</c> each still carry a TextMeshProUGUI with a valid, matching
+    /// <c>Selectable.targetGraphic</c>, no other Selectable in the prefab has a null targetGraphic, the
+    /// <see cref="ConfirmDialogue"/> component is still present, and progression_manager.prefab's nested
+    /// instance of this prefab carries no leftover legacy-Text property override.
+    /// </summary>
+    public static List<string> CollectConfirmationDialogueContractErrors()
+    {
+        List<string> errors = new List<string>();
+
+        GameObject prefabRoot = AssetDatabase.LoadAssetAtPath<GameObject>(ConfirmUpdatePrefabPath);
+        if (prefabRoot == null)
+        {
+            errors.Add(ConfirmUpdatePrefabPath + " : could not load confirm_update prefab asset.");
+            return errors;
+        }
+
+        List<Text> ownedLegacyTexts = new List<Text>();
+        List<Text> nestedLegacyTexts = new List<Text>();
+        MenuTextConversion.PartitionByNestedPrefabInstance(
+            prefabRoot.GetComponentsInChildren<Text>(true), prefabRoot, ownedLegacyTexts, nestedLegacyTexts);
+        if (ownedLegacyTexts.Count > 0)
+        {
+            errors.Add(
+                ConfirmUpdatePrefabPath + " : " + ownedLegacyTexts.Count
+                    + " legacy Text component(s) directly owned by this SHARED confirm/cancel dialogue prefab remain"
+                    + " (expected 0). confirm_update.prefab is used by both progression_manager.prefab and"
+                    + " DialogueManager.prefab.");
+        }
+
+        foreach (TextMeshProUGUI tmp in prefabRoot.GetComponentsInChildren<TextMeshProUGUI>(true))
+        {
+            if (tmp.font == null)
+            {
+                errors.Add(
+                    ConfirmUpdatePrefabPath + " -> " + MenuTextConversion.BuildHierarchyPath(tmp.gameObject, prefabRoot)
+                        + " : TextMeshProUGUI has no font asset.");
+            }
+        }
+
+        // Matches every sibling CollectContractErrors (Options/Stats/Progression): a nested prefab
+        // instance's pre-existing Selectables are out of this migration's scope, so a null targetGraphic
+        // there is not this contract's concern. confirm_update.prefab has none today, but this guard
+        // keeps that true if one is ever added rather than silently starting to flag it.
+        HashSet<GameObject> reportedNullTargetGraphic = new HashSet<GameObject>();
+        foreach (Selectable selectable in prefabRoot.GetComponentsInChildren<Selectable>(true))
+        {
+            if (MenuTextConversion.IsPartOfNestedPrefabInstance(selectable.gameObject, prefabRoot))
+            {
+                continue;
+            }
+
+            if (selectable.targetGraphic == null)
+            {
+                errors.Add(
+                    ConfirmUpdatePrefabPath + " -> " + MenuTextConversion.BuildHierarchyPath(selectable.gameObject, prefabRoot) + " : "
+                        + selectable.GetType().Name + " has a null targetGraphic.");
+                reportedNullTargetGraphic.Add(selectable.gameObject);
+            }
+        }
+
+        Dictionary<string, Transform> childrenByName = MenuTextConversion.IndexChildrenByName(prefabRoot);
+        string[] expectedButtonNames = { "confirm_button", "cancel_button" };
+        foreach (string buttonName in expectedButtonNames)
+        {
+            if (!childrenByName.TryGetValue(buttonName, out Transform buttonTransform))
+            {
+                errors.Add(ConfirmUpdatePrefabPath + " : expected GameObject '" + buttonName + "' was not found.");
+                continue;
+            }
+
+            TextMeshProUGUI tmp = buttonTransform.GetComponent<TextMeshProUGUI>();
+            if (tmp == null)
+            {
+                errors.Add(ConfirmUpdatePrefabPath + " -> " + buttonName + " : has no TextMeshProUGUI component.");
+            }
+
+            Selectable selectable = buttonTransform.GetComponent<Selectable>();
+            if (selectable == null)
+            {
+                errors.Add(ConfirmUpdatePrefabPath + " -> " + buttonName + " : has no Selectable/Button component.");
+            }
+            else if (tmp != null && selectable.targetGraphic != tmp && !reportedNullTargetGraphic.Contains(buttonTransform.gameObject))
+            {
+                // The null-targetGraphic case for this exact GameObject was already reported by the
+                // general Selectable loop above; only report here when targetGraphic is non-null but
+                // wrong (points at something other than this button's own migrated TextMeshProUGUI), so
+                // one underlying defect doesn't produce two errors describing it two different ways.
+                errors.Add(
+                    ConfirmUpdatePrefabPath + " -> " + buttonName
+                        + " : Selectable.targetGraphic does not reference the migrated TextMeshProUGUI.");
+            }
+        }
+
+        if (prefabRoot.GetComponentInChildren<ConfirmDialogue>(true) == null)
+        {
+            errors.Add(ConfirmUpdatePrefabPath + " : ConfirmDialogue component is missing.");
+        }
+
+        MenuTextConversion.CollectDanglingPrefabTextOverrides(ProgressionManagerPrefabPath, ConfirmUpdatePrefabPath, errors);
+
+        return errors;
     }
 }

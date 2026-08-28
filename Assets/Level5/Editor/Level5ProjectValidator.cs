@@ -65,6 +65,9 @@ public sealed class Level5ProjectValidator : IPreprocessBuildWithReport
         errors.AddRange(CollectStatsTextRenderingContractErrors());
         // AUD-092 Phase 3: same treatment for the Progression screen.
         errors.AddRange(CollectProgressionTextRenderingContractErrors());
+        // AUD-092 Phase 3: confirm_update.prefab is SHARED (progression_manager.prefab and
+        // DialogueManager.prefab both depend on it), enforced under its own name for that reason.
+        errors.AddRange(CollectConfirmationDialogueTextRenderingContractErrors());
 
         if (errors.Count > 0)
         {
@@ -1064,6 +1067,34 @@ public sealed class Level5ProjectValidator : IPreprocessBuildWithReport
     public static List<string> CollectProgressionTextRenderingContractErrors()
     {
         return ProgressionTextMeshProMigration.CollectContractErrors();
+    }
+
+    [MenuItem("Level5/Validate Confirmation Dialogue Text Rendering Contract")]
+    public static void ValidateConfirmationDialogueTextRenderingContractFromMenu()
+    {
+        List<string> errors = CollectConfirmationDialogueTextRenderingContractErrors();
+        if (errors.Count > 0)
+        {
+            Debug.LogError("Confirmation dialogue text rendering contract validation failed:\n- " + string.Join("\n- ", errors.ToArray()));
+            return;
+        }
+
+        Debug.Log("Confirmation dialogue text rendering contract validated.");
+    }
+
+    /// <summary>
+    /// AUD-092 Phase 3: confirm_update.prefab's two directly-owned legacy Text components
+    /// (confirm_button, cancel_button) were migrated to TextMeshProUGUI on the same project-owned Neon
+    /// Pixel-7 SDF font asset Options/Stats/Progression used. Named separately from
+    /// <see cref="CollectProgressionTextRenderingContractErrors"/> - not folded into it - because
+    /// confirm_update.prefab is SHARED: it is nested inside progression_manager.prefab AND held by
+    /// DialogueManager.prefab as a runtime Instantiate() template for Start/Account flows, so this
+    /// contract must hold regardless of Progression-specific state. Delegates entirely to
+    /// <see cref="ProgressionTextMeshProMigration.CollectConfirmationDialogueContractErrors"/>.
+    /// </summary>
+    public static List<string> CollectConfirmationDialogueTextRenderingContractErrors()
+    {
+        return ProgressionTextMeshProMigration.CollectConfirmationDialogueContractErrors();
     }
 
     private static void ValidateInputActions(List<string> errors)

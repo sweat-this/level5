@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Reflection;
 using TMPro;
 using UnityEditor;
 using UnityEditor.SceneManagement;
@@ -326,6 +327,113 @@ internal static class MenuTextConversion
         }
     }
 
+    /// <summary>
+    /// AUD-092 Phase 3: the single-prefab "convert every owned Text, abort-without-saving on any failure"
+    /// shape shared verbatim by <see cref="MenuTextMeshProMigration.Migrate"/> (Options),
+    /// <see cref="ProgressionTextMeshProMigration.Migrate"/>, and
+    /// <see cref="ProgressionTextMeshProMigration.MigrateConfirmDialogue"/> - extracted here once those
+    /// three call sites had converged on identical bodies differing only by prefab path and log prefix
+    /// (see each caller's own doc comment for why it stays a separate <c>[MenuItem]</c> entry point rather
+    /// than being merged into one). Returns true on success (including the "nothing to do" no-op path)
+    /// and false on any abort; callers only need to expose their own <c>[MenuItem]</c> wrapper.
+    /// </summary>
+    internal static bool MigratePrefabTexts(string prefabPath, string logPrefix)
+    {
+        if (AssetDatabase.FindAssets("t:TMP_Settings").Length == 0)
+        {
+            Debug.LogError(
+                logPrefix + ": TMP Essential Resources are not present. Run Level5/Import TMP Essential"
+                    + " Resources first, then re-run this.");
+            return false;
+        }
+
+        TMP_FontAsset font = EnsureNeonPixelFontAsset();
+        if (font == null)
+        {
+            Debug.LogError(logPrefix + ": could not create/load the Neon Pixel-7 SDF font asset; aborting.");
+            return false;
+        }
+
+        GameObject root = PrefabUtility.LoadPrefabContents(prefabPath);
+        try
+        {
+            Text[] allTexts = root.GetComponentsInChildren<Text>(true);
+            List<Text> texts = new List<Text>();
+            List<Text> nestedTexts = new List<Text>();
+            PartitionByNestedPrefabInstance(allTexts, root, texts, nestedTexts);
+
+            if (texts.Count == 0 && root.GetComponentsInChildren<TextMeshProUGUI>(true).Length > 0)
+            {
+                Debug.Log(
+                    logPrefix + ": no directly-owned legacy Text remains in " + prefabPath + "; nothing to do ("
+                        + nestedTexts.Count + " Text component(s) inside nested prefab instances are intentionally"
+                        + " left untouched).");
+                return true;
+            }
+
+            List<string> errors = new List<string>();
+            int convertedCount = 0;
+            int outlineCompensatedCount = 0;
+
+            foreach (Text text in texts)
+            {
+                string path = BuildHierarchyPath(text.gameObject, root);
+                if (text.resizeTextForBestFit)
+                {
+                    errors.Add(path + " has Best Fit enabled; this migration does not support autosizing conversion.");
+                    continue;
+                }
+
+                bool hadEnabledOutline = text.TryGetComponent(out Outline outline) && outline.enabled;
+                TextMeshProUGUI tmp = ConvertSingleText(root, text, font);
+                if (tmp == null)
+                {
+                    errors.Add(path + " : conversion failed to add TextMeshProUGUI.");
+                    continue;
+                }
+
+                convertedCount++;
+                if (hadEnabledOutline)
+                {
+                    outlineCompensatedCount++;
+                }
+            }
+
+            foreach (Selectable selectable in root.GetComponentsInChildren<Selectable>(true))
+            {
+                if (IsPartOfNestedPrefabInstance(selectable.gameObject, root))
+                {
+                    continue; // pre-existing state of a nested prefab instance (e.g. touch_joystick) - not this migration's concern
+                }
+
+                if (selectable.targetGraphic == null)
+                {
+                    errors.Add(
+                        BuildHierarchyPath(selectable.gameObject, root) + " : " + selectable.GetType().Name
+                            + " has a null targetGraphic after migration.");
+                }
+            }
+
+            if (errors.Count > 0)
+            {
+                Debug.LogError(
+                    logPrefix + " aborted without saving - " + errors.Count + " error(s):\n- " + string.Join("\n- ", errors));
+                return false;
+            }
+
+            PersistLooseUnderlayMaterials(root);
+            PrefabUtility.SaveAsPrefabAsset(root, prefabPath);
+            Debug.Log(
+                logPrefix + " complete: converted " + convertedCount + " Text component(s), compensated "
+                    + outlineCompensatedCount + " legacy Outline effect(s) via TMP underlay material.");
+            return true;
+        }
+        finally
+        {
+            PrefabUtility.UnloadPrefabContents(root);
+        }
+    }
+
     internal static FontStyles MapFontStyle(FontStyle style)
     {
         switch (style)
@@ -425,14 +533,75 @@ internal static class MenuTextConversion
     }
 
     /// <summary>
+    /// AUD-092 Phase 3: single-pass index of every Transform under <paramref name="root"/> (active or
+    /// not) by <see cref="GameObject.name"/>, for callers that need to resolve more than one known child
+    /// name (e.g. <see cref="ProgressionTextMeshProMigration.CollectConfirmationDialogueContractErrors"/>
+    /// resolving <c>confirm_button</c>/<c>cancel_button</c>) without re-walking the hierarchy once per
+    /// name. Last-wins on a duplicate name, matching <see cref="GameObject.Find"/>'s own ambiguity.
+    /// </summary>
+    internal static Dictionary<string, Transform> IndexChildrenByName(GameObject root)
+    {
+        Dictionary<string, Transform> index = new Dictionary<string, Transform>();
+        foreach (Transform candidate in root.GetComponentsInChildren<Transform>(true))
+        {
+            index[candidate.name] = candidate;
+        }
+
+        return index;
+    }
+
+    /// <summary>
+    /// AUD-092 Phase 3: forces <paramref name="behaviour"/>'s own private <c>Awake()</c> to run
+    /// immediately via reflection. Verified empirically (a throwaway probe test, not committed) that
+    /// <see cref="Object.Instantiate(Object)"/> does NOT invoke <c>Awake()</c> for a freshly instantiated
+    /// MonoBehaviour in this project's batchmode EditMode test harness - not synchronously, and not even
+    /// after yielding a full frame via <c>[UnityTest]</c>. This is not a transient timing race a
+    /// <c>yield return null</c> fixes; the engine genuinely never dispatches it here. Any Editor/test code
+    /// that instantiates a prefab and depends on Awake-driven initialization (button discovery, listener
+    /// wiring, etc. - see <c>ConfirmDialogueTextMeshProMigrationTests</c> for the pattern this was
+    /// written against) must call this rather than assume the engine will do it. Safe to call even if the
+    /// engine does eventually invoke the real Awake elsewhere too, provided the target's Awake is itself
+    /// idempotent (early-outs on already-assigned fields, overwrites rather than accumulates state).
+    /// </summary>
+    internal static void InvokeAwake(MonoBehaviour behaviour)
+    {
+        MethodInfo awake = behaviour.GetType().GetMethod(
+            "Awake", BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly);
+        if (awake == null)
+        {
+            Debug.LogError("MenuTextConversion.InvokeAwake: " + behaviour.GetType().Name + " has no private instance Awake() method to invoke.");
+            return;
+        }
+
+        awake.Invoke(behaviour, null);
+    }
+
+    /// <summary>
     /// Walks every Transform in <paramref name="scene"/> (active or not) looking for the outermost
     /// prefab instance root whose nearest source prefab is <paramref name="prefabAssetPath"/>.
     /// </summary>
     internal static GameObject FindPrefabInstanceRoot(Scene scene, string prefabAssetPath)
     {
-        foreach (GameObject sceneRoot in scene.GetRootGameObjects())
+        return FindPrefabInstanceRoot(scene.GetRootGameObjects(), prefabAssetPath);
+    }
+
+    /// <summary>
+    /// AUD-092 Phase 3: same search as the <see cref="Scene"/> overload above, but for a nested prefab
+    /// instance living inside another prefab asset (e.g. <c>confirm_update.prefab</c> nested inside
+    /// <c>progression_manager.prefab</c>) rather than inside a scene. <paramref name="outerRoot"/> is
+    /// expected to come from <see cref="PrefabUtility.LoadPrefabContents"/>, matching every other mutator
+    /// in this file.
+    /// </summary>
+    internal static GameObject FindPrefabInstanceRoot(GameObject outerRoot, string prefabAssetPath)
+    {
+        return FindPrefabInstanceRoot(new[] { outerRoot }, prefabAssetPath);
+    }
+
+    private static GameObject FindPrefabInstanceRoot(IEnumerable<GameObject> roots, string prefabAssetPath)
+    {
+        foreach (GameObject root in roots)
         {
-            foreach (Transform candidate in sceneRoot.GetComponentsInChildren<Transform>(true))
+            foreach (Transform candidate in root.GetComponentsInChildren<Transform>(true))
             {
                 GameObject candidateObject = candidate.gameObject;
                 if (!PrefabUtility.IsOutermostPrefabInstanceRoot(candidateObject))
@@ -611,6 +780,48 @@ internal static class MenuTextConversion
             {
                 EditorSceneManager.CloseScene(scene, true);
             }
+        }
+    }
+
+    /// <summary>
+    /// AUD-092 Phase 3: permanent regression guard for a shared prefab (e.g. <c>confirm_update.prefab</c>)
+    /// nested as a nested prefab instance inside another prefab asset rather than a scene - mirrors
+    /// <see cref="CollectDanglingSceneTextOverrides"/> but reads the nested instance's property
+    /// modifications via <see cref="PrefabUtility.LoadPrefabContents"/> instead of opening a scene.
+    /// </summary>
+    internal static void CollectDanglingPrefabTextOverrides(string outerPrefabPath, string nestedPrefabAssetPath, List<string> errors)
+    {
+        if (!File.Exists(outerPrefabPath))
+        {
+            return;
+        }
+
+        GameObject outerRoot = PrefabUtility.LoadPrefabContents(outerPrefabPath);
+        try
+        {
+            GameObject instanceRoot = FindPrefabInstanceRoot(outerRoot, nestedPrefabAssetPath);
+            if (instanceRoot == null)
+            {
+                return;
+            }
+
+            PropertyModification[] modifications = PrefabUtility.GetPropertyModifications(instanceRoot)
+                ?? Array.Empty<PropertyModification>();
+            foreach (PropertyModification modification in modifications)
+            {
+                if (modification.target is Text
+                    && (modification.propertyPath.StartsWith("m_Text", StringComparison.Ordinal)
+                        || modification.propertyPath.StartsWith("m_FontData", StringComparison.Ordinal)))
+                {
+                    errors.Add(
+                        outerPrefabPath + " : leftover legacy Text prefab override on property '"
+                            + modification.propertyPath + "' targeting nested instance of " + nestedPrefabAssetPath + ".");
+                }
+            }
+        }
+        finally
+        {
+            PrefabUtility.UnloadPrefabContents(outerRoot);
         }
     }
 }
