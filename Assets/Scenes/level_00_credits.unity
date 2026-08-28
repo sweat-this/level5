@@ -431,16 +431,6 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 0}
     m_Modifications:
-    - target: {fileID: 443627154714660236, guid: 1dfb6a6ab08f70843b4945acb3746d2a,
-        type: 3}
-      propertyPath: m_Text
-      value: sweatthis.com
-      objectReference: {fileID: 0}
-    - target: {fileID: 501043446502687206, guid: 1dfb6a6ab08f70843b4945acb3746d2a,
-        type: 3}
-      propertyPath: m_Text
-      value: IG @stustumaru
-      objectReference: {fileID: 0}
     - target: {fileID: 531194839068753526, guid: 1dfb6a6ab08f70843b4945acb3746d2a,
         type: 3}
       propertyPath: m_IsActive

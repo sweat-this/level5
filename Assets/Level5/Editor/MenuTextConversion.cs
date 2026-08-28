@@ -305,14 +305,36 @@ internal static class MenuTextConversion
     /// migration already created under the old unqualified name; those stay where they are since their
     /// TMP components' <c>fontSharedMaterial</c> already points at a persisted asset and this method
     /// only ever acts on a still-loose (never-persisted) material.
+    ///
+    /// AUD-092 Phase 4A: within a single call (i.e. within one screen), a loose material that is
+    /// value-identical (shader, Underlay keyword, color, X/Y offset, softness) to one already persisted
+    /// earlier in this same call reuses that persisted asset instead of creating another one - found
+    /// migrating Credits, whose four footer buttons (press_start/stats_menu/options/quit_game) all clone
+    /// the exact same outline compensation and would otherwise get four separate, permanently-identical
+    /// material assets that could never batch together in the same Canvas. Comparing by value (not by
+    /// GameObject name) means only genuinely different outline styles ever end up as separate assets.
+    /// Deliberately scoped to one call: two DIFFERENT screens with matching values still each get their
+    /// own asset (via the existing root-name qualifier above), because sharing across screens is exactly
+    /// the accidental-coupling bug this method's screen qualifier was added to prevent - editing one
+    /// screen's outline later must never move another screen's. Sharing within one screen is safe
+    /// because the values only match here because the buttons are meant to look identical; editing one
+    /// later to look different naturally gives it its own loose material again on the next migration run.
     /// </summary>
     internal static void PersistLooseUnderlayMaterials(GameObject root)
     {
+        Dictionary<string, Material> persistedByValue = new Dictionary<string, Material>();
         foreach (TextMeshProUGUI tmp in root.GetComponentsInChildren<TextMeshProUGUI>(true))
         {
             Material material = tmp.fontSharedMaterial;
             if (material == null || !string.IsNullOrEmpty(AssetDatabase.GetAssetPath(material)))
             {
+                continue;
+            }
+
+            string valueKey = BuildUnderlayMaterialValueKey(material);
+            if (persistedByValue.TryGetValue(valueKey, out Material alreadyPersisted))
+            {
+                tmp.fontSharedMaterial = alreadyPersisted;
                 continue;
             }
 
@@ -323,8 +345,25 @@ internal static class MenuTextConversion
             }
 
             AssetDatabase.CreateAsset(material, path);
-            tmp.fontSharedMaterial = AssetDatabase.LoadAssetAtPath<Material>(path);
+            Material persisted = AssetDatabase.LoadAssetAtPath<Material>(path);
+            tmp.fontSharedMaterial = persisted;
+            persistedByValue[valueKey] = persisted;
         }
+    }
+
+    /// <summary>
+    /// The subset of a TMP underlay-compensation material's state that determines its visual result -
+    /// see <see cref="PersistLooseUnderlayMaterials"/>. Two loose materials with the same key are
+    /// visually indistinguishable and safe to collapse onto one persisted asset.
+    /// </summary>
+    private static string BuildUnderlayMaterialValueKey(Material material)
+    {
+        return material.shader.name
+            + "|" + material.IsKeywordEnabled(ShaderUtilities.Keyword_Underlay)
+            + "|" + material.GetColor(ShaderUtilities.ID_UnderlayColor)
+            + "|" + material.GetFloat(ShaderUtilities.ID_UnderlayOffsetX)
+            + "|" + material.GetFloat(ShaderUtilities.ID_UnderlayOffsetY)
+            + "|" + material.GetFloat(ShaderUtilities.ID_UnderlaySoftness);
     }
 
     /// <summary>
@@ -336,8 +375,25 @@ internal static class MenuTextConversion
     /// (see each caller's own doc comment for why it stays a separate <c>[MenuItem]</c> entry point rather
     /// than being merged into one). Returns true on success (including the "nothing to do" no-op path)
     /// and false on any abort; callers only need to expose their own <c>[MenuItem]</c> wrapper.
+    ///
+    /// AUD-092 Phase 4A: <paramref name="resolveProtectedTexts"/> lets a caller (see
+    /// <c>CreditsTextMeshProMigration</c>) exempt a fixed set of directly-owned Text components from
+    /// conversion - the legacy <c>UnityEngine.UI.InputField</c>'s <c>textComponent</c>/<c>placeholder</c>,
+    /// which must remain legacy Text until Phase 4B migrates the InputField itself. Invoked against the
+    /// freshly-loaded scratch <paramref name="root"/> (a Text's identity does not survive across separate
+    /// <see cref="PrefabUtility.LoadPrefabContents"/> calls, so it must be re-resolved here rather than
+    /// passed in from the caller's own inspection). Its second parameter is the SAME <c>errors</c> list
+    /// this method later reports its per-Text failures through - a resolver that cannot find its expected
+    /// shape should add a description of the problem to that list and return null, rather than logging
+    /// independently, so a boundary-resolution failure is reported through the exact same single
+    /// aggregated "aborted without saving - N error(s)" message as every other kind of failure below,
+    /// instead of a separate ad hoc message. Every existing caller passes <c>null</c> (protect nothing)
+    /// and is unaffected. Idempotency is judged by the count of remaining ELIGIBLE (non-protected) Text,
+    /// not the total legacy Text count, so a prefab that intentionally keeps protected Text forever still
+    /// reports "nothing to do" on a second run.
     /// </summary>
-    internal static bool MigratePrefabTexts(string prefabPath, string logPrefix)
+    internal static bool MigratePrefabTexts(
+        string prefabPath, string logPrefix, Func<GameObject, List<string>, HashSet<Text>> resolveProtectedTexts = null)
     {
         if (AssetDatabase.FindAssets("t:TMP_Settings").Length == 0)
         {
@@ -362,20 +418,41 @@ internal static class MenuTextConversion
             List<Text> nestedTexts = new List<Text>();
             PartitionByNestedPrefabInstance(allTexts, root, texts, nestedTexts);
 
-            if (texts.Count == 0 && root.GetComponentsInChildren<TextMeshProUGUI>(true).Length > 0)
+            List<string> errors = new List<string>();
+            HashSet<Text> protectedTexts = null;
+            if (resolveProtectedTexts != null)
+            {
+                protectedTexts = resolveProtectedTexts(root, errors);
+                if (protectedTexts == null)
+                {
+                    if (errors.Count == 0)
+                    {
+                        errors.Add("could not resolve the protected Text component set.");
+                    }
+
+                    Debug.LogError(
+                        logPrefix + " aborted without saving - " + errors.Count + " error(s):\n- " + string.Join("\n- ", errors));
+                    return false;
+                }
+            }
+
+            List<Text> eligibleTexts = protectedTexts == null
+                ? texts
+                : texts.FindAll(text => !protectedTexts.Contains(text));
+
+            if (eligibleTexts.Count == 0 && root.GetComponentsInChildren<TextMeshProUGUI>(true).Length > 0)
             {
                 Debug.Log(
-                    logPrefix + ": no directly-owned legacy Text remains in " + prefabPath + "; nothing to do ("
-                        + nestedTexts.Count + " Text component(s) inside nested prefab instances are intentionally"
-                        + " left untouched).");
+                    logPrefix + ": no directly-owned eligible legacy Text remains in " + prefabPath + "; nothing to do ("
+                        + nestedTexts.Count + " Text component(s) inside nested prefab instances, "
+                        + (protectedTexts?.Count ?? 0) + " protected Text component(s), intentionally left untouched).");
                 return true;
             }
 
-            List<string> errors = new List<string>();
             int convertedCount = 0;
             int outlineCompensatedCount = 0;
 
-            foreach (Text text in texts)
+            foreach (Text text in eligibleTexts)
             {
                 string path = BuildHierarchyPath(text.gameObject, root);
                 if (text.resizeTextForBestFit)

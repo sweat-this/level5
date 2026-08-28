@@ -68,6 +68,10 @@ public sealed class Level5ProjectValidator : IPreprocessBuildWithReport
         // AUD-092 Phase 3: confirm_update.prefab is SHARED (progression_manager.prefab and
         // DialogueManager.prefab both depend on it), enforced under its own name for that reason.
         errors.AddRange(CollectConfirmationDialogueTextRenderingContractErrors());
+        // AUD-092 Phase 4A: the Credits screen's ordinary display/button Text was migrated, while the
+        // legacy ReportInputField and its two structural Text dependencies deliberately remain legacy
+        // until Phase 4B migrates the InputField itself.
+        errors.AddRange(CollectCreditsTextRenderingContractErrors());
 
         if (errors.Count > 0)
         {
@@ -1095,6 +1099,32 @@ public sealed class Level5ProjectValidator : IPreprocessBuildWithReport
     public static List<string> CollectConfirmationDialogueTextRenderingContractErrors()
     {
         return ProgressionTextMeshProMigration.CollectConfirmationDialogueContractErrors();
+    }
+
+    [MenuItem("Level5/Validate Credits Text Rendering Contract")]
+    public static void ValidateCreditsTextRenderingContractFromMenu()
+    {
+        List<string> errors = CollectCreditsTextRenderingContractErrors();
+        if (errors.Count > 0)
+        {
+            Debug.LogError("Credits text rendering contract validation failed:\n- " + string.Join("\n- ", errors.ToArray()));
+            return;
+        }
+
+        Debug.Log("Credits text rendering contract validated.");
+    }
+
+    /// <summary>
+    /// AUD-092 Phase 4A: creditsManager.prefab's 21 ordinary display/button legacy Text components were
+    /// migrated to TextMeshProUGUI on the same project-owned Neon Pixel-7 SDF font asset the other menu
+    /// screens used, while the legacy <c>ReportInputField</c> InputField and its two structural Text
+    /// dependencies deliberately remain legacy Text until Phase 4B. Delegates entirely to
+    /// <see cref="CreditsTextMeshProMigration.CollectContractErrors"/>, matching the
+    /// <see cref="CollectProgressionTextRenderingContractErrors"/> precedent.
+    /// </summary>
+    public static List<string> CollectCreditsTextRenderingContractErrors()
+    {
+        return CreditsTextMeshProMigration.CollectContractErrors();
     }
 
     private static void ValidateInputActions(List<string> errors)
