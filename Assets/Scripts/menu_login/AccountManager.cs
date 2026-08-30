@@ -1,4 +1,4 @@
-﻿using Assets.Scripts.database;
+using Assets.Scripts.database;
 using Assets.Scripts.restapi;
 using Assets.Scripts.Utility;
 using System;
@@ -6,6 +6,7 @@ using System.Collections;
 using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
+using UnityEngine.Events;
 using UnityEngine.EventSystems;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
@@ -43,11 +44,11 @@ public class AccountManager : MonoBehaviour
     string firstNameInput;
     string lastNameInput;
 
-    InputField emailInputField;
-    InputField usernameInputField;
-    InputField passwordInputField;
-    InputField firstNameInputField;
-    InputField lastNameInputField;
+    TMP_InputField emailInputField;
+    TMP_InputField usernameInputField;
+    TMP_InputField passwordInputField;
+    TMP_InputField firstNameInputField;
+    TMP_InputField lastNameInputField;
 
     Button checkEmailButton;
     Button checkUserNameButton;
@@ -59,31 +60,26 @@ public class AccountManager : MonoBehaviour
     Button createNewButton;
     Button loginExistingButton;
     Button loginLocalButton;
+    Button createAccountButton;
+    Button loginButton;
 
     // button objects
     GameObject emailAddressTextButtonObject;
     GameObject checkEmailButtonObject;
     GameObject userNameTextButtonObject;
     GameObject checkUserNameButtonObject;
-    GameObject passwordTextButtonObject;
-    GameObject firstNameTextButtonObject;
-    GameObject lastNameTextButtonObject;
 
     [SerializeField]
     bool emailAddressIsValid;
     [SerializeField]
     bool userNameIsValid;
 
-    private EventTrigger emailInputSubmitTrigger;
-    private EventTrigger.Entry emailInputSubmitEntry;
-    private EventTrigger usernameInputSubmitTrigger;
-    private EventTrigger.Entry usernameInputSubmitEntry;
-    private EventTrigger passwordInputSubmitTrigger;
-    private EventTrigger.Entry passwordInputSubmitEntry;
-    private EventTrigger firstNameInputSubmitTrigger;
-    private EventTrigger.Entry firstNameInputSubmitEntry;
-    private EventTrigger lastNameInputSubmitTrigger;
-    private EventTrigger.Entry lastNameInputSubmitEntry;
+    // AUD-092 Phase 5B section 13: narrow in-flight guards so a rapid double Create/Login activation
+    // cannot start a second concurrent flow. Reset in a coroutine-wrapping try/finally so every
+    // exit path - success, an early `yield break`, or an exception - clears it and allows retry.
+    bool isCreatingAccount;
+    bool isLoggingIn;
+
     private bool initialized;
 
     private void OnEnable()
@@ -221,11 +217,9 @@ public class AccountManager : MonoBehaviour
             messageDisplay = createUi.MessageDisplay;
             checkEmailButton = createUi.CheckEmailButton;
             checkUserNameButton = createUi.CheckUserNameButton;
+            createAccountButton = createUi.CreateAccountButton;
             emailAddressTextButtonObject = createUi.EmailAddressTargetObject;
             userNameTextButtonObject = createUi.UserNameTargetObject;
-            passwordTextButtonObject = createUi.PasswordTargetObject;
-            firstNameTextButtonObject = createUi.FirstNameTargetObject;
-            lastNameTextButtonObject = createUi.LastNameTargetObject;
             checkEmailButtonObject = createUi.CheckEmailButtonObject;
             checkUserNameButtonObject = createUi.CheckUserNameButtonObject;
         }
@@ -235,6 +229,7 @@ public class AccountManager : MonoBehaviour
             passwordInputField = loginUi.PasswordInputField;
             messageDisplay = loginUi.MessageDisplay;
             checkUserNameButton = loginUi.CheckUserNameButton;
+            loginButton = loginUi.LoginButton;
             userNameTextButtonObject = loginUi.UserNameTargetObject;
             checkUserNameButtonObject = checkUserNameButton != null ? checkUserNameButton.gameObject : null;
         }
@@ -256,8 +251,10 @@ public class AccountManager : MonoBehaviour
         UiSelectionAdapter.RegisterButton(createNewButton, LoadCreateNewAccount);
         UiSelectionAdapter.RegisterButton(loginExistingButton, LoadLoginExisting);
         UiSelectionAdapter.RegisterButton(loginLocalButton, LoadLoginLocal);
-        UiSelectionAdapter.RegisterButton(checkEmailButton, SelectEmailInput);
-        UiSelectionAdapter.RegisterButton(checkUserNameButton, SelectUsernameInput);
+        UiSelectionAdapter.RegisterButton(checkEmailButton, OnCheckEmailButtonClicked);
+        UiSelectionAdapter.RegisterButton(checkUserNameButton, OnCheckUserNameButtonClicked);
+        UiSelectionAdapter.RegisterButton(createAccountButton, OnCreateAccountButtonClicked);
+        UiSelectionAdapter.RegisterButton(loginButton, OnLoginButtonClicked);
     }
 
     private void UnregisterButtonCallbacks()
@@ -270,59 +267,118 @@ public class AccountManager : MonoBehaviour
         UiSelectionAdapter.UnregisterButton(createNewButton, LoadCreateNewAccount);
         UiSelectionAdapter.UnregisterButton(loginExistingButton, LoadLoginExisting);
         UiSelectionAdapter.UnregisterButton(loginLocalButton, LoadLoginLocal);
-        UiSelectionAdapter.UnregisterButton(checkEmailButton, SelectEmailInput);
-        UiSelectionAdapter.UnregisterButton(checkUserNameButton, SelectUsernameInput);
+        UiSelectionAdapter.UnregisterButton(checkEmailButton, OnCheckEmailButtonClicked);
+        UiSelectionAdapter.UnregisterButton(checkUserNameButton, OnCheckUserNameButtonClicked);
+        UiSelectionAdapter.UnregisterButton(createAccountButton, OnCreateAccountButtonClicked);
+        UiSelectionAdapter.UnregisterButton(loginButton, OnLoginButtonClicked);
     }
 
+    /// <summary>
+    /// AUD-092 Phase 5B section 12: Check Email/Check Username used to split behavior between a
+    /// scene-authored onClick (the actual validation) and this code-registered handler (just the
+    /// selection move) - both fired on the same click. One code-owned handler now does both, so the
+    /// button has exactly one behavioral owner.
+    /// </summary>
+    private void OnCheckEmailButtonClicked()
+    {
+        checkEmailAddressFormat();
+        SelectEmailInput();
+    }
+
+    private void OnCheckUserNameButtonClicked()
+    {
+        checkUserName();
+        SelectUsernameInput();
+    }
+
+    private void OnCreateAccountButtonClicked()
+    {
+        createUser();
+    }
+
+    private void OnLoginButtonClicked()
+    {
+        LoginUser();
+    }
+
+    /// <summary>
+    /// AUD-092 Phase 5B: replaces the legacy per-field <c>EventTrigger</c>/<c>EventTriggerType.Submit</c>
+    /// registration with native <see cref="TMP_InputField.onSubmit"/>, mirroring
+    /// <c>CreditsManager.RegisterReportInputSubmit</c>'s already-proven idiom exactly - it fires on the
+    /// same trigger the EventTrigger used to (the UI Submit action while a field is focused), only moves
+    /// EventSystem selection, and never invokes an account operation itself. Each field uses a fixed,
+    /// named instance method (not a lambda) so <c>RemoveListener</c> before <c>AddListener</c> actually
+    /// matches the previous registration and repeated Enable/Disable cannot accumulate listeners.
+    ///
+    /// Also repairs the legacy self-selection/dead-end Submit behavior: Password/FirstName/LastName used
+    /// to target themselves on the create screen (or, for Password on the login screen, nothing at all -
+    /// its target was simply never assigned) - each Submit now advances to the next control in the form:
+    /// Email/Username -> their Check button (unchanged), Password -> First Name (create) or the Login
+    /// button (login), First Name -> Last Name, Last Name -> Create Account.
+    /// </summary>
     private void RegisterInputSubmitCallbacks()
     {
-        RegisterInputSubmitCallback(emailInputField, checkEmailButtonObject, ref emailInputSubmitTrigger, ref emailInputSubmitEntry);
-        RegisterInputSubmitCallback(usernameInputField, checkUserNameButtonObject, ref usernameInputSubmitTrigger, ref usernameInputSubmitEntry);
-        RegisterInputSubmitCallback(passwordInputField, passwordTextButtonObject, ref passwordInputSubmitTrigger, ref passwordInputSubmitEntry);
-        RegisterInputSubmitCallback(firstNameInputField, firstNameTextButtonObject, ref firstNameInputSubmitTrigger, ref firstNameInputSubmitEntry);
-        RegisterInputSubmitCallback(lastNameInputField, lastNameTextButtonObject, ref lastNameInputSubmitTrigger, ref lastNameInputSubmitEntry);
-    }
-
-    private void RegisterInputSubmitCallback(InputField inputField, GameObject targetObject, ref EventTrigger trigger, ref EventTrigger.Entry entry)
-    {
-        if (inputField == null || targetObject == null || entry != null)
-        {
-            return;
-        }
-
-        trigger = inputField.GetComponent<EventTrigger>();
-        if (trigger == null)
-        {
-            trigger = inputField.gameObject.AddComponent<EventTrigger>();
-        }
-
-        entry = new EventTrigger.Entry
-        {
-            eventID = EventTriggerType.Submit,
-            callback = new EventTrigger.TriggerEvent()
-        };
-        entry.callback.AddListener((eventData) => UiSelectionAdapter.TrySelect(targetObject));
-        trigger.triggers.Add(entry);
+        RegisterInputSubmitCallback(emailInputField, OnEmailInputSubmit);
+        RegisterInputSubmitCallback(usernameInputField, OnUsernameInputSubmit);
+        RegisterInputSubmitCallback(passwordInputField, OnPasswordInputSubmit);
+        RegisterInputSubmitCallback(firstNameInputField, OnFirstNameInputSubmit);
+        RegisterInputSubmitCallback(lastNameInputField, OnLastNameInputSubmit);
     }
 
     private void UnregisterInputSubmitCallbacks()
     {
-        UnregisterInputSubmitCallback(ref emailInputSubmitTrigger, ref emailInputSubmitEntry);
-        UnregisterInputSubmitCallback(ref usernameInputSubmitTrigger, ref usernameInputSubmitEntry);
-        UnregisterInputSubmitCallback(ref passwordInputSubmitTrigger, ref passwordInputSubmitEntry);
-        UnregisterInputSubmitCallback(ref firstNameInputSubmitTrigger, ref firstNameInputSubmitEntry);
-        UnregisterInputSubmitCallback(ref lastNameInputSubmitTrigger, ref lastNameInputSubmitEntry);
+        UnregisterInputSubmitCallback(emailInputField, OnEmailInputSubmit);
+        UnregisterInputSubmitCallback(usernameInputField, OnUsernameInputSubmit);
+        UnregisterInputSubmitCallback(passwordInputField, OnPasswordInputSubmit);
+        UnregisterInputSubmitCallback(firstNameInputField, OnFirstNameInputSubmit);
+        UnregisterInputSubmitCallback(lastNameInputField, OnLastNameInputSubmit);
     }
 
-    private void UnregisterInputSubmitCallback(ref EventTrigger trigger, ref EventTrigger.Entry entry)
+    private static void RegisterInputSubmitCallback(TMP_InputField inputField, UnityAction<string> handler)
     {
-        if (trigger != null && entry != null)
+        if (inputField == null)
         {
-            trigger.triggers.Remove(entry);
+            return;
         }
 
-        trigger = null;
-        entry = null;
+        inputField.onSubmit.RemoveListener(handler);
+        inputField.onSubmit.AddListener(handler);
+    }
+
+    private static void UnregisterInputSubmitCallback(TMP_InputField inputField, UnityAction<string> handler)
+    {
+        if (inputField != null)
+        {
+            inputField.onSubmit.RemoveListener(handler);
+        }
+    }
+
+    private void OnEmailInputSubmit(string submittedText)
+    {
+        UiSelectionAdapter.TrySelect(checkEmailButtonObject);
+    }
+
+    private void OnUsernameInputSubmit(string submittedText)
+    {
+        UiSelectionAdapter.TrySelect(checkUserNameButtonObject);
+    }
+
+    private void OnPasswordInputSubmit(string submittedText)
+    {
+        GameObject target = firstNameInputField != null
+            ? firstNameInputField.gameObject
+            : (loginButton != null ? loginButton.gameObject : null);
+        UiSelectionAdapter.TrySelect(target);
+    }
+
+    private void OnFirstNameInputSubmit(string submittedText)
+    {
+        UiSelectionAdapter.TrySelect(lastNameInputField != null ? lastNameInputField.gameObject : null);
+    }
+
+    private void OnLastNameInputSubmit(string submittedText)
+    {
+        UiSelectionAdapter.TrySelect(createAccountButton != null ? createAccountButton.gameObject : null);
     }
 
     private GameObject GetDefaultSelectedButton()
@@ -515,9 +571,34 @@ public class AccountManager : MonoBehaviour
         return "checking username";
     }
 
+    /// <summary>
+    /// AUD-092 Phase 5B section 13: guarded so a rapid double activation (double click, or a stray
+    /// duplicate Submit/click while the first flow is still in progress) cannot start a second
+    /// concurrent create flow. <see cref="isCreatingAccount"/> is cleared in
+    /// <see cref="CreateUserCoroutineGuarded"/>'s <c>finally</c> on every exit path, so a failed attempt
+    /// can always be retried.
+    /// </summary>
     public void createUser()
     {
-        StartCoroutine(CreateUserCoroutine());
+        if (isCreatingAccount)
+        {
+            return;
+        }
+
+        isCreatingAccount = true;
+        StartCoroutine(CreateUserCoroutineGuarded());
+    }
+
+    private IEnumerator CreateUserCoroutineGuarded()
+    {
+        try
+        {
+            yield return CreateUserCoroutine();
+        }
+        finally
+        {
+            isCreatingAccount = false;
+        }
     }
 
     private IEnumerator CheckUserNameCoroutine()
@@ -605,13 +686,46 @@ public class AccountManager : MonoBehaviour
         yield return LoginUserCoroutine(newUser.UserName, newUser.Password, newUser);
     }
 
+    /// <summary>
+    /// AUD-092 Phase 5B section 13: guarded the same way as <see cref="createUser"/>. Both overloads
+    /// share <see cref="isLoggingIn"/>/<see cref="LoginUserCoroutineGuarded"/> so a rapid double
+    /// activation of either cannot start a second concurrent login flow; the auto-login
+    /// <see cref="CreateUserCoroutine"/> performs after a successful create is a direct nested
+    /// <c>yield return</c> of the 3-argument private overload below, not a call through either public
+    /// overload, so it is unaffected by this guard and already covered by <see cref="isCreatingAccount"/>.
+    /// </summary>
     public void LoginUser()
     {
-        StartCoroutine(LoginUserCoroutine());
+        if (isLoggingIn)
+        {
+            return;
+        }
+
+        isLoggingIn = true;
+        StartCoroutine(LoginUserCoroutineGuarded(LoginUserCoroutine()));
     }
+
     public void LoginUser(string username, string password)
     {
-        StartCoroutine(LoginUserCoroutine(username, password));
+        if (isLoggingIn)
+        {
+            return;
+        }
+
+        isLoggingIn = true;
+        StartCoroutine(LoginUserCoroutineGuarded(LoginUserCoroutine(username, password)));
+    }
+
+    private IEnumerator LoginUserCoroutineGuarded(IEnumerator inner)
+    {
+        try
+        {
+            yield return inner;
+        }
+        finally
+        {
+            isLoggingIn = false;
+        }
     }
 
     private IEnumerator LoginUserCoroutine()
@@ -691,30 +805,6 @@ public class AccountManager : MonoBehaviour
         }
 
         DBHelper.instance.InsertUser(user);
-    }
-
-    public void readEmailAddressInput(string s)
-    {
-        emailInput = emailInputField == null ? s : emailInputField.text;
-    }
-
-    public void readUsernameInput(string s)
-    {
-        userNameInput = usernameInputField == null ? s : usernameInputField.text;
-    }
-
-    public void readPasswordInput(string s)
-    {
-        passwordInput = passwordInputField == null ? s : passwordInputField.text;
-    }
-
-    public void readFirstNameInput(string s)
-    {
-        firstNameInput = firstNameInputField == null ? s : firstNameInputField.text;
-    }
-    public void readLastNameInput(string s)
-    {
-        lastNameInput = lastNameInputField == null ? s : lastNameInputField.text;
     }
 
     public static string MainMenuButtonName => mainMenuButtonName;

@@ -4,6 +4,7 @@ using System.IO;
 using System.Text;
 using TMPro;
 using UnityEditor;
+using UnityEditor.Events;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -11,13 +12,14 @@ using UnityEngine.UI;
 using Object = UnityEngine.Object;
 
 /// <summary>
-/// AUD-092 Phase 5A: migrates the directly scene-owned ordinary legacy <see cref="Text"/> in the three
+/// AUD-092 Phase 5A migrated the directly scene-owned ordinary legacy <see cref="Text"/> in the three
 /// production account scenes that have any (<c>level_00_account</c>, <c>level_00_account_createNew</c>,
 /// <c>level_00_account_loginExisting</c>) to <see cref="TextMeshProUGUI"/> on the same project-owned Neon
-/// Pixel-7 SDF font asset every other menu screen uses, while deliberately leaving each screen's legacy
-/// <see cref="InputField"/> components and their structural <c>textComponent</c>/<c>placeholder</c> Text
-/// dependencies as legacy Text until AUD-092 Phase 5B migrates the InputFields themselves.
-/// <c>level_00_account_loginLocal</c> has no legacy Text/InputField at all and is untouched.
+/// Pixel-7 SDF font asset every other menu screen uses. AUD-092 Phase 5B (this class, since) additionally
+/// migrates each screen's legacy <see cref="InputField"/> components themselves, and their structural
+/// <c>textComponent</c>/<c>placeholder</c> Text dependencies, to <see cref="TMP_InputField"/>/
+/// <see cref="TextMeshProUGUI"/>. <c>level_00_account_loginLocal</c> has no legacy Text/InputField at all
+/// and is untouched by either phase.
 ///
 /// Unlike every earlier AUD-092 phase, these three screens are NOT prefab instances - characterization
 /// (<c>AccountTextMeshProMigration.Report</c>, run once against current <c>dev</c> before this file was
@@ -30,10 +32,14 @@ using Object = UnityEngine.Object;
 /// setup was open before this ran.
 ///
 /// Reuses every low-level mechanic <see cref="MenuTextConversion"/> already proved (font asset creation,
-/// single-Text conversion, named-field wiring, unsupported-consumer detection) - this class contributes
-/// only the account-specific orchestration: the multi-InputField structural boundary (each screen has
-/// several InputFields, not creditsManager.prefab's one), and the <c>ServerMessagesManager.serverMessagesText</c>
-/// list rewiring the hub screen's nested <c>ServerMessages</c> prefab instance requires.
+/// single-Text conversion, named-field wiring, unsupported-consumer detection, and - Phase 5B -
+/// <see cref="MenuTextConversion.ConvertInputField"/>, the same InputField mutation mechanics
+/// <c>CreditsTextMeshProMigration</c>'s Phase 4B proved) - this class contributes only the
+/// account-specific orchestration: the multi-InputField structural boundary (each screen has several
+/// InputFields, not creditsManager.prefab's one), the password ContentType fix, the terminal
+/// Create Account/Login button rewiring, the obsolete persistent-listener removal, and the
+/// <c>ServerMessagesManager.serverMessagesText</c> list rewiring the hub screen's nested
+/// <c>ServerMessages</c> prefab instance requires.
 /// </summary>
 internal static class AccountTextMeshProMigration
 {
@@ -52,8 +58,41 @@ internal static class AccountTextMeshProMigration
     private const int HubExpectedOrdinaryCount = 22;
     private const int CreateNewExpectedInputFieldCount = 5;
     private const int CreateNewExpectedOrdinaryCount = 12;
+    private const int CreateNewExpectedTotalTmpTextCount = 22;
     private const int LoginExistingExpectedInputFieldCount = 2;
     private const int LoginExistingExpectedOrdinaryCount = 8;
+    private const int LoginExistingExpectedTotalTmpTextCount = 12;
+
+    /// <summary>
+    /// Maps each legacy InputField's GameObject name (the convention <c>MenuUiObjectsWiring</c> already
+    /// wires by) to the matching field name on <see cref="AccountCreateUiObjects"/>/
+    /// <see cref="AccountLoginUiObjects"/>. The login screen only owns two of these five - lookups simply
+    /// skip whichever names are absent.
+    /// </summary>
+    private static readonly (string GameObjectName, string FieldName)[] FieldRoleMap =
+    {
+        ("EmailInputField", "emailInputField"),
+        ("UserNameInputField", "usernameInputField"),
+        ("PasswordInputField", "passwordInputField"),
+        ("FirstNameInputField", "firstNameInputField"),
+        ("LastNameInputField", "lastNameInputField"),
+    };
+
+    /// <summary>
+    /// AUD-092 Phase 5B section 12: Check Email/Check Username/Create Account/Login become entirely
+    /// code-owned (<c>AccountManager.RegisterButtonCallbacks</c>). The persistent scene onClick calls
+    /// that used to invoke them directly - several serialized under the stale pre-rename type name
+    /// <c>LoginManager, Assembly-CSharp</c> - are removed by target+method rather than renamed, which
+    /// also fully resolves the stale-type-name landmine regardless of which type name a given call still
+    /// carries.
+    /// </summary>
+    private static readonly string[] ObsoletePersistentOnClickMethods =
+    {
+        nameof(AccountManager.checkEmailAddressFormat),
+        nameof(AccountManager.checkUserName),
+        nameof(AccountManager.createUser),
+        nameof(AccountManager.LoginUser),
+    };
 
     // ---------------------------------------------------------------------------------------------
     // Characterization report (read-only)
@@ -310,10 +349,26 @@ internal static class AccountTextMeshProMigration
 
     // ---------------------------------------------------------------------------------------------
     // Create/Login screens: N InputFields protect 2N structural Text; a single named messageDisplay
-    // ordinary Text is rewired into AccountCreateUiObjects/AccountLoginUiObjects.
+    // ordinary Text is rewired into AccountCreateUiObjects/AccountLoginUiObjects. AUD-092 Phase 5B adds
+    // a second sub-pass, run immediately after, that converts the InputFields themselves - see
+    // MigrateFieldsScreenInputFieldsInMemory below. Splitting the two passes (rather than one long
+    // method) is what lets the ordinary-text pass stay idempotent once the InputField pass has already
+    // run: on a second migration run the InputFields are already gone, so there is no protected-text set
+    // left to resolve, and the ordinary-text pass below must tolerate that instead of erroring.
     // ---------------------------------------------------------------------------------------------
 
     private static List<string> MigrateFieldsScreenInMemory(Scene scene, string logPrefix, int expectedInputFieldCount, int expectedOrdinaryCount)
+    {
+        List<string> errors = MigrateFieldsScreenOrdinaryTextInMemory(scene, logPrefix, expectedInputFieldCount, expectedOrdinaryCount);
+        if (errors.Count > 0)
+        {
+            return errors;
+        }
+
+        return MigrateFieldsScreenInputFieldsInMemory(scene, logPrefix, expectedInputFieldCount);
+    }
+
+    private static List<string> MigrateFieldsScreenOrdinaryTextInMemory(Scene scene, string logPrefix, int expectedInputFieldCount, int expectedOrdinaryCount)
     {
         List<string> errors = new List<string>();
 
@@ -322,19 +377,30 @@ internal static class AccountTextMeshProMigration
         PartitionOwnedTexts(scene, owned, nested);
 
         List<InputField> ownedInputFields = FindOwnedInputFields(scene);
-        if (ownedInputFields.Count != expectedInputFieldCount)
+        List<Text> eligible;
+        if (ownedInputFields.Count == 0)
         {
-            errors.Add(scene.path + " : expected " + expectedInputFieldCount + " owned InputField, found " + ownedInputFields.Count + ".");
-            return errors;
+            // The InputFields themselves (if any existed) have already been converted by
+            // MigrateFieldsScreenInputFieldsInMemory - every remaining owned legacy Text, if any, is
+            // therefore ordinary; there is no protected structural set left to resolve/exclude.
+            eligible = owned;
         }
-
-        HashSet<Text> protectedTexts = ResolveProtectedInputFieldTexts(ownedInputFields, errors, expectedInputFieldCount);
-        if (protectedTexts == null)
+        else
         {
-            return errors;
-        }
+            if (ownedInputFields.Count != expectedInputFieldCount)
+            {
+                errors.Add(scene.path + " : expected " + expectedInputFieldCount + " owned InputField, found " + ownedInputFields.Count + ".");
+                return errors;
+            }
 
-        List<Text> eligible = owned.FindAll(text => !protectedTexts.Contains(text));
+            HashSet<Text> protectedTexts = ResolveProtectedInputFieldTexts(ownedInputFields, errors, expectedInputFieldCount);
+            if (protectedTexts == null)
+            {
+                return errors;
+            }
+
+            eligible = owned.FindAll(text => !protectedTexts.Contains(text));
+        }
 
         if (eligible.Count == 0 && HasAnyTmp(scene))
         {
@@ -409,6 +475,254 @@ internal static class AccountTextMeshProMigration
 
         errors.AddRange(CollectNullTargetGraphicErrors(scene));
         return errors;
+    }
+
+    /// <summary>
+    /// AUD-092 Phase 5B: converts every owned legacy InputField on this screen to TMP_InputField (see
+    /// <see cref="MenuTextConversion.ConvertInputField"/> for the shared single-field mechanics), rewires
+    /// the resulting TMP_InputFields plus the existing terminal action button (createUserButton on
+    /// create, loginButton on login) into AccountCreateUiObjects/AccountLoginUiObjects's now-TMP-typed
+    /// serialized fields, applies the password ContentType fix, and strips every obsolete persistent
+    /// onClick listener (Check Email/Check Username/Create Account/Login - now code-owned by
+    /// AccountManager).
+    ///
+    /// Idempotent, but not merely a count-based no-op: once no directly-owned legacy InputField remains
+    /// and the expected count of TMP_InputField already does, there is nothing left to CONVERT, but the
+    /// terminal-button wiring, password ContentType, and obsolete-listener removal below still run
+    /// against the fields that already exist. A field-count-only no-op would leave independent drift in
+    /// any of those three (a stale onClick reappearing via a manual Inspector edit or a bad merge, say)
+    /// unrepaired by a second migration run - this keeps re-running the migration a genuine self-healing
+    /// pass, matching what CollectFieldsScreenContractErrors actually requires.
+    /// </summary>
+    private static List<string> MigrateFieldsScreenInputFieldsInMemory(Scene scene, string logPrefix, int expectedInputFieldCount)
+    {
+        List<string> errors = new List<string>();
+
+        List<InputField> ownedInputFields = FindOwnedInputFields(scene);
+        List<TMP_InputField> ownedTmpInputFieldsBefore = FindOwnedTmpInputFields(scene);
+        bool alreadyConverted = ownedInputFields.Count == 0 && ownedTmpInputFieldsBefore.Count == expectedInputFieldCount;
+
+        if (!alreadyConverted && ownedInputFields.Count != expectedInputFieldCount)
+        {
+            errors.Add(scene.path + " : expected " + expectedInputFieldCount + " owned legacy InputField to migrate, found " + ownedInputFields.Count + ".");
+            return errors;
+        }
+
+        Component uiHost = FindMessageDisplayHost(scene, errors);
+        if (uiHost == null)
+        {
+            return errors;
+        }
+
+        GameObject scopeRoot = uiHost.transform.root.gameObject;
+        bool isCreateScreen = uiHost is AccountCreateUiObjects;
+        string terminalButtonFieldName = isCreateScreen ? "createAccountButton" : "loginButton";
+        string terminalButtonGameObjectName = isCreateScreen ? "createUserButton" : "loginButton";
+
+        Button terminalButton = FindButtonNamedInScene(scene, terminalButtonGameObjectName);
+        if (terminalButton == null)
+        {
+            errors.Add(scene.path + " : could not find the terminal '" + terminalButtonGameObjectName + "' Button.");
+            return errors;
+        }
+
+        Dictionary<string, TMP_InputField> convertedByFieldName;
+        if (alreadyConverted)
+        {
+            Debug.Log(logPrefix + ": no directly-owned legacy InputField remains in " + scene.path + "; re-verifying terminal button/password/listener state.");
+            convertedByFieldName = MapOwnedTmpInputFieldsByFieldName(ownedTmpInputFieldsBefore);
+        }
+        else
+        {
+            TMP_FontAsset font = MenuTextConversion.EnsureNeonPixelFontAsset();
+            if (font == null)
+            {
+                errors.Add("could not create/load the Neon Pixel-7 SDF font asset.");
+                return errors;
+            }
+
+            HashSet<Text> protectedTexts = ResolveProtectedInputFieldTexts(ownedInputFields, errors, expectedInputFieldCount);
+            if (protectedTexts == null)
+            {
+                return errors;
+            }
+
+            Dictionary<string, InputField> byGameObjectName = new Dictionary<string, InputField>();
+            foreach (InputField field in ownedInputFields)
+            {
+                byGameObjectName[field.gameObject.name] = field;
+            }
+
+            // Convert every field this screen owns (a subset of FieldRoleMap - the login screen only has
+            // username/password), preserving role identity by GameObject name so the *UiObjects rewiring
+            // and the password-specific fix below can target the right one without re-deriving it from
+            // geometry or declaration order.
+            Dictionary<string, TMP_InputField> converted = new Dictionary<string, TMP_InputField>();
+            foreach ((string gameObjectName, string fieldName) in FieldRoleMap)
+            {
+                if (!byGameObjectName.TryGetValue(gameObjectName, out InputField legacyField))
+                {
+                    continue;
+                }
+
+                TMP_InputField tmpField = MenuTextConversion.ConvertInputField(scopeRoot, legacyField, font, errors);
+                if (tmpField == null)
+                {
+                    return errors; // this field's legacy component is already destroyed - the scene must not be saved on this path
+                }
+
+                converted[fieldName] = tmpField;
+            }
+
+            convertedByFieldName = converted;
+        }
+
+        if (convertedByFieldName.Count != expectedInputFieldCount)
+        {
+            errors.Add(
+                scene.path + " : resolved " + convertedByFieldName.Count + " field(s), expected " + expectedInputFieldCount
+                    + " (an owned InputField's GameObject name did not match any entry in FieldRoleMap).");
+            return errors;
+        }
+
+        SerializedObject serializedUi = new SerializedObject(uiHost);
+        foreach (KeyValuePair<string, TMP_InputField> pair in convertedByFieldName)
+        {
+            SerializedProperty property = serializedUi.FindProperty(pair.Key);
+            if (property == null)
+            {
+                errors.Add(uiHost.GetType().Name + " has no field named '" + pair.Key + "'.");
+                return errors;
+            }
+
+            property.objectReferenceValue = pair.Value;
+        }
+
+        SerializedProperty terminalButtonProperty = serializedUi.FindProperty(terminalButtonFieldName);
+        if (terminalButtonProperty == null)
+        {
+            errors.Add(uiHost.GetType().Name + " has no field named '" + terminalButtonFieldName + "'.");
+            return errors;
+        }
+
+        terminalButtonProperty.objectReferenceValue = terminalButton;
+        serializedUi.ApplyModifiedProperties();
+
+        // AUD-092 Phase 5B section 8: both password fields are authored as ordinary Standard inputs
+        // today - a real defect, not a preserved behavior. On first conversion this overrides the
+        // unmasked Standard contentType CapturedInputFieldState.ApplyTo otherwise carries straight over
+        // from the legacy field; applied unconditionally (not only when alreadyConverted is false) so a
+        // later run also repairs it if something ever reset it back to Standard. Identified through the
+        // typed UiObjects reference resolved above, not by re-deriving it from hierarchy names.
+        if (convertedByFieldName.TryGetValue("passwordInputField", out TMP_InputField passwordField))
+        {
+            passwordField.contentType = TMP_InputField.ContentType.Password;
+            passwordField.lineType = TMP_InputField.LineType.SingleLine;
+            passwordField.richText = false;
+        }
+
+        List<string> managerErrors = new List<string>();
+        AccountManager accountManager = FindSingleComponent<AccountManager>(scene, managerErrors, scene.path);
+        if (accountManager == null)
+        {
+            errors.AddRange(managerErrors);
+            return errors;
+        }
+
+        RemoveObsoletePersistentOnClickListeners(scene, accountManager);
+
+        errors.AddRange(CollectNullTargetGraphicErrors(scene));
+        return errors;
+    }
+
+    /// <summary>
+    /// Maps already-converted TMP_InputFields to their <see cref="AccountCreateUiObjects"/>/
+    /// <see cref="AccountLoginUiObjects"/> field name via <see cref="FieldRoleMap"/>, the same convention
+    /// <see cref="MigrateFieldsScreenInputFieldsInMemory"/> uses when actually converting - used on the
+    /// "nothing left to convert" repair path so it can still rewire/re-verify against the existing
+    /// fields with identical role resolution.
+    /// </summary>
+    private static Dictionary<string, TMP_InputField> MapOwnedTmpInputFieldsByFieldName(List<TMP_InputField> ownedTmpInputFields)
+    {
+        Dictionary<string, TMP_InputField> byGameObjectName = new Dictionary<string, TMP_InputField>();
+        foreach (TMP_InputField field in ownedTmpInputFields)
+        {
+            byGameObjectName[field.gameObject.name] = field;
+        }
+
+        Dictionary<string, TMP_InputField> byFieldName = new Dictionary<string, TMP_InputField>();
+        foreach ((string gameObjectName, string fieldName) in FieldRoleMap)
+        {
+            if (byGameObjectName.TryGetValue(gameObjectName, out TMP_InputField field))
+            {
+                byFieldName[fieldName] = field;
+            }
+        }
+
+        return byFieldName;
+    }
+
+    private static List<TMP_InputField> FindOwnedTmpInputFields(Scene scene)
+    {
+        List<TMP_InputField> owned = new List<TMP_InputField>();
+        foreach (GameObject root in scene.GetRootGameObjects())
+        {
+            foreach (TMP_InputField field in root.GetComponentsInChildren<TMP_InputField>(true))
+            {
+                if (PrefabUtility.GetNearestPrefabInstanceRoot(field.gameObject) == null)
+                {
+                    owned.Add(field);
+                }
+            }
+        }
+
+        return owned;
+    }
+
+    private static Button FindButtonNamedInScene(Scene scene, string gameObjectName)
+    {
+        foreach (GameObject root in scene.GetRootGameObjects())
+        {
+            foreach (Button button in root.GetComponentsInChildren<Button>(true))
+            {
+                if (button.gameObject.name == gameObjectName && PrefabUtility.GetNearestPrefabInstanceRoot(button.gameObject) == null)
+                {
+                    return button;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// AUD-092 Phase 5B section 9/12: removes every persistent onClick call on any owned Button in
+    /// <paramref name="scene"/> that targets <paramref name="accountManager"/> with a method name in
+    /// <see cref="ObsoletePersistentOnClickMethods"/> - Check Email/Check Username/Create Account/Login
+    /// are now code-owned (<c>AccountManager.RegisterButtonCallbacks</c>), so the scene-authored calls
+    /// that used to invoke them directly (regardless of which serialized type name a given call still
+    /// carries) would otherwise fire a second time alongside the code-owned handler. Idempotent: a
+    /// second run finds nothing left to remove. The obsolete per-keystroke onValueChanged
+    /// (<c>read*Input</c>) listeners need no equivalent sweep here - they lived on the legacy InputField
+    /// components themselves and were already destroyed along with them by
+    /// <see cref="MenuTextConversion.ConvertInputField"/>.
+    /// </summary>
+    private static void RemoveObsoletePersistentOnClickListeners(Scene scene, AccountManager accountManager)
+    {
+        foreach (GameObject root in scene.GetRootGameObjects())
+        {
+            foreach (Button button in root.GetComponentsInChildren<Button>(true))
+            {
+                for (int i = button.onClick.GetPersistentEventCount() - 1; i >= 0; i--)
+                {
+                    if (button.onClick.GetPersistentTarget(i) == accountManager
+                        && Array.IndexOf(ObsoletePersistentOnClickMethods, button.onClick.GetPersistentMethodName(i)) >= 0)
+                    {
+                        UnityEventTools.RemovePersistentListener(button.onClick, i);
+                    }
+                }
+            }
+        }
     }
 
     private static Component FindMessageDisplayHost(Scene scene, List<string> errors)
@@ -830,15 +1144,27 @@ internal static class AccountTextMeshProMigration
 
     public static List<string> CollectCreateNewContractErrors()
     {
-        return CollectFieldsScreenContractErrors(CreateNewScenePath, CreateNewExpectedInputFieldCount);
+        return CollectFieldsScreenContractErrors(CreateNewScenePath, CreateNewExpectedInputFieldCount, CreateNewExpectedTotalTmpTextCount);
     }
 
     public static List<string> CollectLoginExistingContractErrors()
     {
-        return CollectFieldsScreenContractErrors(LoginExistingScenePath, LoginExistingExpectedInputFieldCount);
+        return CollectFieldsScreenContractErrors(LoginExistingScenePath, LoginExistingExpectedInputFieldCount, LoginExistingExpectedTotalTmpTextCount);
     }
 
-    private static List<string> CollectFieldsScreenContractErrors(string scenePath, int expectedInputFieldCount)
+    /// <summary>
+    /// AUD-092 Phase 5B permanent regression guard - the final account form-field text-rendering
+    /// contract, replacing Phase 5A's temporary legacy-InputField exception. Requires: zero
+    /// directly-owned legacy <see cref="Text"/>, zero directly-owned legacy <see cref="InputField"/>,
+    /// exactly <paramref name="expectedInputFieldCount"/> directly-owned <see cref="TMP_InputField"/>
+    /// (each with a valid masked <c>textViewport</c>, TextMeshProUGUI <c>textComponent</c>/
+    /// <c>placeholder</c> on the shared Neon Pixel-7 SDF font, SingleLine, disabled rich text, and a
+    /// valid <c>targetGraphic</c>), the password field using <c>ContentType.Password</c>, exactly
+    /// <paramref name="expectedTotalTmpTextCount"/> directly-owned TextMeshProUGUI in total, every
+    /// AccountCreateUiObjects/AccountLoginUiObjects field (including the terminal Create Account/Login
+    /// button) resolved, and no obsolete persistent onClick/onValueChanged listener remaining.
+    /// </summary>
+    private static List<string> CollectFieldsScreenContractErrors(string scenePath, int expectedInputFieldCount, int expectedTotalTmpTextCount)
     {
         List<string> errors = new List<string>();
         WithOpenScene(scenePath, scene =>
@@ -846,50 +1172,153 @@ internal static class AccountTextMeshProMigration
             List<Text> owned = new List<Text>();
             List<Text> nested = new List<Text>();
             PartitionOwnedTexts(scene, owned, nested);
-
-            List<InputField> ownedInputFields = FindOwnedInputFields(scene);
-            if (ownedInputFields.Count != expectedInputFieldCount)
+            if (owned.Count > 0)
             {
-                errors.Add(scenePath + " : expected " + expectedInputFieldCount + " legacy InputField, found " + ownedInputFields.Count + ".");
-                return true;
+                errors.Add(scenePath + " : " + owned.Count + " legacy Text component(s) remain (expected 0).");
             }
 
-            List<string> boundaryErrors = new List<string>();
-            HashSet<Text> protectedTexts = ResolveProtectedInputFieldTexts(ownedInputFields, boundaryErrors, expectedInputFieldCount);
-            if (protectedTexts == null)
+            List<InputField> ownedLegacyInputFields = FindOwnedInputFields(scene);
+            if (ownedLegacyInputFields.Count > 0)
             {
-                errors.AddRange(boundaryErrors);
-                return true;
+                errors.Add(scenePath + " : " + ownedLegacyInputFields.Count + " legacy InputField component(s) remain (expected 0).");
             }
 
-            if (owned.Count != protectedTexts.Count)
+            List<TMP_InputField> ownedTmpInputFields = FindOwnedTmpInputFields(scene);
+            if (ownedTmpInputFields.Count != expectedInputFieldCount)
+            {
+                errors.Add(scenePath + " : expected exactly " + expectedInputFieldCount + " directly-owned TMP_InputField, found " + ownedTmpInputFields.Count + ".");
+            }
+
+            TMP_FontAsset neonPixel = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(NeonPixelFontAssetPath);
+            foreach (TMP_InputField tmp in ownedTmpInputFields)
+            {
+                string where = scenePath + " -> " + MenuTextConversion.BuildHierarchyPath(tmp.gameObject, null);
+                MenuTextConversion.AddTmpInputFieldViewportContractErrors(where, tmp, errors);
+                MenuTextConversion.AddTmpInputFieldSubTextContractErrors(where, "textComponent", tmp.textComponent, neonPixel, errors);
+                MenuTextConversion.AddTmpInputFieldSubTextContractErrors(where, "placeholder", tmp.placeholder, neonPixel, errors);
+
+                if (tmp.lineType != TMP_InputField.LineType.SingleLine)
+                {
+                    errors.Add(where + " : lineType is " + tmp.lineType + ", expected SingleLine.");
+                }
+
+                if (tmp.richText)
+                {
+                    errors.Add(where + " : richText is enabled; account input fields must stay plain-text like the legacy InputFields they replaced.");
+                }
+
+                if (tmp.targetGraphic == null)
+                {
+                    errors.Add(where + " : targetGraphic is null.");
+                }
+            }
+
+            Component uiHost = FindMessageDisplayHost(scene, errors);
+            AccountCreateUiObjects createUi = uiHost as AccountCreateUiObjects;
+            AccountLoginUiObjects loginUi = uiHost as AccountLoginUiObjects;
+
+            TMP_InputField passwordField = null;
+            if (createUi != null)
+            {
+                List<string> missing = new List<string>();
+                createUi.Validate(missing);
+                foreach (string field in missing)
+                {
+                    errors.Add(scenePath + " : " + field + " is not resolved.");
+                }
+
+                passwordField = createUi.PasswordInputField;
+
+                SerializedObject serialized = new SerializedObject(createUi);
+                SerializedProperty property = serialized.FindProperty("messageDisplay");
+                if (property == null || !(property.objectReferenceValue is TextMeshProUGUI tmp) || neonPixel == null || tmp.font != neonPixel)
+                {
+                    errors.Add(scenePath + " : messageDisplay is not a TextMeshProUGUI on the shared Neon Pixel-7 SDF font asset.");
+                }
+            }
+            else if (loginUi != null)
+            {
+                List<string> missing = new List<string>();
+                loginUi.Validate(missing);
+                foreach (string field in missing)
+                {
+                    errors.Add(scenePath + " : " + field + " is not resolved.");
+                }
+
+                passwordField = loginUi.PasswordInputField;
+
+                SerializedObject serialized = new SerializedObject(loginUi);
+                SerializedProperty property = serialized.FindProperty("messageDisplay");
+                if (property == null || !(property.objectReferenceValue is TextMeshProUGUI tmp) || neonPixel == null || tmp.font != neonPixel)
+                {
+                    errors.Add(scenePath + " : messageDisplay is not a TextMeshProUGUI on the shared Neon Pixel-7 SDF font asset.");
+                }
+            }
+
+            if (passwordField == null)
+            {
+                errors.Add(scenePath + " : could not resolve the password TMP_InputField to verify its ContentType.");
+            }
+            else if (passwordField.contentType != TMP_InputField.ContentType.Password)
             {
                 errors.Add(
-                    scenePath + " : expected exactly " + protectedTexts.Count + " legacy Text (all InputField-structural), found "
-                        + owned.Count + " (" + (owned.Count - protectedTexts.Count) + " ordinary).");
+                    scenePath + " -> " + MenuTextConversion.BuildHierarchyPath(passwordField.gameObject, null)
+                        + " : password field contentType is " + passwordField.contentType + ", expected Password.");
             }
 
-            foreach (Text text in owned)
+            List<TextMeshProUGUI> ownedTmpTexts = new List<TextMeshProUGUI>();
+            foreach (GameObject root in scene.GetRootGameObjects())
             {
-                if (!protectedTexts.Contains(text))
+                foreach (TextMeshProUGUI candidate in root.GetComponentsInChildren<TextMeshProUGUI>(true))
                 {
-                    errors.Add(scenePath + " -> " + MenuTextConversion.BuildHierarchyPath(text.gameObject, null) + " : ordinary legacy Text remains.");
+                    if (PrefabUtility.GetNearestPrefabInstanceRoot(candidate.gameObject) == null)
+                    {
+                        ownedTmpTexts.Add(candidate);
+                    }
                 }
             }
 
-            Component messageDisplayHost = FindMessageDisplayHost(scene, errors);
-            if (messageDisplayHost != null)
+            if (ownedTmpTexts.Count != expectedTotalTmpTextCount)
             {
-                SerializedObject serialized = new SerializedObject(messageDisplayHost);
-                SerializedProperty property = serialized.FindProperty("messageDisplay");
-                TMP_FontAsset neonPixel = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(NeonPixelFontAssetPath);
-                if (property == null || !(property.objectReferenceValue is TextMeshProUGUI tmp))
+                errors.Add(
+                    scenePath + " : expected exactly " + expectedTotalTmpTextCount + " directly-owned TextMeshProUGUI component(s), found "
+                        + ownedTmpTexts.Count + ".");
+            }
+
+            List<string> managerErrors = new List<string>();
+            AccountManager accountManager = FindSingleComponent<AccountManager>(scene, managerErrors, scenePath);
+            if (accountManager == null)
+            {
+                errors.AddRange(managerErrors);
+            }
+            else
+            {
+                foreach (GameObject root in scene.GetRootGameObjects())
                 {
-                    errors.Add(scenePath + " : messageDisplay is not a TextMeshProUGUI.");
-                }
-                else if (neonPixel == null || tmp.font != neonPixel)
-                {
-                    errors.Add(scenePath + " : messageDisplay does not use the shared Neon Pixel-7 SDF font asset.");
+                    foreach (Button button in root.GetComponentsInChildren<Button>(true))
+                    {
+                        for (int i = 0; i < button.onClick.GetPersistentEventCount(); i++)
+                        {
+                            if (button.onClick.GetPersistentTarget(i) == accountManager
+                                && Array.IndexOf(ObsoletePersistentOnClickMethods, button.onClick.GetPersistentMethodName(i)) >= 0)
+                            {
+                                errors.Add(
+                                    scenePath + " -> " + MenuTextConversion.BuildHierarchyPath(button.gameObject, null)
+                                        + " : stale persistent onClick -> AccountManager." + button.onClick.GetPersistentMethodName(i)
+                                        + " remains (must be code-owned).");
+                            }
+                        }
+                    }
+
+                    foreach (TMP_InputField field in root.GetComponentsInChildren<TMP_InputField>(true))
+                    {
+                        if (field.onValueChanged.GetPersistentEventCount() > 0)
+                        {
+                            errors.Add(
+                                scenePath + " -> " + MenuTextConversion.BuildHierarchyPath(field.gameObject, null)
+                                    + " : stale persistent onValueChanged listener remains (obsolete read*Input wiring must be gone).");
+                        }
+                    }
                 }
             }
 

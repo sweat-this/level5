@@ -28,7 +28,6 @@ public static class CreditsTextMeshProMigration
     private const string ScenePath = "Assets/Scenes/level_00_credits.unity";
     private const string TouchJoystickPrefabPath = "Assets/Resources/Prefabs/critical/touch_joystick.prefab";
     private const string NeonPixelFontAssetPath = "Assets/Fonts/TMP/Neon Pixel-7 SDF.asset";
-    private const string TextAreaGameObjectName = "Text Area";
     private const int ExpectedTextMeshProCount = 23;
 
     // ---------------------------------------------------------------------------------------------
@@ -302,79 +301,16 @@ public static class CreditsTextMeshProMigration
             }
 
             InputField inputField = ownedInputFields[0];
-            GameObject fieldGameObject = inputField.gameObject;
-            Text contentText = inputField.textComponent;
-            Text placeholderText = (Text)inputField.placeholder;
-            RectTransform contentRect = contentText.rectTransform;
-            RectTransform placeholderRect = placeholderText.rectTransform;
 
-            // The new "Text Area" viewport must reproduce today's exact visible bounds. Both Text
-            // dependencies are expected to already occupy that same box directly (no viewport existed
-            // on the legacy InputField) - if they do not, this migration cannot safely derive the
-            // viewport's rect from either one, so it aborts rather than guess.
-            if (contentRect.anchorMin != placeholderRect.anchorMin
-                || contentRect.anchorMax != placeholderRect.anchorMax
-                || contentRect.sizeDelta != placeholderRect.sizeDelta
-                || contentRect.anchoredPosition != placeholderRect.anchoredPosition
-                || contentRect.pivot != placeholderRect.pivot)
+            // Capture/destroy/rebuild/restore/navigation-repair mechanics live in MenuTextConversion,
+            // shared with AccountTextMeshProMigration (AUD-092 Phase 5B) - see its doc comment for the
+            // exact sequence and preconditions.
+            TMP_InputField tmpInputField = MenuTextConversion.ConvertInputField(root, inputField, font, errors);
+            if (tmpInputField == null)
             {
-                AbortMigration(LogPrefix, "content and placeholder Text do not share an identical RectTransform; cannot safely derive the Text Area's visible bounds.");
-                return;
-            }
-
-            // Capture every piece of Selectable/InputField state that must survive the swap.
-            CapturedInputFieldState capturedState = new CapturedInputFieldState(inputField);
-
-            Vector2 textAreaAnchorMin = contentRect.anchorMin;
-            Vector2 textAreaAnchorMax = contentRect.anchorMax;
-            Vector2 textAreaSizeDelta = contentRect.sizeDelta;
-            Vector2 textAreaAnchoredPosition = contentRect.anchoredPosition;
-            Vector2 textAreaPivot = contentRect.pivot;
-
-            // Any OTHER Selectable's explicit Navigation pointing at this InputField must be captured
-            // BEFORE it is destroyed - comparing against an already-destroyed Unity Object via == would
-            // spuriously match every OTHER dangling/empty Navigation slot too, since Unity's overloaded
-            // == treats any destroyed-or-missing reference as equal to another.
-            List<NavigationFixup> navigationFixups = FindNavigationReferences(root, inputField);
-
-            // ---------------------------------------------------------------- mutate ----------------------------------------------------------------
-
-            Object.DestroyImmediate(inputField, true);
-
-            GameObject textArea = new GameObject(TextAreaGameObjectName, typeof(RectTransform));
-            textArea.transform.SetParent(fieldGameObject.transform, false);
-            RectTransform textAreaRect = (RectTransform)textArea.transform;
-            textAreaRect.anchorMin = textAreaAnchorMin;
-            textAreaRect.anchorMax = textAreaAnchorMax;
-            textAreaRect.sizeDelta = textAreaSizeDelta;
-            textAreaRect.anchoredPosition = textAreaAnchoredPosition;
-            textAreaRect.pivot = textAreaPivot;
-            textArea.AddComponent<RectMask2D>();
-
-            contentRect.SetParent(textAreaRect, false);
-            placeholderRect.SetParent(textAreaRect, false);
-            StretchToFillParent(contentRect);
-            StretchToFillParent(placeholderRect);
-
-            TextMeshProUGUI contentTmp = MenuTextConversion.ConvertSingleText(root, contentText, font);
-            TextMeshProUGUI placeholderTmp = MenuTextConversion.ConvertSingleText(root, placeholderText, font);
-            if (contentTmp == null || placeholderTmp == null)
-            {
-                AbortMigration(LogPrefix, "failed to convert the content/placeholder Text to TextMeshProUGUI.");
+                AbortMigration(LogPrefix, errors);
                 return; // root is a disposable LoadPrefabContents scratch copy - safe to abandon without saving
             }
-
-            TMP_InputField tmpInputField = fieldGameObject.AddComponent<TMP_InputField>();
-            tmpInputField.textViewport = textAreaRect;
-            // textComponent/placeholder must be assigned before fontAsset - its setter calls
-            // UpdateLabel(), which dereferences both and throws a NullReferenceException if either is
-            // still unset.
-            tmpInputField.textComponent = contentTmp;
-            tmpInputField.placeholder = placeholderTmp;
-            tmpInputField.fontAsset = font;
-            capturedState.ApplyTo(tmpInputField);
-
-            ApplyNavigationFixups(navigationFixups, tmpInputField);
 
             CreditsUiObjects ui = root.GetComponentInChildren<CreditsUiObjects>(true);
             if (ui == null)
@@ -467,212 +403,6 @@ public static class CreditsTextMeshProMigration
     }
 
     /// <summary>
-    /// Every legacy <see cref="InputField"/> property that must survive the swap to
-    /// <see cref="TMP_InputField"/>, captured up front (before anything is destroyed) and applied once
-    /// the new component exists. Keeping this as one value together with <see cref="ApplyTo"/> makes the
-    /// "capture everything, then mutate" ordering <see cref="MigrateInputField"/>'s doc comment describes
-    /// structurally obvious, rather than just two long, easy-to-desync lists of local variables.
-    ///
-    /// <c>textViewport</c>/<c>textComponent</c>/<c>placeholder</c>/<c>fontAsset</c> are deliberately NOT
-    /// captured here - they depend on the new Text Area/TMP components that do not exist yet when this
-    /// is constructed, and <c>fontAsset</c> specifically must be assigned only after the other three (see
-    /// <see cref="MigrateInputField"/>).
-    /// </summary>
-    private readonly struct CapturedInputFieldState
-    {
-        private readonly Navigation navigation;
-        private readonly Selectable.Transition transition;
-        private readonly ColorBlock colors;
-        private readonly SpriteState spriteState;
-        private readonly AnimationTriggers animationTriggers;
-        private readonly bool interactable;
-        private readonly Graphic targetGraphic;
-        private readonly InputField.ContentType contentType;
-        private readonly InputField.InputType inputType;
-        private readonly char asteriskChar;
-        private readonly TouchScreenKeyboardType keyboardType;
-        private readonly InputField.LineType lineType;
-        private readonly bool hideMobileInput;
-        private readonly InputField.CharacterValidation characterValidation;
-        private readonly int characterLimit;
-        private readonly Color caretColor;
-        private readonly bool customCaretColor;
-        private readonly Color selectionColor;
-        private readonly string text;
-        private readonly float caretBlinkRate;
-        private readonly int caretWidth;
-        private readonly bool readOnly;
-        private readonly bool shouldActivateOnSelect;
-
-        public CapturedInputFieldState(InputField inputField)
-        {
-            navigation = inputField.navigation;
-            transition = inputField.transition;
-            colors = inputField.colors;
-            spriteState = inputField.spriteState;
-            animationTriggers = inputField.animationTriggers;
-            interactable = inputField.interactable;
-            targetGraphic = inputField.targetGraphic;
-            contentType = inputField.contentType;
-            inputType = inputField.inputType;
-            asteriskChar = inputField.asteriskChar;
-            keyboardType = inputField.keyboardType;
-            lineType = inputField.lineType;
-            // NOT inputField.shouldHideMobileInput: that getter is platform-gated (InputField.cs) and
-            // unconditionally returns true on any platform other than Android/iOS/tvOS - including the
-            // Windows/macOS/Linux Editor this migration runs in - so it can never observe the actual
-            // authored value here. Reading the raw serialized field is the only way to preserve it
-            // regardless of which platform runs the migration.
-            hideMobileInput = new SerializedObject(inputField).FindProperty("m_HideMobileInput").boolValue;
-            characterValidation = inputField.characterValidation;
-            characterLimit = inputField.characterLimit;
-            caretColor = inputField.caretColor;
-            customCaretColor = inputField.customCaretColor;
-            selectionColor = inputField.selectionColor;
-            text = inputField.text;
-            caretBlinkRate = inputField.caretBlinkRate;
-            caretWidth = inputField.caretWidth;
-            readOnly = inputField.readOnly;
-            shouldActivateOnSelect = inputField.shouldActivateOnSelect;
-        }
-
-        public void ApplyTo(TMP_InputField tmpInputField)
-        {
-            tmpInputField.navigation = navigation;
-            tmpInputField.transition = transition;
-            tmpInputField.colors = colors;
-            tmpInputField.spriteState = spriteState;
-            tmpInputField.animationTriggers = animationTriggers;
-            tmpInputField.interactable = interactable;
-            tmpInputField.targetGraphic = targetGraphic;
-            tmpInputField.contentType = MapContentType(contentType);
-            tmpInputField.inputType = MapInputType(inputType);
-            tmpInputField.asteriskChar = asteriskChar;
-            tmpInputField.keyboardType = keyboardType;
-            tmpInputField.lineType = MapLineType(lineType);
-            // Same reasoning as the read above: TMP_InputField.shouldHideMobileInput's setter is
-            // ALSO platform-gated and forces m_HideMobileInput to true outside Android/iOS/tvOS,
-            // so it cannot be used to author the field's true value from this Editor host either.
-            SerializedObject serializedTmpInputField = new SerializedObject(tmpInputField);
-            serializedTmpInputField.FindProperty("m_HideMobileInput").boolValue = hideMobileInput;
-            serializedTmpInputField.ApplyModifiedProperties();
-            tmpInputField.characterValidation = MapCharacterValidation(characterValidation);
-            tmpInputField.characterLimit = characterLimit;
-            tmpInputField.caretColor = caretColor;
-            tmpInputField.customCaretColor = customCaretColor;
-            tmpInputField.selectionColor = selectionColor;
-            tmpInputField.text = text;
-            tmpInputField.caretBlinkRate = caretBlinkRate;
-            tmpInputField.caretWidth = caretWidth;
-            tmpInputField.readOnly = readOnly;
-            tmpInputField.shouldActivateOnSelect = shouldActivateOnSelect;
-            // The legacy InputField this replaces has no rich-text concept at all - it is always plain
-            // text. TMP_InputField.richText defaults to true and, left unset, would let both the user's
-            // typed report and the server's echoed result message (CreditsManager.PresentReportResult)
-            // interpret TMP markup - including clickable <link> tags - that the legacy field could never
-            // render. Explicit false preserves the guaranteed-plain-text behavior this field always had.
-            tmpInputField.richText = false;
-        }
-    }
-
-    private enum NavigationDirection
-    {
-        Up,
-        Down,
-        Left,
-        Right,
-    }
-
-    private readonly struct NavigationFixup
-    {
-        public NavigationFixup(Selectable candidate, NavigationDirection direction)
-        {
-            Candidate = candidate;
-            Direction = direction;
-        }
-
-        public Selectable Candidate { get; }
-        public NavigationDirection Direction { get; }
-    }
-
-    /// <summary>
-    /// Finds every OTHER Selectable in <paramref name="root"/> whose explicit Navigation references
-    /// <paramref name="target"/>, so it can be rewired once <paramref name="target"/> is replaced.
-    /// Must be called BEFORE <paramref name="target"/> is destroyed - see <see cref="MigrateInputField"/>'s
-    /// doc comment for why.
-    /// </summary>
-    private static List<NavigationFixup> FindNavigationReferences(GameObject root, Selectable target)
-    {
-        List<NavigationFixup> fixups = new List<NavigationFixup>();
-        foreach (Selectable candidate in root.GetComponentsInChildren<Selectable>(true))
-        {
-            if (candidate == target)
-            {
-                continue;
-            }
-
-            Navigation navigation = candidate.navigation;
-            if (navigation.selectOnUp == target)
-            {
-                fixups.Add(new NavigationFixup(candidate, NavigationDirection.Up));
-            }
-
-            if (navigation.selectOnDown == target)
-            {
-                fixups.Add(new NavigationFixup(candidate, NavigationDirection.Down));
-            }
-
-            if (navigation.selectOnLeft == target)
-            {
-                fixups.Add(new NavigationFixup(candidate, NavigationDirection.Left));
-            }
-
-            if (navigation.selectOnRight == target)
-            {
-                fixups.Add(new NavigationFixup(candidate, NavigationDirection.Right));
-            }
-        }
-
-        return fixups;
-    }
-
-    private static void ApplyNavigationFixups(List<NavigationFixup> fixups, Selectable newTarget)
-    {
-        foreach (NavigationFixup fixup in fixups)
-        {
-            Navigation navigation = fixup.Candidate.navigation;
-            switch (fixup.Direction)
-            {
-                case NavigationDirection.Up:
-                    navigation.selectOnUp = newTarget;
-                    break;
-                case NavigationDirection.Down:
-                    navigation.selectOnDown = newTarget;
-                    break;
-                case NavigationDirection.Left:
-                    navigation.selectOnLeft = newTarget;
-                    break;
-                case NavigationDirection.Right:
-                    navigation.selectOnRight = newTarget;
-                    break;
-                default:
-                    throw new ArgumentOutOfRangeException(nameof(fixup), fixup.Direction, "Unmapped NavigationDirection.");
-            }
-
-            fixup.Candidate.navigation = navigation;
-        }
-    }
-
-    /// <summary>Stretches <paramref name="rect"/> to fill its parent exactly, with zero offset.</summary>
-    private static void StretchToFillParent(RectTransform rect)
-    {
-        rect.anchorMin = Vector2.zero;
-        rect.anchorMax = Vector2.one;
-        rect.offsetMin = Vector2.zero;
-        rect.offsetMax = Vector2.zero;
-    }
-
-    /// <summary>
     /// AUD-092 Phase 4B: removes the persistent <c>submit_report</c> OnClick -&gt; <c>CreditsManager.SubmitReport</c>
     /// listener authored directly on the prefab, which duplicated the code-owned, guarded registration
     /// <see cref="CreditsManager"/> already performs (<c>submit_report -&gt; SubmitReportIfAllowed -&gt; SubmitReport</c>).
@@ -697,65 +427,6 @@ public static class CreditsTextMeshProMigration
             {
                 UnityEventTools.RemovePersistentListener(submitButton.onClick, i);
             }
-        }
-    }
-
-    /// <summary>
-    /// Semantic (name-based) enum mapping, not raw integer casts - legacy and TMP declare their own
-    /// distinct enum types even where every member lines up today, and a future divergence between the
-    /// two must fail loudly here rather than silently mis-map.
-    /// </summary>
-    private static TMP_InputField.ContentType MapContentType(InputField.ContentType value)
-    {
-        switch (value)
-        {
-            case InputField.ContentType.Standard: return TMP_InputField.ContentType.Standard;
-            case InputField.ContentType.Autocorrected: return TMP_InputField.ContentType.Autocorrected;
-            case InputField.ContentType.IntegerNumber: return TMP_InputField.ContentType.IntegerNumber;
-            case InputField.ContentType.DecimalNumber: return TMP_InputField.ContentType.DecimalNumber;
-            case InputField.ContentType.Alphanumeric: return TMP_InputField.ContentType.Alphanumeric;
-            case InputField.ContentType.Name: return TMP_InputField.ContentType.Name;
-            case InputField.ContentType.EmailAddress: return TMP_InputField.ContentType.EmailAddress;
-            case InputField.ContentType.Password: return TMP_InputField.ContentType.Password;
-            case InputField.ContentType.Pin: return TMP_InputField.ContentType.Pin;
-            case InputField.ContentType.Custom: return TMP_InputField.ContentType.Custom;
-            default: throw new ArgumentOutOfRangeException(nameof(value), value, "Unmapped legacy InputField.ContentType.");
-        }
-    }
-
-    private static TMP_InputField.InputType MapInputType(InputField.InputType value)
-    {
-        switch (value)
-        {
-            case InputField.InputType.Standard: return TMP_InputField.InputType.Standard;
-            case InputField.InputType.AutoCorrect: return TMP_InputField.InputType.AutoCorrect;
-            case InputField.InputType.Password: return TMP_InputField.InputType.Password;
-            default: throw new ArgumentOutOfRangeException(nameof(value), value, "Unmapped legacy InputField.InputType.");
-        }
-    }
-
-    private static TMP_InputField.LineType MapLineType(InputField.LineType value)
-    {
-        switch (value)
-        {
-            case InputField.LineType.SingleLine: return TMP_InputField.LineType.SingleLine;
-            case InputField.LineType.MultiLineSubmit: return TMP_InputField.LineType.MultiLineSubmit;
-            case InputField.LineType.MultiLineNewline: return TMP_InputField.LineType.MultiLineNewline;
-            default: throw new ArgumentOutOfRangeException(nameof(value), value, "Unmapped legacy InputField.LineType.");
-        }
-    }
-
-    private static TMP_InputField.CharacterValidation MapCharacterValidation(InputField.CharacterValidation value)
-    {
-        switch (value)
-        {
-            case InputField.CharacterValidation.None: return TMP_InputField.CharacterValidation.None;
-            case InputField.CharacterValidation.Integer: return TMP_InputField.CharacterValidation.Integer;
-            case InputField.CharacterValidation.Decimal: return TMP_InputField.CharacterValidation.Decimal;
-            case InputField.CharacterValidation.Alphanumeric: return TMP_InputField.CharacterValidation.Alphanumeric;
-            case InputField.CharacterValidation.Name: return TMP_InputField.CharacterValidation.Name;
-            case InputField.CharacterValidation.EmailAddress: return TMP_InputField.CharacterValidation.EmailAddress;
-            default: throw new ArgumentOutOfRangeException(nameof(value), value, "Unmapped legacy InputField.CharacterValidation.");
         }
     }
 
@@ -878,17 +549,9 @@ public static class CreditsTextMeshProMigration
         string where = CreditsManagerPrefabPath + " -> " + MenuTextConversion.BuildHierarchyPath(tmpInputField.gameObject, prefabRoot);
         TMP_FontAsset neonPixel = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(NeonPixelFontAssetPath);
 
-        if (tmpInputField.textViewport == null)
-        {
-            errors.Add(where + " : TMP_InputField.textViewport is null.");
-        }
-        else if (tmpInputField.textViewport.GetComponent<RectMask2D>() == null)
-        {
-            errors.Add(where + " : TMP_InputField.textViewport has no RectMask2D to clip its content.");
-        }
-
-        AddTmpInputFieldSubTextContractErrors(where, "textComponent", tmpInputField.textComponent, neonPixel, errors);
-        AddTmpInputFieldSubTextContractErrors(where, "placeholder", tmpInputField.placeholder, neonPixel, errors);
+        MenuTextConversion.AddTmpInputFieldViewportContractErrors(where, tmpInputField, errors);
+        MenuTextConversion.AddTmpInputFieldSubTextContractErrors(where, "textComponent", tmpInputField.textComponent, neonPixel, errors);
+        MenuTextConversion.AddTmpInputFieldSubTextContractErrors(where, "placeholder", tmpInputField.placeholder, neonPixel, errors);
 
         if (tmpInputField.characterLimit != 255)
         {
@@ -937,27 +600,6 @@ public static class CreditsTextMeshProMigration
             {
                 errors.Add(where + " : navigation.selectOnDown is null.");
             }
-        }
-    }
-
-    private static void AddTmpInputFieldSubTextContractErrors(
-        string where, string fieldName, Object original, TMP_FontAsset neonPixel, List<string> errors)
-    {
-        if (original == null)
-        {
-            errors.Add(where + " : TMP_InputField." + fieldName + " is null.");
-            return;
-        }
-
-        if (!(original is TextMeshProUGUI tmp))
-        {
-            errors.Add(where + " : TMP_InputField." + fieldName + " is not a TextMeshProUGUI.");
-            return;
-        }
-
-        if (neonPixel == null || tmp.font != neonPixel)
-        {
-            errors.Add(where + " : TMP_InputField." + fieldName + " does not use the shared Neon Pixel-7 SDF font asset.");
         }
     }
 }

@@ -4,22 +4,24 @@ using UnityEngine;
 using UnityEngine.UI;
 
 /// <summary>
-/// The existing-account login screen (<c>level_00_account_loginExisting</c>). The login button
-/// itself is not resolved here - it is wired with an authored <c>onClick</c> straight to
-/// <see cref="AccountManager.LoginUser()"/> in the scene, which is the pre-existing wiring and is not
-/// part of this manager's name-lookup fallback. Footer here is <c>account_menu</c> only.
+/// The existing-account login screen (<c>level_00_account_loginExisting</c>). AUD-092 Phase 5B: fields
+/// are <see cref="TMP_InputField"/> (migrated from legacy <see cref="InputField"/>), and
+/// <see cref="LoginButton"/> is resolved here rather than left to its own authored <c>onClick</c> -
+/// <c>AccountManager</c> now code-owns Login the same way it already owned Check Username.
 /// </summary>
 public class AccountLoginUiObjects : MonoBehaviour
 {
-    [SerializeField] private InputField usernameInputField;
-    [SerializeField] private InputField passwordInputField;
+    [SerializeField] private TMP_InputField usernameInputField;
+    [SerializeField] private TMP_InputField passwordInputField;
     [SerializeField] private TMP_Text messageDisplay;
     [SerializeField] private Button checkUserNameButton;
+    [SerializeField] private Button loginButton;
 
-    public InputField UsernameInputField => usernameInputField;
-    public InputField PasswordInputField => passwordInputField;
+    public TMP_InputField UsernameInputField => usernameInputField;
+    public TMP_InputField PasswordInputField => passwordInputField;
     public TMP_Text MessageDisplay => messageDisplay;
     public Button CheckUserNameButton => checkUserNameButton;
+    public Button LoginButton => loginButton;
 
     public GameObject UserNameTargetObject => usernameInputField != null ? usernameInputField.gameObject : null;
 
@@ -30,6 +32,7 @@ public class AccountLoginUiObjects : MonoBehaviour
         if (passwordInputField == null) missing.Add("AccountLoginUiObjects.passwordInputField");
         if (messageDisplay == null) missing.Add("AccountLoginUiObjects.messageDisplay");
         if (checkUserNameButton == null) missing.Add("AccountLoginUiObjects.checkUserNameButton");
+        if (loginButton == null) missing.Add("AccountLoginUiObjects.loginButton");
         return missing.Count == before;
     }
 }

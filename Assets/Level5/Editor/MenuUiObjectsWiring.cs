@@ -402,14 +402,17 @@ public static class MenuUiObjectsWiring
 
         GameObject host = manager.gameObject;
         AccountCreateUiObjects ui = AddOrGet<AccountCreateUiObjects>(host);
-        SetField(ui, "emailInputField", FindComponentNamedInRoots<InputField>(roots, "EmailInputField"));
-        SetField(ui, "usernameInputField", FindComponentNamedInRoots<InputField>(roots, "UserNameInputField"));
-        SetField(ui, "passwordInputField", FindComponentNamedInRoots<InputField>(roots, "PasswordInputField"));
-        SetField(ui, "firstNameInputField", FindComponentNamedInRoots<InputField>(roots, "FirstNameInputField"));
-        SetField(ui, "lastNameInputField", FindComponentNamedInRoots<InputField>(roots, "LastNameInputField"));
+        SetField(ui, "emailInputField", FindComponentNamedInRoots<TMP_InputField>(roots, "EmailInputField"));
+        SetField(ui, "usernameInputField", FindComponentNamedInRoots<TMP_InputField>(roots, "UserNameInputField"));
+        SetField(ui, "passwordInputField", FindComponentNamedInRoots<TMP_InputField>(roots, "PasswordInputField"));
+        SetField(ui, "firstNameInputField", FindComponentNamedInRoots<TMP_InputField>(roots, "FirstNameInputField"));
+        SetField(ui, "lastNameInputField", FindComponentNamedInRoots<TMP_InputField>(roots, "LastNameInputField"));
         SetField(ui, "messageDisplay", FindComponentNamedInRoots<Text>(roots, "messageDisplay"));
         SetField(ui, "checkEmailButton", FindComponentNamedInRoots<Button>(roots, "checkEmail"));
         SetField(ui, "checkUserNameButton", FindComponentNamedInRoots<Button>(roots, "checkUserName"));
+        // AUD-092 Phase 5B: createUserButton used to be wired only via its own authored onClick; it is
+        // now also code-owned (AccountManager.RegisterButtonCallbacks), so it needs a resolved reference.
+        SetField(ui, "createAccountButton", FindComponentNamedInRoots<Button>(roots, "createUserButton"));
 
         MenuFooterUiObjects footer = AddOrGet<MenuFooterUiObjects>(host);
         WireFooterButtonsInRoots(footer, roots);
@@ -438,10 +441,13 @@ public static class MenuUiObjectsWiring
 
         GameObject host = manager.gameObject;
         AccountLoginUiObjects ui = AddOrGet<AccountLoginUiObjects>(host);
-        SetField(ui, "usernameInputField", FindComponentNamedInRoots<InputField>(roots, "UserNameInputField"));
-        SetField(ui, "passwordInputField", FindComponentNamedInRoots<InputField>(roots, "PasswordInputField"));
+        SetField(ui, "usernameInputField", FindComponentNamedInRoots<TMP_InputField>(roots, "UserNameInputField"));
+        SetField(ui, "passwordInputField", FindComponentNamedInRoots<TMP_InputField>(roots, "PasswordInputField"));
         SetField(ui, "messageDisplay", FindComponentNamedInRoots<Text>(roots, "messageDisplay"));
         SetField(ui, "checkUserNameButton", FindComponentNamedInRoots<Button>(roots, "checkUserName"));
+        // AUD-092 Phase 5B: loginButton used to be wired only via its own authored onClick; it is now
+        // also code-owned (AccountManager.RegisterButtonCallbacks), so it needs a resolved reference.
+        SetField(ui, "loginButton", FindComponentNamedInRoots<Button>(roots, "loginButton"));
 
         MenuFooterUiObjects footer = AddOrGet<MenuFooterUiObjects>(host);
         WireFooterButtonsInRoots(footer, roots);
