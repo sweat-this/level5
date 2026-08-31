@@ -81,6 +81,12 @@ public sealed class Level5ProjectValidator : IPreprocessBuildWithReport
         // TextMeshProUGUI via the new StartMenuTextUiObjects view; the other 14 of StartMenuUiObjects'
         // 41 legacy Text fields (static labels/unbound) deliberately remain legacy Text for Phase 6B.
         errors.AddRange(CollectStartTextRenderingContractErrors());
+        // AUD-092 Phase 6C: confirm_tip.prefab - the shared tip dialogue nested directly in
+        // level_00_start.unity - is enforced under its own name for the same reason confirm_update is:
+        // it is a shared source prefab, not Start-owned. This is also the Start scene's final legacy
+        // Text boundary; with it clean, CollectStartTextRenderingContractErrors above now requires zero
+        // nested legacy Text as well as zero direct legacy Text.
+        errors.AddRange(CollectTipDialogueTextRenderingContractErrors());
 
         if (errors.Count > 0)
         {
@@ -1194,6 +1200,43 @@ public sealed class Level5ProjectValidator : IPreprocessBuildWithReport
     public static List<string> CollectStartTextRenderingContractErrors()
     {
         return StartMenuTextMeshProMigration.CollectContractErrors();
+    }
+
+    [MenuItem("Level5/Validate Tip Dialogue Text Rendering Contract")]
+    public static void ValidateTipDialogueTextRenderingContractFromMenu()
+    {
+        List<string> errors = CollectTipDialogueTextRenderingContractErrors();
+        if (errors.Count > 0)
+        {
+            Debug.LogError("Tip dialogue text rendering contract validation failed:\n- " + string.Join("\n- ", errors.ToArray()));
+            return;
+        }
+
+        Debug.Log("Tip dialogue text rendering contract validated.");
+    }
+
+    /// <summary>
+    /// AUD-092 Phase 6C: confirm_tip.prefab's four directly-owned legacy Text components (header, tip
+    /// body, next-button label, close-button label) were migrated to TextMeshProUGUI on the shared Neon
+    /// Pixel-7 SDF font asset, and its owning StartScreenTipDialogueManager now resolves UI only through
+    /// the new TipDialogueUiObjects typed view - no legacy Text/Button fields, no GameObject.Find. Named
+    /// separately from <see cref="CollectStartTextRenderingContractErrors"/> - not folded into it -
+    /// because confirm_tip.prefab is a SHARED source prefab nested into level_00_start.unity, matching
+    /// the <see cref="CollectConfirmationDialogueTextRenderingContractErrors"/> precedent for
+    /// confirm_update.prefab. Delegates entirely to
+    /// <see cref="TipDialogueTextMeshProMigration.CollectContractErrors"/>.
+    ///
+    /// DialogueManager.confirmationDialogTip (the field that used to make this prefab look like it also
+    /// backed the account-flow confirmation dialog) was found to be a dangling reference - its
+    /// serialized fileID does not correspond to any object in this prefab - and DialogueManager itself
+    /// only ever exists in level_00_account_loginLocal.unity, never level_00_start.unity, so its tip
+    /// branch could never actually run. That field, the TipDialogue constant, and the tip-specific
+    /// GameObject.Find/Instantiate branch were removed from DialogueManager entirely; its ordinary
+    /// ConfirmDialogue path is unchanged.
+    /// </summary>
+    public static List<string> CollectTipDialogueTextRenderingContractErrors()
+    {
+        return TipDialogueTextMeshProMigration.CollectContractErrors();
     }
 
     private static void ValidateInputActions(List<string> errors)

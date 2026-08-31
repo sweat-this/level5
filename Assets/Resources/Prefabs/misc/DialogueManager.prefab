@@ -46,9 +46,6 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   confirmationDialog: {fileID: 1038007582, guid: f98fd5487aa885744ae924d612ada504,
     type: 3}
-  confirmationDialogTip: {fileID: 1583025568552138434, guid: f695a23a72d5c97409ddfbd96d1145c5,
-    type: 3}
   ConfirmationDialogue: 0
-  TipDialogue: 1
   dialogueType: 0
   canvas: {fileID: 0}

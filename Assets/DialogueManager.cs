@@ -9,10 +9,9 @@ public class DialogueManager : MonoBehaviour
     public const int DialogCancel = 2;
 
     public ConfirmDialogue confirmationDialog;
-    public ConfirmDialogue confirmationDialogTip;
 
     [HideInInspector]
-    public int ConfirmationDialogue = 0, TipDialogue = 1;
+    public int ConfirmationDialogue = 0;
     public int dialogueType;
 
     public Canvas canvas;
@@ -33,10 +32,6 @@ public class DialogueManager : MonoBehaviour
     {
         Coroutine = null;
         canvas = GameObject.FindAnyObjectByType<Canvas>();
-        if (GameObject.Find("confirm_tip") != null)
-        {
-            dialogueType = TipDialogue;
-        }
         if (GameObject.Find("confirm_update") != null)
         {
             dialogueType = ConfirmationDialogue;
@@ -66,10 +61,6 @@ public class DialogueManager : MonoBehaviour
         {
             dialog = Instantiate(confirmationDialog, canvas.transform); // instantiate the UI dialog box
         }
-        if (dialogueType == TipDialogue)
-        {
-            dialog = Instantiate(confirmationDialogTip, canvas.transform); // instantiate the UI dialog box
-        }
 
         if (dialog == null)
         {
@@ -97,11 +88,6 @@ public class DialogueManager : MonoBehaviour
             buttonPressed = true;
             SelectFirstEventSystemObject();
         }
-        //if (dialog.result == dialog.NEXT)
-        //{
-        //    buttonPressed = true;
-        //    EventSystem.current.SetSelectedGameObject(EventSystem.current.firstSelectedGameObject);
-        //}
         Destroy(dialog.gameObject);
 
         coroutine = null;

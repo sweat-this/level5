@@ -2,7 +2,6 @@ using Assets.Scripts.Utility;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.EventSystems;
-using UnityEngine.UI;
 
 public class StartScreenTipDialogueManager : MonoBehaviour
 {
@@ -12,15 +11,7 @@ public class StartScreenTipDialogueManager : MonoBehaviour
     public int result = 0;
 
     [SerializeField]
-    private Button cancelButton;
-    [SerializeField]
-    private Button nextButton;
-
-    [SerializeField]
-    Text tipText;
-
-    [SerializeField]
-    Text headerText;
+    private TipDialogueUiObjects ui;
 
     [SerializeField]
     List<PlayerTips> tipsList;
@@ -31,9 +22,6 @@ public class StartScreenTipDialogueManager : MonoBehaviour
     bool buttonPressed = false;
     bool menuMapsEnabled;
 
-    public Button CancelButton { get => cancelButton; set => cancelButton = value; }
-    public Button NextButton { get => nextButton; set => nextButton = value; }
-
     private void OnEnable()
     {
         if (!GameOptions.tipDialogueLoadedOnStart)
@@ -42,9 +30,15 @@ public class StartScreenTipDialogueManager : MonoBehaviour
             PlayerControlsProvider.EnableMenuMaps();
             menuMapsEnabled = true;
         }
+
+        ui.NextButton.onClick.AddListener(NextButtonOnClick);
+        ui.CloseButton.onClick.AddListener(CancelButtonOnClick);
     }
     private void OnDisable()
     {
+        ui.NextButton.onClick.RemoveListener(NextButtonOnClick);
+        ui.CloseButton.onClick.RemoveListener(CancelButtonOnClick);
+
         if (menuMapsEnabled)
         {
             PlayerControlsProvider.DisableMenuMaps();
@@ -57,18 +51,7 @@ public class StartScreenTipDialogueManager : MonoBehaviour
     {
         if (!GameOptions.tipDialogueLoadedOnStart)
         {
-            //instance = this;
             controls = PlayerControlsProvider.Controls;
-            if (GameObject.Find("cancel_button") != null)
-            {
-                cancelButton = GameObject.Find("cancel_button").GetComponent<Button>();
-                cancelButton.onClick.AddListener(CancelButtonOnClick);
-            }
-            if (GameObject.Find("next_button") != null)
-            {
-                nextButton = GameObject.Find("next_button").GetComponent<Button>();
-                nextButton.onClick.AddListener(NextButtonOnClick);
-            }
 
             int i = 0;
             foreach (PlayerTips tip in tipsList)
@@ -77,7 +60,7 @@ public class StartScreenTipDialogueManager : MonoBehaviour
                 i++;
             }
             randomTipIndex = UtilityFunctions.GetRandomInteger(0, tipsList.Count);
-            tipText.text = tipsList[randomTipIndex].tip;
+            ui.Tip.text = tipsList[randomTipIndex].tip;
         }
         else
         {
@@ -88,9 +71,9 @@ public class StartScreenTipDialogueManager : MonoBehaviour
     private void Start()
     {
         EventSystem.current.SetSelectedGameObject(null);
-        EventSystem.current.SetSelectedGameObject(nextButton.gameObject);
+        EventSystem.current.SetSelectedGameObject(ui.NextButton.gameObject);
         GameOptions.tipDialogueLoadedOnStart = true;
-        headerText.text = "Tip" + "    " + (randomTipIndex + 1) + " / " + (tipsList.Count);
+        ui.Header.text = "Tip" + "    " + (randomTipIndex + 1) + " / " + (tipsList.Count);
     }
 
     private void CloseTipDialogue()
@@ -105,15 +88,15 @@ public class StartScreenTipDialogueManager : MonoBehaviour
         if (randomTipIndex < (tipsList.Count - 1))
         {
             randomTipIndex++;
-            tipText.text = tipsList[randomTipIndex].tip;
+            ui.Tip.text = tipsList[randomTipIndex].tip;
         }
         else
         {
             randomTipIndex = 0;
-            tipText.text = tipsList[0].tip;
+            ui.Tip.text = tipsList[0].tip;
         }
-        EventSystem.current.SetSelectedGameObject(nextButton.gameObject);
-        headerText.text = "Tip" + "    " + (randomTipIndex + 1) + " / " + (tipsList.Count);
+        EventSystem.current.SetSelectedGameObject(ui.NextButton.gameObject);
+        ui.Header.text = "Tip" + "    " + (randomTipIndex + 1) + " / " + (tipsList.Count);
 
         buttonPressed = false;
     }

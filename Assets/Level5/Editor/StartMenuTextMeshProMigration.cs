@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
 using System.Reflection;
 using System.Text;
 using TMPro;
@@ -11,15 +10,16 @@ using UnityEngine.UI;
 using Object = UnityEngine.Object;
 
 /// <summary>
-/// AUD-092 Phases 6A/6B (both complete): migrated the Start menu's (<c>level_00_start</c>) entire
+/// AUD-092 Phases 6A/6B/6C (all complete): migrated the Start menu's (<c>level_00_start</c>) entire
 /// legacy <see cref="Text"/> contract to TextMeshProUGUI - Phase 6A the 27 runtime-mutated fields
 /// <see cref="StartMenuUiObjects"/> used to carry (now owned by <see cref="StartMenuTextUiObjects"/>),
 /// Phase 6B the other 14 static/unbound fields plus every other directly scene-owned Text nothing ever
-/// pointed at through a serialized field. Both migrations converted their candidates in place via
-/// <see cref="MenuTextConversion.ConvertSingleText"/>, reverted every now-redundant legacy
-/// prefab-instance property override via <see cref="PrefabUtility.RevertPropertyOverride"/>, and were
-/// proven idempotent before <see cref="StartMenuUiObjects"/>' 41-field legacy Text schema was removed
-/// from source entirely.
+/// pointed at through a serialized field, Phase 6C the last nested/shared source
+/// (<c>confirm_tip.prefab</c>, migrated by <see cref="TipDialogueTextMeshProMigration"/>). Phase 6A/6B
+/// converted their candidates in place via <see cref="MenuTextConversion.ConvertSingleText"/>, reverted
+/// every now-redundant legacy prefab-instance property override via
+/// <see cref="PrefabUtility.RevertPropertyOverride"/>, and were proven idempotent before
+/// <see cref="StartMenuUiObjects"/>' 41-field legacy Text schema was removed from source entirely.
 ///
 /// The one-shot migration methods themselves (<c>Migrate</c>/<c>MigratePhase6B</c> and their supporting
 /// prefab-asset/scene-in-memory helpers) were deleted once both phases shipped and the schema was gone:
@@ -28,8 +28,10 @@ using Object = UnityEngine.Object;
 /// is worse than no menu item, since there is no legitimate scenario where either needs to run again.
 /// What remains is permanent: <see cref="Report"/> (read-only characterization) and
 /// <see cref="CollectContractErrors"/> (the permanent regression contract backing
-/// <c>Level5ProjectValidator.CollectStartTextRenderingContractErrors</c>), plus the field-name/allowlist
-/// data both still depend on.
+/// <c>Level5ProjectValidator.CollectStartTextRenderingContractErrors</c>), plus the field-name data both
+/// still depend on. With Phase 6C complete, <see cref="CollectContractErrors"/> now requires zero legacy
+/// Text anywhere in the Start scene, including nested prefab instances - see
+/// <see cref="CollectDirectAndNestedTextErrors"/>.
 /// </summary>
 internal static class StartMenuTextMeshProMigration
 {
@@ -299,26 +301,6 @@ internal static class StartMenuTextMeshProMigration
     // mechanics there once a second migration needed the identical sequence).
     // ---------------------------------------------------------------------------------------------
 
-    /// <summary>
-    /// AUD-092 Phase 6C boundary: the exact set of source prefabs a deferred nested/shared legacy Text
-    /// component may originate from. <c>confirm_tip.prefab</c> is also nested inside
-    /// <c>DialogueManager.prefab</c> (see <see cref="StartScreenTipDialogueManager"/>), so it is shared
-    /// rather than Start-owned and stays out of scope here. A new nested legacy Text source appearing in
-    /// the Start scene that is not on this list fails <see cref="CollectContractErrors"/> immediately
-    /// rather than silently being lumped in with the known Phase 6C backlog.
-    ///
-    /// A <see cref="ReadOnlyCollection{T}"/> (unlike <see cref="DynamicFieldNames"/>/<see cref="StaticFieldNames"/>,
-    /// plain arrays kept for parity with how every other AUD-092 migration already stores its own
-    /// field-name lists) because this list's entire purpose is to gate what nested legacy Text is
-    /// permitted to survive - a caller mutating a plain array's elements in place could silently widen
-    /// that gate without anyone noticing, which the two field-name lists (record-keeping only, never a
-    /// pass/fail boundary by themselves) do not risk in the same way.
-    /// </summary>
-    internal static readonly ReadOnlyCollection<string> Phase6CDeferredSourcePrefabAllowlist = Array.AsReadOnly(new[]
-    {
-        "Assets/Resources/Prefabs/misc/confirm_tip.prefab",
-    });
-
     // ---------------------------------------------------------------------------------------------
     // Permanent contract (backs Level5ProjectValidator.CollectStartTextRenderingContractErrors)
     // ---------------------------------------------------------------------------------------------
@@ -444,9 +426,10 @@ internal static class StartMenuTextMeshProMigration
     }
 
     /// <summary>
-    /// Zero directly scene-owned legacy Text may remain anywhere in the Start scene. Every deferred
-    /// nested/shared Text must originate from the explicit Phase 6C source-prefab allowlist - a new,
-    /// unlisted source fails immediately rather than silently being treated as already-known backlog.
+    /// Zero legacy Text may remain anywhere in the Start scene - directly scene-owned or nested inside
+    /// any prefab instance. AUD-092 Phase 6C migrated confirm_tip.prefab, the only remaining nested
+    /// source; a new nested legacy Text source appearing in the Start scene is a regression, not
+    /// deferred backlog.
     /// </summary>
     private static List<string> CollectDirectAndNestedTextErrors(Scene scene)
     {
@@ -463,13 +446,10 @@ internal static class StartMenuTextMeshProMigration
         {
             GameObject nestedInstanceRoot = PrefabUtility.GetNearestPrefabInstanceRoot(text.gameObject);
             string sourcePrefabPath = nestedInstanceRoot != null ? PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot(nestedInstanceRoot) : null;
-            if (sourcePrefabPath == null || !Phase6CDeferredSourcePrefabAllowlist.Contains(sourcePrefabPath))
-            {
-                errors.Add(
-                    MenuTextConversion.BuildHierarchyPath(text.gameObject, null)
-                        + " : nested legacy Text originates from '" + (sourcePrefabPath ?? "<unknown>")
-                        + "', which is not on the Phase 6C deferred source-prefab allowlist.");
-            }
+            errors.Add(
+                MenuTextConversion.BuildHierarchyPath(text.gameObject, null)
+                    + " : nested legacy Text originates from '" + (sourcePrefabPath ?? "<unknown>")
+                    + "'; AUD-092 Phase 6C requires zero legacy Text anywhere in the Start scene, including nested prefab instances.");
         }
 
         return errors;

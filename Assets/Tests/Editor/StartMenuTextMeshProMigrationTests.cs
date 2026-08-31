@@ -315,8 +315,9 @@ public class StartMenuTextMeshProMigrationTests
     }
 
     // ---------------------------------------------------------------------------------------------
-    // AUD-092 Phase 6B: zero directly scene-owned legacy Text remains anywhere in the Start scene;
-    // every deferred nested/shared Text is on the explicit Phase 6C source-prefab allowlist.
+    // AUD-092 Phase 6B/6C: zero legacy Text remains anywhere in the Start scene - directly scene-owned
+    // or nested inside any prefab instance (confirm_tip.prefab, the last nested source, was migrated
+    // by TipDialogueTextMeshProMigration in Phase 6C).
     // ---------------------------------------------------------------------------------------------
 
     [Test]
@@ -339,11 +340,14 @@ public class StartMenuTextMeshProMigrationTests
     }
 
     [Test]
-    public void NestedLegacyTextOriginatesOnlyFromThePhase6CAllowlist()
+    public void NoNestedLegacyTextRemainsAnywhereInTheStartScene()
     {
+        // AUD-092 Phase 6C migrated confirm_tip.prefab, the only nested/shared source ever allowlisted
+        // here; the allowlist itself (StartMenuTextMeshProMigration.Phase6CDeferredSourcePrefabAllowlist)
+        // was removed once that migration shipped, so any nested legacy Text found now - from
+        // confirm_tip.prefab or anywhere else - is a regression, not deferred backlog.
         Scene scene = OpenScene();
         List<string> offenders = new List<string>();
-        int nestedCount = 0;
         foreach (GameObject root in scene.GetRootGameObjects())
         {
             foreach (Text text in root.GetComponentsInChildren<Text>(true))
@@ -354,57 +358,37 @@ public class StartMenuTextMeshProMigrationTests
                     continue;
                 }
 
-                nestedCount++;
                 string sourcePrefabPath = PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot(instanceRoot);
-                if (!StartMenuTextMeshProMigration.Phase6CDeferredSourcePrefabAllowlist.Contains(sourcePrefabPath))
-                {
-                    offenders.Add(MenuTextConversion.BuildHierarchyPath(text.gameObject, null) + " (source: " + sourcePrefabPath + ")");
-                }
+                offenders.Add(MenuTextConversion.BuildHierarchyPath(text.gameObject, null) + " (source: " + sourcePrefabPath + ")");
             }
         }
 
-        Assert.IsEmpty(offenders, "nested legacy Text from an unlisted source prefab (not on the Phase 6C allowlist):\n- " + string.Join("\n- ", offenders));
-        Assert.Greater(nestedCount, 0, "expected at least the known confirm_tip.prefab nested Text; if this is genuinely now zero, Phase 6C is already complete and this test should be revisited.");
+        Assert.IsEmpty(offenders, "nested legacy Text remains in the Start scene:\n- " + string.Join("\n- ", offenders));
     }
 
     [Test]
-    public void ConfirmTipPrefabIsUntouchedByPhase6B()
+    public void ConfirmTipPrefabHasNoLegacyTextAfterPhase6C()
     {
-        // Phase 6B must never mutate deferred shared prefab sources - confirm_tip.prefab (Phase 6C's
-        // only allowlisted source) still carries exactly the 4 legacy Text components characterized
-        // before Phase 6B ran (tip_text, header, cancel_button, next_button), with zero TMP added.
         const string ConfirmTipPrefabPath = "Assets/Resources/Prefabs/misc/confirm_tip.prefab";
         GameObject prefabRoot = AssetDatabase.LoadAssetAtPath<GameObject>(ConfirmTipPrefabPath);
         Assert.IsNotNull(prefabRoot, "could not load " + ConfirmTipPrefabPath);
 
-        Assert.AreEqual(4, prefabRoot.GetComponentsInChildren<Text>(true).Length, ConfirmTipPrefabPath + " : expected 4 legacy Text components, unchanged by Phase 6B.");
-        Assert.AreEqual(0, prefabRoot.GetComponentsInChildren<TextMeshProUGUI>(true).Length, ConfirmTipPrefabPath + " : Phase 6B must not have converted any of this shared prefab's Text.");
+        Assert.AreEqual(0, prefabRoot.GetComponentsInChildren<Text>(true).Length, ConfirmTipPrefabPath + " : Phase 6C must convert every legacy Text component.");
+        Assert.AreEqual(4, prefabRoot.GetComponentsInChildren<TextMeshProUGUI>(true).Length, ConfirmTipPrefabPath + " : expected exactly 4 TextMeshProUGUI components (header, tip body, next-button label, close-button label).");
     }
 
     [Test]
-    public void DialogueManagerStillReferencesConfirmTipPrefab()
+    public void DialogueManagerNoLongerReferencesConfirmTipPrefab()
     {
-        // Structural regression guard for the shared dependency documented on
-        // StartMenuTextMeshProMigration.Phase6CDeferredSourcePrefabAllowlist: DialogueManager
-        // (Assets/DialogueManager.cs, not Start-owned) instantiates confirm_tip.prefab via its
-        // confirmationDialogTip field - the reason confirm_tip.prefab is deferred to Phase 6C rather
-        // than migrated here.
-        const string DialogueManagerPrefabPath = "Assets/Resources/Prefabs/misc/DialogueManager.prefab";
-        const string ConfirmTipPrefabPath = "Assets/Resources/Prefabs/misc/confirm_tip.prefab";
-        GameObject dialogueManagerRoot = AssetDatabase.LoadAssetAtPath<GameObject>(DialogueManagerPrefabPath);
-        Assert.IsNotNull(dialogueManagerRoot, "could not load " + DialogueManagerPrefabPath);
-
-        DialogueManager dialogueManager = dialogueManagerRoot.GetComponentInChildren<DialogueManager>(true);
-        Assert.IsNotNull(dialogueManager, DialogueManagerPrefabPath + " no longer carries a DialogueManager component.");
-        Assert.IsNotNull(dialogueManager.confirmationDialogTip, DialogueManagerPrefabPath + " : DialogueManager.confirmationDialogTip is unassigned.");
-
-        // confirmationDialogTip references a component nested inside confirm_tip.prefab (not the
-        // prefab's own root asset), so resolve the owning asset by GUID rather than
-        // AssetDatabase.GetAssetPath (which only resolves an asset's own root object, not a component
-        // living on a child GameObject within it).
-        AssetDatabase.TryGetGUIDAndLocalFileIdentifier(dialogueManager.confirmationDialogTip, out string referencedGuid, out long _);
-        string referencedAssetPath = AssetDatabase.GUIDToAssetPath(referencedGuid);
-        Assert.AreEqual(ConfirmTipPrefabPath, referencedAssetPath, "DialogueManager.confirmationDialogTip no longer points at " + ConfirmTipPrefabPath + ".");
+        // AUD-092 Phase 6C ownership investigation: DialogueManager.confirmationDialogTip serialized a
+        // fileID that did not correspond to any object in confirm_tip.prefab (a dangling reference), and
+        // DialogueManager itself only ever exists in level_00_account_loginLocal.unity - never
+        // level_00_start.unity, where confirm_tip.prefab's instance actually lives - so its tip branch
+        // could never run in production. The field, the TipDialogue constant, and the tip-specific
+        // GameObject.Find/Instantiate branch were removed entirely; this asserts they stay gone.
+        Assert.IsNull(typeof(DialogueManager).GetField("confirmationDialogTip"), "DialogueManager.confirmationDialogTip should have been removed - it only ever held a dangling reference to a deleted component.");
+        Assert.IsNull(typeof(DialogueManager).GetField("TipDialogue"), "DialogueManager.TipDialogue should have been removed with confirmationDialogTip.");
+        Assert.IsNotNull(typeof(DialogueManager).GetField("confirmationDialog"), "DialogueManager.confirmationDialog (the live ConfirmDialogue path) must remain.");
     }
 
     [Test]
