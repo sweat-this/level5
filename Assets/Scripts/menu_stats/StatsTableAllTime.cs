@@ -1,5 +1,4 @@
-﻿using System;
-using Assets.Scripts.Utility;
+﻿using Assets.Scripts.Utility;
 using TMPro;
 using UnityEngine;
 
@@ -92,15 +91,9 @@ public class StatsTableAllTime : MonoBehaviour
     void Start()
     {
         if (GameObject.FindGameObjectWithTag("database") != null)
-            try
-            {
-                loadAllTimeStats();
-            }
-            catch (Exception e)
-            {
-                Debug.LogError("ERROR : " + e);
-                return;
-            }
+        {
+            loadAllTimeStats();
+        }
     }
 
     public void loadAllTimeStats()

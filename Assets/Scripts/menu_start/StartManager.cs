@@ -502,22 +502,14 @@ public class StartManager : MonoBehaviour
     }
 
     /// <summary>
-    /// Activates the players tab and focuses the primary select control. Wrapped in try/catch like
-    /// the render method this replaced (initializePlayerDisplay) - it runs from Update() every
-    /// frame the control is highlighted, outside of RunOptionAction's own exception handling.
+    /// Activates the players tab and focuses the primary select control. Runs from Update() every
+    /// frame the control is highlighted, outside of RunOptionAction's own guard.
     /// </summary>
     private void FocusPlayersTab()
     {
-        try
-        {
-            disableMenuObjects("players_tab");
-            enableMenuObjects("players_tab");
-            playerSelectCoordinator.FocusPrimary();
-        }
-        catch (Exception e)
-        {
-            Debug.LogError("ERROR : " + e);
-        }
+        disableMenuObjects("players_tab");
+        enableMenuObjects("players_tab");
+        playerSelectCoordinator.FocusPrimary();
     }
 
     /// <summary>Focuses whichever CPU slot is currently highlighted, if any, so its stats become the shown ones.</summary>
@@ -745,10 +737,6 @@ public class StartManager : MonoBehaviour
         {
             action();
         }
-        catch (Exception e)
-        {
-            Debug.LogError("ERROR : " + e);
-        }
         finally
         {
             buttonPressed = false;
@@ -774,10 +762,6 @@ public class StartManager : MonoBehaviour
             // would otherwise change selection without ever repainting it. Cheap no-op when
             // nothing changed.
             playerSelectCoordinator.RenderIfNeeded();
-        }
-        catch (Exception e)
-        {
-            Debug.LogError("ERROR : " + e);
         }
         finally
         {
@@ -1410,61 +1394,39 @@ public class StartManager : MonoBehaviour
 
     public void initializefriendDisplay()
     {
-        try
+        disableMenuObjects("friend_tab");
+        enableMenuObjects("friend_tab");
+
+        if (friendSelectedData == null || friendSelectedData.Count == 0
+            || friendSelectedIndex < 0 || friendSelectedIndex >= friendSelectedData.Count
+            || friendSelectOptionText == null || friendSelectOptionImage == null)
         {
-            disableMenuObjects("friend_tab");
-            enableMenuObjects("friend_tab");
-            //Debug.Log(friendSelectedData[friendSelectedIndex].CheerleaderDisplayName);
-            //Debug.Log(friendSelectedData[friendSelectedIndex].bonus3Accuracy);
-            //Debug.Log(friendSelectedIndex);
-
-            friendSelectOptionText.text = friendSelectedData[friendSelectedIndex].CheerleaderDisplayName;
-            friendSelectOptionImage.sprite = friendSelectedData[friendSelectedIndex].CheerleaderPortrait;
-
-            if (friendSelectedIndex > 0)
-            {
-                StartMenuUiObjects.instance.TextUi.FriendStatsNumbers.text = // friendSelectedData[friendSelectedIndex].Accuracy2Pt.ToString("F0") + "\n"
-                   "+" +  friendSelectedData[friendSelectedIndex].bonus3Accuracy.ToString("F0") + "\n"
-                    + "+" +  friendSelectedData[friendSelectedIndex].bonus4Accuracy.ToString("F0") + "\n"
-                    + "+" +  friendSelectedData[friendSelectedIndex].bonus7Accuracy.ToString("F0") + "\n"
-                    + "+" + friendSelectedData[friendSelectedIndex].bonusRelease.ToString("F0") + "\n"
-                    + "+" + friendSelectedData[friendSelectedIndex].bonusRange.ToString("F0") + "\n"
-                    + "\n"
-                    //+ "+" + (playerSelectedData[playerSelectedIndex].calculateSpeedToPercent() + friendSelectedData[friendSelectedIndex].bonusSpeed).ToString("F0") + "\n"
-                    + "\n"
-                    + "+" + friendSelectedData[friendSelectedIndex].bonusLuck.ToString("F0") + "\n"
-                    + "+" +  friendSelectedData[friendSelectedIndex].bonusClutch.ToString("F0");
-            }
-            else { StartMenuUiObjects.instance.TextUi.FriendStatsNumbers.text = "";  }
-
-            // AUD-110: this used to re-resolve the label with
-            // GameObject.Find(...).GetComponent<Text>() on every refresh, unguarded, inside a catch
-            // that only logs - so a rename or an inactive object made the friend display fail
-            // silently. GetUiObjectReferences already holds this reference.
-            if (friendSelectOptionText != null)
-            {
-                friendSelectOptionText.text = friendSelectedData[friendSelectedIndex].CheerleaderDisplayName;
-            }
-        }
-        catch (Exception e)
-        {
-            Debug.LogError("ERROR : " + e);
             return;
         }
+
+        friendSelectOptionText.text = friendSelectedData[friendSelectedIndex].CheerleaderDisplayName;
+        friendSelectOptionImage.sprite = friendSelectedData[friendSelectedIndex].CheerleaderPortrait;
+
+        if (friendSelectedIndex > 0)
+        {
+            StartMenuUiObjects.instance.TextUi.FriendStatsNumbers.text = // friendSelectedData[friendSelectedIndex].Accuracy2Pt.ToString("F0") + "\n"
+               "+" +  friendSelectedData[friendSelectedIndex].bonus3Accuracy.ToString("F0") + "\n"
+                + "+" +  friendSelectedData[friendSelectedIndex].bonus4Accuracy.ToString("F0") + "\n"
+                + "+" +  friendSelectedData[friendSelectedIndex].bonus7Accuracy.ToString("F0") + "\n"
+                + "+" + friendSelectedData[friendSelectedIndex].bonusRelease.ToString("F0") + "\n"
+                + "+" + friendSelectedData[friendSelectedIndex].bonusRange.ToString("F0") + "\n"
+                + "\n"
+                //+ "+" + (playerSelectedData[playerSelectedIndex].calculateSpeedToPercent() + friendSelectedData[friendSelectedIndex].bonusSpeed).ToString("F0") + "\n"
+                + "\n"
+                + "+" + friendSelectedData[friendSelectedIndex].bonusLuck.ToString("F0") + "\n"
+                + "+" +  friendSelectedData[friendSelectedIndex].bonusClutch.ToString("F0");
+        }
+        else { StartMenuUiObjects.instance.TextUi.FriendStatsNumbers.text = "";  }
     }
     public void initializeOptionsDisplay()
     {
-        try
-        {
-            //Debug.Log("initializeOptionsDisplay");
-            disableMenuObjects("options_tab");
-            enableMenuObjects("options_tab");
-        }
-        catch (Exception e)
-        {
-            Debug.LogError("ERROR : " + e);
-            return;
-        }
+        disableMenuObjects("options_tab");
+        enableMenuObjects("options_tab");
     }
 
     public void initializeModeDisplay()

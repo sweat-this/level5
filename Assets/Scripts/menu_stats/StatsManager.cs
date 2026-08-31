@@ -216,23 +216,15 @@ public class StatsManager : MonoBehaviour
         // get data for default mode to be displayed
         if (GameObject.FindGameObjectWithTag("database") != null)
         {
-            try
-            {
-                // get default high score list + num results
-                highScoreRowsDataList =
-                DBHelper.instance.getListOfHighScoreRowsFromTableByModeIdAndField(field,
-                    modesList[defaultModeSelectedIndex].modeSelectedId,
-                    hardcoreEnabled,
-                    trafficEnabled,
-                    enemiesEnabled,
-                    sniperEnabled,
-                    localResultsPageNumber);
-            }
-            catch (Exception e)
-            {
-                Debug.LogError("ERROR : " + e);
-                return;
-            }
+            // get default high score list + num results
+            highScoreRowsDataList =
+            DBHelper.instance.getListOfHighScoreRowsFromTableByModeIdAndField(field,
+                modesList[defaultModeSelectedIndex].modeSelectedId,
+                hardcoreEnabled,
+                trafficEnabled,
+                enemiesEnabled,
+                sniperEnabled,
+                localResultsPageNumber);
         }
     }
 
@@ -777,17 +769,17 @@ public class StatsManager : MonoBehaviour
             yield break;
         }
 
-        try
+        // getUnsubmittedHighScoreFromDatabase already owns SQLite recovery internally and signals
+        // failure by returning null rather than throwing (DBHelper.cs).
+        List<HighScoreModel> unsubmitted = DBHelper.instance.getUnsubmittedHighScoreFromDatabase();
+        if (unsubmitted == null)
         {
-            unsubmittedHighScores = DBHelper.instance.getUnsubmittedHighScoreFromDatabase()
-                ?? new List<HighScoreModel>();
-        }
-        catch (Exception exception)
-        {
-            Debug.LogError("Could not read unsubmitted scores: " + exception.Message);
+            Debug.LogError("Could not read unsubmitted scores from the local database.");
             submittedHighscoresText.text = "scores unavailable";
             yield break;
         }
+
+        unsubmittedHighScores = unsubmitted;
 
         numUnsubmittedHighscores = unsubmittedHighScores.Count;
         if (numUnsubmittedHighscores == 0)
@@ -809,31 +801,40 @@ public class StatsManager : MonoBehaviour
 
     private void getUnsubmittedHighscores()
     {
+        List<HighScoreModel> unsubmitted;
+        DBHelper.instance.DatabaseLocked = true;
         try
         {
-            DBHelper.instance.DatabaseLocked = true;
             // get unsubmitted scores
-            unsubmittedHighScores = DBHelper.instance.getUnsubmittedHighScoreFromDatabase();
-            numUnsubmittedHighscores = unsubmittedHighScores.Count;
-
-            // if count > 0,  set appropriate text
-            if (numUnsubmittedHighscores > 0)
-            {
-                submittedHighscoresText.text = "submit scores";
-                numUnsubmittedHighscoresText.text = "+" + numUnsubmittedHighscores.ToString();
-            }
-            // if none, set appropriate text
-            if (numUnsubmittedHighscores == 0)
-            {
-                submittedHighscoresText.text = "no scores to submit";
-                numUnsubmittedHighscoresText.text = "";
-            }
-            DBHelper.instance.DatabaseLocked = false;
+            unsubmitted = DBHelper.instance.getUnsubmittedHighScoreFromDatabase();
         }
-        catch (Exception e)
+        finally
         {
             DBHelper.instance.DatabaseLocked = false;
-            Debug.LogError("ERROR : " + e);
+        }
+
+        // getUnsubmittedHighScoreFromDatabase already owns SQLite recovery internally and signals
+        // failure by returning null rather than throwing (DBHelper.cs).
+        if (unsubmitted == null)
+        {
+            Debug.LogError("Could not read unsubmitted scores from the local database.");
+            return;
+        }
+
+        unsubmittedHighScores = unsubmitted;
+        numUnsubmittedHighscores = unsubmittedHighScores.Count;
+
+        // if count > 0,  set appropriate text
+        if (numUnsubmittedHighscores > 0)
+        {
+            submittedHighscoresText.text = "submit scores";
+            numUnsubmittedHighscoresText.text = "+" + numUnsubmittedHighscores.ToString();
+        }
+        // if none, set appropriate text
+        if (numUnsubmittedHighscores == 0)
+        {
+            submittedHighscoresText.text = "no scores to submit";
+            numUnsubmittedHighscoresText.text = "";
         }
     }
 
@@ -842,17 +843,19 @@ public class StatsManager : MonoBehaviour
     {
         if (GameObject.FindGameObjectWithTag("database") != null)
         {
+            // get highscore field/mode from mode prefab - a defect here is an invalid
+            // currentModeSelectedIndex, not a database failure, so it must surface normally
+            // rather than being reported as an unavailable database.
+            string field = modesList[currentModeSelectedIndex].modeSelectedHighScoreField;
+            int modeId = modesList[currentModeSelectedIndex].modeSelectedId;
+
+            DBHelper.instance.DatabaseLocked = true;
             try
             {
-                DBHelper.instance.DatabaseLocked = true;
-                // counts number entries returned.
-                int index = 0;
-                // get highscore field from mode prefab
-                string field = modesList[currentModeSelectedIndex].modeSelectedHighScoreField;
                 // get new list of scores based on currently selected game mode
                 highScoreRowsDataList
                     = DBHelper.instance.getListOfHighScoreRowsFromTableByModeIdAndField(field,
-                    modesList[currentModeSelectedIndex].modeSelectedId,
+                    modeId,
                     hardcoreEnabled,
                     trafficEnabled,
                     enemiesEnabled,
@@ -864,36 +867,32 @@ public class StatsManager : MonoBehaviour
                 // set actually being paged
                 numLocalResults = DBHelper.instance.getNumberOfResults(
                     field,
-                    modesList[currentModeSelectedIndex].modeSelectedId,
+                    modeId,
                     hardcoreEnabled,
                     trafficEnabled,
                     enemiesEnabled,
                     sniperEnabled);
-
-                if (highScoreRowsDataList == null)
-                {
-                    highScoreRowsDataList = new List<StatsTableHighScoreRow>();
-                }
-
-                int rowCount = Math.Min(highScoreRowsDataList.Count, highScoreRowsObjectsList.Count);
-
-                // updates row with new data
-                for (int i = 0; i < rowCount; i++)
-                {
-                    SetHighScoreRow(i, highScoreRowsDataList[i]);
-                    index++;
-                }
-                // empty out rows if scores do not exist or there isnt at least 10
-                ClearHighScoreRows(index);
-                initializeLocalPageNumberDisplay();
-                DBHelper.instance.DatabaseLocked = false;
             }
-            catch (Exception e)
+            finally
             {
-                Debug.LogError("ERROR : " + e);
                 DBHelper.instance.DatabaseLocked = false;
-                return;
             }
+
+            if (highScoreRowsDataList == null)
+            {
+                highScoreRowsDataList = new List<StatsTableHighScoreRow>();
+            }
+
+            int rowCount = Math.Min(highScoreRowsDataList.Count, highScoreRowsObjectsList.Count);
+
+            // updates row with new data
+            for (int i = 0; i < rowCount; i++)
+            {
+                SetHighScoreRow(i, highScoreRowsDataList[i]);
+            }
+            // empty out rows if scores do not exist or there isnt at least 10
+            ClearHighScoreRows(rowCount);
+            initializeLocalPageNumberDisplay();
         }
         modeSelectButtonText.text = modesList[currentModeSelectedIndex].modeSelectedName;
     }

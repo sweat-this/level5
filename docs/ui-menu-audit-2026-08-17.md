@@ -503,3 +503,99 @@ Found while fixing, not part of this audit:
   Unity 2020.2 orphan superseded by `start_manager_test.prefab`. They are allowlisted in
   `Level5ProjectValidator.BinaryAssetsBlockedByMissingScripts`; repairing the scripts is
   gameplay-asset work, and shrinking that list to empty is the follow-up.
+
+### AUD-111 remediation — 2026-08-31
+
+A current-source audit at `18b8f06eaf806e5c41d66b4bd3d4097c85e50cab` inventoried every remaining
+`catch (Exception)` in `Assets/Scripts/menu_*` (20 sites: 5 in `StartManager`, 2 in
+`ProgressionManager`, 4 in `StatsManager`, 1 in `StatsTableAllTime`, 2 in `LoadManager`, plus 6 in
+the progression persistence trio) and classified each against the actual APIs it wraps rather than
+against what the site's own comments assumed.
+
+The load-bearing finding: every `DBHelper`/`DBConnector` method these screens call (SQLite reads/
+writes, table-existence checks, profile lookups) already catches internally and reports failure
+through its return value - an empty list/`0`/`false`, or `null` specifically for
+`getUnsubmittedHighScoreFromDatabase()` - and never lets a database exception reach its caller.
+None of the 15 non-persistence catches were therefore guarding a real database-exception boundary;
+each was either dead code around an already-safe call, or (twice, in `StatsManager`) silently
+converting an unchecked `null` return into a caught `NullReferenceException`. Both were rewritten
+as explicit `null` guards instead of `catch`.
+
+- `StartManager` - all 5 catches removed. `FocusPlayersTab` and `initializeOptionsDisplay` call
+  only already-null-safe helpers (`SetTabObjectActive`, `PlayerSelectCoordinator.FocusPrimary`, per
+  AUD-110). `initializefriendDisplay` gained an explicit guard mirroring the class's existing
+  `HasLoadedGameSetup`/`DescribeMissingGameSetup` precondition pattern instead of catching the index/
+  null failure it was disguising. `RunCommand`/`RunOptionAction` kept their `buttonPressed` guard and
+  `finally` cleanup, dropped only the `catch`.
+- `ProgressionManager` - both catches removed the same way: `RunProgressionAction` kept its
+  `finally`; `initializePlayerDisplay` now uses the class's own pre-existing `HasSelectedCharacterData()`
+  guard (already used at every other call site in the file) instead of a `catch`.
+- `StatsManager` - `Awake()`'s catch removed (dead code around a call that cannot throw or return
+  null). The `getUnsubmittedHighscores()`/`SubmitUnsubmittedScoresCoroutine` catches were replaced
+  with an explicit `null` check on `getUnsubmittedHighScoreFromDatabase()`'s return value - the
+  method's actual failure signal - preserving the existing "scores unavailable" UI state.
+  `changeHighScoreDataDisplay()` was restructured per the required flow: query-parameter lookup
+  (which can legitimately throw on a bad `currentModeSelectedIndex` - a programming defect, not a
+  database failure) now runs before the database calls, and `DatabaseLocked` is released via
+  `finally` instead of duplicated in both the success and catch paths.
+- `StatsTableAllTime` - `Start()`'s catch removed; the eleven `DBHelper` reads inside
+  `loadAllTimeStats()` all follow the same "catch internally, return a safe default" pattern, so no
+  snapshot/result type was needed to separate acquisition from rendering.
+- `LoadManager` (the highest-risk change) - both catches removed. `LoadedData.cs` already
+  implements the product's real database-unavailable/default-data path: it polls
+  `LoadManager`'s readiness flags, explicitly validates the result (`HasAllRequiredData()`), and
+  only then calls `TryLoadFallbackData()` - independent of whether `LoadAllDataCoroutine` throws.
+  `LoadAllDataCoroutine`'s own catch was therefore the thing actively working against AUD-111: since
+  every database call inside it is already exception-safe, its only observable effect was to catch a
+  genuine catalog/authoring defect (e.g. from `LevelCatalog.FromLevelSelected`) and silently
+  reclassify it as a database fallback. Removing it lets such a defect surface through Unity's own
+  exception logging while `LoadedData`'s independent retry/fallback remains the actual degraded-start
+  behavior, unchanged. `TryLoadFallbackData()` itself lost its catch for the same reason: its one
+  expected failure mode (an empty default catalog) was already reported explicitly via the
+  `xDataLoaded` flags it already computes.
+- Progression persistence (`ProgressionResultStore`, `PendingProgressionStore`, `ProgressionService`)
+  - left as-is. Each catch is already scoped to exactly one file-read/write/JSON-parse call, which is
+  a genuine recoverable boundary with no single verifiable exception type (`IOException`,
+  `UnauthorizedAccessException`, `ArgumentException`, ... from `File`/`JsonUtility`), so these three
+  files are the explicit allowlist entries in both the new regression guard and
+  `scripts/validate-repository.ps1`.
+
+Two review passes over this diff - `/code-review high`, then a senior-reviewer pass - caught three
+defects in the first version of the `LoadManager`/`StartManager` changes above, all fixed before
+landing.
+
+`LoadAllDataCoroutine` originally set `persistenceReady = true` only at its very end, so a genuine
+catalog exception now correctly aborted the coroutine early but left `persistenceReady` permanently
+`false` - `LoadedData`'s independent fallback would still populate the catalogs, but
+`HasAllRequiredData()` also requires `PersistenceReady`, so recovery stalled for up to two full
+12-second timeout cycles instead of the same frame. The fix wraps catalog construction in a
+`try`/`finally` (no `catch`, since nothing in the block needs one) that always sets
+`persistenceReady`/`loadRoutine` while the exception itself still propagates unchanged. The second
+pass's review is what caught that this guarantee does not extend to `SeedCharacterTable`/
+`SeedCheerleaderTable`: those run via `yield return anotherCoroutine()`, and Unity's coroutine
+driver pumps a yielded `IEnumerator` outside this method's own resumed call frame, so an exception
+thrown *inside* a nested coroutine does not reliably run the outer method's `finally` - verified
+directly against Unity 6000.5.7f1 with a throwaway repro (an outer `try`/`finally` around
+`yield return innerCoroutine()`, where the inner throws) before trusting the assumption in
+production code. Moot in practice today, since `DBConnector.CreateTableCharacterProfile` and
+`DBHelper.InsertCharacterProfile`/`InsertCheerleaderProfile` already catch internally like every
+other method in that file - but the seed calls were moved back outside the `try`/`finally` so the
+code does not imply a guarantee it cannot keep. Separately,
+`StartManager.initializefriendDisplay()`'s guard-and-dedent left a duplicate
+`friendSelectOptionText.text = ...` assignment (a leftover of two previously-separate blocks); the
+redundant second assignment was removed.
+
+`scripts/validate-repository.ps1` gained a check that fails on any `catch (Exception)` /
+`catch (System.Exception)` under `Assets/Scripts/menu_*` (excluding `Legacy~`, `Tests`, `Editor`)
+not on that three-file allowlist; `MenuExceptionBoundaryPolicyTests` duplicates the same check as an
+EditMode test so it also runs wherever the Unity suite runs. `MenuActionWrapperExceptionTests`
+exercises `StartManager.RunCommand` and `ProgressionManager.RunProgressionAction` through reflection
+(against a GameObject created inactive, so `Awake()` never runs) to confirm an action's exception
+now propagates and `buttonPressed` is still restored by `finally`. `ProgressionPersistenceRecoveryTests`
+confirms the retained persistence catches still recover from a corrupted on-disk ledger without
+throwing. `LoadManagerFallbackDataTests` exercises `TryLoadFallbackData()` against this project's
+real `Resources` catalogs.
+
+Compile + **704/704 EditMode** + **13/13 PlayMode** + `scripts/validate-repository.ps1` all pass
+under Unity 6000.5.7f1. No manual interactive Play Mode pass was run in this session (no interactive
+GUI available to this agent).

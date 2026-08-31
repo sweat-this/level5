@@ -485,10 +485,6 @@ public class ProgressionManager : MonoBehaviour
         {
             action();
         }
-        catch (Exception e)
-        {
-            Debug.LogError("ERROR : " + e);
-        }
         finally
         {
             buttonPressed = false;
@@ -863,117 +859,114 @@ public class ProgressionManager : MonoBehaviour
 
     public void initializePlayerDisplay()
     {
-        try
+        if (!HasSelectedCharacterData())
         {
-            // name and portrait
-            playerSelectOptionText.text = playerSelectedData[playerSelectedIndex].PlayerDisplayName;
-            playerSelectOptionImage.sprite = playerSelectedData[playerSelectedIndex].PlayerPortrait;
-
-            // update text display static update stats (range, release, luck)
-            //if (playerSelectedData[playerSelectedIndex].PointsAvailable > 0)  
-
-            if (progressionState.PointsUsedThisSession > 0)
-            {
-                if (progressionState.Release < progressionState.MaxReleaseAccuraccy)
-                {
-                    bonusReleaseText.text = "+" + progressionState.AddToRelease;
-                }
-                else
-                {
-                    bonusReleaseText.text = "MAX";
-                }
-                if (progressionState.Luck < progressionState.MaxLuck)
-                {
-                    bonusLuckText.text = "+" + progressionState.AddToLuck;
-                }
-                else
-                {
-                    bonusLuckText.text = "MAX";
-                }
-                bonusRangeText.text = "+" + progressionState.AddToRange;
-            }
-            else
-            {
-                bonusReleaseText.text = "";
-                bonusRangeText.text = "";
-                bonusLuckText.text = "";
-            }
-            //// luck point only available every 3rd level
-            //bonusLuckText.text = progressionState.AddToLuck == 0
-            //    ? bonusLuckText.text = ""
-            //    : "+" + progressionState.AddToLuck.ToString();
-
-            // set text displays
-
-            // these DO NOT have max limits
-            progressionRange.text = progressionState.Range.ToString("F0") + " ft";
-            progressionSpeed.text = playerSelectedData[playerSelectedIndex].calculateSpeedToPercent().ToString("F0");
-            progressionJump.text = playerSelectedData[playerSelectedIndex].calculateJumpValueToPercent().ToString("F0");
-
-            // these DO have max limits
-            //release
-            if (progressionState.Release < progressionState.MaxReleaseAccuraccy)
-            {
-                progressionRelease.text = progressionState.Release.ToString("F0");
-            }
-            else
-            {
-                progressionRelease.text = progressionState.Release.ToString("F0") + " MAX";
-            }
-            // luck
-            if (progressionState.Luck < progressionState.MaxLuck)
-            {
-                progressionLuck.text = progressionState.Luck.ToString("F0");
-            }
-            else
-            {
-                progressionLuck.text = progressionState.Luck.ToString("F0") + " MAX";
-            }
-            // 3 accuracy
-            if (progressionState.Accuracy3 < progressionState.MaxThreeAccuraccy)
-            {
-                progression3Accuracy.text = progressionState.Accuracy3.ToString("F0");
-            }
-            else
-            {
-                progression3Accuracy.text = progressionState.Accuracy3.ToString("F0") + " MAX";
-            }
-            // 4 accuracy
-            if (progressionState.Accuracy4 < progressionState.MaxFourAccuraccy)
-            {
-                progression4Accuracy.text = progressionState.Accuracy4.ToString("F0");
-            }
-            // 7 accuracy
-            else
-            {
-                progression4Accuracy.text = progressionState.Accuracy4.ToString("F0") + " MAX";
-            }
-            if (progressionState.Accuracy7 < progressionState.MaxSevenAccuraccy)
-            {
-                progression7Accuracy.text = progressionState.Accuracy7.ToString("F0");
-            }
-            else
-            {
-                progression7Accuracy.text = progressionState.Accuracy7.ToString("F0") + " MAX";
-            }
-
-            // get level by experience - same curve StartManager and DBHelper use (AUD-036/AUD-046)
-            progressionState.Level = CharacterLevel.FromExperience(progressionState.Experience);
-            int nextlvl = CharacterLevel.ExperienceToNextLevel(progressionState.Experience);
-            // display lvl, exp, exp for next lvl
-            playerProgressionStatsText.text = CharacterLevel.FormatProgressionStats(
-                progressionState.Level,
-                progressionState.Experience,
-                nextlvl);
-            playerProgressionUpdatePointsText.text = "points available : " + progressionState.PointsAvailable.ToString();
-            // not sure what this is for but im not gonna touch it yet
-            GameOptions.characterObjectName = playerSelectedData[playerSelectedIndex].PlayerObjectName;
-        }
-        catch (Exception e)
-        {
-            Debug.LogError("ERROR : " + e);
             return;
         }
+
+        // name and portrait
+        playerSelectOptionText.text = playerSelectedData[playerSelectedIndex].PlayerDisplayName;
+        playerSelectOptionImage.sprite = playerSelectedData[playerSelectedIndex].PlayerPortrait;
+
+        // update text display static update stats (range, release, luck)
+        //if (playerSelectedData[playerSelectedIndex].PointsAvailable > 0)
+
+        if (progressionState.PointsUsedThisSession > 0)
+        {
+            if (progressionState.Release < progressionState.MaxReleaseAccuraccy)
+            {
+                bonusReleaseText.text = "+" + progressionState.AddToRelease;
+            }
+            else
+            {
+                bonusReleaseText.text = "MAX";
+            }
+            if (progressionState.Luck < progressionState.MaxLuck)
+            {
+                bonusLuckText.text = "+" + progressionState.AddToLuck;
+            }
+            else
+            {
+                bonusLuckText.text = "MAX";
+            }
+            bonusRangeText.text = "+" + progressionState.AddToRange;
+        }
+        else
+        {
+            bonusReleaseText.text = "";
+            bonusRangeText.text = "";
+            bonusLuckText.text = "";
+        }
+        //// luck point only available every 3rd level
+        //bonusLuckText.text = progressionState.AddToLuck == 0
+        //    ? bonusLuckText.text = ""
+        //    : "+" + progressionState.AddToLuck.ToString();
+
+        // set text displays
+
+        // these DO NOT have max limits
+        progressionRange.text = progressionState.Range.ToString("F0") + " ft";
+        progressionSpeed.text = playerSelectedData[playerSelectedIndex].calculateSpeedToPercent().ToString("F0");
+        progressionJump.text = playerSelectedData[playerSelectedIndex].calculateJumpValueToPercent().ToString("F0");
+
+        // these DO have max limits
+        //release
+        if (progressionState.Release < progressionState.MaxReleaseAccuraccy)
+        {
+            progressionRelease.text = progressionState.Release.ToString("F0");
+        }
+        else
+        {
+            progressionRelease.text = progressionState.Release.ToString("F0") + " MAX";
+        }
+        // luck
+        if (progressionState.Luck < progressionState.MaxLuck)
+        {
+            progressionLuck.text = progressionState.Luck.ToString("F0");
+        }
+        else
+        {
+            progressionLuck.text = progressionState.Luck.ToString("F0") + " MAX";
+        }
+        // 3 accuracy
+        if (progressionState.Accuracy3 < progressionState.MaxThreeAccuraccy)
+        {
+            progression3Accuracy.text = progressionState.Accuracy3.ToString("F0");
+        }
+        else
+        {
+            progression3Accuracy.text = progressionState.Accuracy3.ToString("F0") + " MAX";
+        }
+        // 4 accuracy
+        if (progressionState.Accuracy4 < progressionState.MaxFourAccuraccy)
+        {
+            progression4Accuracy.text = progressionState.Accuracy4.ToString("F0");
+        }
+        // 7 accuracy
+        else
+        {
+            progression4Accuracy.text = progressionState.Accuracy4.ToString("F0") + " MAX";
+        }
+        if (progressionState.Accuracy7 < progressionState.MaxSevenAccuraccy)
+        {
+            progression7Accuracy.text = progressionState.Accuracy7.ToString("F0");
+        }
+        else
+        {
+            progression7Accuracy.text = progressionState.Accuracy7.ToString("F0") + " MAX";
+        }
+
+        // get level by experience - same curve StartManager and DBHelper use (AUD-036/AUD-046)
+        progressionState.Level = CharacterLevel.FromExperience(progressionState.Experience);
+        int nextlvl = CharacterLevel.ExperienceToNextLevel(progressionState.Experience);
+        // display lvl, exp, exp for next lvl
+        playerProgressionStatsText.text = CharacterLevel.FormatProgressionStats(
+            progressionState.Level,
+            progressionState.Experience,
+            nextlvl);
+        playerProgressionUpdatePointsText.text = "points available : " + progressionState.PointsAvailable.ToString();
+        // not sure what this is for but im not gonna touch it yet
+        GameOptions.characterObjectName = playerSelectedData[playerSelectedIndex].PlayerObjectName;
     }
 
     public void loadScene(string sceneName)

@@ -172,39 +172,58 @@ public class LoadManager : MonoBehaviour
         // connection but (deliberately - see the note on tableExists() itself) never acquires
         // DatabaseLocked, since a "the connection is busy" answer would be indistinguishable from
         // a real "table doesn't exist" to every caller and could trigger unwanted re-seeding.
-        // Waiting here instead, once, before the try block (a yield cannot appear inside a
-        // try/catch), keeps the whole synchronous block below - which nothing yields inside of,
-        // so nothing else can interleave once the wait clears - from ever running concurrently
-        // with a locked operation elsewhere.
+        // Waiting here instead, once, keeps the whole synchronous block below - which nothing
+        // yields inside of, so nothing else can interleave once the wait clears - from ever
+        // running concurrently with a locked operation elsewhere.
         if (databaseReady)
         {
             yield return new WaitUntil(() => !DBHelper.instance.DatabaseLocked);
         }
 
-        try
+        // Every DBConnector/DBHelper call below already owns its own SQLite recovery internally
+        // and reports failure through databaseReady/*TableExists (DBHelper.cs, DBConnector.cs) -
+        // none of it can throw for a database reason. What follows (Resources catalog loading,
+        // LevelCatalog construction) is authored/programming territory: a defect there must
+        // surface, not be silently reclassified as "database unavailable" and hidden behind a
+        // fallback. LoadedData's own explicit HasAllRequiredData()/TryLoadFallbackData() retry
+        // (menu_loading/LoadedData.cs) is the real, already-validated degraded-start path and
+        // still applies regardless of why this coroutine did not produce complete data.
+        if (databaseReady)
         {
-            if (databaseReady)
+            bool characterTableExists = DBConnector.instance.tableExists(Constants.LOCAL_DATABASE_tableName_characterProfile);
+            if (characterTableExists)
             {
-                bool characterTableExists = DBConnector.instance.tableExists(Constants.LOCAL_DATABASE_tableName_characterProfile);
-                if (characterTableExists)
-                {
-                    databaseReady = DBHelper.instance.EnsureCharacterProfilesForAccount(
-                        CharacterProgressAccountId.GetCurrent());
-                }
-
-                CharacterProfileTableExists = databaseReady
-                    && characterTableExists
-                    && DBHelper.instance.HasCharacterProfilesForAccount(CharacterProgressAccountId.GetCurrent());
-                CheerleaderProfileTableExists = DBConnector.instance.tableExists(Constants.LOCAL_DATABASE_tableName_cheerleaderProfile)
-                    && !DBHelper.instance.isTableEmpty(Constants.LOCAL_DATABASE_tableName_cheerleaderProfile);
-
-                if (databaseReady)
-                {
-                    new ProgressionService().RepairPendingJsonProjections();
-                    PendingMatchPersistenceStore.Repair();
-                }
+                databaseReady = DBHelper.instance.EnsureCharacterProfilesForAccount(
+                    CharacterProgressAccountId.GetCurrent());
             }
 
+            CharacterProfileTableExists = databaseReady
+                && characterTableExists
+                && DBHelper.instance.HasCharacterProfilesForAccount(CharacterProgressAccountId.GetCurrent());
+            CheerleaderProfileTableExists = DBConnector.instance.tableExists(Constants.LOCAL_DATABASE_tableName_cheerleaderProfile)
+                && !DBHelper.instance.isTableEmpty(Constants.LOCAL_DATABASE_tableName_cheerleaderProfile);
+
+            if (databaseReady)
+            {
+                new ProgressionService().RepairPendingJsonProjections();
+                PendingMatchPersistenceStore.Repair();
+            }
+        }
+
+        // finally (no catch - legal here since this block contains no yield) guarantees
+        // persistenceReady is set even if catalog construction above throws, so LoadedData's own
+        // HasAllRequiredData()/TryLoadFallbackData() retry (LoadedData.cs) - which requires
+        // PersistenceReady before it will treat freshly-loaded fallback data as complete - is not
+        // stuck waiting on a flag this coroutine never reached because it exited early. The
+        // exception itself still propagates out of the coroutine after this runs; it is not
+        // swallowed. Deliberately narrow to only the synchronous calls below: a try/finally
+        // wrapping a `yield return` to another coroutine does NOT reliably run its finally if that
+        // nested coroutine throws (verified against Unity 6000.5.7f1's coroutine driver, which
+        // pumps a yielded IEnumerator outside this method's own resumed call frame) - moot here
+        // since SeedCharacterTable/SeedCheerleaderTable's own DBConnector/DBHelper calls already
+        // catch internally and never throw, but not a guarantee this try/finally should imply.
+        try
+        {
             playerSelectedData = CharacterProfileTableExists
                 ? loadPlayerSelectDataList()
                 : loadDefaultPlayerShooterProfiles();
@@ -216,10 +235,10 @@ public class LoadManager : MonoBehaviour
             levelCatalog = LevelCatalog.FromLevelSelected(levelSelectedData);
             modeSelectedData = loadModeSelectDataList();
         }
-        catch (Exception exception)
+        finally
         {
-            Debug.LogError("Catalog loading failed: " + exception);
-            TryLoadFallbackData(out _);
+            persistenceReady = true;
+            loadRoutine = null;
         }
 
         if (databaseReady && !CharacterProfileTableExists && playerSelectedData != null && playerSelectedData.Count > 0)
@@ -230,9 +249,6 @@ public class LoadManager : MonoBehaviour
         {
             yield return SeedCheerleaderTable(cheerleaderSelectedData);
         }
-
-        persistenceReady = true;
-        loadRoutine = null;
     }
 
     private void ResetLoadState()
@@ -249,29 +265,25 @@ public class LoadManager : MonoBehaviour
 
     public bool TryLoadFallbackData(out string error)
     {
-        try
-        {
-            playerSelectedData = loadDefaultPlayerShooterProfiles();
-            cpuPlayerSelectedData = loadCpuSelectDataList();
-            cheerleaderSelectedData = loadDefaultCheerleaderProfiles();
-            levelSelectedData = loadLevelSelectDataList();
-            levelCatalog = LevelCatalog.FromLevelSelected(levelSelectedData);
-            modeSelectedData = loadModeSelectDataList();
+        // The load*DataList methods only read Resources catalogs (no database, no file I/O), so
+        // the one expected failure mode - a required catalog coming back empty - is already
+        // reported explicitly via the xDataLoaded flags below. A defect here (e.g. a broken
+        // LevelCatalog) is an authoring/programming bug and must surface rather than be reported
+        // as a fallback-data problem.
+        playerSelectedData = loadDefaultPlayerShooterProfiles();
+        cpuPlayerSelectedData = loadCpuSelectDataList();
+        cheerleaderSelectedData = loadDefaultCheerleaderProfiles();
+        levelSelectedData = loadLevelSelectDataList();
+        levelCatalog = LevelCatalog.FromLevelSelected(levelSelectedData);
+        modeSelectedData = loadModeSelectDataList();
 
-            bool complete = playerDataLoaded
-                && cpuPlayerDataLoaded
-                && cheerleaderDataLoaded
-                && levelDataLoaded
-                && modeDataLoaded;
-            error = complete ? string.Empty : "One or more required default catalogs were empty.";
-            return complete;
-        }
-        catch (Exception exception)
-        {
-            error = exception.Message;
-            Debug.LogError("Default catalog loading failed: " + exception);
-            return false;
-        }
+        bool complete = playerDataLoaded
+            && cpuPlayerDataLoaded
+            && cheerleaderDataLoaded
+            && levelDataLoaded
+            && modeDataLoaded;
+        error = complete ? string.Empty : "One or more required default catalogs were empty.";
+        return complete;
     }
 
     private IEnumerator SeedCharacterTable(List<CharacterProfile> defaults)
