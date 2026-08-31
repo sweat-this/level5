@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.Reflection;
 using System.Text;
 using TMPro;
 using UnityEditor;
@@ -9,37 +11,29 @@ using UnityEngine.UI;
 using Object = UnityEngine.Object;
 
 /// <summary>
-/// AUD-092 Phase 6A: migrates the Start menu's (<c>level_00_start</c>) runtime-mutated text contract
-/// from legacy <see cref="Text"/> to TextMeshProUGUI, without touching the other 14 of
-/// <see cref="StartMenuUiObjects"/>' 41 legacy Text fields (static labels/unbound - Phase 6B).
+/// AUD-092 Phases 6A/6B (both complete): migrated the Start menu's (<c>level_00_start</c>) entire
+/// legacy <see cref="Text"/> contract to TextMeshProUGUI - Phase 6A the 27 runtime-mutated fields
+/// <see cref="StartMenuUiObjects"/> used to carry (now owned by <see cref="StartMenuTextUiObjects"/>),
+/// Phase 6B the other 14 static/unbound fields plus every other directly scene-owned Text nothing ever
+/// pointed at through a serialized field. Both migrations converted their candidates in place via
+/// <see cref="MenuTextConversion.ConvertSingleText"/>, reverted every now-redundant legacy
+/// prefab-instance property override via <see cref="PrefabUtility.RevertPropertyOverride"/>, and were
+/// proven idempotent before <see cref="StartMenuUiObjects"/>' 41-field legacy Text schema was removed
+/// from source entirely.
 ///
-/// Unlike every earlier AUD-092 phase, the Start scene's dynamic Text is neither directly scene-owned
-/// under one Text-holding root (Account) nor prefab-owned (Options/Stats/Progression/Credits): every
-/// one of StartMenuUiObjects' 41 fields is authored null on <c>StartMenuUiObjects.prefab</c> - which
-/// has no children at all - and wired entirely through <c>level_00_start.unity</c>'s prefab-instance
-/// property modifications, each pointing at a Text component that is itself directly scene-owned
-/// (confirmed against dev HEAD d2673847b: every one of the 27 dynamic candidates' backing Text has
-/// <c>m_PrefabInstance: {fileID: 0}</c>). Migration therefore:
-///
-/// 1. adds the permanent <see cref="StartMenuTextUiObjects"/> view component to the SAME prefab
-///    GameObject StartMenuUiObjects lives on (its own one-time, idempotent prefab-asset edit), wired
-///    via <see cref="StartMenuUiObjects.TextUi"/> rather than a second singleton;
-/// 2. opens the scene, resolves each of the 27 dynamic fields' CURRENT Text by reading the legacy
-///    StartMenuUiObjects field's own serialized value (never by GameObject name);
-/// 3. converts that Text in place via <see cref="MenuTextConversion.ConvertSingleText"/>, wires the
-///    result into StartMenuTextUiObjects' identically-named field on the same scene instance, then
-///    reverts the now-redundant legacy field override via
-///    <see cref="PrefabUtility.RevertPropertyOverride"/> - never an explicit null override, since the
-///    prefab default is already null.
-///
-/// Reuses every mechanic <see cref="MenuTextConversion"/> already proved; this class contributes only
-/// the Start-specific field mapping, the prefab-instance-field-driven boundary resolution, and the
-/// permanent per-field contract.
+/// The one-shot migration methods themselves (<c>Migrate</c>/<c>MigratePhase6B</c> and their supporting
+/// prefab-asset/scene-in-memory helpers) were deleted once both phases shipped and the schema was gone:
+/// re-running either against a <see cref="StartMenuUiObjects"/> that no longer has the fields they
+/// resolved by name would only ever report "no such field" and abort - a permanently broken menu item
+/// is worse than no menu item, since there is no legitimate scenario where either needs to run again.
+/// What remains is permanent: <see cref="Report"/> (read-only characterization) and
+/// <see cref="CollectContractErrors"/> (the permanent regression contract backing
+/// <c>Level5ProjectValidator.CollectStartTextRenderingContractErrors</c>), plus the field-name/allowlist
+/// data both still depend on.
 /// </summary>
 internal static class StartMenuTextMeshProMigration
 {
     internal const string ScenePath = "Assets/Scenes/level_00_start.unity";
-    internal const string StartMenuUiObjectsPrefabPath = "Assets/Resources/Prefabs/menu_start/StartMenuUiObjects.prefab";
     private const string NeonPixelFontAssetPath = "Assets/Fonts/TMP/Neon Pixel-7 SDF.asset";
 
     /// <summary>
@@ -148,7 +142,9 @@ internal static class StartMenuTextMeshProMigration
                 }
             }
 
-            summary.AppendLine("StartMenuUiObjects legacy Text fields: " + textFieldCount);
+            // AUD-092 Phase 6B removed all 41 of these from StartMenuUiObjects' source; FindProperty
+            // resolves none of them any more; "41"/"0" below reflect that removal, not a live scan.
+            summary.AppendLine("StartMenuUiObjects former legacy Text field names (removed by Phase 6B): " + textFieldCount);
             summary.AppendLine("non-null StartMenuUiObjects scene bindings: " + textFieldNonNull);
             summary.AppendLine("runtime-mutated bindings (Phase 6A candidates): " + DynamicFieldNames.Length);
             summary.AppendLine("static/view-only bindings (Phase 6B): " + (textFieldCount - DynamicFieldNames.Length));
@@ -237,303 +233,6 @@ internal static class StartMenuTextMeshProMigration
     }
 
     // ---------------------------------------------------------------------------------------------
-    // Migration entry point
-    // ---------------------------------------------------------------------------------------------
-
-    internal const string StartManagerPrefabPath = "Assets/Resources/Prefabs/menu_start/start_manager_test.prefab";
-
-    [MenuItem("Level5/Migrate Start Menu Text To TMP")]
-    public static void Migrate()
-    {
-        const string LogPrefix = "StartMenuTextMeshProMigration.Migrate";
-
-        if (!EnsurePrefabHasTextUiComponent(out List<string> prefabErrors))
-        {
-            MenuTextConversion.LogAbort(LogPrefix, prefabErrors);
-            return;
-        }
-
-        MenuTextConversion.RunSceneMigration(ScenePath, LogPrefix, MigrateSceneInMemory);
-        ReserializeStartManagerPrefab();
-    }
-
-    /// <summary>
-    /// AUD-092 Phase 6A section 12: <c>start_manager_test.prefab</c> (the real production StartManager
-    /// prefab instanced into <c>level_00_start.unity</c>, despite its name) still carried a serialized
-    /// <c>friendSelectUnlockText</c> entry for the dead field removed from StartManager in this same
-    /// change, plus entries for the seven traffic/hardcore/enemy/sniper/difficulty/obstacle Text fields
-    /// whose <c>[SerializeField]</c> this change also removed (GetUiObjectReferences always overwrites
-    /// them from StartMenuUiObjects.instance.TextUi, so an authored value was always dead weight).
-    /// Loading and re-saving the prefab asset reserializes it against StartManager's current field set,
-    /// dropping every orphaned key automatically - idempotent, and safe since neither the prefab nor
-    /// this method touches m_Modifications (start_manager_test.prefab is not a PrefabInstance).
-    /// </summary>
-    private static void ReserializeStartManagerPrefab()
-    {
-        GameObject root = PrefabUtility.LoadPrefabContents(StartManagerPrefabPath);
-        try
-        {
-            PrefabUtility.SaveAsPrefabAsset(root, StartManagerPrefabPath);
-        }
-        finally
-        {
-            PrefabUtility.UnloadPrefabContents(root);
-        }
-    }
-
-    /// <summary>
-    /// One-time, idempotent prefab-asset edit: adds <see cref="StartMenuTextUiObjects"/> to the same
-    /// GameObject <see cref="StartMenuUiObjects"/> lives on and wires <c>textUi</c> to it. Runs before
-    /// the scene is even opened, so every scene instance already carries the (null-by-default) new
-    /// component by the time the scene pass resolves it.
-    /// </summary>
-    private static bool EnsurePrefabHasTextUiComponent(out List<string> errors)
-    {
-        errors = new List<string>();
-        GameObject root = PrefabUtility.LoadPrefabContents(StartMenuUiObjectsPrefabPath);
-        try
-        {
-            StartMenuUiObjects legacyUi = root.GetComponent<StartMenuUiObjects>();
-            if (legacyUi == null)
-            {
-                errors.Add(StartMenuUiObjectsPrefabPath + " : no StartMenuUiObjects component found.");
-                return false;
-            }
-
-            StartMenuTextUiObjects textUi = root.GetComponent<StartMenuTextUiObjects>();
-            bool dirty = textUi == null;
-            if (textUi == null)
-            {
-                textUi = root.AddComponent<StartMenuTextUiObjects>();
-            }
-
-            SerializedObject serializedLegacyUi = new SerializedObject(legacyUi);
-            SerializedProperty textUiProperty = serializedLegacyUi.FindProperty("textUi");
-            if (textUiProperty == null)
-            {
-                errors.Add(StartMenuUiObjectsPrefabPath + " : StartMenuUiObjects has no serialized field named 'textUi'.");
-                return false;
-            }
-
-            if (textUiProperty.objectReferenceValue != textUi)
-            {
-                textUiProperty.objectReferenceValue = textUi;
-                serializedLegacyUi.ApplyModifiedProperties();
-                dirty = true;
-            }
-
-            if (dirty)
-            {
-                PrefabUtility.SaveAsPrefabAsset(root, StartMenuUiObjectsPrefabPath);
-                Debug.Log("StartMenuTextMeshProMigration: added/wired StartMenuTextUiObjects on " + StartMenuUiObjectsPrefabPath + ".");
-            }
-
-            return true;
-        }
-        finally
-        {
-            PrefabUtility.UnloadPrefabContents(root);
-        }
-    }
-
-    private static List<string> MigrateSceneInMemory(Scene scene)
-    {
-        List<string> errors = new List<string>();
-
-        StartMenuUiObjects legacyUi = FindSingleComponent<StartMenuUiObjects>(scene, errors, ScenePath);
-        if (legacyUi == null)
-        {
-            return errors;
-        }
-
-        StartMenuTextUiObjects textUi = legacyUi.TextUi;
-        if (textUi == null)
-        {
-            errors.Add(ScenePath + " : StartMenuUiObjects.TextUi is null - the prefab-asset step did not take effect.");
-            return errors;
-        }
-
-        SerializedObject serializedLegacyUi = new SerializedObject(legacyUi);
-        SerializedObject serializedTextUi = new SerializedObject(textUi);
-
-        // Resolve every field's current state by its OWN serialized value - never by GameObject name -
-        // and classify each of the 27 as needing conversion, already migrated, or an error. Grouping by
-        // Text identity (not by field) means a Text two fields both happen to reference converts once.
-        Dictionary<Text, List<string>> fieldsByText = new Dictionary<Text, List<string>>();
-        foreach (string fieldName in DynamicFieldNames)
-        {
-            SerializedProperty legacyProperty = serializedLegacyUi.FindProperty(fieldName);
-            SerializedProperty newProperty = serializedTextUi.FindProperty(fieldName);
-            if (legacyProperty == null)
-            {
-                errors.Add("StartMenuUiObjects has no field named '" + fieldName + "'.");
-                continue;
-            }
-
-            if (newProperty == null)
-            {
-                errors.Add("StartMenuTextUiObjects has no field named '" + fieldName + "'.");
-                continue;
-            }
-
-            Text legacyText = legacyProperty.objectReferenceValue as Text;
-            Object newValue = newProperty.objectReferenceValue;
-
-            if (legacyText == null && newValue == null)
-            {
-                errors.Add(ScenePath + " : StartMenuUiObjects." + fieldName + " is unresolved (neither the legacy Text nor the migrated TMP field is set).");
-                continue;
-            }
-
-            if (legacyText != null && newValue != null)
-            {
-                errors.Add(ScenePath + " : StartMenuUiObjects." + fieldName + " and StartMenuTextUiObjects." + fieldName + " are both set - ambiguous migration state.");
-                continue;
-            }
-
-            if (legacyText == null)
-            {
-                continue; // already migrated on a prior run
-            }
-
-            if (!fieldsByText.TryGetValue(legacyText, out List<string> fields))
-            {
-                fields = new List<string>();
-                fieldsByText[legacyText] = fields;
-            }
-
-            fields.Add(fieldName);
-        }
-
-        if (errors.Count > 0)
-        {
-            return errors;
-        }
-
-        if (fieldsByText.Count == 0)
-        {
-            Debug.Log("StartMenuTextMeshProMigration.Migrate: no directly-owned eligible legacy Text remains in " + ScenePath + "; nothing to do.");
-            return errors; // idempotent no-op
-        }
-
-        // Ownership gate (AUD-092 Phase 6A section 8): every candidate must be direct scene-owned.
-        HashSet<Text> candidateTexts = new HashSet<Text>(fieldsByText.Keys);
-        foreach (Text text in candidateTexts)
-        {
-            if (PrefabUtility.GetNearestPrefabInstanceRoot(text.gameObject) != null)
-            {
-                errors.Add(
-                    MenuTextConversion.BuildHierarchyPath(text.gameObject, null)
-                        + " : belongs to a nested/shared prefab instance; Phase 6A only supports direct scene-owned Text.");
-            }
-        }
-
-        if (errors.Count > 0)
-        {
-            return errors;
-        }
-
-        // Unsupported-consumer gate: scan every scene root except StartMenuUiObjects' own (its 41
-        // fields are the known, already-captured consumer resolved field-by-field above) for any other
-        // serialized reference into the candidate set.
-        HashSet<Object> textSet = new HashSet<Object>(candidateTexts);
-        List<string> unsupported = new List<string>();
-        foreach (GameObject root in scene.GetRootGameObjects())
-        {
-            if (root == legacyUi.gameObject)
-            {
-                continue;
-            }
-
-            MenuTextConversion.CollectUnsupportedConsumers(root, textSet, unsupported);
-        }
-
-        if (unsupported.Count > 0)
-        {
-            errors.AddRange(unsupported);
-            return errors;
-        }
-
-        TMP_FontAsset font = MenuTextConversion.EnsureNeonPixelFontAsset();
-        if (font == null)
-        {
-            errors.Add("could not create/load the Neon Pixel-7 SDF font asset.");
-            return errors;
-        }
-
-        // Several of the 27 candidates share the same root (e.g. multiple Texts under
-        // .../column2/options_tab/) - resolving each distinct root's Selectable list once and reusing
-        // it across every Text under that root avoids ConvertSingleText redundantly re-walking the same
-        // subtree once per sibling Text.
-        HashSet<GameObject> convertedRoots = new HashSet<GameObject>();
-        Dictionary<Text, TextMeshProUGUI> converted = new Dictionary<Text, TextMeshProUGUI>();
-        Dictionary<GameObject, List<Selectable>> selectablesByRoot = new Dictionary<GameObject, List<Selectable>>();
-        foreach (Text text in candidateTexts)
-        {
-            GameObject textScopeRoot = text.gameObject.transform.root.gameObject;
-            if (!selectablesByRoot.TryGetValue(textScopeRoot, out List<Selectable> selectables))
-            {
-                selectables = new List<Selectable>(textScopeRoot.GetComponentsInChildren<Selectable>(true));
-                selectablesByRoot[textScopeRoot] = selectables;
-            }
-
-            TextMeshProUGUI tmp = MenuTextConversion.ConvertSingleText(textScopeRoot, text, font, selectables);
-            if (tmp == null)
-            {
-                errors.Add(MenuTextConversion.BuildHierarchyPath(text.gameObject, null) + " : conversion failed to add TextMeshProUGUI.");
-                continue;
-            }
-
-            converted[text] = tmp;
-            convertedRoots.Add(textScopeRoot);
-        }
-
-        if (errors.Count > 0)
-        {
-            return errors;
-        }
-
-        foreach (KeyValuePair<Text, List<string>> pair in fieldsByText)
-        {
-            if (!converted.TryGetValue(pair.Key, out TextMeshProUGUI tmp))
-            {
-                errors.Add(MenuTextConversion.BuildHierarchyPath(pair.Key.gameObject, null) + " : no converted TextMeshProUGUI was resolved for this Text.");
-                continue;
-            }
-
-            foreach (string fieldName in pair.Value)
-            {
-                SerializedProperty newProperty = serializedTextUi.FindProperty(fieldName);
-                newProperty.objectReferenceValue = tmp;
-
-                SerializedProperty legacyProperty = serializedLegacyUi.FindProperty(fieldName);
-                PrefabUtility.RevertPropertyOverride(legacyProperty, InteractionMode.AutomatedAction);
-                if (legacyProperty.objectReferenceValue != null)
-                {
-                    errors.Add(
-                        "StartMenuUiObjects." + fieldName
-                            + " : RevertPropertyOverride did not clear the legacy scene override back to the prefab's null default.");
-                }
-            }
-        }
-
-        if (errors.Count > 0)
-        {
-            return errors;
-        }
-
-        serializedTextUi.ApplyModifiedProperties();
-
-        foreach (GameObject root in convertedRoots)
-        {
-            MenuTextConversion.PersistLooseUnderlayMaterials(root);
-        }
-
-        errors.AddRange(CollectNullTargetGraphicErrors(scene));
-        return errors;
-    }
-
-    // ---------------------------------------------------------------------------------------------
     // Scene-wide helpers
     // ---------------------------------------------------------------------------------------------
 
@@ -600,6 +299,26 @@ internal static class StartMenuTextMeshProMigration
     // mechanics there once a second migration needed the identical sequence).
     // ---------------------------------------------------------------------------------------------
 
+    /// <summary>
+    /// AUD-092 Phase 6C boundary: the exact set of source prefabs a deferred nested/shared legacy Text
+    /// component may originate from. <c>confirm_tip.prefab</c> is also nested inside
+    /// <c>DialogueManager.prefab</c> (see <see cref="StartScreenTipDialogueManager"/>), so it is shared
+    /// rather than Start-owned and stays out of scope here. A new nested legacy Text source appearing in
+    /// the Start scene that is not on this list fails <see cref="CollectContractErrors"/> immediately
+    /// rather than silently being lumped in with the known Phase 6C backlog.
+    ///
+    /// A <see cref="ReadOnlyCollection{T}"/> (unlike <see cref="DynamicFieldNames"/>/<see cref="StaticFieldNames"/>,
+    /// plain arrays kept for parity with how every other AUD-092 migration already stores its own
+    /// field-name lists) because this list's entire purpose is to gate what nested legacy Text is
+    /// permitted to survive - a caller mutating a plain array's elements in place could silently widen
+    /// that gate without anyone noticing, which the two field-name lists (record-keeping only, never a
+    /// pass/fail boundary by themselves) do not risk in the same way.
+    /// </summary>
+    internal static readonly ReadOnlyCollection<string> Phase6CDeferredSourcePrefabAllowlist = Array.AsReadOnly(new[]
+    {
+        "Assets/Resources/Prefabs/misc/confirm_tip.prefab",
+    });
+
     // ---------------------------------------------------------------------------------------------
     // Permanent contract (backs Level5ProjectValidator.CollectStartTextRenderingContractErrors)
     // ---------------------------------------------------------------------------------------------
@@ -607,6 +326,8 @@ internal static class StartMenuTextMeshProMigration
     public static List<string> CollectContractErrors()
     {
         List<string> errors = new List<string>();
+        errors.AddRange(CollectLegacyFieldSchemaErrors());
+
         MenuTextConversion.WithOpenScene(ScenePath, scene =>
         {
             StartMenuUiObjects legacyUi = FindSingleComponent<StartMenuUiObjects>(scene, errors, ScenePath);
@@ -622,57 +343,134 @@ internal static class StartMenuTextMeshProMigration
                 return true;
             }
 
-            List<string> missing = new List<string>();
-            textUi.Validate(missing);
-            foreach (string field in missing)
-            {
-                errors.Add(ScenePath + " : " + field + " is not resolved.");
-            }
-
-            TMP_FontAsset neonPixel = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(NeonPixelFontAssetPath);
-            SerializedObject serializedTextUi = new SerializedObject(textUi);
-            SerializedObject serializedLegacyUi = new SerializedObject(legacyUi);
-            foreach (string fieldName in DynamicFieldNames)
-            {
-                SerializedProperty newProperty = serializedTextUi.FindProperty(fieldName);
-                Object newValue = newProperty != null ? newProperty.objectReferenceValue : null;
-                if (newValue != null)
-                {
-                    if (!(newValue is TextMeshProUGUI tmp))
-                    {
-                        errors.Add(ScenePath + " : StartMenuTextUiObjects." + fieldName + " is not a TextMeshProUGUI.");
-                    }
-                    else if (neonPixel == null || tmp.font != neonPixel)
-                    {
-                        errors.Add(ScenePath + " : StartMenuTextUiObjects." + fieldName + " does not use the shared Neon Pixel-7 SDF font asset.");
-                    }
-                }
-
-                SerializedProperty legacyProperty = serializedLegacyUi.FindProperty(fieldName);
-                if (legacyProperty != null && legacyProperty.objectReferenceValue != null)
-                {
-                    errors.Add(ScenePath + " : StartMenuUiObjects." + fieldName + " still resolves a legacy Text; it must remain null now that StartMenuTextUiObjects owns this binding.");
-                }
-            }
-
-            GameObject instanceRoot = PrefabUtility.GetNearestPrefabInstanceRoot(legacyUi.gameObject);
-            if (instanceRoot != null)
-            {
-                PropertyModification[] modifications = PrefabUtility.GetPropertyModifications(instanceRoot) ?? Array.Empty<PropertyModification>();
-                foreach (PropertyModification modification in modifications)
-                {
-                    if (modification.target == legacyUi && Array.IndexOf(DynamicFieldNames, modification.propertyPath) >= 0)
-                    {
-                        errors.Add(
-                            ScenePath + " : leftover StartMenuUiObjects." + modification.propertyPath
-                                + " scene override remains (must be reverted to the prefab's null default).");
-                    }
-                }
-            }
-
+            errors.AddRange(CollectDynamicBindingErrors(textUi));
+            errors.AddRange(CollectLeftoverLegacyOverrideErrors(legacyUi));
+            errors.AddRange(CollectDirectAndNestedTextErrors(scene));
             errors.AddRange(CollectNullTargetGraphicErrors(scene));
             return true;
         });
+
+        return errors;
+    }
+
+    /// <summary>
+    /// StartMenuUiObjects must carry no field assignable to legacy <see cref="Text"/> at all - the
+    /// Phase 6B schema change is a source-level guarantee, but this reflection check gives it a runtime
+    /// regression signal too (e.g. against a stale compiled assembly, or a future reintroduction).
+    /// </summary>
+    private static List<string> CollectLegacyFieldSchemaErrors()
+    {
+        List<string> errors = new List<string>();
+        foreach (FieldInfo field in typeof(StartMenuUiObjects).GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance))
+        {
+            if (typeof(Text).IsAssignableFrom(field.FieldType))
+            {
+                errors.Add("StartMenuUiObjects." + field.Name + " is still typed as legacy UnityEngine.UI.Text; the Phase 6B schema removes every legacy Text field.");
+            }
+        }
+
+        return errors;
+    }
+
+    /// <summary>
+    /// Every one of the 27 runtime-mutated dynamic bindings that is resolved must be a TextMeshProUGUI
+    /// on the shared Neon Pixel-7 SDF font asset. Delegates the "is every REQUIRED binding resolved at
+    /// all" question to <see cref="StartMenuTextUiObjects.Validate"/>, the single source of truth for
+    /// that contract; this only adds the type/font check on top of whatever Validate found present.
+    /// </summary>
+    private static List<string> CollectDynamicBindingErrors(StartMenuTextUiObjects textUi)
+    {
+        List<string> errors = new List<string>();
+        List<string> missing = new List<string>();
+        textUi.Validate(missing);
+        foreach (string field in missing)
+        {
+            errors.Add(ScenePath + " : " + field + " is not resolved.");
+        }
+
+        TMP_FontAsset neonPixel = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(NeonPixelFontAssetPath);
+        SerializedObject serializedTextUi = new SerializedObject(textUi);
+        foreach (string fieldName in DynamicFieldNames)
+        {
+            SerializedProperty newProperty = serializedTextUi.FindProperty(fieldName);
+            Object newValue = newProperty != null ? newProperty.objectReferenceValue : null;
+            if (newValue == null)
+            {
+                continue;
+            }
+
+            if (!(newValue is TextMeshProUGUI tmp))
+            {
+                errors.Add(ScenePath + " : StartMenuTextUiObjects." + fieldName + " is not a TextMeshProUGUI.");
+            }
+            else if (neonPixel == null || tmp.font != neonPixel)
+            {
+                errors.Add(ScenePath + " : StartMenuTextUiObjects." + fieldName + " does not use the shared Neon Pixel-7 SDF font asset.");
+            }
+        }
+
+        return errors;
+    }
+
+    /// <summary>
+    /// None of the 41 former StartMenuUiObjects legacy Text field names (27 dynamic + 14 static) may
+    /// survive as a leftover prefab-instance property modification. Checked by literal property-path
+    /// string rather than <see cref="SerializedObject.FindProperty"/>, since the C# fields themselves no
+    /// longer exist on the class for a property to resolve against.
+    /// </summary>
+    private static List<string> CollectLeftoverLegacyOverrideErrors(StartMenuUiObjects legacyUi)
+    {
+        List<string> errors = new List<string>();
+        GameObject instanceRoot = PrefabUtility.GetNearestPrefabInstanceRoot(legacyUi.gameObject);
+        if (instanceRoot == null)
+        {
+            return errors;
+        }
+
+        HashSet<string> allLegacyFieldNames = new HashSet<string>(DynamicFieldNames);
+        allLegacyFieldNames.UnionWith(StaticFieldNames);
+        PropertyModification[] modifications = PrefabUtility.GetPropertyModifications(instanceRoot) ?? Array.Empty<PropertyModification>();
+        foreach (PropertyModification modification in modifications)
+        {
+            if (modification.target == legacyUi && allLegacyFieldNames.Contains(modification.propertyPath))
+            {
+                errors.Add(
+                    ScenePath + " : leftover StartMenuUiObjects." + modification.propertyPath
+                        + " scene override remains (must be reverted to the prefab's null default).");
+            }
+        }
+
+        return errors;
+    }
+
+    /// <summary>
+    /// Zero directly scene-owned legacy Text may remain anywhere in the Start scene. Every deferred
+    /// nested/shared Text must originate from the explicit Phase 6C source-prefab allowlist - a new,
+    /// unlisted source fails immediately rather than silently being treated as already-known backlog.
+    /// </summary>
+    private static List<string> CollectDirectAndNestedTextErrors(Scene scene)
+    {
+        List<string> errors = new List<string>();
+        List<Text> owned = new List<Text>();
+        List<Text> nested = new List<Text>();
+        PartitionOwnedTexts(scene, owned, nested);
+        foreach (Text text in owned)
+        {
+            errors.Add(MenuTextConversion.BuildHierarchyPath(text.gameObject, null) + " : directly scene-owned legacy Text survives Phase 6B migration.");
+        }
+
+        foreach (Text text in nested)
+        {
+            GameObject nestedInstanceRoot = PrefabUtility.GetNearestPrefabInstanceRoot(text.gameObject);
+            string sourcePrefabPath = nestedInstanceRoot != null ? PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot(nestedInstanceRoot) : null;
+            if (sourcePrefabPath == null || !Phase6CDeferredSourcePrefabAllowlist.Contains(sourcePrefabPath))
+            {
+                errors.Add(
+                    MenuTextConversion.BuildHierarchyPath(text.gameObject, null)
+                        + " : nested legacy Text originates from '" + (sourcePrefabPath ?? "<unknown>")
+                        + "', which is not on the Phase 6C deferred source-prefab allowlist.");
+            }
+        }
 
         return errors;
     }

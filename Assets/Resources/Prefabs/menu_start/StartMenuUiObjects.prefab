@@ -45,9 +45,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: dc737379ea0a14542881118e716ef249, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  header_username: {fileID: 0}
-  header_version: {fileID: 0}
-  header_latestVersion: {fileID: 0}
   column1_subgroup_column1_num_players_select: {fileID: 0}
   column1_subgroup_column1_player_select: {fileID: 0}
   column1_subgroup_column1_cpu_select: {fileID: 0}
@@ -63,13 +60,6 @@ MonoBehaviour:
   column1_subgroup_column2_mode_selected_name_button: {fileID: 0}
   column1_subgroup_column2_options_selected_name_button: {fileID: 0}
   column1_subgroup_column2: {fileID: 0}
-  column1_subgroup_column2_num_players_selected_name_text: {fileID: 0}
-  column1_subgroup_column2_player_select_name_text: {fileID: 0}
-  column1_subgroup_column2_cpu_selected_name_text: {fileID: 0}
-  column1_subgroup_column2_friend_selected_name_text: {fileID: 0}
-  column1_subgroup_column2_level_selected_name_text: {fileID: 0}
-  column1_subgroup_column2_mode_selected_name_text: {fileID: 0}
-  column1_subgroup_column2_options_selected_name_text: {fileID: 0}
   column2: {fileID: 0}
   column2_players_tab: {fileID: 0}
   column2_players_tab_lock: {fileID: 0}
@@ -81,55 +71,24 @@ MonoBehaviour:
   column2_players_tab_player_selected_image: {fileID: 0}
   column2_friend_tab_friend_selected_image: {fileID: 0}
   column2_level_tab_level_selected_image: {fileID: 0}
-  column2_level_tab_level_selected_name: {fileID: 0}
-  column2_level_tab_level_selected_info: {fileID: 0}
-  column2_mode_tab_mode_selected_name: {fileID: 0}
-  column2_mode_tab_mode_selected_description: {fileID: 0}
   column2_options_tab_traffic_select_button: {fileID: 0}
   column2_options_tab_hardcore_select_button: {fileID: 0}
   column2_options_tab_enemy_select_button: {fileID: 0}
   column2_options_tab_sniper_select_button: {fileID: 0}
   column2_options_tab_obstacles_select_button: {fileID: 0}
   column2_options_tab_difficulty_select_button: {fileID: 0}
-  column2_options_tab_traffic_select_text: {fileID: 0}
-  column2_options_tab_traffic_select_option_text: {fileID: 0}
-  column2_options_tab_hardcore_select_text: {fileID: 0}
-  column2_options_tab_hardcore_select_option_text: {fileID: 0}
-  column2_options_tab_enemy_select_text: {fileID: 0}
-  column2_options_tab_enemy_select_option_text: {fileID: 0}
-  column2_options_tab_sniper_select_text: {fileID: 0}
-  column2_options_tab_sniper_select_option_text: {fileID: 0}
-  column2_options_tab_obstacles_select_text: {fileID: 0}
-  column2_options_tab_obstacle_select_option_text: {fileID: 0}
-  column2_options_tab_difficulty_select_text: {fileID: 0}
-  column2_options_tab_difficulty_select_option_text: {fileID: 0}
-  column2_options_tab_difficulty_select_description_text: {fileID: 0}
   column3: {fileID: 0}
   column3_friend_selected_stats_category: {fileID: 0}
   column3_friend_selected_stats_numbers: {fileID: 0}
   column3_level_selected_info: {fileID: 0}
   column3_player_stats: {fileID: 0}
-  column3_player_selected_stats_category_text: {fileID: 0}
-  column3_player_selected_stats_numbers_text: {fileID: 0}
-  column3_player_selected_progression_text: {fileID: 0}
-  column3_player_selected_progression_stats_text: {fileID: 0}
-  column3_friend_selected_stats_category_text: {fileID: 0}
-  column3_friend_selected_stats_numbers_text: {fileID: 0}
-  column3_player_selected_progression_update_points_text: {fileID: 0}
-  column3_level_selected_name_text: {fileID: 0}
-  column3_level_selected_description_text: {fileID: 0}
   column4: {fileID: 0}
-  column4_cpu1_name_text: {fileID: 0}
   column4_cpu1_image: {fileID: 0}
   column4_cpu1_button: {fileID: 0}
-  column4_cpu2_name_text: {fileID: 0}
   column4_cpu2_image: {fileID: 0}
   column4_cpu2_button: {fileID: 0}
-  column4_cpu3_name_text: {fileID: 0}
   column4_cpu3_image: {fileID: 0}
   column4_cpu3_button: {fileID: 0}
-  column4_cpu_selected_stats_numbers_text: {fileID: 0}
-  column4_cpu_selected_stats_category_text: {fileID: 0}
   textUi: {fileID: 1010879302785101948}
 --- !u!114 &1010879302785101948
 MonoBehaviour:

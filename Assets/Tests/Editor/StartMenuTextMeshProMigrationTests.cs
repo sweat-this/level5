@@ -164,32 +164,36 @@ public class StartMenuTextMeshProMigrationTests
     }
 
     // ---------------------------------------------------------------------------------------------
-    // 8/9. Old field->Text mapping is gone from the legacy side; no leftover property modification.
+    // AUD-092 Phase 6B: the 41-field legacy Text schema (27 dynamic + 14 static) is gone from
+    // StartMenuUiObjects entirely - not merely nulled - and no former field name survives as a
+    // leftover prefab-instance property modification.
     // ---------------------------------------------------------------------------------------------
 
     [Test]
-    public void LegacyStartMenuUiObjectsFieldsForMigratedBindingsAreNull()
+    public void StartMenuUiObjectsHasNoLegacyTextFields()
     {
-        Scene scene = OpenScene();
-        StartMenuUiObjects ui = FindStartMenuUiObjects(scene);
-        SerializedObject serializedLegacyUi = new SerializedObject(ui);
-        foreach (string fieldName in DynamicFieldNames)
+        List<string> offenders = new List<string>();
+        foreach (FieldInfo field in typeof(StartMenuUiObjects).GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance))
         {
-            SerializedProperty property = serializedLegacyUi.FindProperty(fieldName);
-            Assert.IsNotNull(property, "StartMenuUiObjects has no field named '" + fieldName + "'.");
-            Assert.IsNull(
-                property.objectReferenceValue,
-                "StartMenuUiObjects." + fieldName + " still resolves a legacy Text; it must be null now that StartMenuTextUiObjects owns this binding.");
+            if (typeof(Text).IsAssignableFrom(field.FieldType))
+            {
+                offenders.Add(field.Name);
+            }
         }
+
+        Assert.IsEmpty(offenders, "StartMenuUiObjects still carries legacy Text field(s): " + string.Join(", ", offenders));
     }
 
     [Test]
-    public void NoLeftoverPrefabInstancePropertyModificationsForMigratedFields()
+    public void NoLeftoverPrefabInstancePropertyModificationsForFormerLegacyFields()
     {
         Scene scene = OpenScene();
         StartMenuUiObjects ui = FindStartMenuUiObjects(scene);
         GameObject instanceRoot = PrefabUtility.GetNearestPrefabInstanceRoot(ui.gameObject);
         Assert.IsNotNull(instanceRoot, "StartMenuUiObjects is expected to be a prefab instance.");
+
+        HashSet<string> allFormerLegacyFieldNames = new HashSet<string>(DynamicFieldNames);
+        allFormerLegacyFieldNames.UnionWith(StaticFieldNames);
 
         PropertyModification[] modifications = PrefabUtility.GetPropertyModifications(instanceRoot) ?? Array.Empty<PropertyModification>();
         foreach (PropertyModification modification in modifications)
@@ -197,25 +201,9 @@ public class StartMenuTextMeshProMigrationTests
             if (modification.target == ui)
             {
                 Assert.IsFalse(
-                    Array.IndexOf(DynamicFieldNames, modification.propertyPath) >= 0,
+                    allFormerLegacyFieldNames.Contains(modification.propertyPath),
                     "leftover StartMenuUiObjects." + modification.propertyPath + " scene override remains.");
             }
-        }
-    }
-
-    [Test]
-    public void UnrelatedStaticFieldPropertyModificationsAreUnchanged()
-    {
-        Scene scene = OpenScene();
-        StartMenuUiObjects ui = FindStartMenuUiObjects(scene);
-        SerializedObject serializedLegacyUi = new SerializedObject(ui);
-        foreach (string fieldName in StaticFieldNames)
-        {
-            SerializedProperty property = serializedLegacyUi.FindProperty(fieldName);
-            Assert.IsNotNull(property, "StartMenuUiObjects has no field named '" + fieldName + "'.");
-            Assert.IsNotNull(
-                property.objectReferenceValue,
-                "StartMenuUiObjects." + fieldName + " (a Phase 6B static binding) unexpectedly went null; Phase 6A must not touch it.");
         }
     }
 
@@ -327,56 +315,114 @@ public class StartMenuTextMeshProMigrationTests
     }
 
     // ---------------------------------------------------------------------------------------------
-    // 17. Remaining legacy Start Text is classified for Phase 6B: the 14 static StartMenuUiObjects
-    // fields, plus everything else the Phase 6A candidate set never touched.
+    // AUD-092 Phase 6B: zero directly scene-owned legacy Text remains anywhere in the Start scene;
+    // every deferred nested/shared Text is on the explicit Phase 6C source-prefab allowlist.
     // ---------------------------------------------------------------------------------------------
 
     [Test]
-    public void RemainingDirectScreenOwnedLegacyTextMatchesPhase6BClassification()
+    public void DirectlyScreenOwnedLegacyTextCountIsZero()
     {
         Scene scene = OpenScene();
-        int owned = 0;
-        int nested = 0;
+        List<string> owned = new List<string>();
         foreach (GameObject root in scene.GetRootGameObjects())
         {
             foreach (Text text in root.GetComponentsInChildren<Text>(true))
             {
-                if (PrefabUtility.GetNearestPrefabInstanceRoot(text.gameObject) != null)
+                if (PrefabUtility.GetNearestPrefabInstanceRoot(text.gameObject) == null)
                 {
-                    nested++;
-                }
-                else
-                {
-                    owned++;
+                    owned.Add(MenuTextConversion.BuildHierarchyPath(text.gameObject, null));
                 }
             }
         }
 
-        // Confirmed against dev HEAD d2673847b before migration: 94 direct scene-owned + 4
-        // nested/prefab-owned = 98 total. Migrating 27 leaves 67 direct scene-owned; nested is
-        // untouched by Phase 6A entirely.
-        //
-        // A failure here does NOT necessarily mean a regression: any unrelated scene edit that adds
-        // or removes a legacy Text anywhere in level_00_start.unity (e.g. a new static label for an
-        // unrelated feature) will also move these numbers. Before assuming a bug, diff the scene
-        // change against dev - if the new/removed Text is genuinely unrelated to Phase 6A's 27
-        // migrated bindings, update these two constants to match and move on; if it touches one of
-        // the 27 or looks like a duplicate/lost binding, treat it as a real regression.
-        Assert.AreEqual(67, owned, "direct scene-owned legacy Text count changed unexpectedly - Phase 6B classification must be re-derived.");
-        Assert.AreEqual(4, nested, "nested/prefab-owned legacy Text count changed unexpectedly.");
+        Assert.IsEmpty(owned, "directly scene-owned legacy Text survives Phase 6B migration:\n- " + string.Join("\n- ", owned));
     }
 
     [Test]
-    public void FourteenStaticStartMenuUiObjectsFieldsRemainLegacyText()
+    public void NestedLegacyTextOriginatesOnlyFromThePhase6CAllowlist()
     {
         Scene scene = OpenScene();
-        StartMenuUiObjects ui = FindStartMenuUiObjects(scene);
-        SerializedObject serializedLegacyUi = new SerializedObject(ui);
-        foreach (string fieldName in StaticFieldNames)
+        List<string> offenders = new List<string>();
+        int nestedCount = 0;
+        foreach (GameObject root in scene.GetRootGameObjects())
         {
-            SerializedProperty property = serializedLegacyUi.FindProperty(fieldName);
-            Assert.IsNotNull(property, "StartMenuUiObjects has no field named '" + fieldName + "'.");
-            Assert.IsInstanceOf<Text>(property.objectReferenceValue, fieldName + " is expected to remain a legacy Text (Phase 6B).");
+            foreach (Text text in root.GetComponentsInChildren<Text>(true))
+            {
+                GameObject instanceRoot = PrefabUtility.GetNearestPrefabInstanceRoot(text.gameObject);
+                if (instanceRoot == null)
+                {
+                    continue;
+                }
+
+                nestedCount++;
+                string sourcePrefabPath = PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot(instanceRoot);
+                if (!StartMenuTextMeshProMigration.Phase6CDeferredSourcePrefabAllowlist.Contains(sourcePrefabPath))
+                {
+                    offenders.Add(MenuTextConversion.BuildHierarchyPath(text.gameObject, null) + " (source: " + sourcePrefabPath + ")");
+                }
+            }
+        }
+
+        Assert.IsEmpty(offenders, "nested legacy Text from an unlisted source prefab (not on the Phase 6C allowlist):\n- " + string.Join("\n- ", offenders));
+        Assert.Greater(nestedCount, 0, "expected at least the known confirm_tip.prefab nested Text; if this is genuinely now zero, Phase 6C is already complete and this test should be revisited.");
+    }
+
+    [Test]
+    public void ConfirmTipPrefabIsUntouchedByPhase6B()
+    {
+        // Phase 6B must never mutate deferred shared prefab sources - confirm_tip.prefab (Phase 6C's
+        // only allowlisted source) still carries exactly the 4 legacy Text components characterized
+        // before Phase 6B ran (tip_text, header, cancel_button, next_button), with zero TMP added.
+        const string ConfirmTipPrefabPath = "Assets/Resources/Prefabs/misc/confirm_tip.prefab";
+        GameObject prefabRoot = AssetDatabase.LoadAssetAtPath<GameObject>(ConfirmTipPrefabPath);
+        Assert.IsNotNull(prefabRoot, "could not load " + ConfirmTipPrefabPath);
+
+        Assert.AreEqual(4, prefabRoot.GetComponentsInChildren<Text>(true).Length, ConfirmTipPrefabPath + " : expected 4 legacy Text components, unchanged by Phase 6B.");
+        Assert.AreEqual(0, prefabRoot.GetComponentsInChildren<TextMeshProUGUI>(true).Length, ConfirmTipPrefabPath + " : Phase 6B must not have converted any of this shared prefab's Text.");
+    }
+
+    [Test]
+    public void DialogueManagerStillReferencesConfirmTipPrefab()
+    {
+        // Structural regression guard for the shared dependency documented on
+        // StartMenuTextMeshProMigration.Phase6CDeferredSourcePrefabAllowlist: DialogueManager
+        // (Assets/DialogueManager.cs, not Start-owned) instantiates confirm_tip.prefab via its
+        // confirmationDialogTip field - the reason confirm_tip.prefab is deferred to Phase 6C rather
+        // than migrated here.
+        const string DialogueManagerPrefabPath = "Assets/Resources/Prefabs/misc/DialogueManager.prefab";
+        const string ConfirmTipPrefabPath = "Assets/Resources/Prefabs/misc/confirm_tip.prefab";
+        GameObject dialogueManagerRoot = AssetDatabase.LoadAssetAtPath<GameObject>(DialogueManagerPrefabPath);
+        Assert.IsNotNull(dialogueManagerRoot, "could not load " + DialogueManagerPrefabPath);
+
+        DialogueManager dialogueManager = dialogueManagerRoot.GetComponentInChildren<DialogueManager>(true);
+        Assert.IsNotNull(dialogueManager, DialogueManagerPrefabPath + " no longer carries a DialogueManager component.");
+        Assert.IsNotNull(dialogueManager.confirmationDialogTip, DialogueManagerPrefabPath + " : DialogueManager.confirmationDialogTip is unassigned.");
+
+        // confirmationDialogTip references a component nested inside confirm_tip.prefab (not the
+        // prefab's own root asset), so resolve the owning asset by GUID rather than
+        // AssetDatabase.GetAssetPath (which only resolves an asset's own root object, not a component
+        // living on a child GameObject within it).
+        AssetDatabase.TryGetGUIDAndLocalFileIdentifier(dialogueManager.confirmationDialogTip, out string referencedGuid, out long _);
+        string referencedAssetPath = AssetDatabase.GUIDToAssetPath(referencedGuid);
+        Assert.AreEqual(ConfirmTipPrefabPath, referencedAssetPath, "DialogueManager.confirmationDialogTip no longer points at " + ConfirmTipPrefabPath + ".");
+    }
+
+    [Test]
+    public void StaticLabelsRequireNoRuntimeTmpBinding()
+    {
+        // The 14 former static StartMenuUiObjects fields never gained a StartMenuTextUiObjects
+        // counterpart - static presentation needs no runtime view binding (unlike the 27 dynamic
+        // bindings StartManager/PlayerSelectView/CpuSlotBinding actually write .text into).
+        FieldInfo[] tmpFields = Array.FindAll(
+            typeof(StartMenuTextUiObjects).GetFields(BindingFlags.NonPublic | BindingFlags.Instance),
+            field => field.FieldType == typeof(TMP_Text));
+        Assert.AreEqual(DynamicFieldNames.Length, tmpFields.Length, "StartMenuTextUiObjects should expose exactly the 27 dynamic bindings, no more.");
+
+        foreach (FieldInfo field in tmpFields)
+        {
+            Assert.IsFalse(
+                Array.IndexOf(StaticFieldNames, field.Name) >= 0,
+                "StartMenuTextUiObjects." + field.Name + " mirrors a former static label field; static presentation needs no runtime binding.");
         }
     }
 
@@ -385,8 +431,9 @@ public class StartMenuTextMeshProMigrationTests
     {
         // Regression guard for the 27/14/41 split quoted throughout this migration's doc comments:
         // the two canonical lists (StartMenuTextMeshProMigration.DynamicFieldNames/StaticFieldNames)
-        // must never overlap and must always account for all 41 of StartMenuUiObjects' legacy Text
-        // fields between them.
+        // must never overlap and must always account for all 41 of StartMenuUiObjects' former legacy
+        // Text fields between them - both lists remain load-bearing permanently, as the leftover
+        // property-modification scan's known-name set.
         Assert.AreEqual(27, DynamicFieldNames.Length);
         Assert.AreEqual(14, StaticFieldNames.Length);
 

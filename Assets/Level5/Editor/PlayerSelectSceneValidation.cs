@@ -68,23 +68,31 @@ public static class PlayerSelectSceneValidation
             return false;
         }
 
-        ok &= RequireField(uiObjects.column1_subgroup_column2_player_select_name_text, "column1_subgroup_column2_player_select_name_text");
+        ok &= RequireField(uiObjects.TextUi, "TextUi");
         ok &= RequireField(uiObjects.column2_players_tab_player_selected_image, "column2_players_tab_player_selected_image");
         ok &= RequireField(uiObjects.column2_players_tab_lock, "column2_players_tab_lock");
-        ok &= RequireField(uiObjects.column3_player_selected_stats_numbers_text, "column3_player_selected_stats_numbers_text");
-        ok &= RequireField(uiObjects.column3_player_selected_progression_stats_text, "column3_player_selected_progression_stats_text");
-        ok &= RequireField(uiObjects.column3_player_selected_progression_update_points_text, "column3_player_selected_progression_update_points_text");
-        ok &= RequireField(uiObjects.column1_subgroup_column2_num_players_selected_name_text, "column1_subgroup_column2_num_players_selected_name_text");
-        ok &= RequireField(uiObjects.column4_cpu_selected_stats_numbers_text, "column4_cpu_selected_stats_numbers_text");
         ok &= RequireField(uiObjects.column4_cpu1_button, "column4_cpu1_button");
         ok &= RequireField(uiObjects.column4_cpu1_image, "column4_cpu1_image");
-        ok &= RequireField(uiObjects.column4_cpu1_name_text, "column4_cpu1_name_text");
         ok &= RequireField(uiObjects.column4_cpu2_button, "column4_cpu2_button");
         ok &= RequireField(uiObjects.column4_cpu2_image, "column4_cpu2_image");
-        ok &= RequireField(uiObjects.column4_cpu2_name_text, "column4_cpu2_name_text");
         ok &= RequireField(uiObjects.column4_cpu3_button, "column4_cpu3_button");
         ok &= RequireField(uiObjects.column4_cpu3_image, "column4_cpu3_image");
-        ok &= RequireField(uiObjects.column4_cpu3_name_text, "column4_cpu3_name_text");
+
+        if (uiObjects.TextUi != null)
+        {
+            // AUD-092 Phase 6B: these 9 checks used to read the equivalent legacy StartMenuUiObjects
+            // Text fields directly; Phase 6A already retargeted PlayerSelectView itself onto TextUi, so
+            // this validation now checks the same widgets through the view that actually owns them.
+            ok &= RequireField(uiObjects.TextUi.PlayerSelectedName, "TextUi.PlayerSelectedName");
+            ok &= RequireField(uiObjects.TextUi.PlayerStatsNumbers, "TextUi.PlayerStatsNumbers");
+            ok &= RequireField(uiObjects.TextUi.PlayerProgressionStats, "TextUi.PlayerProgressionStats");
+            ok &= RequireField(uiObjects.TextUi.PlayerProgressionUpdatePoints, "TextUi.PlayerProgressionUpdatePoints");
+            ok &= RequireField(uiObjects.TextUi.NumPlayersSelectedName, "TextUi.NumPlayersSelectedName");
+            ok &= RequireField(uiObjects.TextUi.FocusedCpuStatsNumbers, "TextUi.FocusedCpuStatsNumbers");
+            ok &= RequireField(uiObjects.TextUi.Cpu1Name, "TextUi.Cpu1Name");
+            ok &= RequireField(uiObjects.TextUi.Cpu2Name, "TextUi.Cpu2Name");
+            ok &= RequireField(uiObjects.TextUi.Cpu3Name, "TextUi.Cpu3Name");
+        }
 
         return ok;
     }

@@ -5,10 +5,6 @@ using UnityEngine.UI;
 
 public class StartMenuUiObjects : MonoBehaviour
 {
-    [SerializeField] public Text header_username;
-    [SerializeField] public Text header_version;
-    [SerializeField] public Text header_latestVersion;
-
     [SerializeField] public GameObject column1_subgroup_column1_num_players_select;
     [SerializeField] public GameObject column1_subgroup_column1_player_select;
     [SerializeField] public GameObject column1_subgroup_column1_cpu_select;
@@ -26,13 +22,6 @@ public class StartMenuUiObjects : MonoBehaviour
     [SerializeField] public Button column1_subgroup_column2_options_selected_name_button;
 
     [SerializeField] public GameObject column1_subgroup_column2;
-    [SerializeField] public Text column1_subgroup_column2_num_players_selected_name_text;
-    [SerializeField] public Text column1_subgroup_column2_player_select_name_text;
-    [SerializeField] public Text column1_subgroup_column2_cpu_selected_name_text;
-    [SerializeField] public Text column1_subgroup_column2_friend_selected_name_text;
-    [SerializeField] public Text column1_subgroup_column2_level_selected_name_text;
-    [SerializeField] public Text column1_subgroup_column2_mode_selected_name_text;
-    [SerializeField] public Text column1_subgroup_column2_options_selected_name_text;
 
     [SerializeField] public GameObject column2;
     [SerializeField] public GameObject column2_players_tab;
@@ -46,10 +35,6 @@ public class StartMenuUiObjects : MonoBehaviour
     [SerializeField] public Image column2_players_tab_player_selected_image;
     [SerializeField] public Image column2_friend_tab_friend_selected_image;
     [SerializeField] public Image column2_level_tab_level_selected_image;
-    [SerializeField] public Text column2_level_tab_level_selected_name;
-    [SerializeField] public Text column2_level_tab_level_selected_info;
-    [SerializeField] public Text column2_mode_tab_mode_selected_name;
-    [SerializeField] public Text column2_mode_tab_mode_selected_description;
 
     [SerializeField] public Button column2_options_tab_traffic_select_button;
     [SerializeField] public Button column2_options_tab_hardcore_select_button;
@@ -58,20 +43,6 @@ public class StartMenuUiObjects : MonoBehaviour
     [SerializeField] public Button column2_options_tab_obstacles_select_button;
     [SerializeField] public Button column2_options_tab_difficulty_select_button;
 
-    [SerializeField] public Text column2_options_tab_traffic_select_text;
-    [SerializeField] public Text column2_options_tab_traffic_select_option_text;   
-    [SerializeField] public Text column2_options_tab_hardcore_select_text;
-    [SerializeField] public Text column2_options_tab_hardcore_select_option_text;
-    [SerializeField] public Text column2_options_tab_enemy_select_text;
-    [SerializeField] public Text column2_options_tab_enemy_select_option_text;
-    [SerializeField] public Text column2_options_tab_sniper_select_text;
-    [SerializeField] public Text column2_options_tab_sniper_select_option_text;
-    [SerializeField] public Text column2_options_tab_obstacles_select_text;
-    [SerializeField] public Text column2_options_tab_obstacle_select_option_text;
-    [SerializeField] public Text column2_options_tab_difficulty_select_text;
-    [SerializeField] public Text column2_options_tab_difficulty_select_option_text;
-    [SerializeField] public Text column2_options_tab_difficulty_select_description_text;
-
     [SerializeField] public GameObject column3;
     [SerializeField] public GameObject column3_friend_selected_stats_category;
     [SerializeField] public GameObject column3_friend_selected_stats_numbers;
@@ -79,34 +50,24 @@ public class StartMenuUiObjects : MonoBehaviour
     [SerializeField] public GameObject column3_player_stats;
     //[SerializeField] public GameObject column3_player_progression;
     //[SerializeField] public GameObject column3_player_selected_stats_category;
-    [SerializeField] public Text column3_player_selected_stats_category_text;
-    [SerializeField] public Text column3_player_selected_stats_numbers_text;
-    [SerializeField] public Text column3_player_selected_progression_text;
-    [SerializeField] public Text column3_player_selected_progression_stats_text;
-    [SerializeField] public Text column3_friend_selected_stats_category_text;
-    [SerializeField] public Text column3_friend_selected_stats_numbers_text;
-    [SerializeField] public Text column3_player_selected_progression_update_points_text;
-    [SerializeField] public Text column3_level_selected_name_text;
-    [SerializeField] public Text column3_level_selected_description_text;
 
     [SerializeField] public GameObject column4;
-    [SerializeField] public Text column4_cpu1_name_text;
     [SerializeField] public Image column4_cpu1_image;
     [SerializeField] public GameObject column4_cpu1_button;
-    [SerializeField] public Text column4_cpu2_name_text;
     [SerializeField] public Image column4_cpu2_image;
     [SerializeField] public GameObject column4_cpu2_button;
-    [SerializeField] public Text column4_cpu3_name_text;
     [SerializeField] public Image column4_cpu3_image;
     [SerializeField] public GameObject column4_cpu3_button;
-    [SerializeField] public Text column4_cpu_selected_stats_numbers_text;
-    [SerializeField] public Text column4_cpu_selected_stats_category_text;
 
     /// <summary>
-    /// AUD-092 Phase 6A: the permanent TMP counterpart of the 27 legacy Text fields above that
-    /// runtime code actually writes <c>.text</c> into. Composed here (not a second singleton) so
-    /// <see cref="instance"/> stays the one root the rest of the Start menu resolves UI from - see
-    /// <see cref="StartMenuTextUiObjects"/>'s own doc comment.
+    /// AUD-092 Phase 6A/6B: the permanent TMP counterpart of the 27 legacy Text fields this class used
+    /// to carry that runtime code actually writes <c>.text</c> into (Phase 6A). The other 14 legacy Text
+    /// fields this class used to carry were pure static/unbound labels nothing ever wrote <c>.text</c>
+    /// into; Phase 6B converted their backing Text components to TextMeshProUGUI in place and removed
+    /// the fields entirely rather than adding them here - static presentation needs no runtime view
+    /// binding. Composed here (not a second singleton) so <see cref="instance"/> stays the one root the
+    /// rest of the Start menu resolves UI from - see <see cref="StartMenuTextUiObjects"/>'s own doc
+    /// comment.
     /// </summary>
     [SerializeField] private StartMenuTextUiObjects textUi;
     public StartMenuTextUiObjects TextUi => textUi;
