@@ -1,4 +1,4 @@
-﻿using Assets.Scripts.restapi;
+using Assets.Scripts.restapi;
 using Assets.Scripts.Utility;
 using Level5.Core.Match;
 using Level5.Core.PlayerSelection;
@@ -6,6 +6,7 @@ using Level5.Core.Progression;
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.SceneManagement;
@@ -34,11 +35,6 @@ public class StartManager : MonoBehaviour
     //mode selected objects
     [SerializeField]
     private List<StartScreenModeSelected> modeSelectedData;
-
-    //private Text playerSelectUnlockText;
-
-    [SerializeField]
-    private Text friendSelectUnlockText;
 
     // option select buttons, this will be disabled with touch input
     Button numPlayersSelectButton;
@@ -74,41 +70,35 @@ public class StartManager : MonoBehaviour
     private GameObject[] cpuSlotButtonObjects = Array.Empty<GameObject>();
 
     // num player select display
-    private Text numPlayersSelectOptionText;
+    private TMP_Text numPlayersSelectOptionText;
 
     // level select display
-    private Text levelSelectOptionText;
-    private Text levelSelectOptionDescriptionText;
+    private TMP_Text levelSelectOptionText;
 
     //friend selected display
-    private Text friendSelectOptionText;
+    private TMP_Text friendSelectOptionText;
     private Image friendSelectOptionImage;
 
     //mode selected display
-    private Text modeSelectOptionText;
-    private Text modeSelectOptionNameText;
-    private Text ModeSelectOptionDescriptionText;
+    private TMP_Text modeSelectOptionText;
+    private TMP_Text modeSelectOptionNameText;
+    private TMP_Text ModeSelectOptionDescriptionText;
 
-    //selectable option text
-    [SerializeField]
-    private Text trafficSelectOptionText;
-    [SerializeField]
-    private Text hardcoreSelectOptionText;
-    [SerializeField]
-    private Text enemySelectOptionText;
-    [SerializeField]
-    private Text sniperSelectOptionText;
-    [SerializeField]
-    private Text difficultySelectOptionText;
-    [SerializeField]
-    private Text difficultySelectOptionDescriptionText;
-    [SerializeField]
-    private Text obstacleSelectOptionText;
+    // AUD-092 Phase 6A: these seven always get overwritten by GetUiObjectReferences from
+    // StartMenuUiObjects.instance.TextUi before anything reads them, so an authored prefab/scene
+    // value was always discarded - [SerializeField] here was dead weight, not a real contract.
+    private TMP_Text trafficSelectOptionText;
+    private TMP_Text hardcoreSelectOptionText;
+    private TMP_Text enemySelectOptionText;
+    private TMP_Text sniperSelectOptionText;
+    private TMP_Text difficultySelectOptionText;
+    private TMP_Text difficultySelectOptionDescriptionText;
+    private TMP_Text obstacleSelectOptionText;
 
     //version text
-    private Text versionText;
-    private Text latestVersionText;
-    private Text userNameText;
+    private TMP_Text versionText;
+    private TMP_Text latestVersionText;
+    private TMP_Text userNameText;
 
     //const object names
     public const string startButtonName = "press_start";
@@ -365,15 +355,43 @@ public class StartManager : MonoBehaviour
     }
 
     /// <summary>
-    /// True once <see cref="footer"/> carries the seven footer button references. Callable from
-    /// editor tooling as a pure check - it only reads an already-serialized reference.
+    /// True once <see cref="StartMenuUiObjects"/>, its <see cref="StartMenuUiObjects.TextUi"/>
+    /// (AUD-092 Phase 6A's 27 runtime-mutated TMP bindings), and <see cref="footer"/> (its seven footer
+    /// button references) all resolve. Callable from editor tooling as a pure check - it only reads
+    /// already-serialized references, and collects every missing one instead of stopping at the first,
+    /// so a missing TMP binding surfaces as one clear error rather than a later
+    /// NullReferenceException/UnassignedReferenceException on first use.
+    ///
+    /// Falls back to a scene-wide lookup when <see cref="StartMenuUiObjects.instance"/> is not yet set
+    /// (Awake has not run - the case when Level5ProjectValidator/tests call this against an opened but
+    /// not-playing scene) rather than requiring the runtime singleton, so this stays callable the same
+    /// way from both actual gameplay and editor tooling.
     /// </summary>
     public bool ValidateMenuUi(List<string> missing)
     {
+        StartMenuUiObjects ui = StartMenuUiObjects.instance != null
+            ? StartMenuUiObjects.instance
+            : FindAnyObjectByType<StartMenuUiObjects>();
+
+        if (ui == null)
+        {
+            missing.Add("StartMenuUiObjects.instance");
+            return false;
+        }
+
+        if (ui.TextUi == null)
+        {
+            missing.Add("StartMenuUiObjects.TextUi");
+        }
+        else
+        {
+            ui.TextUi.Validate(missing);
+        }
+
         if (footer == null)
         {
             missing.Add("StartManager.footer");
-            return false;
+            return missing.Count == 0;
         }
 
         footer.Validate(
@@ -1166,52 +1184,53 @@ public class StartManager : MonoBehaviour
             StartMenuUiObjects.instance.column4_cpu3_button,
         };
 
-        // Every reference below already exists as a serialized StartMenuUiObjects field; wrapping
-        // them in PlayerSelectView adds no new serialized state to the scene.
+        // Every reference below already exists as a serialized StartMenuUiObjects/StartMenuTextUiObjects
+        // field; wrapping them in PlayerSelectView adds no new serialized state to the scene.
+        StartMenuTextUiObjects textUi = StartMenuUiObjects.instance.TextUi;
         playerSelectView = new PlayerSelectView(
-            StartMenuUiObjects.instance.column1_subgroup_column2_player_select_name_text,
+            textUi.PlayerSelectedName,
             StartMenuUiObjects.instance.column2_players_tab_player_selected_image,
             StartMenuUiObjects.instance.column2_players_tab_lock,
-            StartMenuUiObjects.instance.column3_player_selected_stats_numbers_text,
-            StartMenuUiObjects.instance.column3_player_selected_progression_stats_text,
-            StartMenuUiObjects.instance.column3_player_selected_progression_update_points_text,
-            StartMenuUiObjects.instance.column1_subgroup_column2_num_players_selected_name_text,
-            StartMenuUiObjects.instance.column4_cpu_selected_stats_numbers_text,
+            textUi.PlayerStatsNumbers,
+            textUi.PlayerProgressionStats,
+            textUi.PlayerProgressionUpdatePoints,
+            textUi.NumPlayersSelectedName,
+            textUi.FocusedCpuStatsNumbers,
             new[]
             {
                 new CpuSlotBinding(
                     StartMenuUiObjects.instance.column4_cpu1_button,
                     StartMenuUiObjects.instance.column4_cpu1_image,
-                    StartMenuUiObjects.instance.column4_cpu1_name_text),
+                    textUi.Cpu1Name),
                 new CpuSlotBinding(
                     StartMenuUiObjects.instance.column4_cpu2_button,
                     StartMenuUiObjects.instance.column4_cpu2_image,
-                    StartMenuUiObjects.instance.column4_cpu2_name_text),
+                    textUi.Cpu2Name),
                 new CpuSlotBinding(
                     StartMenuUiObjects.instance.column4_cpu3_button,
                     StartMenuUiObjects.instance.column4_cpu3_image,
-                    StartMenuUiObjects.instance.column4_cpu3_name_text),
+                    textUi.Cpu3Name),
             });
 
         // friend object with lock texture and unlock text
-        friendSelectOptionText = StartMenuUiObjects.instance.column1_subgroup_column2_friend_selected_name_text;
+        friendSelectOptionText = textUi.FriendSelectedName;
         friendSelectOptionImage = StartMenuUiObjects.instance.column2_friend_tab_friend_selected_image;
 
         // level object with selected level text
-        levelSelectOptionText = StartMenuUiObjects.instance.column1_subgroup_column2_level_selected_name_text;
+        levelSelectOptionText = textUi.LevelSelectedNameSummary;
 
         // options selection text
-        trafficSelectOptionText = StartMenuUiObjects.instance.column2_options_tab_traffic_select_option_text;
-        hardcoreSelectOptionText = StartMenuUiObjects.instance.column2_options_tab_hardcore_select_option_text;
-        enemySelectOptionText = StartMenuUiObjects.instance.column2_options_tab_enemy_select_option_text;
-        sniperSelectOptionText = StartMenuUiObjects.instance.column2_options_tab_sniper_select_option_text;
-        difficultySelectOptionText = StartMenuUiObjects.instance.column2_options_tab_difficulty_select_option_text;
-        obstacleSelectOptionText = StartMenuUiObjects.instance.column2_options_tab_obstacle_select_option_text;
+        trafficSelectOptionText = textUi.TrafficOption;
+        hardcoreSelectOptionText = textUi.HardcoreOption;
+        enemySelectOptionText = textUi.EnemyOption;
+        sniperSelectOptionText = textUi.SniperOption;
+        difficultySelectOptionText = textUi.DifficultyOption;
+        obstacleSelectOptionText = textUi.ObstacleOption;
 
         //version
-        versionText = StartMenuUiObjects.instance.header_version;
-        latestVersionText = StartMenuUiObjects.instance.header_latestVersion;
-        userNameText = StartMenuUiObjects.instance.header_username;
+        versionText = textUi.HeaderVersion;
+        latestVersionText = textUi.HeaderLatestVersion;
+        userNameText = textUi.HeaderUsername;
 
         ResolveCommandButtonReferences();
         RegisterButtonCallbacks();
@@ -1333,7 +1352,7 @@ public class StartManager : MonoBehaviour
     }
     public void initializeDifficultyOptionDisplay()
     {
-        difficultySelectOptionDescriptionText = StartMenuUiObjects.instance.column2_options_tab_difficulty_select_description_text;
+        difficultySelectOptionDescriptionText = StartMenuUiObjects.instance.TextUi.DifficultyDescription;
         if (difficultySelected == 0)
         {
             difficultySelectOptionText.text = "easy";
@@ -1377,15 +1396,15 @@ public class StartManager : MonoBehaviour
 
         // NOTE : add level column 2 refs to change text/descr
         // add descritpion to startmenu levle objects
-        StartMenuUiObjects.instance.column1_subgroup_column2_level_selected_name_text.text
-            = StartMenuUiObjects.instance.column2_level_tab_level_selected_name.text
+        StartMenuUiObjects.instance.TextUi.LevelSelectedNameSummary.text
+            = StartMenuUiObjects.instance.TextUi.LevelSelectedNameDetail.text
             = level.DisplayName;
-        StartMenuUiObjects.instance.column2_level_tab_level_selected_info.text = level.Info;
+        StartMenuUiObjects.instance.TextUi.LevelSelectedInfo.text = level.Info;
     }
 
     public void initializeNumPlayersDisplay()
     {
-        numPlayersSelectOptionText = StartMenuUiObjects.instance.column1_subgroup_column2_num_players_selected_name_text;
+        numPlayersSelectOptionText = StartMenuUiObjects.instance.TextUi.NumPlayersSelectedName;
         numPlayersSelectOptionText.text = playerSelectCoordinator.ParticipantCount.ToString();
     }
 
@@ -1404,7 +1423,7 @@ public class StartManager : MonoBehaviour
 
             if (friendSelectedIndex > 0)
             {
-                StartMenuUiObjects.instance.column3_friend_selected_stats_numbers_text.text = // friendSelectedData[friendSelectedIndex].Accuracy2Pt.ToString("F0") + "\n"
+                StartMenuUiObjects.instance.TextUi.FriendStatsNumbers.text = // friendSelectedData[friendSelectedIndex].Accuracy2Pt.ToString("F0") + "\n"
                    "+" +  friendSelectedData[friendSelectedIndex].bonus3Accuracy.ToString("F0") + "\n"
                     + "+" +  friendSelectedData[friendSelectedIndex].bonus4Accuracy.ToString("F0") + "\n"
                     + "+" +  friendSelectedData[friendSelectedIndex].bonus7Accuracy.ToString("F0") + "\n"
@@ -1416,7 +1435,7 @@ public class StartManager : MonoBehaviour
                     + "+" + friendSelectedData[friendSelectedIndex].bonusLuck.ToString("F0") + "\n"
                     + "+" +  friendSelectedData[friendSelectedIndex].bonusClutch.ToString("F0");
             }
-            else { StartMenuUiObjects.instance.column3_friend_selected_stats_numbers_text.text = "";  }
+            else { StartMenuUiObjects.instance.TextUi.FriendStatsNumbers.text = "";  }
 
             // AUD-110: this used to re-resolve the label with
             // GameObject.Find(...).GetComponent<Text>() on every refresh, unguarded, inside a catch
@@ -1459,13 +1478,13 @@ public class StartManager : MonoBehaviour
             return;
         }
 
-        modeSelectOptionText = StartMenuUiObjects.instance.column1_subgroup_column2_mode_selected_name_text;
+        modeSelectOptionText = StartMenuUiObjects.instance.TextUi.ModeSelectedNameSummary;
         modeSelectOptionText.text = mode.DisplayName;
 
-        modeSelectOptionNameText = StartMenuUiObjects.instance.column2_mode_tab_mode_selected_name;
+        modeSelectOptionNameText = StartMenuUiObjects.instance.TextUi.ModeSelectedNameDetail;
         modeSelectOptionNameText.text = mode.DisplayName;
 
-        ModeSelectOptionDescriptionText = StartMenuUiObjects.instance.column2_mode_tab_mode_selected_description;
+        ModeSelectOptionDescriptionText = StartMenuUiObjects.instance.TextUi.ModeSelectedDescription;
         ModeSelectOptionDescriptionText.text = mode.Description;
     }
     /// <summary>

@@ -54,19 +54,4 @@ MonoBehaviour:
   friendSelectedData: []
   levelSelectedData: []
   modeSelectedData: []
-  friendSelectUnlockText: {fileID: 0}
-  startButton: {fileID: 0}
-  statsMenuButton: {fileID: 0}
-  quitButton: {fileID: 0}
-  optionsMenuButton: {fileID: 0}
-  creditsMenuButton: {fileID: 0}
-  updateMenuButton: {fileID: 0}
-  accountMenuButton: {fileID: 0}
-  playerProgressionUpdatePointsText: {fileID: 0}
-  trafficSelectOptionText: {fileID: 0}
-  hardcoreSelectOptionText: {fileID: 0}
-  enemySelectOptionText: {fileID: 0}
-  sniperSelectOptionText: {fileID: 0}
-  difficultySelectOptionText: {fileID: 0}
-  difficultySelectOptionDescriptionText: {fileID: 0}
-  obstacleSelectOptionText: {fileID: 0}
+  footer: {fileID: 0}

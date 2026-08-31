@@ -1,38 +1,40 @@
 using System.Collections.Generic;
 using Level5.Core.PlayerSelection;
+using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
 /// <summary>
 /// Passive rendering for the player-select portion of the start screen.
 ///
-/// Every widget reference here already exists as a serialized <see cref="StartMenuUiObjects"/>
-/// field - this class adds no new serialized state to the scene, it only owns how those existing
-/// references get written. It never mutates <see cref="CharacterProfile"/>, changes selection,
-/// loads data, writes <see cref="GameOptions"/>, builds a match, or looks anything up by
-/// GameObject name; the coordinator resolves values, this class only assigns them to widgets.
+/// Every widget reference here already exists as a serialized <see cref="StartMenuUiObjects"/>/
+/// <see cref="StartMenuTextUiObjects"/> field - this class adds no new serialized state to the
+/// scene, it only owns how those existing references get written. It never mutates
+/// <see cref="CharacterProfile"/>, changes selection, loads data, writes <see cref="GameOptions"/>,
+/// builds a match, or looks anything up by GameObject name; the coordinator resolves values, this
+/// class only assigns them to widgets.
 /// </summary>
 public sealed class PlayerSelectView
 {
-    private readonly Text primaryNameText;
+    private readonly TMP_Text primaryNameText;
     private readonly Image primaryPortraitImage;
     private readonly GameObject primaryLockOverlay;
-    private readonly Text primaryStatsText;
-    private readonly Text progressionStatsText;
-    private readonly Text progressionPointsText;
-    private readonly Text participantCountText;
-    private readonly Text focusedCpuStatsText;
+    private readonly TMP_Text primaryStatsText;
+    private readonly TMP_Text progressionStatsText;
+    private readonly TMP_Text progressionPointsText;
+    private readonly TMP_Text participantCountText;
+    private readonly TMP_Text focusedCpuStatsText;
     private readonly IReadOnlyList<CpuSlotBinding> cpuSlots;
 
     public PlayerSelectView(
-        Text primaryNameText,
+        TMP_Text primaryNameText,
         Image primaryPortraitImage,
         GameObject primaryLockOverlay,
-        Text primaryStatsText,
-        Text progressionStatsText,
-        Text progressionPointsText,
-        Text participantCountText,
-        Text focusedCpuStatsText,
+        TMP_Text primaryStatsText,
+        TMP_Text progressionStatsText,
+        TMP_Text progressionPointsText,
+        TMP_Text participantCountText,
+        TMP_Text focusedCpuStatsText,
         IReadOnlyList<CpuSlotBinding> cpuSlots)
     {
         this.primaryNameText = primaryNameText;
@@ -167,7 +169,7 @@ public sealed class PlayerSelectView
 /// <summary>One CPU draft slot's widgets: a button/portrait/name group instead of three named fields.</summary>
 public readonly struct CpuSlotBinding
 {
-    public CpuSlotBinding(GameObject button, Image portrait, Text nameText)
+    public CpuSlotBinding(GameObject button, Image portrait, TMP_Text nameText)
     {
         Button = button;
         Portrait = portrait;
@@ -178,5 +180,5 @@ public readonly struct CpuSlotBinding
 
     public Image Portrait { get; }
 
-    public Text NameText { get; }
+    public TMP_Text NameText { get; }
 }

@@ -77,6 +77,10 @@ public sealed class Level5ProjectValidator : IPreprocessBuildWithReport
         // Text) to TMP_InputField/TextMeshProUGUI. Zero legacy Text/InputField is now the permanent
         // contract - see CollectAccountTextRenderingContractErrors.
         errors.AddRange(CollectAccountTextRenderingContractErrors());
+        // AUD-092 Phase 6A: the Start menu's 27 runtime-mutated legacy Text fields were migrated to
+        // TextMeshProUGUI via the new StartMenuTextUiObjects view; the other 14 of StartMenuUiObjects'
+        // 41 legacy Text fields (static labels/unbound) deliberately remain legacy Text for Phase 6B.
+        errors.AddRange(CollectStartTextRenderingContractErrors());
 
         if (errors.Count > 0)
         {
@@ -1163,6 +1167,33 @@ public sealed class Level5ProjectValidator : IPreprocessBuildWithReport
         errors.AddRange(AccountTextMeshProMigration.CollectLoginExistingContractErrors());
         errors.AddRange(AccountTextMeshProMigration.CollectLoginLocalContractErrors());
         return errors;
+    }
+
+    [MenuItem("Level5/Validate Start Text Rendering Contract")]
+    public static void ValidateStartTextRenderingContractFromMenu()
+    {
+        List<string> errors = CollectStartTextRenderingContractErrors();
+        if (errors.Count > 0)
+        {
+            Debug.LogError("Start text rendering contract validation failed:\n- " + string.Join("\n- ", errors.ToArray()));
+            return;
+        }
+
+        Debug.Log("Start text rendering contract validated.");
+    }
+
+    /// <summary>
+    /// AUD-092 Phase 6A: the Start menu's (<c>level_00_start</c>) 27 runtime-mutated legacy Text fields
+    /// - the subset of StartMenuUiObjects' 41 legacy Text fields StartManager/PlayerSelectView/
+    /// CpuSlotBinding actually write <c>.text</c> into - were migrated to TextMeshProUGUI on the shared
+    /// Neon Pixel-7 SDF font asset via the new StartMenuTextUiObjects view. The other 14 fields (static
+    /// labels/unbound) deliberately remain legacy Text for Phase 6B. Delegates entirely to
+    /// <see cref="StartMenuTextMeshProMigration.CollectContractErrors"/>, matching the
+    /// <see cref="CollectAccountTextRenderingContractErrors"/> precedent.
+    /// </summary>
+    public static List<string> CollectStartTextRenderingContractErrors()
+    {
+        return StartMenuTextMeshProMigration.CollectContractErrors();
     }
 
     private static void ValidateInputActions(List<string> errors)

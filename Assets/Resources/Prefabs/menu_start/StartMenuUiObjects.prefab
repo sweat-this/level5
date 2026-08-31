@@ -10,6 +10,7 @@ GameObject:
   m_Component:
   - component: {fileID: 7897598354904327714}
   - component: {fileID: 8478378552129387841}
+  - component: {fileID: 1010879302785101948}
   m_Layer: 0
   m_Name: StartMenuUiObjects
   m_TagString: Untagged
@@ -129,3 +130,43 @@ MonoBehaviour:
   column4_cpu3_button: {fileID: 0}
   column4_cpu_selected_stats_numbers_text: {fileID: 0}
   column4_cpu_selected_stats_category_text: {fileID: 0}
+  textUi: {fileID: 1010879302785101948}
+--- !u!114 &1010879302785101948
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4840854728975412373}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 413d03ed6a0102f4aa4e8098773c1f20, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Level5.MenuStart::StartMenuTextUiObjects
+  header_username: {fileID: 0}
+  header_version: {fileID: 0}
+  header_latestVersion: {fileID: 0}
+  column1_subgroup_column2_num_players_selected_name_text: {fileID: 0}
+  column1_subgroup_column2_player_select_name_text: {fileID: 0}
+  column1_subgroup_column2_friend_selected_name_text: {fileID: 0}
+  column1_subgroup_column2_level_selected_name_text: {fileID: 0}
+  column1_subgroup_column2_mode_selected_name_text: {fileID: 0}
+  column2_level_tab_level_selected_name: {fileID: 0}
+  column2_level_tab_level_selected_info: {fileID: 0}
+  column2_mode_tab_mode_selected_name: {fileID: 0}
+  column2_mode_tab_mode_selected_description: {fileID: 0}
+  column2_options_tab_traffic_select_option_text: {fileID: 0}
+  column2_options_tab_hardcore_select_option_text: {fileID: 0}
+  column2_options_tab_enemy_select_option_text: {fileID: 0}
+  column2_options_tab_sniper_select_option_text: {fileID: 0}
+  column2_options_tab_difficulty_select_option_text: {fileID: 0}
+  column2_options_tab_difficulty_select_description_text: {fileID: 0}
+  column2_options_tab_obstacle_select_option_text: {fileID: 0}
+  column3_player_selected_stats_numbers_text: {fileID: 0}
+  column3_player_selected_progression_stats_text: {fileID: 0}
+  column3_player_selected_progression_update_points_text: {fileID: 0}
+  column3_friend_selected_stats_numbers_text: {fileID: 0}
+  column4_cpu_selected_stats_numbers_text: {fileID: 0}
+  column4_cpu1_name_text: {fileID: 0}
+  column4_cpu2_name_text: {fileID: 0}
+  column4_cpu3_name_text: {fileID: 0}

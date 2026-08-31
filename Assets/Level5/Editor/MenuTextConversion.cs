@@ -73,8 +73,16 @@ internal static class MenuTextConversion
     /// Underlay, see <see cref="ApplyOutlineCompensation"/>), and any <see cref="Selectable"/> whose
     /// <c>targetGraphic</c> pointed at it. See the original Phase 1 implementation for why the destroy
     /// must happen before the add (two <see cref="Graphic"/>-derived components cannot coexist).
+    ///
+    /// <paramref name="candidateSelectables"/> is an optional precomputed Selectable list to scan for a
+    /// bound <c>targetGraphic</c> instead of the default <c>scopeRoot.GetComponentsInChildren&lt;Selectable&gt;()</c>
+    /// walk - lets a caller converting several Texts that share the same <paramref name="scopeRoot"/>
+    /// (e.g. <see cref="StartMenuTextMeshProMigration"/>, whose 27 candidates cluster under a handful of
+    /// distinct roots) resolve that root's Selectables once and reuse the list, instead of re-walking
+    /// the same subtree once per Text.
     /// </summary>
-    internal static TextMeshProUGUI ConvertSingleText(GameObject scopeRoot, Text text, TMP_FontAsset font)
+    internal static TextMeshProUGUI ConvertSingleText(
+        GameObject scopeRoot, Text text, TMP_FontAsset font, IReadOnlyList<Selectable> candidateSelectables = null)
     {
         if (text == null || font == null)
         {
@@ -99,7 +107,8 @@ internal static class MenuTextConversion
         float lineSpacing = (text.lineSpacing - 1f) * 100f;
 
         List<Selectable> boundSelectables = new List<Selectable>();
-        foreach (Selectable selectable in scopeRoot.GetComponentsInChildren<Selectable>(true))
+        IReadOnlyList<Selectable> selectablesToScan = candidateSelectables ?? scopeRoot.GetComponentsInChildren<Selectable>(true);
+        foreach (Selectable selectable in selectablesToScan)
         {
             if (selectable.targetGraphic == text)
             {
@@ -1347,6 +1356,137 @@ internal static class MenuTextConversion
         if (neonPixel == null || tmp.font != neonPixel)
         {
             errors.Add(where + " : TMP_InputField." + fieldName + " does not use the shared Neon Pixel-7 SDF font asset.");
+        }
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Scene transaction safety (AUD-092 Phase 5A originally, in AccountTextMeshProMigration; Phase 6A
+    // extracted here so it is shared rather than re-copied by every migration that mutates a scene
+    // directly instead of only a prefab asset): reject unsafe Play Mode state, reject any dirty open
+    // scene, capture the prior scene setup, migrate the target scene alone, save only on success,
+    // always restore the prior setup.
+    // ---------------------------------------------------------------------------------------------
+
+    /// <summary>Opens <paramref name="scenePath"/> alone, runs <paramref name="migrateInMemory"/>, saves only on success, and always restores whatever scene setup was open before this ran.</summary>
+    internal static void RunSceneMigration(string scenePath, string logPrefix, Func<Scene, List<string>> migrateInMemory)
+    {
+        if (!CaptureEditorStateForMigration(logPrefix, out SceneSetup[] priorSetup, out List<string> stateErrors))
+        {
+            LogAbort(logPrefix, stateErrors);
+            return;
+        }
+
+        try
+        {
+            RunSceneMigrationNoRestore(scenePath, logPrefix, migrateInMemory);
+        }
+        finally
+        {
+            RestoreEditorStateAfterMigration(logPrefix, priorSetup);
+        }
+    }
+
+    /// <summary>
+    /// Restores whatever scene setup was open before migration ran. A <see cref="SceneSetup"/> entry
+    /// with no asset path (an unsaved "Untitled" scene - notably the default scene batchmode/CI opens
+    /// when launched without one) cannot be reopened by path and makes
+    /// <see cref="EditorSceneManager.RestoreSceneManagerSetup"/> throw; there is nothing meaningful to
+    /// restore to in that case (an interactive Editor session with real, previously-saved scenes open
+    /// restores normally), so that specific failure is logged rather than left to crash the whole
+    /// migration after scenes earlier in the same run already saved successfully.
+    /// </summary>
+    internal static void RestoreEditorStateAfterMigration(string logPrefix, SceneSetup[] priorSetup)
+    {
+        try
+        {
+            EditorSceneManager.RestoreSceneManagerSetup(priorSetup);
+        }
+        catch (ArgumentException ex)
+        {
+            Debug.LogWarning(
+                logPrefix + " : could not restore the prior scene setup (" + ex.Message
+                    + "). Expected if no real saved scene was open before this ran (e.g. batchmode's default empty scene).");
+        }
+    }
+
+    /// <summary>Same as <see cref="RunSceneMigration"/> but does not capture/restore scene setup - for a caller that captures/restores once around several scenes itself (e.g. a "migrate everything" entry point).</summary>
+    internal static void RunSceneMigrationNoRestore(string scenePath, string logPrefix, Func<Scene, List<string>> migrateInMemory)
+    {
+        if (!File.Exists(scenePath))
+        {
+            Debug.LogError(logPrefix + " aborted - scene file is missing: " + scenePath);
+            return;
+        }
+
+        Scene scene = EditorSceneManager.OpenScene(scenePath, OpenSceneMode.Single);
+        List<string> errors = migrateInMemory(scene);
+        if (errors.Count > 0)
+        {
+            LogAbort(logPrefix, errors);
+            return;
+        }
+
+        EditorSceneManager.MarkSceneDirty(scene);
+        bool saved = EditorSceneManager.SaveScene(scene);
+        if (!saved)
+        {
+            Debug.LogError(logPrefix + " : EditorSceneManager.SaveScene failed for " + scenePath + ".");
+            return;
+        }
+
+        Debug.Log(logPrefix + " complete for " + scenePath + ".");
+    }
+
+    internal static bool CaptureEditorStateForMigration(string logPrefix, out SceneSetup[] priorSetup, out List<string> errors)
+    {
+        errors = new List<string>();
+        priorSetup = null;
+
+        if (EditorApplication.isPlayingOrWillChangePlaymode)
+        {
+            errors.Add("cannot migrate while the Editor is in or entering Play Mode.");
+            return false;
+        }
+
+        for (int i = 0; i < SceneManager.sceneCount; i++)
+        {
+            Scene loaded = SceneManager.GetSceneAt(i);
+            if (loaded.isDirty)
+            {
+                errors.Add("scene '" + loaded.path + "' has unsaved changes; save or discard them before running " + logPrefix + ".");
+            }
+        }
+
+        if (errors.Count > 0)
+        {
+            return false;
+        }
+
+        priorSetup = EditorSceneManager.GetSceneManagerSetup();
+        return true;
+    }
+
+    internal static void LogAbort(string logPrefix, List<string> errors)
+    {
+        Debug.LogError(logPrefix + " aborted without saving - " + errors.Count + " error(s):\n- " + string.Join("\n- ", errors));
+    }
+
+    /// <summary>Read-only convenience: opens the scene (additively if not already loaded), runs <paramref name="body"/>, then closes it again if this call opened it.</summary>
+    internal static void WithOpenScene(string scenePath, Func<Scene, bool> body)
+    {
+        Scene existing = SceneManager.GetSceneByPath(scenePath);
+        bool alreadyOpen = existing.IsValid() && existing.isLoaded;
+        Scene scene = alreadyOpen ? existing : EditorSceneManager.OpenScene(scenePath, OpenSceneMode.Additive);
+        try
+        {
+            body(scene);
+        }
+        finally
+        {
+            if (!alreadyOpen)
+            {
+                EditorSceneManager.CloseScene(scene, true);
+            }
         }
     }
 }

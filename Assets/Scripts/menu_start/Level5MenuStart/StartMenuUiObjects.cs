@@ -102,6 +102,15 @@ public class StartMenuUiObjects : MonoBehaviour
     [SerializeField] public Text column4_cpu_selected_stats_numbers_text;
     [SerializeField] public Text column4_cpu_selected_stats_category_text;
 
+    /// <summary>
+    /// AUD-092 Phase 6A: the permanent TMP counterpart of the 27 legacy Text fields above that
+    /// runtime code actually writes <c>.text</c> into. Composed here (not a second singleton) so
+    /// <see cref="instance"/> stays the one root the rest of the Start menu resolves UI from - see
+    /// <see cref="StartMenuTextUiObjects"/>'s own doc comment.
+    /// </summary>
+    [SerializeField] private StartMenuTextUiObjects textUi;
+    public StartMenuTextUiObjects TextUi => textUi;
+
     //footer
     public const string startButtonName = "press_start";
     public const string statsMenuButtonName = "stats_menu";

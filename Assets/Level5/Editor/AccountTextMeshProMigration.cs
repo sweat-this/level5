@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Text;
 using TMPro;
 using UnityEditor;
@@ -27,9 +26,9 @@ using Object = UnityEngine.Object;
 /// is directly scene-authored (zero nested prefab instance Text in any of the three - the account screens
 /// predate the shared <c>touch_joystick.prefab</c> extraction other menu screens use; left as-is, out of
 /// scope for this text migration). Migration therefore mutates the scene file directly rather than a
-/// prefab asset, via the transaction-safety wrapper in <see cref="RunSceneMigration"/>: open the target
-/// scene alone, migrate in memory, validate, and save only on success, always restoring whatever scene
-/// setup was open before this ran.
+/// prefab asset, via the transaction-safety wrapper in <see cref="MenuTextConversion.RunSceneMigration"/>:
+/// open the target scene alone, migrate in memory, validate, and save only on success, always restoring
+/// whatever scene setup was open before this ran.
 ///
 /// Reuses every low-level mechanic <see cref="MenuTextConversion"/> already proved (font asset creation,
 /// single-Text conversion, named-field wiring, unsupported-consumer detection, and - Phase 5B -
@@ -109,7 +108,7 @@ internal static class AccountTextMeshProMigration
 
     private static void ReportScene(string scenePath)
     {
-        WithOpenScene(scenePath, scene =>
+        MenuTextConversion.WithOpenScene(scenePath, scene =>
         {
             StringBuilder summary = new StringBuilder();
             summary.AppendLine("==== " + scenePath + " ====");
@@ -164,13 +163,13 @@ internal static class AccountTextMeshProMigration
     [MenuItem("Level5/Migrate Account Hub To TMP")]
     public static void MigrateHub()
     {
-        RunSceneMigration(HubScenePath, "AccountTextMeshProMigration.MigrateHub", MigrateHubInMemory);
+        MenuTextConversion.RunSceneMigration(HubScenePath, "AccountTextMeshProMigration.MigrateHub", MigrateHubInMemory);
     }
 
     [MenuItem("Level5/Migrate Account Create To TMP")]
     public static void MigrateCreateNew()
     {
-        RunSceneMigration(CreateNewScenePath, "AccountTextMeshProMigration.MigrateCreateNew", scene =>
+        MenuTextConversion.RunSceneMigration(CreateNewScenePath, "AccountTextMeshProMigration.MigrateCreateNew", scene =>
             MigrateFieldsScreenInMemory(
                 scene, "AccountTextMeshProMigration.MigrateCreateNew", CreateNewExpectedInputFieldCount, CreateNewExpectedOrdinaryCount));
     }
@@ -178,7 +177,7 @@ internal static class AccountTextMeshProMigration
     [MenuItem("Level5/Migrate Account Login To TMP")]
     public static void MigrateLoginExisting()
     {
-        RunSceneMigration(LoginExistingScenePath, "AccountTextMeshProMigration.MigrateLoginExisting", scene =>
+        MenuTextConversion.RunSceneMigration(LoginExistingScenePath, "AccountTextMeshProMigration.MigrateLoginExisting", scene =>
             MigrateFieldsScreenInMemory(
                 scene, "AccountTextMeshProMigration.MigrateLoginExisting", LoginExistingExpectedInputFieldCount, LoginExistingExpectedOrdinaryCount));
     }
@@ -189,25 +188,25 @@ internal static class AccountTextMeshProMigration
     {
         const string LogPrefix = "AccountTextMeshProMigration.MigrateAll";
 
-        if (!CaptureEditorStateForMigration(LogPrefix, out SceneSetup[] priorSetup, out List<string> stateErrors))
+        if (!MenuTextConversion.CaptureEditorStateForMigration(LogPrefix, out SceneSetup[] priorSetup, out List<string> stateErrors))
         {
-            LogAbort(LogPrefix, stateErrors);
+            MenuTextConversion.LogAbort(LogPrefix, stateErrors);
             return;
         }
 
         try
         {
-            RunSceneMigrationNoRestore(HubScenePath, "AccountTextMeshProMigration.MigrateHub", MigrateHubInMemory);
-            RunSceneMigrationNoRestore(CreateNewScenePath, "AccountTextMeshProMigration.MigrateCreateNew", scene =>
+            MenuTextConversion.RunSceneMigrationNoRestore(HubScenePath, "AccountTextMeshProMigration.MigrateHub", MigrateHubInMemory);
+            MenuTextConversion.RunSceneMigrationNoRestore(CreateNewScenePath, "AccountTextMeshProMigration.MigrateCreateNew", scene =>
                 MigrateFieldsScreenInMemory(
                     scene, "AccountTextMeshProMigration.MigrateCreateNew", CreateNewExpectedInputFieldCount, CreateNewExpectedOrdinaryCount));
-            RunSceneMigrationNoRestore(LoginExistingScenePath, "AccountTextMeshProMigration.MigrateLoginExisting", scene =>
+            MenuTextConversion.RunSceneMigrationNoRestore(LoginExistingScenePath, "AccountTextMeshProMigration.MigrateLoginExisting", scene =>
                 MigrateFieldsScreenInMemory(
                     scene, "AccountTextMeshProMigration.MigrateLoginExisting", LoginExistingExpectedInputFieldCount, LoginExistingExpectedOrdinaryCount));
         }
         finally
         {
-            RestoreEditorStateAfterMigration(LogPrefix, priorSetup);
+            MenuTextConversion.RestoreEditorStateAfterMigration(LogPrefix, priorSetup);
         }
 
         Debug.Log(LogPrefix + " complete.");
@@ -953,130 +952,11 @@ internal static class AccountTextMeshProMigration
     // ---------------------------------------------------------------------------------------------
     // Scene transaction safety (AUD-092 Phase 5A section 7): reject unsafe Play Mode state, reject any
     // dirty open scene, capture the prior scene setup, migrate the target scene alone, save only on
-    // success, always restore the prior setup.
+    // success, always restore the prior setup. AUD-092 Phase 6A extracted the mechanics themselves
+    // into MenuTextConversion (RunSceneMigration/RunSceneMigrationNoRestore/
+    // CaptureEditorStateForMigration/RestoreEditorStateAfterMigration/LogAbort/WithOpenScene) once
+    // StartMenuTextMeshProMigration needed the identical sequence - this class now only calls them.
     // ---------------------------------------------------------------------------------------------
-
-    private static void RunSceneMigration(string scenePath, string logPrefix, Func<Scene, List<string>> migrateInMemory)
-    {
-        if (!CaptureEditorStateForMigration(logPrefix, out SceneSetup[] priorSetup, out List<string> stateErrors))
-        {
-            LogAbort(logPrefix, stateErrors);
-            return;
-        }
-
-        try
-        {
-            RunSceneMigrationNoRestore(scenePath, logPrefix, migrateInMemory);
-        }
-        finally
-        {
-            RestoreEditorStateAfterMigration(logPrefix, priorSetup);
-        }
-    }
-
-    /// <summary>
-    /// Restores whatever scene setup was open before migration ran. A <see cref="SceneSetup"/> entry
-    /// with no asset path (an unsaved "Untitled" scene - notably the default scene batchmode/CI opens
-    /// when launched without one) cannot be reopened by path and makes
-    /// <see cref="EditorSceneManager.RestoreSceneManagerSetup"/> throw; there is nothing meaningful to
-    /// restore to in that case (an interactive Editor session with real, previously-saved scenes open
-    /// restores normally), so that specific failure is logged rather than left to crash the whole
-    /// migration after scenes earlier in the same run already saved successfully.
-    /// </summary>
-    private static void RestoreEditorStateAfterMigration(string logPrefix, SceneSetup[] priorSetup)
-    {
-        try
-        {
-            EditorSceneManager.RestoreSceneManagerSetup(priorSetup);
-        }
-        catch (ArgumentException ex)
-        {
-            Debug.LogWarning(
-                logPrefix + " : could not restore the prior scene setup (" + ex.Message
-                    + "). Expected if no real saved scene was open before this ran (e.g. batchmode's default empty scene).");
-        }
-    }
-
-    /// <summary>Same as <see cref="RunSceneMigration"/> but does not capture/restore scene setup - used by <see cref="MigrateAll"/>, which does that once around all three scenes.</summary>
-    private static void RunSceneMigrationNoRestore(string scenePath, string logPrefix, Func<Scene, List<string>> migrateInMemory)
-    {
-        if (!File.Exists(scenePath))
-        {
-            Debug.LogError(logPrefix + " aborted - scene file is missing: " + scenePath);
-            return;
-        }
-
-        Scene scene = EditorSceneManager.OpenScene(scenePath, OpenSceneMode.Single);
-        List<string> errors = migrateInMemory(scene);
-        if (errors.Count > 0)
-        {
-            LogAbort(logPrefix, errors);
-            return;
-        }
-
-        EditorSceneManager.MarkSceneDirty(scene);
-        bool saved = EditorSceneManager.SaveScene(scene);
-        if (!saved)
-        {
-            Debug.LogError(logPrefix + " : EditorSceneManager.SaveScene failed for " + scenePath + ".");
-            return;
-        }
-
-        Debug.Log(logPrefix + " complete for " + scenePath + ".");
-    }
-
-    private static bool CaptureEditorStateForMigration(string logPrefix, out SceneSetup[] priorSetup, out List<string> errors)
-    {
-        errors = new List<string>();
-        priorSetup = null;
-
-        if (EditorApplication.isPlayingOrWillChangePlaymode)
-        {
-            errors.Add("cannot migrate while the Editor is in or entering Play Mode.");
-            return false;
-        }
-
-        for (int i = 0; i < SceneManager.sceneCount; i++)
-        {
-            Scene loaded = SceneManager.GetSceneAt(i);
-            if (loaded.isDirty)
-            {
-                errors.Add("scene '" + loaded.path + "' has unsaved changes; save or discard them before running " + logPrefix + ".");
-            }
-        }
-
-        if (errors.Count > 0)
-        {
-            return false;
-        }
-
-        priorSetup = EditorSceneManager.GetSceneManagerSetup();
-        return true;
-    }
-
-    private static void LogAbort(string logPrefix, List<string> errors)
-    {
-        Debug.LogError(logPrefix + " aborted without saving - " + errors.Count + " error(s):\n- " + string.Join("\n- ", errors));
-    }
-
-    /// <summary>Read-only convenience for <see cref="Report"/>: opens the scene (additively if not already loaded), runs <paramref name="body"/>, then closes it again if this call opened it.</summary>
-    private static void WithOpenScene(string scenePath, Func<Scene, bool> body)
-    {
-        Scene existing = SceneManager.GetSceneByPath(scenePath);
-        bool alreadyOpen = existing.IsValid() && existing.isLoaded;
-        Scene scene = alreadyOpen ? existing : EditorSceneManager.OpenScene(scenePath, OpenSceneMode.Additive);
-        try
-        {
-            body(scene);
-        }
-        finally
-        {
-            if (!alreadyOpen)
-            {
-                EditorSceneManager.CloseScene(scene, true);
-            }
-        }
-    }
 
     // ---------------------------------------------------------------------------------------------
     // Permanent contract (backs Level5ProjectValidator.CollectAccount*TextRenderingContractErrors)
@@ -1085,7 +965,7 @@ internal static class AccountTextMeshProMigration
     public static List<string> CollectHubContractErrors()
     {
         List<string> errors = new List<string>();
-        WithOpenScene(HubScenePath, scene =>
+        MenuTextConversion.WithOpenScene(HubScenePath, scene =>
         {
             List<Text> owned = new List<Text>();
             List<Text> nested = new List<Text>();
@@ -1167,7 +1047,7 @@ internal static class AccountTextMeshProMigration
     private static List<string> CollectFieldsScreenContractErrors(string scenePath, int expectedInputFieldCount, int expectedTotalTmpTextCount)
     {
         List<string> errors = new List<string>();
-        WithOpenScene(scenePath, scene =>
+        MenuTextConversion.WithOpenScene(scenePath, scene =>
         {
             List<Text> owned = new List<Text>();
             List<Text> nested = new List<Text>();
@@ -1332,7 +1212,7 @@ internal static class AccountTextMeshProMigration
     public static List<string> CollectLoginLocalContractErrors()
     {
         List<string> errors = new List<string>();
-        WithOpenScene(LoginLocalScenePath, scene =>
+        MenuTextConversion.WithOpenScene(LoginLocalScenePath, scene =>
         {
             List<Text> owned = new List<Text>();
             List<Text> nested = new List<Text>();
