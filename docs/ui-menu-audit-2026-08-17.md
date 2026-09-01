@@ -438,7 +438,7 @@ Deliberately left open:
 | ID | Why |
 | --- | --- |
 | AUD-092 | The TMP migration is 94 `Text` components in the start menu alone. The plan stages it one screen per PR behind the view-object contract, gated on AUD-091 being visually settled. |
-| AUD-100 | Deleting the seven `TouchInput*Controller` scripts and dropping `activeInputHandler` to Input System only removes the fallback mobile input path. AUD-095 changed what drives UI input and that has not been verified on a device, so the fallback stays until it has. |
+| AUD-100 | Deleting the seven `TouchInput*Controller` scripts removes the fallback mobile input path. AUD-095 changed what drives UI input and that has not been verified on a device, so the fallback stays until it has. Characterized in full and a real ownership-hazard defect fixed on 2026-08-31 (below); `activeInputHandler` stays Both permanently regardless of device certification, since gameplay `TouchInputController` still needs `Input.touches` - see the [AUD-100 characterization](#aud-100-characterization--2026-08-31). |
 | AUD-103 (rest) | A serialized `*UiObjects` view component per screen means wiring each one in its prefab by hand. Now unblocked, since the prefabs are text, but it is a per-screen job with no automated coverage to catch a mis-wire. |
 | AUD-104 | `MenuFooterNav` touches footer wiring in five managers at once, and nothing in the suite exercises menu button behaviour, so a silent break would not be caught. Best done alongside the AUD-103 view objects, one screen at a time. |
 | AUD-111 (rest) | Narrowing 23 catch scopes needs per-site judgement about which call can actually throw. Raising the log level was the part that could be made safe without that analysis. |
@@ -599,3 +599,116 @@ real `Resources` catalogs.
 Compile + **704/704 EditMode** + **13/13 PlayMode** + `scripts/validate-repository.ps1` all pass
 under Unity 6000.5.7f1. No manual interactive Play Mode pass was run in this session (no interactive
 GUI available to this agent).
+
+### AUD-100 characterization — 2026-08-31
+
+A current-source audit at `0afae2b7a15abadf4962ff5b95f0f2c3d2c7aa6d` (dev, clean, up to date with
+origin) re-characterized AUD-100 rather than assuming the 2026-08-17 description still holds. All
+seven expected `TouchInput*Controller` scripts are still present and unmodified; the gameplay
+`TouchInputController` and `Resources/Prefabs/critical/touch_joystick.prefab` are unchanged.
+
+**Feature-parity matrix.** Every legacy touch action was traced to its current primary-route
+equivalent by reading the seven controllers against `StartManager`, `StatsManager`,
+`ProgressionManager`, `OptionsManager`, `CreditsManager`, `AccountManager` and
+`EndRoundMenuManager`. Result: **PASS on every screen, no gaps.** All of the double-tap activations
+and swipe-to-step gestures (level/mode/player/friend select; traffic/hardcore/enemies/sniper/
+difficulty/obstacle options; CPU slot cycling; stats mode/page/hardcore/traffic/enemies/sniper
+filters; progression accuracy point spend/save/reset/confirm/cancel; every screen's footer nav;
+account create/login routing; end-round next/start-menu/quit) already has a `Button.onClick`
+handler registered through `UiSelectionAdapter.RegisterButton` in the corresponding manager
+(`StartManager.RegisterButtonCallbacks` at `menu_start/StartManager.cs:582-603` is representative).
+This was true before this session - AUD-095/096/097/098/102/105 already made it true - this pass
+only confirms no control was missed. All seven controllers already gate themselves off
+(`if (UiSelectionAdapter.EnsureInputSystemUiModule()) { enabled = false; return; }` in `Start()`,
+and the `InputSystemUiActive` check repeated in `Update()`), so today, with AUD-095 landed, their
+touch-polling bodies do not run at all outside the pre-AUD-095 fallback window.
+
+**`touch_joystick.prefab` ownership inventory.** The prefab's root (`touch_joystick`, tag
+`joystick`) parents eight children: the gameplay `TouchInputController` (`touchInput`, gameplay-
+owned, preserve); the six screen-specific menu-fallback controllers as inert siblings
+(`touchInputStartScreen`, `touchInputStatsScreen`, `touchInputProgressionScreen`,
+`touchInputOptionsScreen`, `touchInputAccountScreen`, `touchInputLinksScreen` - menu-fallback,
+candidates for removal); and an inactive `Canvas` holding a debug `nextScene` button plus a nested
+`Floating Joystick` prefab instance, already marked dead by the existing
+`LegacyNextSceneMarker` compatibility shim (`Utility/Level5Utility/LegacyNextSceneMarker.cs`) -
+menu-fallback/dead scaffolding, not gameplay. `TouchInputEndRoundMenuController` is not in this
+prefab; it is scene-authored directly in `level_00_end_round_screen.unity`, as expected.
+
+The full prefab (all eight children) is nested as a complete `PrefabInstance` into six places:
+`GameManager.prefab` (gameplay consumer), and `start.prefab`, `OptionManager.prefab`,
+`StatsManager.prefab`, `progressionScreen.prefab`, `creditsManager.prefab` (menu consumers, one
+nested instance each). No scene references the prefab directly. Notably, **no Account/Login prefab
+or scene references it at all** - `TouchInputAccountScreenController` resolves its manager via
+`FindAnyObjectByType<AccountManager>()` rather than a serialized reference, but since the prefab
+that hosts it is never nested anywhere near an `AccountManager`, that controller has never had a
+live host in the shipped composition. The Account Hub/Create/Existing-Login/Local-Login screens
+already have zero touch-fallback surface to retire.
+
+**Ownership hazard (Section 6 of the task prompt) - real, fixed.** `TouchInputController.Awake()`
+unconditionally dereferenced `GameLevelManager.instance` (directly, and again inside
+`initializeTouchInputController()`), and `Start()` did the same to read
+`GameLevelManager.instance.players[0].playerController` - all gated only by
+`#if UNITY_ANDROID || UNITY_IOS`, with no null guard. Because the full `touch_joystick.prefab` is
+nested into five menu prefabs that never create a `GameLevelManager`, an Android/iOS build throws a
+`NullReferenceException` out of this component on every menu screen load today, independent of
+AUD-100's removal work - this is a pre-existing defect, not something the removal would introduce.
+Fixed narrowly in `TouchInputController.cs`: both `Awake()` and `Start()` now check
+`GameLevelManager.instance == null` and disable only this component when there is no gameplay
+owner, leaving every sibling (the still-needed pre-certification menu fallbacks) untouched and
+leaving gameplay behavior identical to before when a `GameLevelManager` exists. Because this code
+path is compiled only for `UNITY_ANDROID`/`UNITY_IOS`, no EditMode or PlayMode test run in the
+Editor can exercise it either before or after the fix - real-device verification is the only
+verification this defect (or its fix) can receive, which is exactly what Device Gate A is for.
+
+**Primary route confirmed live.** `UiSelectionAdapter`'s `AssignDefaultActions()` path is gone
+(AUD-095 landed); `InputSystemUIInputModule.move/submit/cancel/point/leftClick/scrollWheel` are
+bound to `PlayerControls.UINavigation` action references. `PlayerControls.inputactions` binds
+`<Touchscreen>/touch*/position` to `Point` and `<Touchscreen>/touch*/press` to `Click`, so the
+primary route does have real touchscreen bindings, not assumed ones. `activeInputHandler: 2`
+(Both) is unchanged in `ProjectSettings/ProjectSettings.asset`.
+
+**Automated validation.** `scripts/validate-repository.ps1`: PASS. Unity 6000.5.7f1 EditMode batch
+run: **703/704 PASS** - the one failure, `Level5ProductionAssemblyBoundaryTests.
+NoMigratedProductionAssemblyReachesIntoAssemblyCSharp`, is unrelated to this change and does not
+reproduce against tracked repository state; see "Found while validating" below. PlayMode: blocked
+in this session by the harness's own tool-permission policy after the stray-file cleanup below,
+not by any defect found - not run. Neither run exercises the `UNITY_ANDROID`/`UNITY_IOS`-gated fix
+regardless, per the point above.
+
+**Found while validating, not part of AUD-100.**
+`Assets/Scripts/input/PlayerControls.inputactions.meta` still has `wrapperCodePath: Assets/Scripts/
+input/PlayerControls.cs` and `generateWrapperCode: 1`, a stale setting from before the "Systems
+restructure Phase 2b: Level5.Input leaf assembly" migration moved the real, tracked class to
+`Assets/Scripts/input/Level5Input/PlayerControls.cs`. Any Unity session that reimports this asset
+(including simply opening the project) regenerates a duplicate `PlayerControls.cs` at the old path,
+which is outside any asmdef and therefore compiles into `Assembly-CSharp` - directly colliding with
+the migrated class and reproducing exactly the `NoMigratedProductionAssemblyReachesIntoAssemblyCSharp`
+failure this session initially saw. Deleting the untracked stray file resolved it for this session,
+but the importer will regenerate it again on the next reimport. Recommended follow-up: point
+`wrapperCodePath` at the migrated file's actual location (or disable `generateWrapperCode` on this
+asset if the migrated class is meant to be hand-maintained instead), independent of AUD-100.
+
+**Review pass on the Section 6 fix.** A senior-reviewer pass caught two issues in the first version
+of the `TouchInputController.Awake()`/`Start()` guard, both fixed:
+
+- The fix relies on `GameLevelManager.Awake()` having already run before `TouchInputController.Awake()`
+  in real gameplay - true today, but enforced by no Script Execution Order entry, only inferred from
+  the pre-existing unguarded code never having been reported as crashing. Before this fix, a violation
+  of that ordering would throw immediately (loud, caught in testing); after it, the same violation
+  would silently and permanently disable gameplay touch input for the session instead. Fixed by
+  logging a warning when the guard trips, so a real ordering regression stays visible instead of
+  presenting as touch controls silently not working.
+- The mirrored null check added to `Start()` was unreachable: Unity does not call `Start()` on a
+  component already disabled by the end of `Awake()`, so the only guard that ever does anything is
+  the one in `Awake()`. Removed the dead check and left a comment explaining why `Start()` does not
+  need one.
+
+**Device Gate A: NOT RUN.** This agent has no real touch hardware access in this environment. Per
+the task's gate rule, no legacy controller, holder, or shared-prefab composition was removed or
+restructured. The only change made is the Section 6 ownership-hazard fix above, which is additive
+and safety-only.
+
+**Status: BLOCKED - PRE-REMOVAL DEVICE CERTIFICATION REQUIRED.** The characterization, parity
+matrix and ownership-hazard fix above are the evidence a future session (or a developer with device
+access) needs to run Device Gate A and, if it passes, proceed to Section 8 removal. Nothing in this
+pass found a reason removal would be unsafe once Gate A passes.
