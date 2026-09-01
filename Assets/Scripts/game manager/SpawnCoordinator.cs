@@ -336,6 +336,7 @@ public sealed class SpawnCoordinator
         identifier.player = spawned;
         identifier.setPlayer(identifier.player);
         InitializeHumanProfile(identifier, slot);
+        BindRangeMeters(spawned, identifier.Actor, isCpu: false);
         registry.Add(identifier);
     }
 
@@ -393,7 +394,29 @@ public sealed class SpawnCoordinator
         identifier.autoPlayer = spawned;
         identifier.setAutoPlayer(identifier.autoPlayer);
         PrepareCpuMatchContext(identifier);
+        BindRangeMeters(spawned, identifier.Actor, isCpu: true);
         registry.Add(identifier);
+    }
+
+    /// <summary>
+    /// AUD-010 Phase 1c: binds every RangeMeter under the spawned participant to that participant's
+    /// own IShooterActor, immediately after the actor is resolved and before Unity calls Start() on
+    /// any of them - the same explicit-binding shape GiveBall already uses for basketball ownership
+    /// (see below). Most player prefabs carry no RangeMeter at all; GetComponentsInChildren(true) also
+    /// reaches inactive/disabled authored copies, which is harmless since binding itself has no
+    /// presentation side effects.
+    ///
+    /// Code review note: this binds through the concrete RangeMeter type rather than an interface,
+    /// unlike GiveBall's IBasketballRuntime below - RangeMeter has exactly one implementation, so an
+    /// interface here would be ceremony with no second consumer. Widens the game-manager -> basketball
+    /// edge by one concrete reference; worth naming explicitly the next time that edge is remeasured.
+    /// </summary>
+    private static void BindRangeMeters(GameObject participant, IShooterActor actor, bool isCpu)
+    {
+        foreach (RangeMeter meter in participant.GetComponentsInChildren<RangeMeter>(true))
+        {
+            meter.BindOwner(actor, isCpu);
+        }
     }
 
     /// <summary>
