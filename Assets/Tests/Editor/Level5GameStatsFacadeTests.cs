@@ -169,46 +169,6 @@ public class Level5GameStatsFacadeTests
     }
 
     [Test]
-    public void ApplyMadeShotThroughTheFacadeMatchesTheOwnerShotForShot()
-    {
-        // The behavioural half of the contract: the BasketBallState overload must reduce to exactly
-        // the owner's bool parameter, including the AUD-065 ordering, for both branches of it.
-        GameStats facade = NewStats();
-        GameObject stateObject = new GameObject("basketball-state");
-        spawned.Add(stateObject);
-        BasketBallState state = stateObject.AddComponent<BasketBallState>();
-
-        MatchStats reference = new MatchStats();
-
-        for (int shot = 0; shot < 4; shot++)
-        {
-            bool twoPointer = shot == 2;
-
-            state.TwoAttempt = twoPointer;
-            state.ThreeAttempt = !twoPointer;
-            facade.ShotAttempt++;
-            reference.ShotAttempt++;
-
-            ShotScoringInput input = new ShotScoringInput
-            {
-                Kind = twoPointer ? ShotKind.Two : ShotKind.Three,
-                HasStreakBonus = true,
-                StreakBonusThreshold = 3
-            };
-
-            ShotScore throughFacade = facade.ApplyMadeShot(state, input);
-            ShotScore throughOwner = reference.ApplyMadeShot(twoPointer, input);
-
-            Assert.That(throughFacade.Points, Is.EqualTo(throughOwner.Points), $"points on shot {shot}");
-            Assert.That(throughFacade.CountedAs, Is.EqualTo(throughOwner.CountedAs), $"counter on shot {shot}");
-            Assert.That(facade.ConsecutiveShotsMade, Is.EqualTo(reference.ConsecutiveShotsMade), $"streak after shot {shot}");
-            Assert.That(facade.ShotMade, Is.EqualTo(reference.ShotMade), $"made total after shot {shot}");
-        }
-
-        Assert.That(facade.MostConsecutiveShots, Is.EqualTo(reference.MostConsecutiveShots));
-    }
-
-    [Test]
     public void GetTotalPointAccuracyKeepsItsMethodShapeAndItsAnswer()
     {
         // Five call sites call this as a method, not as a property. The owner exposes a property; the
@@ -222,20 +182,39 @@ public class Level5GameStatsFacadeTests
     }
 
     [Test]
-    public void CalculateConsecutiveShotStillTakesABasketBallState()
+    public void CapturingTwoAttemptBeforeResetMatchesTheLiveBasketBallShotMadeOrdering()
     {
-        GameStats facade = NewStats();
+        // AUD-010 Phase 1c retired GameStats.ApplyMadeShot(BasketBallState, ...), the seam the old
+        // Level5GameStatsApplyMadeShotTests drove through a real BasketBallState component.
+        // BasketBallShotMade.updateShotMadeBasketBallStats now does that read itself: capture
+        // TwoAttempt, call MatchStats.ApplyMadeShot, only then let BasketBallState.ResetShotAttemptSnapshot
+        // clear it. This pins that exact ordering against the real component (not a hand-written
+        // bool) - capturing after the reset instead would silently score every made two-pointer as
+        // a three, the AUD-065 class of bug this wiring exists to prevent.
         GameObject stateObject = new GameObject("basketball-state");
         spawned.Add(stateObject);
         BasketBallState state = stateObject.AddComponent<BasketBallState>();
+        MatchStats stats = new MatchStats();
 
-        state.TwoAttempt = false;
-        facade.ShotAttempt = 1;
-        facade.ShotMade = 1;
+        state.TwoAttempt = true;
+        state.ThreeAttempt = false;
+        stats.ShotAttempt++;
 
-        facade.calculateConsecutiveShot(state);
+        bool wasTwoPointAttempt = state.TwoAttempt;
+        stats.ApplyMadeShot(wasTwoPointAttempt, new ShotScoringInput
+        {
+            Kind = ShotKind.Two,
+            HasStreakBonus = true,
+            StreakBonusThreshold = 3
+        });
+        state.ResetShotAttemptSnapshot();
 
-        Assert.That(facade.ConsecutiveShotsMade, Is.EqualTo(1));
-        Assert.That(facade.MostConsecutiveShots, Is.EqualTo(1));
+        Assert.That(wasTwoPointAttempt, Is.True,
+            "the made two-pointer must be captured before ResetShotAttemptSnapshot clears TwoAttempt");
+        Assert.That(state.TwoAttempt, Is.False,
+            "and the component's own flag is cleared immediately afterward, same as production");
+        Assert.That(stats.ConsecutiveShotsMade, Is.EqualTo(1),
+            "a made two-pointer never extends a streak (preserved oddity) - only observable if the "
+            + "true value reached ApplyMadeShot before the reset");
     }
 }

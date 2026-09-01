@@ -266,10 +266,15 @@ public class BasketBallShotMade : MonoBehaviour
         };
 
         // AUD-065: scores the shot and updates the made-shot/streak state it depends on, in the one
-        // order both require. Covered directly by Level5GameStatsApplyMadeShotTests - see that file
-        // for why the regression this guards against needs GameStats/BasketballState only, not a
-        // running GameRules/MatchRuntime.
-        ShotScore score = gameStats.ApplyMadeShot(basketBallState, input);
+        // order both require. Covered directly by Level5MatchStatsTests - see that file for why the
+        // regression this guards against needs only MatchStats/a bool, not a running
+        // GameRules/MatchRuntime.
+        //
+        // AUD-010 Phase 1c: wasTwoPointAttempt is captured here, before basketBallState.TwoAttempt is
+        // cleared by ResetShotAttemptSnapshot() (called by shotMade() once this method returns) - it
+        // must be the launch-time snapshot, not a value read after this shot resolves.
+        bool wasTwoPointAttempt = basketBallState.TwoAttempt;
+        ShotScore score = gameStats.Stats.ApplyMadeShot(wasTwoPointAttempt, input);
 
         gameStats.Stats.TotalPoints += score.Points;
         gameStats.Stats.MoneyBallMade += score.MoneyBallMade;

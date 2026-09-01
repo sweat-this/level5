@@ -6,11 +6,11 @@ using NUnit.Framework;
 /// <see cref="MatchStats"/> is the owner half of phase 1b: the match-stats state and the arithmetic
 /// that maintains it, moved off the <c>GameStats</c> MonoBehaviour into <c>Level5.Core</c>.
 ///
-/// These are translated from <see cref="Level5GameStatsApplyMadeShotTests"/>, not moved. That suite
-/// stays exactly as it is and keeps running against the facade, because the two prove different
-/// things: it proves the 147 existing call sites still reach working logic, and this proves the
-/// logic. Passing here and failing there would mean a bad delegation, which is precisely the failure
-/// a moved suite would hide.
+/// These were originally translated from the now-retired <c>Level5GameStatsApplyMadeShotTests</c>,
+/// which exercised the same three cases through the temporary <c>GameStats.ApplyMadeShot(BasketBallState,
+/// ...)</c> seam. That seam is gone as of AUD-010 Phase 1c - the live made-shot path now calls
+/// <see cref="MatchStats.ApplyMadeShot"/> directly - so this suite is this behaviour's sole owner now,
+/// not a translated duplicate of a suite that still runs elsewhere.
 ///
 /// **Invariant: this file constructs no <c>GameObject</c>.** The original needed two of them and an
 /// <c>AddComponent</c> per test to exercise pure counter arithmetic. Needing a scene object to check
