@@ -12,19 +12,52 @@ public class GroundCheck : MonoBehaviour
 
     private void Start()
     {
+        // This component is authored both as a child of the player/autoPlayer actor and as a child
+        // of the basketball itself. The actor case still has an actor-side PlayerIdentifier to walk
+        // up to; the ball case does not (AUD-013 removed the ball's own duplicate PlayerIdentifier),
+        // so it resolves the same data through the ball's IBasketballRuntime binding instead - not a
+        // fallback to a ball-side PlayerIdentifier, a different legitimate parent hierarchy.
         PlayerIdentifier playerIdentifier = GetComponentInParent<PlayerIdentifier>();
-        if (playerIdentifier.isCpu)
+        if (playerIdentifier != null)
         {
-            autoPlayerController = playerIdentifier.autoPlayer.GetComponent<AutoPlayerController>();
-            if (!playerIdentifier.isDefensivePlayer)
+            if (playerIdentifier.isCpu)
             {
-                basketBallState = playerIdentifier.autoBasketball.GetComponent<BasketBallState>();
+                autoPlayerController = playerIdentifier.autoPlayer.GetComponent<AutoPlayerController>();
+                if (!playerIdentifier.isDefensivePlayer)
+                {
+                    basketBallState = playerIdentifier.autoBasketball.GetComponent<BasketBallState>();
+                }
             }
+            else
+            {
+                playerController = playerIdentifier.player.GetComponent<PlayerController>();
+                basketBallState = playerIdentifier.basketball.GetComponent<BasketBallState>();
+            }
+
+            return;
+        }
+
+        IBasketballRuntime runtime = GetComponentInParent<IBasketballRuntime>();
+        if (runtime == null)
+        {
+            // SetActive rather than enabled = false: OnTriggerStay/OnTriggerExit below fire regardless
+            // of this component's enabled state, and both dereference basketBallState/playerController
+            // unconditionally.
+            Debug.LogError(
+                $"GroundCheck on '{gameObject.name}' found neither a PlayerIdentifier nor an IBasketballRuntime in its parent hierarchy.",
+                this);
+            gameObject.SetActive(false);
+            return;
+        }
+
+        basketBallState = runtime.State;
+        if (runtime.IsCpu)
+        {
+            autoPlayerController = runtime.OwnerActor.GetComponent<AutoPlayerController>();
         }
         else
         {
-            playerController = playerIdentifier.player.GetComponent<PlayerController>();
-            basketBallState = playerIdentifier.basketball.GetComponent<BasketBallState>();
+            playerController = runtime.OwnerActor.GetComponent<PlayerController>();
         }
     }
 

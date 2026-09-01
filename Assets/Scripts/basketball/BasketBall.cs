@@ -8,7 +8,7 @@ using Random = UnityEngine.Random;
 using Level5.Core;
 using Level5.Core.Match;
 
-public class BasketBall : MonoBehaviour
+public class BasketBall : MonoBehaviour, IBasketballRuntime
 {
     SpriteRenderer spriteRenderer;
     Rigidbody rigidbody;
@@ -32,12 +32,17 @@ public class BasketBall : MonoBehaviour
     GameStats gameStats;
     Animator anim;
     IShooterActor actor;
-    PlayerIdentifier playerIdentifier;
     GameObject basketBallSprite;
     GameObject basketBallPosition;
     GameObject player;
     GameObject uiStatsBackground;
     GameObject dropShadow;
+
+    /// <summary>AUD-013 runtime ownership, bound once by <see cref="SpawnCoordinator.GiveBall"/> via <see cref="BindOwner"/>, before <see cref="Start"/> runs.</summary>
+    int participantId;
+    bool isCpu;
+    bool isPrimary;
+    bool bound;
 
     Text scoreText;
     Text shootProfileText;
@@ -69,23 +74,30 @@ public class BasketBall : MonoBehaviour
     // Use this for initialization
     void Start()
     {
+        if (!bound)
+        {
+            // Setting enabled = false here would not be enough: Unity still dispatches
+            // OnCollisionEnter/OnTriggerEnter/etc. to a disabled component, and both fire
+            // unconditionally on basketBallState/actor below. Deactivating the whole GameObject is
+            // the only thing that actually quarantines it, and also stops the child GroundCheck's
+            // own trigger handlers from running against this same unbound state.
+            Debug.LogError($"BasketBall on '{gameObject.name}' reached Start() with no bound owner.", this);
+            gameObject.SetActive(false);
+            return;
+        }
+
         // player 1's ball owns the static. every consumer of BasketBall.instance means
         // "the local player's ball" - camera follow, the free-play stat save, the ui-stats
         // toggle - not "whichever ball happened to run Start() last".
-        if (instance == null || IsPrimaryBasketball())
+        if (instance == null || isPrimary)
         {
             instance = this;
         }
 
-        playerIdentifier = GetComponent<PlayerIdentifier>();
-        player = playerIdentifier.player;
-        actor = playerIdentifier.Actor;
         currentShooter = actor.ShooterAttributes;
         basketBallPosition = player.transform.Find("basketBall_position").gameObject;
         rigidbody = GetComponent<Rigidbody>();
         gameStats =  GetComponent<GameStats>();
-
-        basketBallState = GetComponent<BasketBallState>();
 
         spriteRenderer = GetComponentInChildren<SpriteRenderer>();
         audioSource = GetComponent<AudioSource>();
@@ -410,7 +422,7 @@ public class BasketBall : MonoBehaviour
             LastShotDistance,
             actor.ShotMeterSliderValue);
 
-        if (computation.IsSwish && BehaviorNpcCritical.instance != null && !playerIdentifier.isCpu)
+        if (computation.IsSwish && BehaviorNpcCritical.instance != null && !isCpu)
         {
             BehaviorNpcCritical.instance.playAnimationCriticalSuccesful();
         }
@@ -490,16 +502,6 @@ public class BasketBall : MonoBehaviour
         messageText.text = "";
     }
 
-    // true when this ball belongs to players[0].
-    private bool IsPrimaryBasketball()
-    {
-        return GameLevelManager.instance != null
-            && GameLevelManager.instance.players != null
-            && GameLevelManager.instance.players.Count > 0
-            && GameLevelManager.instance.players[0] != null
-            && GameLevelManager.instance.players[0].basketball == gameObject;
-    }
-
     public void updateScoreText()
     {
         // reads this ball's own gameStats. it used to reassign the field to players[0]'s stats
@@ -517,4 +519,33 @@ public class BasketBall : MonoBehaviour
     public bool UiStatsEnabled { get; private set; }
     public GameObject BasketBallPosition { get => basketBallPosition; set => basketBallPosition = value; }
     public Rigidbody Rigidbody { get => rigidbody; set => rigidbody = value; }
+
+    // ======================= IBasketballRuntime (AUD-013) =======================
+
+    public int ParticipantId => participantId;
+    public bool IsCpu => isCpu;
+    public bool IsPrimary => isPrimary;
+    public GameObject OwnerActor => player;
+    IShooterActor IBasketballRuntime.Actor => actor;
+    BasketBallState IBasketballRuntime.State => basketBallState;
+    GameStats IBasketballRuntime.Stats => gameStats;
+
+    public void BindOwner(int participantId, bool isCpu, bool isPrimary, GameObject ownerActor, IShooterActor actor)
+    {
+        if (bound)
+        {
+            Debug.LogError($"BasketBall on '{gameObject.name}' is already bound; ignoring a second BindOwner call.", this);
+            return;
+        }
+
+        this.participantId = participantId;
+        this.isCpu = isCpu;
+        this.isPrimary = isPrimary;
+        player = ownerActor;
+        this.actor = actor;
+        bound = true;
+
+        basketBallState = GetComponent<BasketBallState>();
+        basketBallState.BindOwner(isCpu, ownerActor);
+    }
 }

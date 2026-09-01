@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Level5.Core;
 using Level5.Core.Match;
 using UnityEngine;
 
@@ -420,6 +421,15 @@ public sealed class SpawnCoordinator
         identifier.characterProfile.PrepareCpuMatchContext(primaryLevel, rules);
     }
 
+    /// <summary>
+    /// AUD-013: binds the spawned ball's runtime ownership explicitly, immediately after
+    /// <c>Instantiate</c> and before Unity calls <c>Start()</c> on any of its components - instead of
+    /// hand-syncing a second, ball-side <c>PlayerIdentifier</c> instance to match the owner's.
+    ///
+    /// Slot 0 is always spawned first (<see cref="SpawnBasketballs"/>) and is always human, so it is
+    /// the existing, guaranteed rule <see cref="IBasketballRuntime.IsPrimary"/> derives from - not a
+    /// new primary-selection rule.
+    /// </summary>
     private void GiveBall(int slotId, GameObject prefab, Vector3 position, bool forCpu)
     {
         PlayerIdentifier owner = registry.GetBySlot(slotId);
@@ -429,25 +439,23 @@ public sealed class SpawnCoordinator
         }
 
         GameObject ball = UnityEngine.Object.Instantiate(prefab, position, Quaternion.identity);
-        PlayerIdentifier ballIdentifier = ball.GetComponent<PlayerIdentifier>();
-        if (ballIdentifier == null)
+        IBasketballRuntime runtime = ball.GetComponent<IBasketballRuntime>();
+        if (runtime == null)
         {
-            Debug.LogError($"Basketball prefab '{prefab.name}' has no PlayerIdentifier.", ball);
+            Debug.LogError($"Basketball prefab '{prefab.name}' has no basketball runtime binding.", ball);
             return;
         }
 
-        ballIdentifier.setIds(owner.pid, forCpu);
+        GameObject ownerActor = forCpu ? owner.autoPlayer : owner.player;
+        runtime.BindOwner(owner.pid, forCpu, slotId == 0, ownerActor, owner.Actor);
+
         if (forCpu)
         {
-            ballIdentifier.setAutoBasketball(ball);
             owner.setAutoBasketball(ball);
-            ballIdentifier.setAutoPlayer(owner.autoPlayer);
         }
         else
         {
-            ballIdentifier.setBasketball(ball);
             owner.setBasketball(ball);
-            ballIdentifier.setPlayer(owner.player);
         }
     }
 }
