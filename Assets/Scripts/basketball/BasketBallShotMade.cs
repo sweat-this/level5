@@ -193,27 +193,6 @@ public class BasketBallShotMade : MonoBehaviour
         return basketBallState.SevenAttempt ? ShotKind.Seven : ShotKind.None;
     }
 
-    /// <summary>
-    /// The marker the player was standing on when they shot, or null.
-    ///
-    /// The original indexed the marker list directly at three separate points. It is read once here
-    /// and bounds-checked, because <c>OnShootShotMarkerId</c> is a plain int that defaults to 0 -
-    /// so a shot taken off any marker in a mode with no markers at all indexed an empty list.
-    /// </summary>
-    private static BasketBallShotMarker ShotMarkerFor(BasketBallState basketBallState)
-    {
-        System.Collections.Generic.List<BasketBallShotMarker> markers =
-            GameRules.instance != null ? GameRules.instance.BasketBallShotMarkersList : null;
-
-        if (markers == null)
-        {
-            return null;
-        }
-
-        int id = basketBallState.OnShootShotMarkerId;
-        return id >= 0 && id < markers.Count ? markers[id] : null;
-    }
-
     private ShotScore updateShotMadeBasketBallStats(GameStats gameStats, BasketBallState basketBallState, float shotDistance)
     {
         // first thing, update shot made total
@@ -257,7 +236,12 @@ public class BasketBallShotMade : MonoBehaviour
         // branches that could in principle both run. No authored mode is both - Points by Distance
         // has no shot markers - so the extraction treats them as the alternatives they are, and
         // this comment is the record of that being a decision rather than an oversight.
-        BasketBallShotMarker marker = ShotMarkerFor(basketBallState);
+        //
+        // AUD-010 Phase 1c: the marker is the exact reference captured at launch
+        // (BasketBallState.CaptureShotMarkerForAttempt), not an id resolved back through
+        // GameRules.BasketBallShotMarkersList - that resolution could return a different marker than
+        // the one this shot was actually taken from if the list's contents or ordering ever changed.
+        BasketBallShotMarker marker = basketBallState.OnShootShotMarker;
 
         ShotScoringInput input = new ShotScoringInput
         {
@@ -291,19 +275,25 @@ public class BasketBallShotMade : MonoBehaviour
         gameStats.Stats.MoneyBallMade += score.MoneyBallMade;
 
         // ==================== requires position markers logic ==============================
-        if (basketBallState.PlayerOnMarkerOnShoot 
+        if (basketBallState.PlayerOnMarkerOnShoot
             && (MatchRuntime.Rules.RequiresShotMarkers3s || MatchRuntime.Rules.RequiresShotMarkers4s || MatchRuntime.Rules.RequiresShotMarkers7s))
         {
-            // if money ball enabled
-            if (basketBallState.MoneyBallEnabledOnShoot)
+            if (marker == null)
             {
-                int max = GameRules.instance.BasketBallShotMarkersList[basketBallState.OnShootShotMarkerId].MaxShotMade;
-                GameRules.instance.BasketBallShotMarkersList[basketBallState.OnShootShotMarkerId].ShotMade = max;
+                // PlayerOnMarkerOnShoot is only ever set true alongside a captured marker (see
+                // BasketBallState.CaptureShotMarkerForAttempt) - an ownership/composition bug, not a
+                // reachable gameplay state. Never guess marker zero.
+                Debug.LogError("BasketBallShotMade: PlayerOnMarkerOnShoot is true but OnShootShotMarker is null - skipping marker made-count update.");
+            }
+            // if money ball enabled
+            else if (basketBallState.MoneyBallEnabledOnShoot)
+            {
+                marker.ShotMade = marker.MaxShotMade;
             }
             // no money ball, update current shot marker stats
             else
             {
-                GameRules.instance.BasketBallShotMarkersList[basketBallState.OnShootShotMarkerId].ShotMade++;
+                marker.ShotMade++;
             }
         }
 

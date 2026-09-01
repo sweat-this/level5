@@ -33,8 +33,12 @@ public class BasketBallState : MonoBehaviour
     private bool _playerOnMarkerOnShoot;
     private bool _moneyBallEnabledOnShoot;
 
-    private int _currentShotMarkerId;
-    private int _onShootShotMarkerId;
+    // AUD-010 Phase 1c: the participant's marker occupancy is the marker reference itself, not an
+    // id resolved through GameRules.BasketBallShotMarkersList - see BasketBallShotMarker.EnterShotMarker
+    // / ExitShotMarker (pushed from this participant's own hitbox trigger) and CaptureShotMarkerForAttempt
+    // (the launch-time snapshot). Runtime-only: never serialized, never restored across a scene load.
+    private BasketBallShotMarker currentShotMarker;
+    private BasketBallShotMarker onShootShotMarker;
 
     [SerializeField]
     private float _playerDistanceFromRim;
@@ -102,12 +106,9 @@ public class BasketBallState : MonoBehaviour
             PlayerDistanceFromRim = Vector3.Distance(new Vector3(player.transform.position.x,0, player.transform.position.z), new Vector3(_basketBallTarget.transform.position.x,0, _basketBallTarget.transform.position.z));
             //PlayerDistanceFromRim = Mathf.Abs( GameLevelManager.instance.Player.transform.position.z - _basketBallTarget.transform.position.z);
 
-            // is player on  marker  +  is marker required for game mode
-            if (GameRules.instance.PositionMarkersRequired)
-            {
-                PlayerOnMarker = isCpu ? GameRules.instance.BasketBallShotMarkersList[CurrentShotMarkerId].AutoPlayerOnMarker
-                    : GameRules.instance.BasketBallShotMarkersList[CurrentShotMarkerId].PlayerOnMarker;
-            }
+            // AUD-010 Phase 1c: marker occupancy is no longer polled here through an id-indexed
+            // GameRules list - BasketBallShotMarker pushes it directly via EnterShotMarker/ExitShotMarker
+            // as this participant's own hitbox enters/exits a marker's trigger volume.
 
             if (PlayerDistanceFromRim < Constants.DISTANCE_3point)
             {
@@ -157,7 +158,48 @@ public class BasketBallState : MonoBehaviour
         SevenAttempt = false;
         MoneyBallEnabledOnShoot = false;
         PlayerOnMarkerOnShoot = false;
-        OnShootShotMarkerId = 0;
+        onShootShotMarker = null;
+    }
+
+    /// <summary>
+    /// This participant enters <paramref name="marker"/>'s trigger volume. Called by
+    /// <see cref="BasketBallShotMarker"/> from its own OnTriggerEnter, resolved to this exact
+    /// participant through the actor-side <c>PlayerIdentifier</c> - never a role-wide flag. The most
+    /// recently entered marker wins; this deliberately does not stack/restore an earlier marker when
+    /// two overlap.
+    /// </summary>
+    public void EnterShotMarker(BasketBallShotMarker marker)
+    {
+        currentShotMarker = marker;
+        PlayerOnMarker = marker != null;
+    }
+
+    /// <summary>
+    /// This participant exits <paramref name="marker"/>'s trigger volume. Only clears occupancy when
+    /// <paramref name="marker"/> is still the current marker - exiting a marker the participant has
+    /// already left (the A-then-B overlap case) must not clobber the newer occupancy.
+    /// </summary>
+    public void ExitShotMarker(BasketBallShotMarker marker)
+    {
+        if (currentShotMarker != marker)
+        {
+            return;
+        }
+
+        currentShotMarker = null;
+        PlayerOnMarker = false;
+    }
+
+    /// <summary>
+    /// Snapshots <see cref="CurrentShotMarker"/> as the marker this shot was launched from. Called
+    /// once per attempt, at launch - see <see cref="BasketballShotPipeline.ApplyMarkerAndMoneyBallOnShoot"/>.
+    /// Once captured, <see cref="OnShootShotMarker"/> must not change for the rest of this attempt,
+    /// even if the participant exits or enters another marker while the ball is airborne.
+    /// </summary>
+    public void CaptureShotMarkerForAttempt()
+    {
+        onShootShotMarker = currentShotMarker;
+        PlayerOnMarkerOnShoot = PlayerOnMarker && onShootShotMarker != null;
     }
 
     //public bool isConsecutiveShot(GameStats gameStats)
@@ -207,16 +249,11 @@ public class BasketBallState : MonoBehaviour
         get => _playerOnMarkerOnShoot;
         set => _playerOnMarkerOnShoot = value;
     }
-    public int CurrentShotMarkerId
-    {
-        get => _currentShotMarkerId;
-        set => _currentShotMarkerId = value;
-    }
-    public int OnShootShotMarkerId
-    {
-        get => _onShootShotMarkerId;
-        set => _onShootShotMarkerId = value;
-    }
+    /// <summary>The marker this participant occupies right now, or null.</summary>
+    public BasketBallShotMarker CurrentShotMarker => currentShotMarker;
+
+    /// <summary>The marker captured at this attempt's launch, or null. See <see cref="CaptureShotMarkerForAttempt"/>.</summary>
+    public BasketBallShotMarker OnShootShotMarker => onShootShotMarker;
     public bool TwoPoints
     {
         get => _twoPoints;
