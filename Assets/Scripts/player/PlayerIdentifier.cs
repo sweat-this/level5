@@ -30,11 +30,15 @@ public class PlayerIdentifier : MonoBehaviour
     ///
     /// Player↔basketball cycle-cut slice: this is the one new member on <see cref="PlayerIdentifier"/>
     /// this slice adds. Basketball-side files (<c>BasketBall</c>, <c>BasketBallAuto</c>,
-    /// <c>ShotMeter</c>, <c>RangeMeter</c>) resolve their shooter through this instead of
+    /// <c>ShotMeter</c>) resolve their shooter through this instead of
     /// <c>GetComponent&lt;PlayerController&gt;()</c>/<c>&lt;AutoPlayerController&gt;()</c>, which is what
     /// lets them stop referencing those concrete types. Every existing field on this identifier
     /// (including <see cref="playerController"/>/<see cref="autoPlayerController"/> below) is
     /// unchanged - this is additive, not a replacement.
+    ///
+    /// AUD-010 Phase 1c: <c>SpawnCoordinator</c> also reads this to resolve the <c>IShooterActor</c>
+    /// it hands to <c>RangeMeter.BindOwner</c> during participant composition - <c>RangeMeter</c>
+    /// itself no longer resolves it, and no longer references <see cref="PlayerIdentifier"/> at all.
     /// </summary>
     public IShooterActor Actor => isCpu
         ? autoPlayer != null ? autoPlayer.GetComponent<IShooterActor>() : null
