@@ -24,7 +24,9 @@ Interaction is split three ways and all three are live at once:
 - Per-frame polling of `PlayerControls.UINavigation` inside each manager's `Update`, dispatching on
   `EventSystem.current.currentSelectedGameObject.name` (AUD-096, AUD-109).
 - Seven `TouchInput*Controller` scripts duplicating touch polling and a name→scene dispatch table
-  (AUD-100), which are the only reason `activeInputHandler` is still set to both backends.
+  (AUD-100). `activeInputHandler` is set to both backends for gameplay's `TouchInputController`
+  (which reads `Input.touches` directly and has no Input System equivalent yet), not primarily for
+  these seven - see the [2026-08-31 update](#update-2026-08-31-aud-100-characterization) below.
 
 Wiring is also split three ways — serialized `*UiObjects` view components, `SceneObjects.Find`, and
 raw `GameObject.Find` by name constant (AUD-103) — and no test loads a menu scene (AUD-112).
@@ -96,9 +98,25 @@ and delete its `Update` (AUD-108).
 (AUD-090); author `UniversalAdditionalCameraData` on menu cameras and drop HDR/MSAA there (AUD-093);
 reconcile the vSync conflict (AUD-094).
 
-**Phase 6 — Retire the legacy paths.** After device verification of Phases 1-3, delete the seven
-`TouchInput*Controller` scripts and the stray instances in the start scene (AUD-100, AUD-101), then
-set `activeInputHandler` to Input System only. Begin the TMP migration (AUD-092) screen by screen.
+**Phase 6 — Retire the legacy menu paths.** After device verification of Phases 1-3, delete the
+seven `TouchInput*Controller` scripts and the stray instances in the start scene (AUD-100, AUD-101).
+Begin the TMP migration (AUD-092) screen by screen.
+
+**Update, 2026-08-31 (AUD-100 characterization).** A full ownership/reference inventory, a
+feature-parity matrix (every legacy touch action already has a `Button.onClick` equivalent - see
+the [audit's AUD-100 characterization](ui-menu-audit-2026-08-17.md#aud-100-characterization--2026-08-31)),
+and a real ownership-hazard fix (`TouchInputController` no longer dereferences a nonexistent
+`GameLevelManager.instance` when the shared `touch_joystick.prefab` loads inside a menu scene)
+landed without a device pass, because none was available. **`activeInputHandler` staying at Both is
+not, and was never going to be, temporary scaffolding removed once the menu fallback goes away**:
+gameplay's `TouchInputController` reads `Input.touches` directly and has no Input System
+equivalent, so Both remains required regardless of whether the seven menu controllers are ever
+deleted. The original framing above ("these controllers are the only reason `activeInputHandler`
+is Both") describes the situation as it looked in the 2026-08-17 audit, not the corrected
+understanding; migrating gameplay touch to the Input System is an independent prerequisite for ever
+setting `activeInputHandler` to Input System only, and is out of scope for AUD-100 in either
+direction. Deletion of the seven controllers itself remains blocked on a real-device Gate A/Gate B
+pass that no session so far has been able to run.
 
 ## Guardrails
 

@@ -56,16 +56,35 @@ public class TouchInputController : MonoBehaviour
     GameObject joystickGameObject;
     public bool HoldDetected { get => hold1Detected; set => hold1Detected = value; }
 
-    #if UNITY_ANDROID || UNITY_IOS 
+    #if UNITY_ANDROID || UNITY_IOS
     private void Awake()
     {
+        // touch_joystick.prefab is nested into every menu screen prefab as well as the gameplay
+        // GameManager.prefab (AUD-100 characterization), so this component's Awake can run with no
+        // GameLevelManager in the scene at all. Disable this component only - the sibling menu
+        // touch-fallback controllers under the same shared prefab still need to run.
+        //
+        // In real gameplay, this relies on GameLevelManager's Awake having already run (no Script
+        // Execution Order entry enforces that). If that assumption is ever wrong, this used to throw
+        // a NullReferenceException here - loud, and caught the first time anyone played. Disabling
+        // instead trades that for a silent, permanent loss of gameplay touch input, so a violation
+        // is logged rather than swallowed.
+        if (GameLevelManager.instance == null)
+        {
+            Debug.LogWarning("TouchInputController.Awake: no GameLevelManager in scene; disabling. " +
+                "Expected outside gameplay (menu screens share this prefab); unexpected during gameplay.");
+            enabled = false;
+            return;
+        }
+
         instance = this;
         initializeTouchInputController();
     }
 
     private void Start()
     {
-        
+        // No GameLevelManager.instance guard needed here: Awake already disabled this component in
+        // that case, and Unity does not call Start on a component that is disabled by the end of Awake.
         playerController = GameLevelManager.instance.players[0].playerController;
     }
 
