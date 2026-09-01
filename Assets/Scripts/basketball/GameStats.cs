@@ -14,9 +14,13 @@ using Level5.Core.Match;
 ///
 /// It keeps its exact previous public surface so that none of the ~147 existing call sites change in
 /// this slice - including the shapes that are not properties: <see cref="getTotalPointAccuracy"/> is
-/// still a method, the four <c>campaign*</c> members are still lower-cased, and
-/// <see cref="ApplyMadeShot"/> still takes a <see cref="BasketBallState"/>. Phase 1c migrates
-/// consumers onto <see cref="Stats"/> one at a time; this type is retired once that finishes.
+/// still a method, and the four <c>campaign*</c> members are still lower-cased. Phase 1c migrates
+/// consumers onto <see cref="Stats"/> one at a time; this type is retired once that finishes. This
+/// type's last scene-type dependency - a made-shot seam that took the basketball's launch-time shot
+/// state as a parameter, purely to read one bool off it - is gone as of AUD-010 Phase 1c: the live
+/// made-shot path now calls <see cref="Stats"/>.ApplyMadeShot(bool, ShotScoringInput) directly, with
+/// the caller reading that bool itself before passing it in. No member of this type takes a scene
+/// type as a parameter or return value.
 ///
 /// <see cref="BuildExperienceInput"/> stays here rather than moving, because it reads
 /// <c>MatchRuntime</c>, which lives in Assembly-CSharp and which <c>Level5.Core</c> cannot reference.
@@ -38,29 +42,6 @@ public class GameStats : MonoBehaviour
     /// null dereference at runtime.
     /// </summary>
     public MatchStats Stats => _stats ??= new MatchStats();
-
-    /// <summary>
-    /// Advances the consecutive-made-shots streak. No caller outside this type uses it; kept for the
-    /// duration of 1b so that this slice changes no external surface at all.
-    /// </summary>
-    public void calculateConsecutiveShot(BasketBallState basketBallState)
-    {
-        Stats.CalculateConsecutiveShot(basketBallState.TwoAttempt);
-    }
-
-    /// <summary>
-    /// Scores one made shot and updates the counters and streak state behind it, in the one order
-    /// both require (AUD-065). See <see cref="MatchStats.ApplyMadeShot"/> for the ordering constraint
-    /// and the reason this scores twice.
-    ///
-    /// <paramref name="basketBallState"/> is read for exactly one member, <c>TwoAttempt</c> - that
-    /// single bool was this logic's entire dependency on the scene, and reducing it to a parameter is
-    /// what let the arithmetic move. The overload stays so no caller changes in this slice.
-    /// </summary>
-    public ShotScore ApplyMadeShot(BasketBallState basketBallState, ShotScoringInput input)
-    {
-        return Stats.ApplyMadeShot(basketBallState.TwoAttempt, input);
-    }
 
     public float getTotalPointAccuracy()
     {
