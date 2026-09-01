@@ -13,8 +13,22 @@ public class BasketBallShotMarker : MonoBehaviour
 
     private GameObject basketBallTarget;
     private SpriteRenderer spriteRenderer;
-    private BasketBallState basketBallState;
-    private IShooterActor actor;
+
+    /// <summary>
+    /// AUD-010 Phase 1c: the participant whose attempt first reached <see cref="maxShotAttempt"/> on
+    /// this marker - captured once by <see cref="RegisterAttempt"/>, not re-derived. Final-attempt
+    /// completion below waits on this exact runtime's actor/ball state, not
+    /// <c>GameLevelManager.instance.players[0]</c>, so a non-primary participant's final shot is not
+    /// gated on the primary player's state.
+    ///
+    /// Same caveat as <see cref="IShooterActor"/>'s own doc comment: this is an interface-typed
+    /// reference to a UnityEngine.Object-backed implementer, so <c>== null</c> below is plain
+    /// reference equality, not Unity's destroyed-object-aware overload. Not a live bug - nothing in
+    /// the current codebase <c>Destroy()</c>s a player/ball mid-match - but worth knowing before that
+    /// changes.
+    /// </summary>
+    private IBasketballRuntime finalAttemptRuntime;
+    private bool loggedMissingFinalAttemptRuntime;
 
     [SerializeField] public int positionMarkerId; // identitfy specific marker
     // spcific marker's stats
@@ -44,9 +58,6 @@ public class BasketBallShotMarker : MonoBehaviour
         _shotMade = 0;
         _shotAttempt = 0;
 
-        // get reference for accessing basketball state
-        basketBallState = GameLevelManager.instance.players[0].basketBallState;
-        actor = GameLevelManager.instance.players[0].Actor;
         displayCurrentMarkerStats = GameObject.Find(displayStatsTextObject).GetComponent<Text>();
         displayCurrentMarkerStats.text = "";
 
@@ -113,23 +124,38 @@ public class BasketBallShotMarker : MonoBehaviour
         if (isPointContestMode)
         {
             // max shot attempts reached
-            // player NOT in air, player does NOT have ball, ball ! in air
-            if (ShotAttempt >= maxShotAttempt && markerEnabled
-                && !actor.HasBasketball
-                && !actor.InAir
-                && !basketBallState.InAir)
+            if (ShotAttempt >= maxShotAttempt && markerEnabled)
             {
-                markerEnabled = false;
-                // decrease markers remaining
-                GameRules.instance.MarkersRemaining--;
-                spriteRenderer.color = new Color(1f, 1f, 1f, 0f); // opacity to 0
-                setDisplayText();
-
-                //check if last remaining shot marker
-                if (GameRules.instance.IsGameOver())
+                if (finalAttemptRuntime == null)
                 {
-                    //GameRules.instance.CounterTime = Timer.instance.CurrentTime;
-                    GameRules.instance.RequestGameOver();
+                    // The counter reached max with no captured final-attempt runtime - an
+                    // ownership/composition bug (RegisterAttempt always sets it the moment
+                    // ShotAttempt first equals maxShotAttempt). Never substitute player 0; log once
+                    // rather than every frame this condition holds.
+                    if (!loggedMissingFinalAttemptRuntime)
+                    {
+                        Debug.LogError($"BasketBallShotMarker '{name}': ShotAttempt reached MaxShotAttempt with no captured final-attempt runtime - marker completion is blocked.", this);
+                        loggedMissingFinalAttemptRuntime = true;
+                    }
+                }
+                // player NOT in air, player does NOT have ball, ball ! in air - the participant who
+                // took the final attempt, not GameLevelManager.instance.players[0].
+                else if (!finalAttemptRuntime.Actor.HasBasketball
+                    && !finalAttemptRuntime.Actor.InAir
+                    && !finalAttemptRuntime.State.InAir)
+                {
+                    markerEnabled = false;
+                    // decrease markers remaining
+                    GameRules.instance.MarkersRemaining--;
+                    spriteRenderer.color = new Color(1f, 1f, 1f, 0f); // opacity to 0
+                    setDisplayText();
+
+                    //check if last remaining shot marker
+                    if (GameRules.instance.IsGameOver())
+                    {
+                        //GameRules.instance.CounterTime = Timer.instance.CurrentTime;
+                        GameRules.instance.RequestGameOver();
+                    }
                 }
             }
         }
@@ -162,15 +188,27 @@ public class BasketBallShotMarker : MonoBehaviour
         if (other.gameObject.CompareTag("playerHitbox") && gameObject.CompareTag("shot_marker")
             && detectCollisions)
         {
-            _playerOnMarker = true;
-            other.GetComponentInParent<PlayerIdentifier>().basketball.GetComponent<BasketBallState>().CurrentShotMarkerId = positionMarkerId;
+            // Code review: only flip the role-wide presentation flag once the participant is
+            // actually resolved, so a failed resolution (logged by ResolveParticipantState) truly
+            // ignores the whole transition instead of leaving the marker's display state
+            // inconsistent with no participant's BasketBallState having been updated.
+            BasketBallState state = ResolveParticipantState(other, cpu: false);
+            if (state != null)
+            {
+                _playerOnMarker = true;
+                state.EnterShotMarker(this);
+            }
         }
         // if player enters shot marker area
         if (other.gameObject.CompareTag("autoPlayerHitbox") && gameObject.CompareTag("shot_marker")
             && detectCollisions)
         {
-            _autoPlayerOnMarker = true;
-            other.GetComponentInParent<PlayerIdentifier>().autoBasketball.GetComponent<BasketBallState>().CurrentShotMarkerId = positionMarkerId;
+            BasketBallState state = ResolveParticipantState(other, cpu: true);
+            if (state != null)
+            {
+                _autoPlayerOnMarker = true;
+                state.EnterShotMarker(this);
+            }
         }
     }
 
@@ -182,6 +220,7 @@ public class BasketBallShotMarker : MonoBehaviour
         {
             _playerOnMarker = false;
             setDisplayText(); // update display to empty
+            ResolveParticipantState(other, cpu: false)?.ExitShotMarker(this);
         }
         // if player exits shot marker area
         if (other.gameObject.CompareTag("autoPlayerHitbox") && gameObject.CompareTag("shot_marker")
@@ -190,6 +229,44 @@ public class BasketBallShotMarker : MonoBehaviour
             _autoPlayerOnMarker = false;
             locked = false;
             setDisplayText(); // update display to empty
+            ResolveParticipantState(other, cpu: true)?.ExitShotMarker(this);
+        }
+    }
+
+    /// <summary>
+    /// Resolves the exact participant this hitbox belongs to, through the actor-side
+    /// <see cref="PlayerIdentifier"/> - never a role-wide flag or GameLevelManager.players[0]. Logs
+    /// and returns null rather than throwing or falling back to another participant; an ordinary
+    /// trigger callback must not crash the scene over an incomplete composition.
+    /// </summary>
+    private BasketBallState ResolveParticipantState(Collider other, bool cpu)
+    {
+        PlayerIdentifier identifier = other.GetComponentInParent<PlayerIdentifier>();
+        GameObject ball = identifier != null ? (cpu ? identifier.autoBasketball : identifier.basketball) : null;
+        BasketBallState state = ball != null ? ball.GetComponent<BasketBallState>() : null;
+
+        if (state == null)
+        {
+            string role = cpu ? "CPU" : "human";
+            Debug.LogError($"BasketBallShotMarker '{name}': could not resolve the {role} participant's BasketBallState from '{other.name}' - ignoring this marker transition.", this);
+        }
+
+        return state;
+    }
+
+    /// <summary>
+    /// Registers one attempt on this marker for <paramref name="runtime"/>'s shot. Only captures
+    /// <see cref="finalAttemptRuntime"/> the moment the counter first reaches
+    /// <see cref="maxShotAttempt"/> - a later extra attempt (taken before the marker disables) must
+    /// not overwrite it.
+    /// </summary>
+    public void RegisterAttempt(IBasketballRuntime runtime)
+    {
+        ShotAttempt++;
+
+        if (ShotAttempt == maxShotAttempt)
+        {
+            finalAttemptRuntime = runtime;
         }
     }
 

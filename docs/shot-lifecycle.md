@@ -44,7 +44,7 @@ records, at the moment the ball leaves the player's hands:
 
 - which line it was taken from (`TwoAttempt` / `ThreeAttempt` / `FourAttempt` / `SevenAttempt`);
 - whether the player was standing on a shot marker, and which one (`PlayerOnMarkerOnShoot`,
-  `OnShootShotMarkerId`);
+  `OnShootShotMarker`);
 - whether the money ball was active (`MoneyBallEnabledOnShoot`).
 
 This matters because the player can move, the marker can change state, and the money ball can be
@@ -54,6 +54,42 @@ shot worth what it looked like when it was taken.
 AUD-015 was a bug in exactly this area: the attempt flags were set at launch but only cleared on the
 make path, so a missed two followed by a made three scored both. They are now reset at the start of
 each attempt by `BasketballState.ResetShotAttemptSnapshot()`.
+
+### Participant-scoped marker ownership (AUD-010 Phase 1c)
+
+Marker occupancy and the launch snapshot used to be an `int` id (`CurrentShotMarkerId` /
+`OnShootShotMarkerId`) resolved back through `GameRules.instance.BasketBallShotMarkersList[id]` -
+one shared list, indexed the same way regardless of which participant was asking. That made it
+possible for one participant's marker state to be read (or overwritten) using another's id, and it
+gave "no marker" and "marker 0" the same representation, since the id defaulted to 0.
+
+Marker occupancy is now the marker reference itself, owned by each participant's own
+`BasketBallState`:
+
+- `CurrentShotMarker` - the marker this participant currently occupies, or null. Set by
+  `BasketBallState.EnterShotMarker(marker)` / `ExitShotMarker(marker)`, called from
+  `BasketBallShotMarker`'s own `OnTriggerEnter`/`OnTriggerExit`, resolved to the exact colliding
+  participant through the actor-side `PlayerIdentifier` (never a role-wide flag, never
+  `GameLevelManager.instance.players[0]`). The most recently entered marker wins if two overlap;
+  exiting an earlier marker after entering a newer one is a no-op.
+- `OnShootShotMarker` - the marker snapshotted at this attempt's launch, via
+  `BasketBallState.CaptureShotMarkerForAttempt()`. Once captured it does not change for the rest of
+  the attempt, even if the participant exits the marker or enters another one while the ball is
+  airborne. `BasketballShotPipeline.ApplyMarkerAndMoneyBallOnShoot` captures it and registers the
+  attempt directly on that reference (`BasketBallShotMarker.RegisterAttempt`); `BasketBallShotMade`
+  reads it directly to update the made-shot marker state. Neither indexes
+  `GameRules.BasketBallShotMarkersList` by id.
+
+**Marker final-attempt owner.** Each `BasketBallShotMarker` remembers which runtime's attempt first
+reached `MaxShotAttempt` (`finalAttemptRuntime`, set by `RegisterAttempt` - a later extra attempt
+before the marker disables does not overwrite it). Completion for a point-contest marker waits on
+that captured runtime's own `Actor.HasBasketball` / `Actor.InAir` / `State.InAir`, not
+`GameLevelManager.instance.players[0]`'s - so a secondary human or CPU's final attempt is judged on
+their own state, not the primary player's.
+
+`GameRules` still owns everything session-wide: marker discovery/filtering, `MarkersRemaining`,
+match-end routing, and mutable `MoneyBallEnabled`. This slice only moved *whose* marker a shot
+belongs to, not who manages the marker list or ends the match.
 
 ## What a made shot is worth
 

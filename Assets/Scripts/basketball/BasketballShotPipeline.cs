@@ -28,20 +28,37 @@ public static class BasketballShotPipeline
     /// <summary>
     /// Credits the current shot toward its marker's attempt count and money-ball bonus when the
     /// shooter is standing on an enabled marker in a mode that requires them. Mirrors
-    /// <c>BasketBall.shootBasketBall</c>'s block exactly; both human and CPU shots call this now.
+    /// <c>BasketBall.shootBasketBall</c>'s original block; both human and CPU shots call this now.
+    ///
+    /// AUD-010 Phase 1c: takes the shooter's own <see cref="IBasketballRuntime"/> instead of a bare
+    /// <c>BasketBallState</c>/<c>GameStats</c> pair, so the marker this shot is credited to is the
+    /// exact <see cref="BasketBallState.CurrentShotMarker"/> reference this participant is standing
+    /// on - never an id resolved back through <c>GameRules.BasketBallShotMarkersList</c>.
     /// </summary>
-    public static void ApplyMarkerAndMoneyBallOnShoot(BasketBallState basketBallState, GameStats gameStats)
+    public static void ApplyMarkerAndMoneyBallOnShoot(IBasketballRuntime runtime)
     {
+        BasketBallState basketBallState = runtime.State;
+        GameStats gameStats = runtime.Stats;
+
         if (!basketBallState.PlayerOnMarker || !GameRules.instance.PositionMarkersRequired)
         {
             return;
         }
 
-        basketBallState.PlayerOnMarkerOnShoot = true;
-        basketBallState.OnShootShotMarkerId = basketBallState.CurrentShotMarkerId;
-        GameRules.instance.BasketBallShotMarkersList[basketBallState.OnShootShotMarkerId].ShotAttempt++;
+        if (basketBallState.CurrentShotMarker == null)
+        {
+            // PlayerOnMarker is only ever set true alongside a marker reference by
+            // BasketBallState.EnterShotMarker, so this is an ownership/composition bug, not a
+            // reachable gameplay state - never guess marker zero.
+            Debug.LogError($"BasketballShotPipeline.ApplyMarkerAndMoneyBallOnShoot: participant {runtime.ParticipantId} has PlayerOnMarker true but no CurrentShotMarker - skipping marker accounting for this shot.");
+            return;
+        }
 
-        if (GameRules.instance.BasketBallShotMarkersList[basketBallState.OnShootShotMarkerId].ShotAttempt == 5
+        basketBallState.CaptureShotMarkerForAttempt();
+        BasketBallShotMarker marker = basketBallState.OnShootShotMarker;
+        marker.RegisterAttempt(runtime);
+
+        if (marker.ShotAttempt == 5
             && (MatchRuntime.Rules.IsThreePointContest || MatchRuntime.Rules.IsFourPointContest || MatchRuntime.Rules.IsSevenPointContest))
         {
             gameStats.Stats.MoneyBallAttempts++;
