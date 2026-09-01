@@ -8,14 +8,13 @@ using Random = UnityEngine.Random;
 using Level5.Core;
 using Level5.Core.Match;
 
-public class BasketBallAuto : MonoBehaviour
+public class BasketBallAuto : MonoBehaviour, IBasketballRuntime
 {
-    [SerializeField]
-    public int pid;
-    [SerializeField]
-    public int bid;
-    [SerializeField]
-    public int bsid;
+    /// <summary>AUD-013 runtime ownership, bound once by <see cref="SpawnCoordinator.GiveBall"/> via <see cref="BindOwner"/>, before <see cref="Start"/> runs.</summary>
+    int participantId;
+    bool isCpu;
+    bool isPrimary;
+    bool bound;
     SpriteRenderer spriteRenderer;
     [SerializeField]
     Rigidbody rigidbody;
@@ -97,15 +96,19 @@ public class BasketBallAuto : MonoBehaviour
     // Use this for initialization
     void Start()
     {
+        if (!bound)
+        {
+            // enabled = false would not stop OnCollisionEnter/OnTriggerEnter - Unity dispatches those
+            // regardless of the component's enabled state - and both dereference actor/basketBallState
+            // unconditionally below. Deactivating the GameObject is what actually quarantines it.
+            Debug.LogError($"BasketBallAuto on '{gameObject.name}' reached Start() with no bound owner.", this);
+            gameObject.SetActive(false);
+            return;
+        }
+
         instance = this;
-        PlayerIdentifier playerIdentifier = GetComponent<PlayerIdentifier>();
-        autoPlayer = playerIdentifier.autoPlayer;
-        actor = playerIdentifier.Actor;
         currentShooter = actor.ShooterAttributes;
         basketBallPosition = autoPlayer.transform.Find("basketBall_position").gameObject;
-        basketBallState = GetComponent<BasketBallState>();
-        basketBallState.isCpu = true;
-        bsid = pid;
         //shotMeter = Assets.Scripts.Utility.UtilityFunctions.FindDeepChild(autoPlayer.transform, "shot_meter").GetComponent<ShotMeter>();
         rigidbody = gameObject.GetComponent<Rigidbody>();
         gameStats = GetComponent<GameStats>();
@@ -551,4 +554,33 @@ public class BasketBallAuto : MonoBehaviour
     public GameStats GameStats => gameStats;
     public BasketBallState BasketBallState => basketBallState;
     public bool UiStatsEnabled { get; private set; }
+
+    // ======================= IBasketballRuntime (AUD-013) =======================
+
+    public int ParticipantId => participantId;
+    public bool IsCpu => isCpu;
+    public bool IsPrimary => isPrimary;
+    public GameObject OwnerActor => autoPlayer;
+    IShooterActor IBasketballRuntime.Actor => actor;
+    BasketBallState IBasketballRuntime.State => basketBallState;
+    GameStats IBasketballRuntime.Stats => gameStats;
+
+    public void BindOwner(int participantId, bool isCpu, bool isPrimary, GameObject ownerActor, IShooterActor actor)
+    {
+        if (bound)
+        {
+            Debug.LogError($"BasketBallAuto on '{gameObject.name}' is already bound; ignoring a second BindOwner call.", this);
+            return;
+        }
+
+        this.participantId = participantId;
+        this.isCpu = isCpu;
+        this.isPrimary = isPrimary;
+        autoPlayer = ownerActor;
+        this.actor = actor;
+        bound = true;
+
+        basketBallState = GetComponent<BasketBallState>();
+        basketBallState.BindOwner(isCpu, ownerActor);
+    }
 }

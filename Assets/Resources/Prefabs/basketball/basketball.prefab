@@ -203,7 +203,6 @@ GameObject:
   - component: {fileID: 4784205251377224028}
   - component: {fileID: 2826179861109487654}
   - component: {fileID: -2072137657206008714}
-  - component: {fileID: -7650968708584680428}
   m_Layer: 8
   m_Name: basketball
   m_TagString: basketball
@@ -493,34 +492,6 @@ MonoBehaviour:
     _campaignLosses: 0
     _campaignTies: 0
     _campaignGamesPlayed: 0
---- !u!114 &-7650968708584680428
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 3569830428581291380}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 3f595a79238fe4f439aeac86720f9e96, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  pid: 0
-  bid: 0
-  bsid: 0
-  isCpu: 0
-  isDefensivePlayer: 0
-  player: {fileID: 0}
-  basketball: {fileID: 0}
-  autoPlayer: {fileID: 0}
-  autoBasketball: {fileID: 0}
-  playerController: {fileID: 0}
-  autoPlayerController: {fileID: 0}
-  basketBallController: {fileID: 0}
-  basketBallAutoController: {fileID: 0}
-  basketBallState: {fileID: 0}
-  characterProfile: {fileID: 0}
-  gameStats: {fileID: 0}
 --- !u!1 &3569848962387920496
 GameObject:
   m_ObjectHideFlags: 0

@@ -57,17 +57,40 @@ public class BasketBallState : MonoBehaviour
         //instance = this;
     }
 
+    /// <summary>Whether <see cref="BindOwner"/> has run. Set once, at spawn time.</summary>
+    public bool Bound { get; private set; }
+
+    /// <summary>
+    /// AUD-013: explicit owner/role binding from the same composition operation that spawns the ball
+    /// (<see cref="SpawnCoordinator.GiveBall"/>, via <see cref="IBasketballRuntime.BindOwner"/>), so
+    /// <see cref="Start"/> no longer independently rediscovers ownership from a ball-side
+    /// <c>PlayerIdentifier</c>.
+    /// </summary>
+    public void BindOwner(bool isCpu, GameObject ownerActor)
+    {
+        if (Bound)
+        {
+            Debug.LogError($"BasketBallState on '{gameObject.name}' is already bound; ignoring a second BindOwner call.", this);
+            return;
+        }
+
+        this.isCpu = isCpu;
+        player = ownerActor;
+        Bound = true;
+    }
+
     void Start()
     {
-        isCpu = GetComponent<PlayerIdentifier>().isCpu;
-        if (isCpu)
+        if (!Bound)
         {
-            player = GetComponent<PlayerIdentifier>().autoPlayer;
+            // SetActive rather than enabled = false: this class has no collision/trigger handlers of
+            // its own, but sibling components on the same GameObject (BasketBall/BasketBallAuto) do,
+            // and deactivating here is consistent with their guards for the same unbound state.
+            Debug.LogError($"BasketBallState on '{gameObject.name}' reached Start() with no bound owner.", this);
+            gameObject.SetActive(false);
+            return;
         }
-        else
-        {
-            player = GetComponent<PlayerIdentifier>().player;
-        }
+
         //position to shoot basketball at (middle of rim)
         _basketBallTarget = GameObject.Find("basketBall_target");
 

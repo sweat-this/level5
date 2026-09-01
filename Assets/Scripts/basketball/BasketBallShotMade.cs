@@ -90,11 +90,16 @@ public class BasketBallShotMade : MonoBehaviour
         }
     }
 
-    public void shotMade(GameStats gameStats, PlayerIdentifier playerIdentifier)
+    /// <summary>
+    /// AUD-013: scores the shot the collision detected, reading every piece of ball/owner state
+    /// through the basketball runtime binding instead of a ball-side <c>PlayerIdentifier</c>. One
+    /// method for both human and CPU shots - <paramref name="runtime"/> is whichever of
+    /// <see cref="BasketBall"/>/<see cref="BasketBallAuto"/> the colliding ball implements it.
+    /// </summary>
+    public void shotMade(IBasketballRuntime runtime)
     {
-        BasketBall basketBall = playerIdentifier.basketBallController;
-        BasketBallAuto basketBallAuto = playerIdentifier.basketBallAutoController;
-        basketBallState = playerIdentifier.basketBallState;
+        GameStats gameStats = runtime.Stats;
+        basketBallState = runtime.State;
         if (isColliding)
         {
             return;
@@ -105,7 +110,7 @@ public class BasketBallShotMade : MonoBehaviour
         }
         shotMade1 = false;
         shotMade2 = false;
-        float shotDistance = LastShotDistanceFor(playerIdentifier, basketBall, basketBallAuto);
+        float shotDistance = runtime.LastShotDistance;
         // add to total shot distance made total
         float shotDistanceFeet = shotDistance * 6;
         gameStats.Stats.TotalDistance += shotDistanceFeet;
@@ -117,8 +122,8 @@ public class BasketBallShotMade : MonoBehaviour
         // updates shots made/shot attempted
         ShotScore score = updateShotMadeBasketBallStats(gameStats, basketBallState, shotDistance);
         ShotResolved?.Invoke(new MadeShotResult(
-            playerIdentifier.pid,
-            playerIdentifier.isCpu,
+            runtime.ParticipantId,
+            runtime.IsCpu,
             ShotKindOf(basketBallState),
             score,
             shotDistance,
@@ -139,12 +144,12 @@ public class BasketBallShotMade : MonoBehaviour
 
         //GameRules.instance.updatePlayerScore();
         //// update onscreen ui stats
-        //if (!playerIdentifier.isCpu )
+        //if (!runtime.IsCpu)
         //{
         //    //basketBall.updateScoreText();
         //    GameRules.instance.updatePlayerScore();
         //}
-        //if (playerIdentifier.isCpu)
+        //if (runtime.IsCpu)
         //{
         //    //basketBallAuto.updateScoreText();
         //    GameRules.instance.updatePlayerScore();
@@ -152,18 +157,6 @@ public class BasketBallShotMade : MonoBehaviour
         // update game rules ui
     }
 
-    private static float LastShotDistanceFor(
-        PlayerIdentifier playerIdentifier,
-        BasketBall basketBall,
-        BasketBallAuto basketBallAuto)
-    {
-        if (playerIdentifier != null && playerIdentifier.isCpu)
-        {
-            return basketBallAuto != null ? basketBallAuto.LastShotDistance : 0f;
-        }
-
-        return basketBall != null ? basketBall.LastShotDistance : 0f;
-    }
     void instantiateMoney(float value)
     {
         // set value of shot

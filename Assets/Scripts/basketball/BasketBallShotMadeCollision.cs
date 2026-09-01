@@ -13,11 +13,18 @@ public class BasketBallShotMadeCollision : MonoBehaviour
             && gameObject.name.Equals("basketBallMadeShot2")
             && basketBallShotMade.ShotMade1)
         {
-            PlayerIdentifier pi = other.GetComponent<PlayerIdentifier>();
+            // AUD-013: the colliding ball's own runtime binding, not a ball-side PlayerIdentifier.
+            IBasketballRuntime runtime = other.GetComponent<IBasketballRuntime>();
+            if (runtime == null)
+            {
+                Debug.LogError($"'{other.gameObject.name}' triggered a made shot with no basketball runtime binding.", other.gameObject);
+                return;
+            }
+
             basketBallShotMade.ShotMade2 = true;
             // Consecutive-shot tracking (AUD-065) now happens inside shotMade(), before scoring
             // reads it, so the streak bonus reflects the shot that was just made.
-            basketBallShotMade.shotMade(pi.gameStats, pi);
+            basketBallShotMade.shotMade(runtime);
         }
     }
 }
