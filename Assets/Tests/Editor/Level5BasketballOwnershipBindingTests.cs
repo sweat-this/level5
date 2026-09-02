@@ -33,7 +33,8 @@ public class Level5BasketballOwnershipBindingTests
             registry,
             new ResolvedMatchRules(combatMode: CombatMode.Standard, enemiesEnabled: false, hardcore: false, enemiesOnly: false),
             new PlayerRoster(new PlayerSlot[0]),
-            GameModeId.None);
+            GameModeId.None,
+            new FakeGroundHeightProvider());
 
         giveBall = typeof(SpawnCoordinator).GetMethod("GiveBall", BindingFlags.NonPublic | BindingFlags.Instance);
         Assert.IsNotNull(giveBall, "SpawnCoordinator.GiveBall must exist - the sole basketball creation path this migration targets");
@@ -361,5 +362,15 @@ public class Level5BasketballOwnershipBindingTests
         InvokeStart(groundCheck);
 
         Assert.IsFalse(groundCheckGo.activeSelf, "GroundCheck must deactivate itself rather than run its trigger handlers against null state");
+    }
+
+    // AUD-010 Phase 1c: GiveBall now also binds a human ball's IGroundHeightProvider - unrelated to
+    // this file's IBasketballRuntime ownership focus, but a coordinator built without one makes every
+    // human-ball GiveBall call here log an unexpected error (see
+    // Level5BasketballGroundHeightProviderTests for that binding's own coverage). Supplying a stub
+    // keeps this file's tests exercising only what they are named for.
+    private sealed class FakeGroundHeightProvider : IGroundHeightProvider
+    {
+        public float GroundHeight => 0f;
     }
 }

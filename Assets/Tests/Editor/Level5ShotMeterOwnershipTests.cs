@@ -44,7 +44,8 @@ public class Level5ShotMeterOwnershipTests
             registry,
             new ResolvedMatchRules(combatMode: CombatMode.Standard, enemiesEnabled: false, hardcore: false, enemiesOnly: false),
             new PlayerRoster(new PlayerSlot[0]),
-            GameModeId.None);
+            GameModeId.None,
+            new FakeGroundHeightProvider());
 
         registerHuman = typeof(SpawnCoordinator).GetMethod("RegisterHuman", BindingFlags.NonPublic | BindingFlags.Instance);
         Assert.IsNotNull(registerHuman, "SpawnCoordinator.RegisterHuman must exist");
@@ -664,5 +665,15 @@ public class Level5ShotMeterOwnershipTests
         public GameStats Stats => null;
         public float LastShotDistance => 0f;
         public void BindOwner(int participantId, bool isCpu, bool isPrimary, GameObject ownerActor, IShooterActor actor) { }
+    }
+
+    // AUD-010 Phase 1c: GiveBall now also binds a human ball's IGroundHeightProvider - unrelated to
+    // this file's ShotMeter ownership focus, but a coordinator built without one makes every
+    // human-ball GiveBall call here log an unexpected error (see
+    // Level5BasketballGroundHeightProviderTests for that binding's own coverage). Supplying a stub
+    // keeps this file's tests exercising only what they are named for.
+    private sealed class FakeGroundHeightProvider : IGroundHeightProvider
+    {
+        public float GroundHeight => 0f;
     }
 }

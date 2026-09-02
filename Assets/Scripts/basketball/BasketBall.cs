@@ -44,6 +44,14 @@ public class BasketBall : MonoBehaviour, IBasketballRuntime
     bool isPrimary;
     bool bound;
 
+    /// <summary>
+    /// AUD-010 Phase 1c: the no-active-Terrain drop-shadow fallback, bound once by
+    /// <see cref="SpawnCoordinator.GiveBall"/> via <see cref="BindGroundHeightProvider"/>, before
+    /// <see cref="Start"/> runs. Read live in <see cref="Update"/> - never cached - since the bound
+    /// <c>GameLevelManager</c> updates its own value after spawning.
+    /// </summary>
+    IGroundHeightProvider groundHeightProvider;
+
     Text scoreText;
     Text shootProfileText;
 
@@ -82,6 +90,16 @@ public class BasketBall : MonoBehaviour, IBasketballRuntime
             // the only thing that actually quarantines it, and also stops the child GroundCheck's
             // own trigger handlers from running against this same unbound state.
             Debug.LogError($"BasketBall on '{gameObject.name}' reached Start() with no bound owner.", this);
+            gameObject.SetActive(false);
+            return;
+        }
+
+        if (groundHeightProvider == null)
+        {
+            // Same fail-closed shape as the missing-owner branch above: sibling collision/trigger
+            // behavior on this GameObject assumes a fully composed basketball, so disabling only this
+            // component is not enough.
+            Debug.LogError($"BasketBall on '{gameObject.name}' reached Start() with no bound ground-height provider.", this);
             gameObject.SetActive(false);
             return;
         }
@@ -163,10 +181,7 @@ public class BasketBall : MonoBehaviour, IBasketballRuntime
                 rigidbody.linearVelocity = rigidbody.linearVelocity.normalized * maxBasketballSpeed;
             }
             // drop shadow lock to bball transform on the ground
-            // AUD-052: guarded like PlayerController - no active Terrain otherwise NREs per frame
-            float shadowHeight = Terrain.activeTerrain != null
-                ? Terrain.activeTerrain.SampleHeight(transform.position) + 0.02f
-                : GameLevelManager.instance.TerrainHeight + 0.02f;
+            float shadowHeight = ResolveDropShadowHeight();
             dropShadow.transform.position = new Vector3(transform.root.position.x, shadowHeight, transform.root.position.z);
 
             // change this to reduce opacity
@@ -194,6 +209,21 @@ public class BasketBall : MonoBehaviour, IBasketballRuntime
                     basketBallPosition.transform.position.z);
             }
         }
+    }
+
+    /// <summary>
+    /// The drop shadow's Y position: an active Terrain's own sampled height where one exists, else
+    /// the bound <see cref="groundHeightProvider"/>'s current value.
+    /// AUD-052: guarded like PlayerController - no active Terrain otherwise NREs per frame.
+    /// AUD-010 Phase 1c: <see cref="IGroundHeightProvider.GroundHeight"/> is read here, at the point of
+    /// use, every call - never cached - since the bound <c>GameLevelManager</c> updates its own value
+    /// after spawning.
+    /// </summary>
+    private float ResolveDropShadowHeight()
+    {
+        return Terrain.activeTerrain != null
+            ? Terrain.activeTerrain.SampleHeight(transform.position) + 0.02f
+            : groundHeightProvider.GroundHeight + 0.02f;
     }
 
     /// <summary>
@@ -547,5 +577,29 @@ public class BasketBall : MonoBehaviour, IBasketballRuntime
 
         basketBallState = GetComponent<BasketBallState>();
         basketBallState.BindOwner(isCpu, ownerActor);
+    }
+
+    // ======================= IGroundHeightProvider binding (AUD-010 Phase 1c) =======================
+
+    /// <summary>
+    /// Explicit ground-height binding from <see cref="SpawnCoordinator.GiveBall"/>, called once
+    /// immediately after <see cref="BindOwner"/> and before Unity calls <see cref="Start"/>.
+    /// Ownership-only - no visual or physics side effects, and the reference is never read here.
+    /// </summary>
+    public void BindGroundHeightProvider(IGroundHeightProvider provider)
+    {
+        if (provider == null)
+        {
+            Debug.LogError($"BasketBall on '{gameObject.name}' was bound with a null ground-height provider.", this);
+            return;
+        }
+
+        if (groundHeightProvider != null)
+        {
+            Debug.LogError($"BasketBall on '{gameObject.name}' already has a bound ground-height provider; ignoring a second BindGroundHeightProvider call.", this);
+            return;
+        }
+
+        groundHeightProvider = provider;
     }
 }

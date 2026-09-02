@@ -19,19 +19,30 @@ public sealed class SpawnCoordinator
     private readonly ResolvedMatchRules rules;
     private readonly PlayerRoster roster;
     private readonly GameModeId modeId;
+    private readonly IGroundHeightProvider groundHeightProvider;
 
+    /// <summary>
+    /// AUD-010 Phase 1c: <paramref name="groundHeightProvider"/> is optional so every existing direct
+    /// construction site (tests exercising <c>RegisterHuman</c>/<c>RegisterCpu</c>/<c>GiveBall</c>
+    /// without a running <c>GameLevelManager</c>) keeps compiling unchanged. Production
+    /// (<c>GameLevelManager</c>) always supplies one; a human ball spawned through a coordinator built
+    /// without one fails clearly in its own <c>Start()</c> instead of silently inventing a fallback -
+    /// see <see cref="GiveBall"/> and <c>BasketBall.BindGroundHeightProvider</c>.
+    /// </summary>
     public SpawnCoordinator(
         SpawnLocations locations,
         PlayerRegistry registry,
         ResolvedMatchRules rules,
         PlayerRoster roster,
-        GameModeId modeId)
+        GameModeId modeId,
+        IGroundHeightProvider groundHeightProvider = null)
     {
         this.locations = locations;
         this.registry = registry;
         this.rules = rules;
         this.roster = roster;
         this.modeId = modeId;
+        this.groundHeightProvider = groundHeightProvider;
     }
 
     /// <summary>The spawn points a gameplay scene has to provide, resolved once.</summary>
@@ -487,6 +498,15 @@ public sealed class SpawnCoordinator
 
         GameObject ownerActor = forCpu ? owner.autoPlayer : owner.player;
         runtime.BindOwner(owner.pid, forCpu, slotId == 0, ownerActor, owner.Actor);
+
+        // AUD-010 Phase 1c: only the human ball's drop-shadow fallback needs a live ground height -
+        // CPU composition (BasketBallAuto) is unaffected. Passing the possibly-null coordinator-level
+        // provider through is deliberate: BindGroundHeightProvider's own null-provider guard is what
+        // makes an incomplete coordinator fail clearly instead of the ball inventing a fallback.
+        if (runtime is BasketBall humanBall)
+        {
+            humanBall.BindGroundHeightProvider(groundHeightProvider);
+        }
 
         if (forCpu)
         {
