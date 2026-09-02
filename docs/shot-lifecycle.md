@@ -109,17 +109,27 @@ The boundary this draws:
 - **immutable match rules** (`ResolvedMatchRules`, reached through `MatchRuntime.Rules`) - read
   directly by basketball code, once per made-shot operation and reused for every decision that
   operation makes, rather than resolved separately for each check.
-- **mutable basketball-match/marker state** (`MoneyBallEnabled`, `PositionMarkersRequired`,
-  `MarkersRemaining`, `IsGameOver()`, `RequestGameOver()`) - stays on `GameRules`, unchanged by
-  this slice.
+- **mutable basketball-match/marker state** (`MoneyBallEnabled`, `MarkersRemaining`, `IsGameOver()`,
+  `RequestGameOver()`) - stays on `GameRules`, unchanged by this slice.
 - **`GameRules` compatibility properties** - kept on `GameRules` for callers outside basketball;
-  only `Assets/Scripts/basketball` is forbidden from reaching for the migrated five (enforced by
-  `Level5BasketballGameRulesFacadeGuardTests`).
+  only `Assets/Scripts/basketball` is forbidden from reaching for the migrated properties (enforced
+  by `Level5BasketballGameRulesFacadeGuardTests`).
 
 `BasketballShotPipeline.ApplyMarkerAndMoneyBallOnShoot` already read `MatchRuntime.Rules` directly
 before this slice (it predates the `GameRules` forwarding properties being used there) and was left
-as-is; its two remaining `GameRules` reads (`PositionMarkersRequired`, `MoneyBallEnabled`) are
-mutable session state, not part of this migration.
+as-is; its `MoneyBallEnabled` read is mutable session state and stays on `GameRules`, untouched.
+
+**`PositionMarkersRequired` migrated in a follow-up Phase 1c slice.** `GameRules.PositionMarkersRequired`
+was never independent state: `GameRules.Start` sets its backing field to `true` exactly once, only
+when `rules.RequiresAnyShotMarkers` is already `true`, and nothing else in the codebase writes it
+afterward - it was a one-shot compatibility cache/view of that immutable rule, not a record of
+marker discovery, count, or setup completion. `BasketballShotPipeline.ApplyMarkerAndMoneyBallOnShoot`
+now reads `rules.RequiresAnyShotMarkers` from its own `MatchRuntime.Rules` snapshot instead, so the
+marker-required gate no longer depends on `GameRules.Start` having already run. The property itself
+(`GameRules.PositionMarkersRequired` and its backing field) is kept for callers outside basketball;
+`Assets/Scripts/basketball` is now forbidden from reaching for it, enforced by the same
+`Level5BasketballGameRulesFacadeGuardTests` guard as the properties above. `MoneyBallEnabled`
+remains the one live, independently-mutable `GameRules` dependency left in this method.
 
 `BasketBallShotMarker.Update()` resolves `IsPointContestMode()` once per frame and threads the
 result into `setDisplayText(bool)` and the two marker-completion branches, rather than each of up to

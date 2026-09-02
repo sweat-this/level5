@@ -40,6 +40,11 @@ public class GameRules : MonoBehaviour
 
     [SerializeField]
     private int markersRemaining;
+    // AUD-010 Phase 1c: no longer read by basketball scoring. The backing field is set once in
+    // Start(), from the same immutable rule (rules.RequiresAnyShotMarkers) it forwards - never an
+    // independent record of marker discovery/count/completion - so BasketballShotPipeline now reads
+    // that rule directly from its own MatchRuntime.Rules snapshot instead of this one-shot cache.
+    // Kept as a compatibility view for callers outside basketball - see docs/shot-lifecycle.md.
     [SerializeField]
     private bool positionMarkersRequired;
     public bool PositionMarkersRequired => positionMarkersRequired;

@@ -9,15 +9,15 @@ using NUnit.Framework;
 /// snapshot), not through the <c>GameRules</c> compatibility facade properties that merely forward
 /// them. Those properties (<c>GameRules.GameModeRequiresMoneyBall</c>,
 /// <c>GameModeThreePointContest</c>, <c>GameModeFourPointContest</c>, <c>GameModeSevenPointContest</c>,
-/// <c>GameModeAllPointContest</c>) stay on <c>GameRules</c> for other callers - this only forbids the
-/// basketball folder from reaching for them again.
+/// <c>GameModeAllPointContest</c>, <c>PositionMarkersRequired</c>) stay on <c>GameRules</c> for other
+/// callers - this only forbids the basketball folder from reaching for them again.
 ///
 /// Deliberately does not forbid <c>GameRules</c> itself: <c>MoneyBallEnabled</c>,
-/// <c>PositionMarkersRequired</c>, <c>MarkersRemaining</c>, <c>IsGameOver()</c> and
-/// <c>RequestGameOver()</c> remain valid, unresolved mutable session/lifecycle dependencies - see
-/// docs/shot-lifecycle.md. <c>InThePocketActivateValue</c> was the last of these read by
-/// <c>BasketBallShotMade</c> (AUD-010 Phase 1c) - it was always 0 in production, so that file now
-/// uses an explicit constant instead and is banned from referencing <c>GameRules</c> at all, below.
+/// <c>MarkersRemaining</c>, <c>IsGameOver()</c> and <c>RequestGameOver()</c> remain valid, unresolved
+/// mutable session/lifecycle dependencies - see docs/shot-lifecycle.md.
+/// <c>InThePocketActivateValue</c> was the last of these read by <c>BasketBallShotMade</c>
+/// (AUD-010 Phase 1c) - it was always 0 in production, so that file now uses an explicit constant
+/// instead and is banned from referencing <c>GameRules</c> at all, below.
 /// </summary>
 public class Level5BasketballGameRulesFacadeGuardTests
 {
@@ -31,6 +31,7 @@ public class Level5BasketballGameRulesFacadeGuardTests
         "GameModeFourPointContest",
         "GameModeSevenPointContest",
         "GameModeAllPointContest",
+        "PositionMarkersRequired",
     };
 
     [Test]

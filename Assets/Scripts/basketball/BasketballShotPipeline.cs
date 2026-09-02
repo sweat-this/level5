@@ -34,13 +34,21 @@ public static class BasketballShotPipeline
     /// <c>BasketBallState</c>/<c>GameStats</c> pair, so the marker this shot is credited to is the
     /// exact <see cref="BasketBallState.CurrentShotMarker"/> reference this participant is standing
     /// on - never an id resolved back through <c>GameRules.BasketBallShotMarkersList</c>.
+    ///
+    /// AUD-010 Phase 1c: the marker-required gate now reads <see cref="ResolvedMatchRules.RequiresAnyShotMarkers"/>
+    /// from one <c>MatchRuntime.Rules</c> snapshot for the whole call, rather than
+    /// <c>GameRules.instance.PositionMarkersRequired</c> - a compatibility cache <c>GameRules.Start</c>
+    /// copies from the same immutable rule once, before match play can reach a shot. See
+    /// docs/shot-lifecycle.md. <c>GameRules.instance.MoneyBallEnabled</c> stays untouched: it is
+    /// separately mutable session state, not an immutable match rule.
     /// </summary>
     public static void ApplyMarkerAndMoneyBallOnShoot(IBasketballRuntime runtime)
     {
         BasketBallState basketBallState = runtime.State;
         GameStats gameStats = runtime.Stats;
+        ResolvedMatchRules rules = MatchRuntime.Rules;
 
-        if (!basketBallState.PlayerOnMarker || !GameRules.instance.PositionMarkersRequired)
+        if (!basketBallState.PlayerOnMarker || !rules.RequiresAnyShotMarkers)
         {
             return;
         }
@@ -59,7 +67,7 @@ public static class BasketballShotPipeline
         marker.RegisterAttempt(runtime);
 
         if (marker.ShotAttempt == 5
-            && (MatchRuntime.Rules.IsThreePointContest || MatchRuntime.Rules.IsFourPointContest || MatchRuntime.Rules.IsSevenPointContest))
+            && (rules.IsThreePointContest || rules.IsFourPointContest || rules.IsSevenPointContest))
         {
             gameStats.Stats.MoneyBallAttempts++;
         }
