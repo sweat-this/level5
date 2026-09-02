@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Level5.Core;
 using Level5.Core.Match;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -18,7 +19,7 @@ using UnityEngine.SceneManagement;
 /// on" ran here, at scene start, after the menu had already settled the question. That resolution
 /// belongs to the configuration builder now, and this reads the answer.
 /// </summary>
-public class GameLevelManager : MonoBehaviour
+public class GameLevelManager : MonoBehaviour, IGroundHeightProvider
 {
     public bool isMultiplePlayersTotalPoints;
     public int currentHighScoreTotalPoints;
@@ -109,7 +110,7 @@ public class GameLevelManager : MonoBehaviour
             joystick = GameObject.FindGameObjectWithTag("joystick").GetComponentInChildren<FloatingJoystick>();
         }
 
-        _spawnCoordinator = new SpawnCoordinator(_spawnLocations, registry, _rules, _roster, MatchRuntime.ModeId);
+        _spawnCoordinator = new SpawnCoordinator(_spawnLocations, registry, _rules, _roster, MatchRuntime.ModeId, this);
 
         try
         {
@@ -255,4 +256,14 @@ public class GameLevelManager : MonoBehaviour
     public GameObject AutoPlayer { get => _autoPlayer; set => _autoPlayer = value; }
     public float TerrainHeight { get => terrainHeight; }
     public GameObject PlayerSpawnLocation => _spawnLocations != null ? _spawnLocations.Player1 : null;
+
+    // ======================= IGroundHeightProvider (AUD-010 Phase 1c) =======================
+
+    /// <summary>
+    /// Exposes the existing <see cref="TerrainHeight"/> value through the basketball-domain contract,
+    /// explicitly so this does not become a second public surface for the same value. Live: reads
+    /// <c>terrainHeight</c> on every access, the same field <see cref="Start"/> updates from the
+    /// primary participant's actual Y after spawning.
+    /// </summary>
+    float IGroundHeightProvider.GroundHeight => terrainHeight;
 }
