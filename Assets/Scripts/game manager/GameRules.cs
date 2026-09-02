@@ -71,6 +71,8 @@ public class GameRules : MonoBehaviour
     float timePlayedStart;
     [SerializeField]
     float timePlayedEnd;
+    // AUD-010 Phase 1c: drives only the "In The Pocket" HUD notifier (MatchHudPresenter) now, not
+    // basketball scoring - see InThePocketActivateValue below and docs/shot-lifecycle.md.
     [SerializeField]
     int inThePocketActivateValue;
 
@@ -758,6 +760,10 @@ public class GameRules : MonoBehaviour
     public bool GameModeThreePointContest => rules.IsThreePointContest;
     public bool GameModeFourPointContest => rules.IsFourPointContest;
     public bool GameModeAllPointContest => rules.IsAllPointContest;
+    // AUD-010 Phase 1c: no longer read by basketball scoring (BasketBallShotMade uses its own
+    // CurrentInThePocketStreakBonusThreshold constant, currently 0 to match this field's always-0
+    // production value). Editing this field now only changes MatchHudPresenter's "In The Pocket"
+    // notifier text, not the actual streak-bonus threshold - see docs/shot-lifecycle.md.
     public int InThePocketActivateValue { get => inThePocketActivateValue; set => inThePocketActivateValue = value; }
     public bool GameModeSevenPointContest => rules.IsSevenPointContest;
 }

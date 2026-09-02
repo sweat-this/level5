@@ -110,8 +110,8 @@ The boundary this draws:
   directly by basketball code, once per made-shot operation and reused for every decision that
   operation makes, rather than resolved separately for each check.
 - **mutable basketball-match/marker state** (`MoneyBallEnabled`, `PositionMarkersRequired`,
-  `MarkersRemaining`, `IsGameOver()`, `RequestGameOver()`, the serialized
-  `InThePocketActivateValue`) - stays on `GameRules`, unchanged by this slice.
+  `MarkersRemaining`, `IsGameOver()`, `RequestGameOver()`) - stays on `GameRules`, unchanged by
+  this slice.
 - **`GameRules` compatibility properties** - kept on `GameRules` for callers outside basketball;
   only `Assets/Scripts/basketball` is forbidden from reaching for the migrated five (enforced by
   `Level5BasketballGameRulesFacadeGuardTests`).
@@ -143,6 +143,37 @@ removal on exit does not depend on the exiting collider's participant still bein
 the collider has physically left regardless. Live-lifecycle check at the time of this change: no
 code destroys, deactivates, or disables a player's hitbox collider mid-match, so no stale-membership
 pruning was added.
+
+### `BasketBallShotMade`'s last `GameRules` dependency removed (AUD-010 Phase 1c)
+
+`BasketBallShotMade` read one more `GameRules` value beyond the five above:
+`GameRules.instance.InThePocketActivateValue`, used as `ShotScoringInput.StreakBonusThreshold` for
+In the Pocket. At exact-head, that field is serialized on `GameManager.prefab` and every gameplay
+scene as `0`, is reset to `0` in `GameRules.Awake()`, and has no production writer anywhere in the
+repository - so every made shot has always scored In the Pocket against a threshold of zero, i.e.
+the streak bonus has always paid starting on the very first make.
+
+`BasketBallShotMade` now uses its own `CurrentInThePocketStreakBonusThreshold` constant (`0`)
+instead of reading `GameRules`, preserving that behavior exactly. This is a dependency removal, not
+a rebalance:
+
+- **preserved current behavior** - the production threshold is still exactly zero, so scoring is
+  bit-for-bit unchanged. Pinned by
+  `Level5ShotScoringTests.TheProductionInThePocketThresholdOfZeroPaysFromTheFirstMake` and the
+  architecture guard `Level5BasketballGameRulesFacadeGuardTests.
+  BasketBallShotMadeHasNoLiveGameRulesReferences` (`BasketBallShotMade` now has zero live
+  `GameRules` references of any kind, not just the five facade properties).
+- **future intended design, not addressed here** - whether In the Pocket should use a nonzero or
+  configurable threshold is a separate gameplay decision. `Level5.Core.ShotScoring` and
+  `ShotScoringInput.StreakBonusThreshold` remain fully generic and threshold-driven; only the
+  production caller's current value moved.
+
+`GameRules.inThePocketActivateValue`/`InThePocketActivateValue` and
+`MatchHudPresenter`'s own use of that value for the "In The Pocket" HUD notifier are untouched -
+they are outside `Assets/Scripts/basketball` and were not part of this slice. That leaves the two
+sides of what was one field now able to drift independently - see the note on
+`GameRules.InThePocketActivateValue` in `GameRules.cs` and
+`Level5BasketballGameRulesFacadeGuardTests` for where each side now lives.
 
 ## What a made shot is worth
 

@@ -47,6 +47,15 @@ public class Level5ShotScoringTests
     }
 
     [Test]
+    public void TheProductionInThePocketThresholdOfZeroPaysFromTheFirstMake()
+    {
+        // Mirrors BasketBallShotMade.CurrentInThePocketStreakBonusThreshold, which is 0 in every
+        // shipped scene/prefab (AUD-010 Phase 1c) - so In the Pocket's streak bonus has always
+        // paid starting on the very first make, not just after a run of consecutive shots.
+        Assert.That(Score(Streak(ShotKind.Three, streak: 1, threshold: 0)).Points, Is.EqualTo(4));
+    }
+
+    [Test]
     public void AStreakPaysNothingExtraInAModeWithoutTheBonus()
     {
         ShotScoringInput input = OpenPlay(ShotKind.Seven);

@@ -17,6 +17,17 @@ public class BasketBallShotMade : MonoBehaviour
 
     const string moneyPrefabPath = "Prefabs/objects/money";
     private GameObject moneyClone;
+
+    /// <summary>
+    /// AUD-010 Phase 1c: replaces the read of <c>GameRules.instance.InThePocketActivateValue</c>,
+    /// which is serialized on <c>GameManager.prefab</c>/every gameplay scene, reset to 0 in
+    /// <c>GameRules.Awake()</c>, and never written by any production code path - so this is the
+    /// value every made shot has always scored In the Pocket against. Making it explicit here
+    /// removes the last live basketball -&gt; GameRules dependency without changing that behaviour.
+    /// Whether In the Pocket should use a nonzero/configurable threshold is a separate gameplay
+    /// decision, not addressed by this constant.
+    /// </summary>
+    private const int CurrentInThePocketStreakBonusThreshold = 0;
     //int _consecutiveShotsMade = 0;
     //int _currentShotMade = 0;
     //int _currentShotAttempts = 0;
@@ -258,7 +269,7 @@ public class BasketBallShotMade : MonoBehaviour
             ScoresByDistance = MatchRuntime.RawModeId == Modes.PointsByDistance,
             HasStreakBonus = MatchRuntime.RawModeId == Modes.InThePocket,
             ConsecutiveShotsMade = gameStats.Stats.ConsecutiveShotsMade,
-            StreakBonusThreshold = GameRules.instance.InThePocketActivateValue,
+            StreakBonusThreshold = CurrentInThePocketStreakBonusThreshold,
             OnEnabledMarker = basketBallState.PlayerOnMarkerOnShoot
                 && marker != null
                 && marker.MarkerEnabled,
