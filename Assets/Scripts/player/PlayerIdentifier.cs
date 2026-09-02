@@ -4,7 +4,7 @@ using UnityEngine;
 using Level5.Core;
 using Level5.Core.Match;
 
-public class PlayerIdentifier : MonoBehaviour
+public class PlayerIdentifier : MonoBehaviour, IBasketballParticipantStateProvider
 {
     public int pid;
     public bool isCpu;
@@ -85,5 +85,20 @@ public class PlayerIdentifier : MonoBehaviour
         basketBallAutoController = autoBasketball.GetComponent<BasketBallAuto>();
         basketBallState = autoBasketball.GetComponent<BasketBallState>();
         gameStats = autoBasketball.GetComponent<GameStats>();
+    }
+
+    /// <summary>
+    /// AUD-010 Phase 1c: implements <see cref="IBasketballParticipantStateProvider"/> for
+    /// <see cref="BasketBallShotMarker"/>'s trigger resolution, over the same
+    /// <see cref="basketball"/>/<see cref="autoBasketball"/> references <see cref="setBasketball"/>/
+    /// <see cref="setAutoBasketball"/> already populate - not the cached <see cref="basketBallState"/>
+    /// field, which is last-write-wins across both setters and would not disambiguate human vs CPU.
+    /// Explicit implementation so this does not expand the ordinary public API.
+    /// </summary>
+    bool IBasketballParticipantStateProvider.TryGetBasketballState(bool cpuRoute, out BasketBallState state)
+    {
+        GameObject ball = cpuRoute ? autoBasketball : basketball;
+        state = ball != null ? ball.GetComponent<BasketBallState>() : null;
+        return state != null;
     }
 }

@@ -11,8 +11,11 @@ using NUnit.Framework;
 /// on the runtime that took the final attempt, never <c>GameLevelManager.instance.players[0]</c>.
 ///
 /// Narrower than <see cref="Level5BasketballRuntimeIdentityGuardTests"/>, which guards a different
-/// coupling (ball-side <c>PlayerIdentifier</c>) on a different file set - <c>BasketBallShotMarker.cs</c>
-/// legitimately still reaches the actor-side <c>PlayerIdentifier</c> and is not part of that guard.
+/// coupling (ball-side <c>PlayerIdentifier</c>) on a different file set. As of AUD-010 Phase 1c's
+/// marker slice, <c>BasketBallShotMarker.cs</c> no longer references <c>PlayerIdentifier</c> at all -
+/// its trigger resolution queries the basketball-domain <c>IBasketballParticipantStateProvider</c>
+/// instead, and that dependency is guarded by <see cref="Level5PlayerBasketballEdgeTests"/> rather
+/// than here.
 /// </summary>
 public class Level5BasketballMarkerArchitectureGuardTests
 {

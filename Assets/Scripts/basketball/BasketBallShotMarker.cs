@@ -301,16 +301,23 @@ public class BasketBallShotMarker : MonoBehaviour
     }
 
     /// <summary>
-    /// Resolves the exact participant this hitbox belongs to, through the actor-side
-    /// <see cref="PlayerIdentifier"/> - never a role-wide flag or GameLevelManager.players[0]. Logs
-    /// and returns null rather than throwing or falling back to another participant; an ordinary
-    /// trigger callback must not crash the scene over an incomplete composition.
+    /// Resolves the exact participant this hitbox belongs to, through the basketball-domain
+    /// <see cref="IBasketballParticipantStateProvider"/> - never a role-wide flag or
+    /// GameLevelManager.players[0]. Logs and returns null rather than throwing or falling back to
+    /// another participant; an ordinary trigger callback must not crash the scene over an incomplete
+    /// composition.
+    ///
+    /// Same caveat as <see cref="finalAttemptRuntime"/>'s doc comment: <c>provider</c> is
+    /// interface-typed, so <c>!= null</c> below is plain reference equality, not Unity's
+    /// destroyed-object-aware overload. Not a live bug - nothing in the current codebase
+    /// <c>Destroy()</c>s a player/ball mid-match - but worth knowing before that changes.
     /// </summary>
     private BasketBallState ResolveParticipantState(Collider other, bool cpu)
     {
-        PlayerIdentifier identifier = other.GetComponentInParent<PlayerIdentifier>();
-        GameObject ball = identifier != null ? (cpu ? identifier.autoBasketball : identifier.basketball) : null;
-        BasketBallState state = ball != null ? ball.GetComponent<BasketBallState>() : null;
+        IBasketballParticipantStateProvider provider = other.GetComponentInParent<IBasketballParticipantStateProvider>();
+        BasketBallState state = provider != null && provider.TryGetBasketballState(cpu, out BasketBallState resolved)
+            ? resolved
+            : null;
 
         if (state == null)
         {

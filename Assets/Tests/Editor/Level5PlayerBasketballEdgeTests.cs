@@ -15,11 +15,15 @@ using NUnit.Framework;
 /// basketball-side reference to <c>PlayerController</c>/<c>AutoPlayerController</c>/
 /// <c>CharacterProfile</c> with <c>Level5.Core.IShooterActor</c>, reached through
 /// <c>PlayerIdentifier.Actor</c> - so there is no remaining legitimate reason for
-/// <c>Assets/Scripts/basketball</c> to spell any of the three again. <c>PlayerIdentifier</c> itself,
-/// and the basketball module's own types reached through it (<c>BasketBall</c>, <c>BasketBallAuto</c>,
-/// <c>BasketBallState</c>, <c>GameStats</c>), are deliberately not restricted - the same precedent
-/// <see cref="Level5GameManagerEdgeTests"/> established: holding the roster's own identity type, or
-/// reaching a sibling basketball type through it, is not the cycle.
+/// <c>Assets/Scripts/basketball</c> to spell any of the three again.
+///
+/// AUD-010 Phase 1c's marker slice removed the last live basketball-side reference to
+/// <c>PlayerIdentifier</c> itself (<c>BasketBallShotMarker.ResolveParticipantState</c> now queries
+/// <c>IBasketballParticipantStateProvider</c> instead), so <c>PlayerIdentifier</c> joins the
+/// restricted set below. The basketball module's own types still reached through that provider
+/// (<c>BasketBall</c>, <c>BasketBallAuto</c>, <c>BasketBallState</c>, <c>GameStats</c>) remain
+/// unrestricted - the same precedent <see cref="Level5GameManagerEdgeTests"/> established: reaching a
+/// sibling basketball type through a narrow domain contract is not the cycle.
 /// </summary>
 public class Level5PlayerBasketballEdgeTests
 {
@@ -31,6 +35,7 @@ public class Level5PlayerBasketballEdgeTests
         "PlayerController",
         "AutoPlayerController",
         "CharacterProfile",
+        "PlayerIdentifier",
     };
 
     /// <summary>
