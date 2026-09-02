@@ -713,6 +713,127 @@ public class Level5BasketballMarkerOwnershipTests
         Assert.IsFalse(marker.PlayerOnMarker);
     }
 
+    // ==================== IsPointContestMode / AUD-010 Phase 1c rule-source migration ====================
+    //
+    // Unlike Update()/OnTriggerExit above, IsPointContestMode() reaches only MatchRuntime.Rules, not
+    // GameRules.instance, so it needs none of the GameRules seam this file's header explains is
+    // missing. Driven the same way Level5CpuBaselineInitializationTests drives other
+    // ResolvedMatchRules-dependent code: GameOptionsSnapshot around the mutation, ActiveMatch.Clear()
+    // so MatchRuntime.Rules falls back to the legacy GameOptions globals instead of a real
+    // MatchConfiguration.
+
+    private static bool InvokeIsPointContestMode()
+    {
+        MethodInfo method = typeof(BasketBallShotMarker).GetMethod("IsPointContestMode", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.IsNotNull(method, "BasketBallShotMarker must declare IsPointContestMode");
+        return (bool)method.Invoke(null, null);
+    }
+
+    [Test]
+    public void IsPointContestMode_OrdinaryShootingMode_ReturnsFalse()
+    {
+        GameOptionsSnapshot snapshot = GameOptionsSnapshot.Capture();
+        try
+        {
+            ActiveMatch.Clear();
+            GameOptions.gameModeThreePointContest = false;
+            GameOptions.gameModeFourPointContest = false;
+            GameOptions.gameModeSevenPointContest = false;
+            GameOptions.gameModeAllPointContest = false;
+
+            Assert.IsFalse(InvokeIsPointContestMode(), "ordinary shooting must not be classified as a marker contest");
+        }
+        finally
+        {
+            snapshot.Restore();
+            ActiveMatch.Clear();
+        }
+    }
+
+    [Test]
+    public void IsPointContestMode_ThreePointContest_ReturnsTrue()
+    {
+        GameOptionsSnapshot snapshot = GameOptionsSnapshot.Capture();
+        try
+        {
+            ActiveMatch.Clear();
+            GameOptions.gameModeThreePointContest = true;
+            GameOptions.gameModeFourPointContest = false;
+            GameOptions.gameModeSevenPointContest = false;
+            GameOptions.gameModeAllPointContest = false;
+
+            Assert.IsTrue(InvokeIsPointContestMode());
+        }
+        finally
+        {
+            snapshot.Restore();
+            ActiveMatch.Clear();
+        }
+    }
+
+    [Test]
+    public void IsPointContestMode_FourPointContest_ReturnsTrue()
+    {
+        GameOptionsSnapshot snapshot = GameOptionsSnapshot.Capture();
+        try
+        {
+            ActiveMatch.Clear();
+            GameOptions.gameModeThreePointContest = false;
+            GameOptions.gameModeFourPointContest = true;
+            GameOptions.gameModeSevenPointContest = false;
+            GameOptions.gameModeAllPointContest = false;
+
+            Assert.IsTrue(InvokeIsPointContestMode());
+        }
+        finally
+        {
+            snapshot.Restore();
+            ActiveMatch.Clear();
+        }
+    }
+
+    [Test]
+    public void IsPointContestMode_SevenPointContest_ReturnsTrue()
+    {
+        GameOptionsSnapshot snapshot = GameOptionsSnapshot.Capture();
+        try
+        {
+            ActiveMatch.Clear();
+            GameOptions.gameModeThreePointContest = false;
+            GameOptions.gameModeFourPointContest = false;
+            GameOptions.gameModeSevenPointContest = true;
+            GameOptions.gameModeAllPointContest = false;
+
+            Assert.IsTrue(InvokeIsPointContestMode());
+        }
+        finally
+        {
+            snapshot.Restore();
+            ActiveMatch.Clear();
+        }
+    }
+
+    [Test]
+    public void IsPointContestMode_AllPointContest_ReturnsTrue()
+    {
+        GameOptionsSnapshot snapshot = GameOptionsSnapshot.Capture();
+        try
+        {
+            ActiveMatch.Clear();
+            GameOptions.gameModeThreePointContest = false;
+            GameOptions.gameModeFourPointContest = false;
+            GameOptions.gameModeSevenPointContest = false;
+            GameOptions.gameModeAllPointContest = true;
+
+            Assert.IsTrue(InvokeIsPointContestMode());
+        }
+        finally
+        {
+            snapshot.Restore();
+            ActiveMatch.Clear();
+        }
+    }
+
     // ==================== test doubles ====================
 
     private sealed class FakeShooterActor : IShooterActor
