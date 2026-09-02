@@ -82,7 +82,7 @@ public class BasketBallShotMarker : MonoBehaviour
         spriteRenderer = GetComponent<SpriteRenderer>();
 
         // initial text display
-        setDisplayText();
+        setDisplayText(IsPointContestMode());
         // set what type of shot marker is based on distance from rim
         // using basketball state
         setMarkerShotType();
@@ -91,7 +91,7 @@ public class BasketBallShotMarker : MonoBehaviour
         if (MatchRuntime.Rules.RequiresShotMarkers3s || MatchRuntime.Rules.RequiresShotMarkers4s || MatchRuntime.Rules.RequiresShotMarkers7s)
         {
             markerEnabled = true;
-            setDisplayText();
+            setDisplayText(IsPointContestMode());
             // set what type of shot marker is based on distance from rim
             // using basketball state
             setMarkerShotType();
@@ -125,16 +125,22 @@ public class BasketBallShotMarker : MonoBehaviour
         {
             displayCurrentMarkerStats.text = "";
         }
+
+        // AUD-010 Phase 1c: resolved once per frame and reused by every call below - IsPointContestMode()
+        // resolves a fresh MatchRuntime.Rules snapshot for a directly-entered scene (no MatchConfiguration),
+        // so calling it once here instead of once per call site avoids allocating that snapshot repeatedly
+        // in a single Update().
+        bool isPointContestMode = IsPointContestMode();
+
         // this needs to be turned off if ball hits ground
         if (PlayerOnMarker /*|| _autoPlayerOnMarker && MatchRuntime.ParticipantCount >= 1*/)
         {
             // if marker not completed yet
             if (markerEnabled)
             {
-                setDisplayText();
+                setDisplayText(isPointContestMode);
             }
         }
-        bool isPointContestMode = IsPointContestMode();
 
         // if game mode is 3/4/all point contest
         if (isPointContestMode)
@@ -164,7 +170,7 @@ public class BasketBallShotMarker : MonoBehaviour
                     // decrease markers remaining
                     GameRules.instance.MarkersRemaining--;
                     spriteRenderer.color = new Color(1f, 1f, 1f, 0f); // opacity to 0
-                    setDisplayText();
+                    setDisplayText(isPointContestMode);
 
                     //check if last remaining shot marker
                     if (GameRules.instance.IsGameOver())
@@ -185,7 +191,7 @@ public class BasketBallShotMarker : MonoBehaviour
                 // decrease markers remaining
                 GameRules.instance.MarkersRemaining--;
                 spriteRenderer.color = new Color(1f, 1f, 1f, 0f); // opacity to 0
-                setDisplayText();
+                setDisplayText(isPointContestMode);
 
                 // check if last remaining shot marker
                 if (GameRules.instance.IsGameOver())
@@ -238,7 +244,7 @@ public class BasketBallShotMarker : MonoBehaviour
             // still be resolved below, so membership removal must not depend on that resolution
             // succeeding - see RemoveHumanOccupant.
             RemoveHumanOccupant(other);
-            setDisplayText(); // update display to reflect any remaining occupant
+            setDisplayText(IsPointContestMode()); // update display to reflect any remaining occupant
             ResolveParticipantState(other, cpu: false)?.ExitShotMarker(this);
         }
         // if player exits shot marker area
@@ -247,7 +253,7 @@ public class BasketBallShotMarker : MonoBehaviour
         {
             RemoveCpuOccupant(other);
             locked = false;
-            setDisplayText(); // update display to reflect any remaining occupant
+            setDisplayText(IsPointContestMode()); // update display to reflect any remaining occupant
             ResolveParticipantState(other, cpu: true)?.ExitShotMarker(this);
         }
     }
@@ -344,10 +350,8 @@ public class BasketBallShotMarker : MonoBehaviour
         }
     }
 
-    private void setDisplayText()
+    private void setDisplayText(bool isPointContestMode)
     {
-        bool isPointContestMode = IsPointContestMode();
-
         // if player on marker and markers necessary for game mode and IS 3,4,All point contest
         if ((PlayerOnMarker || _autoPlayerOnMarker) && markerEnabled
             && isPointContestMode)
@@ -378,10 +382,12 @@ public class BasketBallShotMarker : MonoBehaviour
 
     private static bool IsPointContestMode()
     {
-        return GameRules.instance.GameModeThreePointContest
-            || GameRules.instance.GameModeFourPointContest
-            || GameRules.instance.GameModeSevenPointContest
-            || GameRules.instance.GameModeAllPointContest;
+        ResolvedMatchRules rules = MatchRuntime.Rules;
+
+        return rules.IsThreePointContest
+            || rules.IsFourPointContest
+            || rules.IsSevenPointContest
+            || rules.IsAllPointContest;
     }
 
     // the shot type is set manually but this is a failsafe check that sets it automatically based 

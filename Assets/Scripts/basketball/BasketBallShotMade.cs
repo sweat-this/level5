@@ -110,6 +110,11 @@ public class BasketBallShotMade : MonoBehaviour
         }
         shotMade1 = false;
         shotMade2 = false;
+
+        // AUD-010 Phase 1c: one immutable-rules snapshot for the whole made-shot operation, reused
+        // by every decision below instead of each resolving MatchRuntime.Rules separately.
+        ResolvedMatchRules rules = MatchRuntime.Rules;
+
         float shotDistance = runtime.LastShotDistance;
         // add to total shot distance made total
         float shotDistanceFeet = shotDistance * 6;
@@ -120,7 +125,7 @@ public class BasketBallShotMade : MonoBehaviour
             gameStats.Stats.LongestShotMade = shotDistanceFeet;
         }
         // updates shots made/shot attempted
-        ShotScore score = updateShotMadeBasketBallStats(gameStats, basketBallState, shotDistance);
+        ShotScore score = updateShotMadeBasketBallStats(gameStats, basketBallState, shotDistance, rules);
         ShotResolved?.Invoke(new MadeShotResult(
             runtime.ParticipantId,
             runtime.IsCpu,
@@ -130,7 +135,7 @@ public class BasketBallShotMade : MonoBehaviour
             gameStats.Stats.TotalPoints));
 
         // instantiate money if game requires it
-        if (GameRules.instance.GameModeRequiresMoneyBall
+        if (rules.RequiresMoneyBall
             && basketBallState.PlayerOnMarkerOnShoot)
         //&& basketBallState.MoneyBallEnabledOnShoot)
         //&& PlayerStats.instance.Money >= 5
@@ -193,7 +198,7 @@ public class BasketBallShotMade : MonoBehaviour
         return basketBallState.SevenAttempt ? ShotKind.Seven : ShotKind.None;
     }
 
-    private ShotScore updateShotMadeBasketBallStats(GameStats gameStats, BasketBallState basketBallState, float shotDistance)
+    private ShotScore updateShotMadeBasketBallStats(GameStats gameStats, BasketBallState basketBallState, float shotDistance, ResolvedMatchRules rules)
     {
         // first thing, update shot made total
         // ==================== consecutive shots logic ==============================
@@ -246,10 +251,10 @@ public class BasketBallShotMade : MonoBehaviour
         ShotScoringInput input = new ShotScoringInput
         {
             Kind = ShotKindOf(basketBallState),
-            IsMarkerContest = GameRules.instance.GameModeThreePointContest
-                || GameRules.instance.GameModeFourPointContest
-                || GameRules.instance.GameModeSevenPointContest
-                || GameRules.instance.GameModeAllPointContest,
+            IsMarkerContest = rules.IsThreePointContest
+                || rules.IsFourPointContest
+                || rules.IsSevenPointContest
+                || rules.IsAllPointContest,
             ScoresByDistance = MatchRuntime.RawModeId == Modes.PointsByDistance,
             HasStreakBonus = MatchRuntime.RawModeId == Modes.InThePocket,
             ConsecutiveShotsMade = gameStats.Stats.ConsecutiveShotsMade,
@@ -258,9 +263,9 @@ public class BasketBallShotMade : MonoBehaviour
                 && marker != null
                 && marker.MarkerEnabled,
             IsFinalMarkerAttempt = marker != null && marker.ShotAttempt == marker.MaxShotAttempt,
-            MarkerFinalShotScoresDouble = MatchRuntime.Rules.IsThreePointContest
-                || MatchRuntime.Rules.IsFourPointContest
-                || MatchRuntime.Rules.IsSevenPointContest,
+            MarkerFinalShotScoresDouble = rules.IsThreePointContest
+                || rules.IsFourPointContest
+                || rules.IsSevenPointContest,
             MoneyBallActive = basketBallState.MoneyBallEnabledOnShoot,
             ShotDistance = shotDistance
         };
@@ -281,7 +286,7 @@ public class BasketBallShotMade : MonoBehaviour
 
         // ==================== requires position markers logic ==============================
         if (basketBallState.PlayerOnMarkerOnShoot
-            && (MatchRuntime.Rules.RequiresShotMarkers3s || MatchRuntime.Rules.RequiresShotMarkers4s || MatchRuntime.Rules.RequiresShotMarkers7s))
+            && (rules.RequiresShotMarkers3s || rules.RequiresShotMarkers4s || rules.RequiresShotMarkers7s))
         {
             if (marker == null)
             {

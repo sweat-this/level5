@@ -1,6 +1,6 @@
 # The Basketball Shot Lifecycle
 
-Last reviewed: 2026-08-11
+Last reviewed: 2026-09-02
 
 AUD-010 asks for two things: this document, and a single shot result consumed by everything
 downstream. The result exists for the part that decides *what a shot is worth*
@@ -91,6 +91,43 @@ their own state, not the primary player's.
 `GameRules` still owns everything session-wide: marker discovery/filtering, `MarkersRemaining`,
 match-end routing, and mutable `MoneyBallEnabled`. This slice only moved *whose* marker a shot
 belongs to, not who manages the marker list or ends the match.
+
+### Immutable match-rule reads move off GameRules (AUD-010 Phase 1c)
+
+`GameRules` exposes a handful of properties (`GameModeRequiresMoneyBall`,
+`GameModeThreePointContest`, `GameModeFourPointContest`, `GameModeSevenPointContest`,
+`GameModeAllPointContest`) that only ever forwarded a `ResolvedMatchRules` value it had already
+read from `MatchRuntime.Rules` - they carried no session state of their own. `BasketBallShotMade`
+and `BasketBallShotMarker` now read those same values directly from `MatchRuntime.Rules`
+(`RequiresMoneyBall`, `IsThreePointContest`, `IsFourPointContest`, `IsSevenPointContest`,
+`IsAllPointContest`) instead of going through the `GameRules` facade, since a made shot has no
+reason to route through a `MonoBehaviour` singleton to read a value that has been immutable since
+before the scene loaded.
+
+The boundary this draws:
+
+- **immutable match rules** (`ResolvedMatchRules`, reached through `MatchRuntime.Rules`) - read
+  directly by basketball code, once per made-shot operation and reused for every decision that
+  operation makes, rather than resolved separately for each check.
+- **mutable basketball-match/marker state** (`MoneyBallEnabled`, `PositionMarkersRequired`,
+  `MarkersRemaining`, `IsGameOver()`, `RequestGameOver()`, the serialized
+  `InThePocketActivateValue`) - stays on `GameRules`, unchanged by this slice.
+- **`GameRules` compatibility properties** - kept on `GameRules` for callers outside basketball;
+  only `Assets/Scripts/basketball` is forbidden from reaching for the migrated five (enforced by
+  `Level5BasketballGameRulesFacadeGuardTests`).
+
+`BasketballShotPipeline.ApplyMarkerAndMoneyBallOnShoot` already read `MatchRuntime.Rules` directly
+before this slice (it predates the `GameRules` forwarding properties being used there) and was left
+as-is; its two remaining `GameRules` reads (`PositionMarkersRequired`, `MoneyBallEnabled`) are
+mutable session state, not part of this migration.
+
+`BasketBallShotMarker.Update()` resolves `IsPointContestMode()` once per frame and threads the
+result into `setDisplayText(bool)` and the two marker-completion branches, rather than each of up to
+three call sites resolving it (and therefore `MatchRuntime.Rules`) separately. For a directly-entered
+scene, `MatchRuntime.Rules` rebuilds a fresh `ResolvedMatchRules` from the legacy globals on every
+call (it is a validated match's `MatchConfiguration.Rules` that is the stable, allocation-free
+reference); collapsing three potential resolutions into one keeps that cost from scaling with the
+number of call sites inside a single frame.
 
 **Marker-local presentation occupancy vs. participant gameplay occupancy.** `BasketBallState`'s
 `CurrentShotMarker`/`PlayerOnMarker`/`OnShootShotMarker` above are per-participant and unaffected by
