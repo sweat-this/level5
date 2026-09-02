@@ -5,10 +5,24 @@ using UnityEngine.UI;
 using Level5.Core;
 using Level5.Core.Match;
 
+/// <summary>
+/// Actor-owned basketball presentation. Bound explicitly by <see cref="SpawnCoordinator"/> during
+/// participant composition (<see cref="BindOwner"/>) instead of reading a parent
+/// <c>PlayerIdentifier</c> - AUD-010 Phase 1c's ShotMeter slice, mirroring <see cref="RangeMeter"/>.
+///
+/// A CPU shooter's automatic meter resolution additionally needs its own owning
+/// <see cref="IBasketballRuntime"/>, bound separately and optionally (<see cref="BindBasketballRuntime"/>)
+/// once that participant's basketball exists. A defensive/no-ball CPU never receives one - actor
+/// ownership alone is sufficient for a valid <see cref="Start"/>.
+/// </summary>
 public class ShotMeter : MonoBehaviour
 {
-    PlayerIdentifier playerIdentifier;
     IShooterActor actor;
+    bool isCpu;
+    IBasketballRuntime basketballRuntime;
+
+    /// <summary>Whether <see cref="BindOwner"/> has run. Set once, at spawn time.</summary>
+    public bool Bound { get; private set; }
 
     private const string sliderValueOnPressName = "slider_value_text";
     private const string sliderMessageName = "slider_message_text";
@@ -59,11 +73,74 @@ public class ShotMeter : MonoBehaviour
         }
     }
 
+    /// <summary>
+    /// Explicit ownership binding from <see cref="SpawnCoordinator"/>, called once immediately after
+    /// the owning participant's <c>IShooterActor</c> is resolved and before Unity calls
+    /// <see cref="Start"/>. Ownership-only - no presentation side effects.
+    /// </summary>
+    public void BindOwner(IShooterActor actor, bool isCpu)
+    {
+        if (actor == null)
+        {
+            Debug.LogError($"ShotMeter on '{gameObject.name}' was bound with a null actor.", this);
+            return;
+        }
+
+        if (Bound)
+        {
+            Debug.LogError($"ShotMeter on '{gameObject.name}' is already bound; ignoring a second BindOwner call.", this);
+            return;
+        }
+
+        this.actor = actor;
+        this.isCpu = isCpu;
+        Bound = true;
+    }
+
+    /// <summary>
+    /// Optional runtime association from <see cref="SpawnCoordinator.GiveBall"/>, bound once the
+    /// owning participant's basketball exists - needed only to resolve a CPU's automatic meter value.
+    /// A defensive/no-ball CPU never receives one and remains a valid, bound ShotMeter.
+    /// </summary>
+    public void BindBasketballRuntime(IBasketballRuntime runtime)
+    {
+        if (runtime == null)
+        {
+            Debug.LogError($"ShotMeter on '{gameObject.name}' was bound with a null basketball runtime.", this);
+            return;
+        }
+
+        if (!Bound)
+        {
+            Debug.LogError($"ShotMeter on '{gameObject.name}' cannot bind a basketball runtime before its actor owner is bound.", this);
+            return;
+        }
+
+        if (basketballRuntime != null)
+        {
+            Debug.LogError($"ShotMeter on '{gameObject.name}' already has a bound basketball runtime; ignoring a second BindBasketballRuntime call.", this);
+            return;
+        }
+
+        if (runtime.Actor != actor || runtime.IsCpu != isCpu)
+        {
+            Debug.LogError($"ShotMeter on '{gameObject.name}' was bound with a basketball runtime that does not belong to its own owner.", this);
+            return;
+        }
+
+        basketballRuntime = runtime;
+    }
+
     // Start is called before the first frame update
     void Start()
     {
-        playerIdentifier = GetComponentInParent<PlayerIdentifier>();
-        actor = playerIdentifier.Actor;
+        if (!Bound)
+        {
+            Debug.LogError($"ShotMeter on '{gameObject.name}' reached Start() with no bound owner.", this);
+            enabled = false;
+            return;
+        }
+
         shooterAttributes = actor.ShooterAttributes;
         slider = GetComponentInChildren<Slider>();
         meterFillTime = calculateSliderFillTime(); // time for shot meter active, based on player jump/time until jump peak
@@ -73,7 +150,7 @@ public class ShotMeter : MonoBehaviour
         sliderMessageText.text = "";
 
         if (MatchRuntime.Rules.Hardcore || MatchRuntime.Rules.EnemiesOnly
-            || MatchRuntime.Rules.IsBattleRoyal /*|| !MatchRuntime.HasConfiguration*/ || playerIdentifier.isCpu)
+            || MatchRuntime.Rules.IsBattleRoyal /*|| !MatchRuntime.HasConfiguration*/ || isCpu)
         {
             meterRed.SetActive(false);
             meterYellow.SetActive(false);
@@ -122,9 +199,9 @@ public class ShotMeter : MonoBehaviour
         if (meterEnded)
         {
             locked = false;
-            if (playerIdentifier.isCpu)
+            if (isCpu)
             {
-                sliderValueOnButtonPress = playerIdentifier.basketBallAutoController.rollForAutoPlayerSliderValue();
+                sliderValueOnButtonPress = ResolveCpuMeterValue();
             }
             else
             {
@@ -162,6 +239,45 @@ public class ShotMeter : MonoBehaviour
     {
         float time = shooterAttributes.JumpForce / Physics.gravity.y;
         return Math.Abs(time);
+    }
+
+    /// <summary>
+    /// A normal CPU shooter is expected to have its own bound <see cref="IBasketballRuntime"/> by the
+    /// time its meter reaches automatic resolution - only a defensive/no-ball CPU legitimately has
+    /// none, and that CPU never reaches a shot meter completion to begin with. Reaching here without
+    /// one, or with a runtime that is not this participant's own CPU ball, is invalid composition:
+    /// logged rather than papered over with a global lookup or participant zero.
+    ///
+    /// The <c>0f</c> returned on every error branch is a safe sentinel, not a real roll: it is what
+    /// keeps <c>meterStarted</c>/<c>meterEnded</c> transitioning normally afterward (see the caller),
+    /// which is what lets <c>BasketBallAuto.LaunchBasketBall</c>'s <c>WaitUntil</c> resolve instead of
+    /// hanging - aborting the shot cycle here was rejected as a worse failure mode. The
+    /// <c>Debug.LogError</c> above each return is the actual signal something is wrong; do not "clean
+    /// up" these returns without keeping an equivalent signal, and do not assume <c>0f</c> reaching the
+    /// shot pipeline means a real, terrible shot was rolled.
+    /// </summary>
+    float ResolveCpuMeterValue()
+    {
+        if (basketballRuntime == null)
+        {
+            Debug.LogError($"ShotMeter on '{gameObject.name}' reached CPU meter resolution with no bound basketball runtime.", this);
+            return 0f;
+        }
+
+        if (!basketballRuntime.IsCpu)
+        {
+            Debug.LogError($"ShotMeter on '{gameObject.name}' has a bound basketball runtime that is not CPU-owned.", this);
+            return 0f;
+        }
+
+        BasketBallAuto autoRuntime = basketballRuntime as BasketBallAuto;
+        if (autoRuntime == null)
+        {
+            Debug.LogError($"ShotMeter on '{gameObject.name}' has a bound CPU basketball runtime that is not a BasketBallAuto.", this);
+            return 0f;
+        }
+
+        return autoRuntime.rollForAutoPlayerSliderValue();
     }
     public bool MeterStarted
     {

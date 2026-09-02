@@ -10,10 +10,11 @@ using NUnit.Framework;
 /// Narrower than <see cref="Level5PlayerBasketballEdgeTests"/>, which forbids the whole
 /// <c>Assets/Scripts/basketball</c> folder from reaching a concrete player type. This guard is scoped
 /// to exactly the five files AUD-013 migrated onto <c>IBasketballRuntime</c> - it deliberately does not
-/// extend to <c>ShotMeter</c>, which is actor-owned and still reads the authoritative actor-side
-/// <c>PlayerIdentifier</c> legitimately (see <c>PlayerIdentifier.Actor</c>'s own doc comment).
-/// <c>RangeMeter</c> no longer reads <c>PlayerIdentifier</c> at all as of AUD-010 Phase 1c - see
-/// <see cref="Level5RangeMeterArchitectureGuardTests"/>, which guards it directly.
+/// extend to <c>ShotMeter</c> or <c>RangeMeter</c>, which are guarded directly by their own,
+/// narrower architecture tests. Neither reads <c>PlayerIdentifier</c> any more: <c>RangeMeter</c> as of
+/// AUD-010 Phase 1c's RangeMeter slice (<see cref="Level5RangeMeterArchitectureGuardTests"/>), and
+/// <c>ShotMeter</c> as of this same phase's ShotMeter slice
+/// (<see cref="Level5ShotMeterArchitectureGuardTests"/>).
 /// </summary>
 public class Level5BasketballRuntimeIdentityGuardTests
 {

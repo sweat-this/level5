@@ -337,6 +337,7 @@ public sealed class SpawnCoordinator
         identifier.setPlayer(identifier.player);
         InitializeHumanProfile(identifier, slot);
         BindRangeMeters(spawned, identifier.Actor, isCpu: false);
+        BindShotMeters(spawned, identifier.Actor, isCpu: false);
         registry.Add(identifier);
     }
 
@@ -395,6 +396,7 @@ public sealed class SpawnCoordinator
         identifier.setAutoPlayer(identifier.autoPlayer);
         PrepareCpuMatchContext(identifier);
         BindRangeMeters(spawned, identifier.Actor, isCpu: true);
+        BindShotMeters(spawned, identifier.Actor, isCpu: true);
         registry.Add(identifier);
     }
 
@@ -414,6 +416,20 @@ public sealed class SpawnCoordinator
     private static void BindRangeMeters(GameObject participant, IShooterActor actor, bool isCpu)
     {
         foreach (RangeMeter meter in participant.GetComponentsInChildren<RangeMeter>(true))
+        {
+            meter.BindOwner(actor, isCpu);
+        }
+    }
+
+    /// <summary>
+    /// AUD-010 Phase 1c: binds every ShotMeter under the spawned participant to that participant's
+    /// own IShooterActor, mirroring <see cref="BindRangeMeters"/> above. Runs before Unity calls
+    /// Start() on any of them. A participant's basketball runtime (needed only for a CPU's automatic
+    /// meter resolution) is bound separately, once that participant's ball exists - see GiveBall.
+    /// </summary>
+    private static void BindShotMeters(GameObject participant, IShooterActor actor, bool isCpu)
+    {
+        foreach (ShotMeter meter in participant.GetComponentsInChildren<ShotMeter>(true))
         {
             meter.BindOwner(actor, isCpu);
         }
@@ -479,6 +495,23 @@ public sealed class SpawnCoordinator
         else
         {
             owner.setBasketball(ball);
+        }
+
+        BindShotMeterRuntime(ownerActor, runtime);
+    }
+
+    /// <summary>
+    /// AUD-010 Phase 1c: associates the just-bound basketball runtime with the owning participant's
+    /// own ShotMeter(s), immediately after IBasketballRuntime.BindOwner and the owner's
+    /// basketball/autoBasketball reference are set - never before, since ShotMeter.BindBasketballRuntime
+    /// requires a fully bound runtime to validate against. Most player prefabs carry exactly one
+    /// ShotMeter; a participant with none is unaffected.
+    /// </summary>
+    private static void BindShotMeterRuntime(GameObject ownerActor, IBasketballRuntime runtime)
+    {
+        foreach (ShotMeter meter in ownerActor.GetComponentsInChildren<ShotMeter>(true))
+        {
+            meter.BindBasketballRuntime(runtime);
         }
     }
 }
