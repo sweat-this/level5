@@ -81,6 +81,13 @@ public class Level5BasketballMarkerOwnershipTests
         method.Invoke(marker, new object[] { other });
     }
 
+    private static void InvokePrivateMethod(object target, string methodName, params object[] args)
+    {
+        MethodInfo method = target.GetType().GetMethod(methodName, BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.IsNotNull(method, $"{target.GetType().Name} must declare a method named '{methodName}'");
+        method.Invoke(target, args);
+    }
+
     private GameObject MakeHumanParticipant(string name, BasketBallState state)
     {
         GameObject actor = Spawn($"{name}-actor");
@@ -415,6 +422,229 @@ public class Level5BasketballMarkerOwnershipTests
         LogAssert.Expect(LogType.Error, new Regex("could not resolve the human participant's BasketBallState"));
 
         InvokeOnTriggerEnter(marker, hitbox.GetComponent<Collider>());
+
+        Assert.IsFalse(marker.PlayerOnMarker);
+    }
+
+    // ==================== marker-local presentation occupancy membership (section 8 of the plan) ====================
+    //
+    // AddHumanOccupant/RemoveHumanOccupant/AddCpuOccupant/RemoveCpuOccupant are exercised directly via
+    // reflection rather than through OnTriggerExit: OnTriggerExit also calls setDisplayText(), which
+    // reaches GameRules.instance (see the file header for why a real GameRules is not stood up in this
+    // suite). These private methods are the exact seam OnTriggerExit delegates to for membership
+    // mutation, so they exercise the same multi-collider-safety invariants without that dependency.
+
+    [Test]
+    public void AddHumanOccupant_FirstOccupant_SetsPlayerOnMarkerTrue()
+    {
+        BasketBallShotMarker marker = MakeMarker("marker");
+        Collider hitbox = Spawn("hitbox-a").AddComponent<BoxCollider>();
+
+        InvokePrivateMethod(marker, "AddHumanOccupant", hitbox);
+
+        Assert.IsTrue(marker.PlayerOnMarker);
+    }
+
+    [Test]
+    public void AddHumanOccupant_TwoCollidersCoexist()
+    {
+        BasketBallShotMarker marker = MakeMarker("marker");
+        Collider a = Spawn("hitbox-a").AddComponent<BoxCollider>();
+        Collider b = Spawn("hitbox-b").AddComponent<BoxCollider>();
+
+        InvokePrivateMethod(marker, "AddHumanOccupant", a);
+        InvokePrivateMethod(marker, "AddHumanOccupant", b);
+
+        Assert.IsTrue(marker.PlayerOnMarker);
+    }
+
+    [Test]
+    public void RemoveHumanOccupant_OneOfTwoExiting_LeavesOccupancyTrue()
+    {
+        BasketBallShotMarker marker = MakeMarker("marker");
+        Collider a = Spawn("hitbox-a").AddComponent<BoxCollider>();
+        Collider b = Spawn("hitbox-b").AddComponent<BoxCollider>();
+        InvokePrivateMethod(marker, "AddHumanOccupant", a);
+        InvokePrivateMethod(marker, "AddHumanOccupant", b);
+
+        InvokePrivateMethod(marker, "RemoveHumanOccupant", a);
+
+        Assert.IsTrue(marker.PlayerOnMarker, "human B is still inside - one occupant exiting must not clear another's presence");
+    }
+
+    [Test]
+    public void RemoveHumanOccupant_FinalOccupantExiting_ClearsOccupancy()
+    {
+        BasketBallShotMarker marker = MakeMarker("marker");
+        Collider a = Spawn("hitbox-a").AddComponent<BoxCollider>();
+        Collider b = Spawn("hitbox-b").AddComponent<BoxCollider>();
+        InvokePrivateMethod(marker, "AddHumanOccupant", a);
+        InvokePrivateMethod(marker, "AddHumanOccupant", b);
+        InvokePrivateMethod(marker, "RemoveHumanOccupant", a);
+
+        InvokePrivateMethod(marker, "RemoveHumanOccupant", b);
+
+        Assert.IsFalse(marker.PlayerOnMarker);
+    }
+
+    [Test]
+    public void AddCpuOccupant_FirstOccupant_SetsAutoPlayerOnMarkerTrue()
+    {
+        BasketBallShotMarker marker = MakeMarker("marker");
+        Collider hitbox = Spawn("cpu-hitbox-a").AddComponent<BoxCollider>();
+
+        InvokePrivateMethod(marker, "AddCpuOccupant", hitbox);
+
+        Assert.IsTrue(marker.AutoPlayerOnMarker);
+    }
+
+    [Test]
+    public void RemoveCpuOccupant_OneOfTwoExiting_LeavesOccupancyTrue()
+    {
+        BasketBallShotMarker marker = MakeMarker("marker");
+        Collider a = Spawn("cpu-hitbox-a").AddComponent<BoxCollider>();
+        Collider b = Spawn("cpu-hitbox-b").AddComponent<BoxCollider>();
+        InvokePrivateMethod(marker, "AddCpuOccupant", a);
+        InvokePrivateMethod(marker, "AddCpuOccupant", b);
+
+        InvokePrivateMethod(marker, "RemoveCpuOccupant", a);
+
+        Assert.IsTrue(marker.AutoPlayerOnMarker, "CPU B is still inside - one occupant exiting must not clear another's presence");
+    }
+
+    [Test]
+    public void RemoveCpuOccupant_FinalOccupantExiting_ClearsOccupancy()
+    {
+        BasketBallShotMarker marker = MakeMarker("marker");
+        Collider a = Spawn("cpu-hitbox-a").AddComponent<BoxCollider>();
+        InvokePrivateMethod(marker, "AddCpuOccupant", a);
+
+        InvokePrivateMethod(marker, "RemoveCpuOccupant", a);
+
+        Assert.IsFalse(marker.AutoPlayerOnMarker);
+    }
+
+    [Test]
+    public void HumanAndCpuMembership_AreIndependent()
+    {
+        BasketBallShotMarker marker = MakeMarker("marker");
+        Collider human = Spawn("human-hitbox").AddComponent<BoxCollider>();
+        Collider cpu = Spawn("cpu-hitbox").AddComponent<BoxCollider>();
+
+        InvokePrivateMethod(marker, "AddHumanOccupant", human);
+        InvokePrivateMethod(marker, "AddCpuOccupant", cpu);
+
+        Assert.IsTrue(marker.PlayerOnMarker);
+        Assert.IsTrue(marker.AutoPlayerOnMarker);
+    }
+
+    [Test]
+    public void RemoveHumanOccupant_CannotClearCpuPresence()
+    {
+        BasketBallShotMarker marker = MakeMarker("marker");
+        Collider human = Spawn("human-hitbox").AddComponent<BoxCollider>();
+        Collider cpu = Spawn("cpu-hitbox").AddComponent<BoxCollider>();
+        InvokePrivateMethod(marker, "AddHumanOccupant", human);
+        InvokePrivateMethod(marker, "AddCpuOccupant", cpu);
+
+        InvokePrivateMethod(marker, "RemoveHumanOccupant", human);
+
+        Assert.IsFalse(marker.PlayerOnMarker);
+        Assert.IsTrue(marker.AutoPlayerOnMarker, "removing the human occupant must not clear CPU presence");
+    }
+
+    [Test]
+    public void RemoveCpuOccupant_CannotClearHumanPresence()
+    {
+        BasketBallShotMarker marker = MakeMarker("marker");
+        Collider human = Spawn("human-hitbox").AddComponent<BoxCollider>();
+        Collider cpu = Spawn("cpu-hitbox").AddComponent<BoxCollider>();
+        InvokePrivateMethod(marker, "AddHumanOccupant", human);
+        InvokePrivateMethod(marker, "AddCpuOccupant", cpu);
+
+        InvokePrivateMethod(marker, "RemoveCpuOccupant", cpu);
+
+        Assert.IsTrue(marker.PlayerOnMarker, "removing the CPU occupant must not clear human presence");
+        Assert.IsFalse(marker.AutoPlayerOnMarker);
+    }
+
+    [Test]
+    public void AddHumanOccupant_DuplicateEntry_IsIdempotent()
+    {
+        BasketBallShotMarker marker = MakeMarker("marker");
+        Collider hitbox = Spawn("hitbox").AddComponent<BoxCollider>();
+
+        InvokePrivateMethod(marker, "AddHumanOccupant", hitbox);
+        InvokePrivateMethod(marker, "AddHumanOccupant", hitbox);
+        InvokePrivateMethod(marker, "RemoveHumanOccupant", hitbox);
+
+        Assert.IsFalse(marker.PlayerOnMarker, "a duplicate add must not require two removes to clear occupancy");
+    }
+
+    [Test]
+    public void RemoveHumanOccupant_DuplicateExit_IsHarmless()
+    {
+        BasketBallShotMarker marker = MakeMarker("marker");
+        Collider hitbox = Spawn("hitbox").AddComponent<BoxCollider>();
+        InvokePrivateMethod(marker, "AddHumanOccupant", hitbox);
+        InvokePrivateMethod(marker, "RemoveHumanOccupant", hitbox);
+
+        Assert.DoesNotThrow(() => InvokePrivateMethod(marker, "RemoveHumanOccupant", hitbox));
+        Assert.IsFalse(marker.PlayerOnMarker);
+    }
+
+    [Test]
+    public void RemoveHumanOccupant_WithoutPriorEntry_IsHarmless()
+    {
+        BasketBallShotMarker marker = MakeMarker("marker");
+        Collider hitbox = Spawn("hitbox").AddComponent<BoxCollider>();
+
+        Assert.DoesNotThrow(() => InvokePrivateMethod(marker, "RemoveHumanOccupant", hitbox));
+        Assert.IsFalse(marker.PlayerOnMarker);
+    }
+
+    [Test]
+    public void RemoveHumanOccupant_ClearsMembershipEvenWhenParticipantResolutionFails()
+    {
+        // Pins the invariant that exit-side membership removal does not depend on participant
+        // resolution succeeding: the collider has physically left the marker regardless of whether
+        // its PlayerIdentifier wiring can still be resolved (see RemoveHumanOccupant / OnTriggerExit).
+        // No PlayerIdentifier on this hitbox's hierarchy - ResolveParticipantState would fail for it,
+        // exactly like OnTriggerEnter_MissingPlayerIdentifier_LogsAndIgnoresTransition - but removal
+        // must not gate on that.
+        BasketBallShotMarker marker = MakeMarker("marker");
+        GameObject orphanHitbox = Spawn("orphan-hitbox");
+        orphanHitbox.tag = "playerHitbox";
+        Collider hitbox = orphanHitbox.AddComponent<BoxCollider>();
+        InvokePrivateMethod(marker, "AddHumanOccupant", hitbox);
+        Assert.IsTrue(marker.PlayerOnMarker);
+
+        InvokePrivateMethod(marker, "RemoveHumanOccupant", hitbox);
+
+        Assert.IsFalse(marker.PlayerOnMarker, "membership removal must succeed even though this collider's participant cannot be resolved");
+    }
+
+    [Test]
+    public void OnTriggerEnter_TwoHumanCollidersOnSameMarker_OccupancyStaysTrueUntilLastColliderExits()
+    {
+        // The regression this pins end-to-end: two humans on one marker, one leaves - the marker must
+        // not clear presentation occupancy out from under the participant who remains.
+        BasketBallShotMarker marker = MakeMarker("marker");
+        BasketBallState humanA = MakeState("human-a-state");
+        BasketBallState humanB = MakeState("human-b-state");
+        GameObject hitboxA = MakeHumanParticipant("human-a", humanA);
+        GameObject hitboxB = MakeHumanParticipant("human-b", humanB);
+
+        InvokeOnTriggerEnter(marker, hitboxA.GetComponent<Collider>());
+        InvokeOnTriggerEnter(marker, hitboxB.GetComponent<Collider>());
+
+        Assert.IsTrue(marker.PlayerOnMarker);
+
+        InvokePrivateMethod(marker, "RemoveHumanOccupant", hitboxA.GetComponent<Collider>());
+
+        Assert.IsTrue(marker.PlayerOnMarker, "human B's collider is still inside the marker");
+
+        InvokePrivateMethod(marker, "RemoveHumanOccupant", hitboxB.GetComponent<Collider>());
 
         Assert.IsFalse(marker.PlayerOnMarker);
     }

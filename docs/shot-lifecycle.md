@@ -91,6 +91,21 @@ their own state, not the primary player's.
 match-end routing, and mutable `MoneyBallEnabled`. This slice only moved *whose* marker a shot
 belongs to, not who manages the marker list or ends the match.
 
+**Marker-local presentation occupancy vs. participant gameplay occupancy.** `BasketBallState`'s
+`CurrentShotMarker`/`PlayerOnMarker`/`OnShootShotMarker` above are per-participant and unaffected by
+how many other participants share the marker. `BasketBallShotMarker` also tracks its own
+presentation occupancy - the `_playerOnMarker`/`_autoPlayerOnMarker` flags used by `Update()` and
+`setDisplayText()` to decide whether to show marker stats at all. Before this slice those flags were
+set/cleared unconditionally by whichever hitbox last entered/exited, so one human exiting a marker
+could clear the display flag out from under a second human still standing on it. They are now
+mirrors of two runtime `HashSet<Collider>` membership sets (`humanOccupants`/`cpuOccupants`, never
+serialized) - true while at least one qualifying collider of that role remains in the trigger, kept
+in sync by `AddHumanOccupant`/`RemoveHumanOccupant`/`AddCpuOccupant`/`RemoveCpuOccupant`. Membership
+removal on exit does not depend on the exiting collider's participant still being resolvable, since
+the collider has physically left regardless. Live-lifecycle check at the time of this change: no
+code destroys, deactivates, or disables a player's hitbox collider mid-match, so no stale-membership
+pruning was added.
+
 ## What a made shot is worth
 
 `Level5.Core.ShotScoring.Score` is the whole of it. There are three scoring worlds and a made shot is

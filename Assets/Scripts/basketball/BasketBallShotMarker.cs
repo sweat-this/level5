@@ -1,4 +1,5 @@
-﻿using UnityEngine;
+﻿using System.Collections.Generic;
+using UnityEngine;
 using UnityEngine.UI;
 using Level5.Core;
 using Level5.Core.Match;
@@ -10,6 +11,21 @@ public class BasketBallShotMarker : MonoBehaviour
     [SerializeField]
     private bool _autoPlayerOnMarker;
     private bool markerEnabled; // flag used to indicate max shots have not been achieved
+
+    /// <summary>
+    /// AUD-010 Phase 1c: marker-local presentation occupancy, keyed by the exact collider still
+    /// inside the trigger volume - not by participant. <see cref="BasketBallState.CurrentShotMarker"/>
+    /// remains each participant's own gameplay occupancy and is unaffected by these sets. One
+    /// occupant's collider exiting must not clear another same-role occupant's presentation state, so
+    /// <see cref="_playerOnMarker"/>/<see cref="_autoPlayerOnMarker"/> are mirrors of "is this set
+    /// non-empty", synchronized by <see cref="SyncHumanPresentationOccupancy"/>/
+    /// <see cref="SyncCpuPresentationOccupancy"/> - never serialized, never restored across a scene
+    /// load. Live-lifecycle check (AUD-010 Phase 1c preflight): no current code destroys, deactivates,
+    /// or disables a player's "playerHitbox"/"autoPlayerHitbox" collider mid-match (SpawnCoordinator
+    /// only instantiates at match setup), so no stale-entry pruning is added here.
+    /// </summary>
+    private readonly HashSet<Collider> humanOccupants = new HashSet<Collider>();
+    private readonly HashSet<Collider> cpuOccupants = new HashSet<Collider>();
 
     private GameObject basketBallTarget;
     private SpriteRenderer spriteRenderer;
@@ -188,14 +204,14 @@ public class BasketBallShotMarker : MonoBehaviour
         if (other.gameObject.CompareTag("playerHitbox") && gameObject.CompareTag("shot_marker")
             && detectCollisions)
         {
-            // Code review: only flip the role-wide presentation flag once the participant is
-            // actually resolved, so a failed resolution (logged by ResolveParticipantState) truly
-            // ignores the whole transition instead of leaving the marker's display state
-            // inconsistent with no participant's BasketBallState having been updated.
+            // Code review: only add to presentation membership once the participant is actually
+            // resolved, so a failed resolution (logged by ResolveParticipantState) truly ignores the
+            // whole transition instead of leaving the marker's display state inconsistent with no
+            // participant's BasketBallState having been updated.
             BasketBallState state = ResolveParticipantState(other, cpu: false);
             if (state != null)
             {
-                _playerOnMarker = true;
+                AddHumanOccupant(other);
                 state.EnterShotMarker(this);
             }
         }
@@ -206,7 +222,7 @@ public class BasketBallShotMarker : MonoBehaviour
             BasketBallState state = ResolveParticipantState(other, cpu: true);
             if (state != null)
             {
-                _autoPlayerOnMarker = true;
+                AddCpuOccupant(other);
                 state.EnterShotMarker(this);
             }
         }
@@ -218,19 +234,70 @@ public class BasketBallShotMarker : MonoBehaviour
         if (other.gameObject.CompareTag("playerHitbox") && gameObject.CompareTag("shot_marker")
                 && detectCollisions)
         {
-            _playerOnMarker = false;
-            setDisplayText(); // update display to empty
+            // The collider has physically left the marker regardless of whether its participant can
+            // still be resolved below, so membership removal must not depend on that resolution
+            // succeeding - see RemoveHumanOccupant.
+            RemoveHumanOccupant(other);
+            setDisplayText(); // update display to reflect any remaining occupant
             ResolveParticipantState(other, cpu: false)?.ExitShotMarker(this);
         }
         // if player exits shot marker area
         if (other.gameObject.CompareTag("autoPlayerHitbox") && gameObject.CompareTag("shot_marker")
                 && detectCollisions)
         {
-            _autoPlayerOnMarker = false;
+            RemoveCpuOccupant(other);
             locked = false;
-            setDisplayText(); // update display to empty
+            setDisplayText(); // update display to reflect any remaining occupant
             ResolveParticipantState(other, cpu: true)?.ExitShotMarker(this);
         }
+    }
+
+    /// <summary>
+    /// Adds <paramref name="hitbox"/> to human presentation membership. A collider already present is
+    /// a no-op (HashSet semantics), so a duplicate OnTriggerEnter cannot drift occupancy.
+    /// </summary>
+    private void AddHumanOccupant(Collider hitbox)
+    {
+        humanOccupants.Add(hitbox);
+        SyncHumanPresentationOccupancy();
+    }
+
+    /// <summary>
+    /// Removes <paramref name="hitbox"/> from human presentation membership. Removing a collider that
+    /// was never added, or that was already removed, is a harmless no-op. This does not touch
+    /// <see cref="BasketBallState"/> - only the marker's own presentation occupancy.
+    /// </summary>
+    private void RemoveHumanOccupant(Collider hitbox)
+    {
+        humanOccupants.Remove(hitbox);
+        SyncHumanPresentationOccupancy();
+    }
+
+    private void AddCpuOccupant(Collider hitbox)
+    {
+        cpuOccupants.Add(hitbox);
+        SyncCpuPresentationOccupancy();
+    }
+
+    private void RemoveCpuOccupant(Collider hitbox)
+    {
+        cpuOccupants.Remove(hitbox);
+        SyncCpuPresentationOccupancy();
+    }
+
+    /// <summary>
+    /// Human presentation occupancy is true while at least one qualifying human collider remains in
+    /// the trigger - one occupant exiting cannot clear another occupant's presence.
+    /// </summary>
+    private void SyncHumanPresentationOccupancy()
+    {
+        _playerOnMarker = humanOccupants.Count > 0;
+    }
+
+    /// <summary>Same rule as <see cref="SyncHumanPresentationOccupancy"/>, for the CPU role.</summary>
+    private void SyncCpuPresentationOccupancy()
+    {
+        _autoPlayerOnMarker = cpuOccupants.Count > 0;
     }
 
     /// <summary>
