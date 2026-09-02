@@ -13,9 +13,11 @@ using NUnit.Framework;
 /// basketball folder from reaching for them again.
 ///
 /// Deliberately does not forbid <c>GameRules</c> itself: <c>MoneyBallEnabled</c>,
-/// <c>PositionMarkersRequired</c>, <c>MarkersRemaining</c>, <c>IsGameOver()</c>,
-/// <c>RequestGameOver()</c> and <c>InThePocketActivateValue</c> remain valid, unresolved mutable
-/// session/lifecycle dependencies - see docs/shot-lifecycle.md.
+/// <c>PositionMarkersRequired</c>, <c>MarkersRemaining</c>, <c>IsGameOver()</c> and
+/// <c>RequestGameOver()</c> remain valid, unresolved mutable session/lifecycle dependencies - see
+/// docs/shot-lifecycle.md. <c>InThePocketActivateValue</c> was the last of these read by
+/// <c>BasketBallShotMade</c> (AUD-010 Phase 1c) - it was always 0 in production, so that file now
+/// uses an explicit constant instead and is banned from referencing <c>GameRules</c> at all, below.
 /// </summary>
 public class Level5BasketballGameRulesFacadeGuardTests
 {
@@ -61,5 +63,25 @@ public class Level5BasketballGameRulesFacadeGuardTests
             "AUD-010 Phase 1c: basketball production code must read these immutable rule values "
             + "through MatchRuntime.Rules (ResolvedMatchRules), not the GameRules compatibility "
             + "facade - found:\n" + string.Join("\n", offenders));
+    }
+
+    /// <summary>
+    /// AUD-010 Phase 1c: <c>BasketBallShotMade</c>'s last live <c>GameRules</c> dependency
+    /// (<c>InThePocketActivateValue</c>, always 0 in production) was replaced by an explicit
+    /// constant - see <c>CurrentInThePocketStreakBonusThreshold</c> and docs/shot-lifecycle.md.
+    /// This pins that file at zero live GameRules references so the dependency cannot silently
+    /// come back.
+    /// </summary>
+    [Test]
+    public void BasketBallShotMadeHasNoLiveGameRulesReferences()
+    {
+        string path = Path.Combine(BasketballRoot, "BasketBallShotMade.cs");
+        string text = Level5TestSourceText.StripComments(File.ReadAllText(path));
+
+        Assert.That(
+            Regex.IsMatch(text, @"\bGameRules\b"),
+            Is.False,
+            "AUD-010 Phase 1c: BasketBallShotMade must have zero live GameRules references - "
+            + "found one in " + Level5TestSourceText.Relative(path));
     }
 }
