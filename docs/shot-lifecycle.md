@@ -69,9 +69,10 @@ Marker occupancy is now the marker reference itself, owned by each participant's
 - `CurrentShotMarker` - the marker this participant currently occupies, or null. Set by
   `BasketBallState.EnterShotMarker(marker)` / `ExitShotMarker(marker)`, called from
   `BasketBallShotMarker`'s own `OnTriggerEnter`/`OnTriggerExit`, resolved to the exact colliding
-  participant through the actor-side `PlayerIdentifier` (never a role-wide flag, never
-  `GameLevelManager.instance.players[0]`). The most recently entered marker wins if two overlap;
-  exiting an earlier marker after entering a newer one is a no-op.
+  participant through `IBasketballParticipantStateProvider` (implemented by the actor-side
+  `PlayerIdentifier` over its existing `basketball`/`autoBasketball` references - never a role-wide
+  flag, never `GameLevelManager.instance.players[0]`). The most recently entered marker wins if two
+  overlap; exiting an earlier marker after entering a newer one is a no-op.
 - `OnShootShotMarker` - the marker snapshotted at this attempt's launch, via
   `BasketBallState.CaptureShotMarkerForAttempt()`. Once captured it does not change for the rest of
   the attempt, even if the participant exits the marker or enters another one while the ball is

@@ -426,6 +426,70 @@ public class Level5BasketballMarkerOwnershipTests
         Assert.IsFalse(marker.PlayerOnMarker);
     }
 
+    [Test]
+    public void OnTriggerEnter_CpuIdentifierWithNoAutoBasketballReference_LogsAndIgnoresTransition()
+    {
+        // CPU-role mirror of OnTriggerEnter_IdentifierWithNoBasketballReference_LogsAndIgnoresTransition:
+        // TryGetBasketballState's cpuRoute branch reads .autoBasketball instead of .basketball, and
+        // that branch deserves the same missing-reference coverage as the human one.
+        BasketBallShotMarker marker = MakeMarker("marker");
+        GameObject actor = Spawn("incomplete-cpu-actor");
+        actor.AddComponent<PlayerIdentifier>(); // .autoBasketball left unset
+        GameObject hitbox = Spawn("incomplete-cpu-hitbox");
+        hitbox.transform.parent = actor.transform;
+        hitbox.tag = "autoPlayerHitbox";
+        hitbox.AddComponent<BoxCollider>();
+
+        LogAssert.Expect(LogType.Error, new Regex("could not resolve the CPU participant's BasketBallState"));
+
+        InvokeOnTriggerEnter(marker, hitbox.GetComponent<Collider>());
+
+        Assert.IsFalse(marker.AutoPlayerOnMarker);
+    }
+
+    [Test]
+    public void OnTriggerEnter_SelectedBasketballWithoutBasketBallStateComponent_LogsAndIgnoresTransition()
+    {
+        // Distinct from OnTriggerEnter_IdentifierWithNoBasketballReference_LogsAndIgnoresTransition:
+        // here the provider resolves and the basketball reference itself is non-null, but that
+        // GameObject has no BasketBallState component - IBasketballParticipantStateProvider.
+        // TryGetBasketballState must still return false rather than a null-state pass-through.
+        BasketBallShotMarker marker = MakeMarker("marker");
+        GameObject actor = Spawn("actor-ball-no-state");
+        PlayerIdentifier identifier = actor.AddComponent<PlayerIdentifier>();
+        identifier.basketball = Spawn("ball-without-basketballstate");
+        GameObject hitbox = Spawn("hitbox-ball-no-state");
+        hitbox.transform.parent = actor.transform;
+        hitbox.tag = "playerHitbox";
+        hitbox.AddComponent<BoxCollider>();
+
+        LogAssert.Expect(LogType.Error, new Regex("could not resolve the human participant's BasketBallState"));
+
+        InvokeOnTriggerEnter(marker, hitbox.GetComponent<Collider>());
+
+        Assert.IsFalse(marker.PlayerOnMarker);
+    }
+
+    [Test]
+    public void OnTriggerEnter_SelectedAutoBasketballWithoutBasketBallStateComponent_LogsAndIgnoresTransition()
+    {
+        // CPU-role mirror of OnTriggerEnter_SelectedBasketballWithoutBasketBallStateComponent_LogsAndIgnoresTransition.
+        BasketBallShotMarker marker = MakeMarker("marker");
+        GameObject actor = Spawn("actor-cpu-ball-no-state");
+        PlayerIdentifier identifier = actor.AddComponent<PlayerIdentifier>();
+        identifier.autoBasketball = Spawn("auto-ball-without-basketballstate");
+        GameObject hitbox = Spawn("hitbox-cpu-ball-no-state");
+        hitbox.transform.parent = actor.transform;
+        hitbox.tag = "autoPlayerHitbox";
+        hitbox.AddComponent<BoxCollider>();
+
+        LogAssert.Expect(LogType.Error, new Regex("could not resolve the CPU participant's BasketBallState"));
+
+        InvokeOnTriggerEnter(marker, hitbox.GetComponent<Collider>());
+
+        Assert.IsFalse(marker.AutoPlayerOnMarker);
+    }
+
     // ==================== marker-local presentation occupancy membership (section 8 of the plan) ====================
     //
     // AddHumanOccupant/RemoveHumanOccupant/AddCpuOccupant/RemoveCpuOccupant are exercised directly via
