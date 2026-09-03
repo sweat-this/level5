@@ -499,6 +499,21 @@ public sealed class SpawnCoordinator
         GameObject ownerActor = forCpu ? owner.autoPlayer : owner.player;
         runtime.BindOwner(owner.pid, forCpu, slotId == 0, ownerActor, owner.Actor);
 
+        // AUD-010 Phase 2b0: binds this match's already-resolved rules to the ball's own GameStats,
+        // immediately after BindOwner, so match-XP calculation never has to reach for MatchRuntime
+        // itself. Every production basketball prefab carries a GameStats component (phase 1b
+        // measurement); a prefab that does not is a composition defect, logged here rather than
+        // patched over by adding one.
+        GameStats stats = ball.GetComponent<GameStats>();
+        if (stats == null)
+        {
+            Debug.LogError($"Basketball prefab '{prefab.name}' has no GameStats component.", ball);
+        }
+        else
+        {
+            stats.BindMatchRules(rules);
+        }
+
         // AUD-010 Phase 1c: only the human ball's drop-shadow fallback needs a live ground height -
         // CPU composition (BasketBallAuto) is unaffected. Passing the possibly-null coordinator-level
         // provider through is deliberate: BindGroundHeightProvider's own null-provider guard is what

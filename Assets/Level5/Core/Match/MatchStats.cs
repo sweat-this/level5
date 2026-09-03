@@ -20,9 +20,11 @@ namespace Level5.Core.Match
     /// with no mirrored second copy of the state.
     ///
     /// Deliberately *not* here: anything that reads a scene type or a match-wide singleton.
-    /// <c>BuildExperienceInput</c> stays on <c>GameStats</c> because it reads <c>MatchRuntime</c>,
-    /// which lives in Assembly-CSharp and which this assembly cannot reference. That boundary is the
-    /// point: the compiler now rejects any future attempt to make the stats owner reach into a scene.
+    /// <c>BuildExperienceInput</c> stays on <c>GameStats</c>: even after AUD-010 Phase 2b0 removed its
+    /// <c>MatchRuntime</c> read, it still needs the bound <c>ResolvedMatchRules</c> reference
+    /// (<c>GameStats.BindMatchRules</c>), which is runtime composition state this owner does not hold.
+    /// That boundary is the point: the compiler still rejects any attempt to make the stats owner
+    /// reach into a scene.
     /// </summary>
     [Serializable]
     public class MatchStats

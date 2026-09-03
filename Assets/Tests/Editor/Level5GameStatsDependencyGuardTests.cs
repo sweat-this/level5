@@ -40,4 +40,24 @@ public class Level5GameStatsDependencyGuardTests
             Is.False,
             "GameStats must not expose a public method whose parameter type is BasketBallState.");
     }
+
+    /// <summary>
+    /// AUD-010 Phase 2b0 permanent guard: <c>GameStats</c> must carry no <c>MatchRuntime</c>
+    /// dependency. <c>BuildExperienceInput</c> used to read <c>MatchRuntime.Rules</c> directly; match
+    /// rules now arrive once through <c>BindMatchRules(ResolvedMatchRules)</c>, bound by composition
+    /// (<c>SpawnCoordinator.GiveBall</c>). This fails the build if a future change reintroduces a
+    /// direct <c>MatchRuntime</c> read on this type instead of using the bound reference.
+    /// </summary>
+    [Test]
+    public void GameStatsHasNoMatchRuntimeReference()
+    {
+        string text = Level5TestSourceText.StripComments(File.ReadAllText(GameStatsPath));
+
+        Assert.That(
+            text,
+            Does.Not.Match(@"\bMatchRuntime\b"),
+            "GameStats must have zero MatchRuntime references - match rules must arrive through "
+            + "BindMatchRules(ResolvedMatchRules), bound once at match composition, not by reading "
+            + "MatchRuntime directly.");
+    }
 }

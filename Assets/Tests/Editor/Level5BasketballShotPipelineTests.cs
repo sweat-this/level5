@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Level5.Core;
+using Level5.Core.Match;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
@@ -237,6 +238,10 @@ public class Level5BasketballShotPipelineTests
     public void UpdateScoreTextReportsCountsAndPercentagesFromTheSameGameStatsInstance()
     {
         GameStats stats = MakeStats();
+        // UpdateScoreText's "current exp" line calls GameStats.getExperienceGainedFromSession(),
+        // which (AUD-010 Phase 2b0) requires bound match rules - a real match GameStats always has
+        // these bound by SpawnCoordinator.GiveBall before this text is ever built.
+        stats.BindMatchRules(new ResolvedMatchRules());
         stats.ShotMade = 3;
         stats.ShotAttempt = 4;
         stats.TwoPointerMade = 2;

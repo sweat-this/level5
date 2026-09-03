@@ -368,9 +368,9 @@ public static class BasketballShotPipeline
     /// <summary>
     /// Phase 1c: reads counters through <see cref="GameStats.Stats"/> rather than the facade's
     /// passthrough properties. Still takes <c>GameStats</c> itself, not just <c>MatchStats</c> -
-    /// <see cref="GameStats.getExperienceGainedFromSession"/> reads <c>MatchRuntime</c>, which
-    /// <c>MatchStats</c> cannot reach across the assembly boundary, so that one call stays on the
-    /// facade.
+    /// <see cref="GameStats.getExperienceGainedFromSession"/> needs the match's bound
+    /// <c>ResolvedMatchRules</c> (AUD-010 Phase 2b0: <c>GameStats.BindMatchRules</c>), which is
+    /// composition state <c>MatchStats</c> does not hold, so that one call stays on the facade.
     /// </summary>
     public static void UpdateScoreText(Text scoreText, GameStats gameStats, float lastShotDistance)
     {
