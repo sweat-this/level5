@@ -97,15 +97,18 @@ public class BasketBallState : MonoBehaviour
     /// </summary>
     public void BindMatchRules(ResolvedMatchRules rules)
     {
-        if (rules == null)
-        {
-            Debug.LogError($"BasketBallState on '{gameObject.name}' was bound with null match rules; remaining unbound.", this);
-            return;
-        }
-
+        // Checked before the null-argument branch below: a null second call after a real bind
+        // already succeeded must report "already bound", not "remaining unbound" - matchRules is
+        // still the original valid reference either way, and the log should say so.
         if (matchRules != null)
         {
             Debug.LogError($"BasketBallState on '{gameObject.name}' already has bound match rules; ignoring a second BindMatchRules call.", this);
+            return;
+        }
+
+        if (rules == null)
+        {
+            Debug.LogError($"BasketBallState on '{gameObject.name}' was bound with null match rules; remaining unbound.", this);
             return;
         }
 

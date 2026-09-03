@@ -361,6 +361,25 @@ public class Level5BasketballOwnershipBindingTests
         Assert.AreSame(first, GetPrivateField(state, "matchRules"), "a second BindMatchRules call must not overwrite the original rules");
     }
 
+    /// <summary>
+    /// Code review: a null second call after a real bind already succeeded must report "already
+    /// bound", not "remaining unbound" - the state is not unbound, it still holds the original valid
+    /// rules. Pins the check ordering (already-bound checked before null-argument) that makes that true.
+    /// </summary>
+    [Test]
+    public void BasketBallStateRejectsNullSecondBindWithAnAlreadyBoundMessage()
+    {
+        GameObject go = Spawn("basketball-state-null-second-rules");
+        BasketBallState state = go.AddComponent<BasketBallState>();
+        ResolvedMatchRules first = new ResolvedMatchRules(requiresBasketball: false);
+        state.BindMatchRules(first);
+
+        LogAssert.Expect(LogType.Error, new Regex("already has bound match rules"));
+        state.BindMatchRules(null);
+
+        Assert.AreSame(first, GetPrivateField(state, "matchRules"), "a null second bind must not clear the original rules");
+    }
+
     [Test]
     public void MissingMatchRulesIsDetectedClearlyOnBasketBallStateStart()
     {
