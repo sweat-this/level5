@@ -132,6 +132,19 @@ public class Level5MoneyBallStateCompositionPlayModeTests
                 ReferenceEquals(bound, GameRules.instance),
                 Is.True,
                 $"BasketBallAuto '{ball.gameObject.name}' is bound to a money-ball provider that is not the real live GameRules instance");
+
+            // AUD-010 Phase 2b0 code review: proves the real SpawnCoordinator.GiveBall -> BasketBallAuto.BindMatchRules
+            // wiring holds in an actual scene load, the same gap this file's own header comment
+            // already explains no EditMode test can observe. A missing bind here would have
+            // deactivated the whole GameObject in Start() (see BasketBallAuto.Start()'s rules guard).
+            Assert.That(
+                ball.gameObject.activeSelf,
+                Is.True,
+                $"BasketBallAuto '{ball.gameObject.name}' deactivated itself - it reached Start() with no bound match rules");
+            Assert.That(
+                FieldObject(ball, "matchRules"),
+                Is.Not.Null,
+                $"BasketBallAuto '{ball.gameObject.name}' reached play with no bound ResolvedMatchRules - SpawnCoordinator.GiveBall's composition step did not reach it");
         }
     }
 

@@ -524,6 +524,15 @@ public sealed class SpawnCoordinator
         GameObject ownerActor = forCpu ? owner.autoPlayer : owner.player;
         runtime.BindOwner(owner.pid, forCpu, slotId == 0, ownerActor, owner.Actor);
 
+        // AUD-010 Phase 2b0: binds this match's already-resolved rules to the CPU implementation
+        // directly, immediately after BindOwner - the same seam BasketBallAuto.Start()/Update() now
+        // read instead of MatchRuntime.Rules.EnemiesOnly. Not part of IBasketballRuntime: only the
+        // concrete CPU type has this dependency today.
+        if (runtime is BasketBallAuto autoBall)
+        {
+            autoBall.BindMatchRules(rules);
+        }
+
         // AUD-010 Phase 2b0: binds this match's already-resolved rules to the ball's own
         // BasketBallState, immediately after BindOwner - runtime.State is already valid at this
         // point, since both BasketBall.BindOwner and BasketBallAuto.BindOwner resolve and bind their
