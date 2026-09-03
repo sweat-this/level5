@@ -23,15 +23,21 @@ public class Level5BasketballOwnershipBindingTests
     private PlayerRegistry registry;
     private SpawnCoordinator coordinator;
     private MethodInfo giveBall;
+    private ResolvedMatchRules rules;
 
     [SetUp]
     public void SetUp()
     {
         registry = new PlayerRegistry();
+        // hardcore: true is deliberately not ResolvedMatchRules' own default (false) - the rules
+        // binding tests below assert on it precisely so a GiveBall that bound some other,
+        // default-constructed ResolvedMatchRules instead of this coordinator's own `rules` field
+        // would read back false and fail, rather than coincidentally matching the default.
+        rules = new ResolvedMatchRules(combatMode: CombatMode.Standard, enemiesEnabled: false, hardcore: true, enemiesOnly: false);
         coordinator = new SpawnCoordinator(
             new SpawnCoordinator.SpawnLocations(),
             registry,
-            new ResolvedMatchRules(combatMode: CombatMode.Standard, enemiesEnabled: false, hardcore: false, enemiesOnly: false),
+            rules,
             new PlayerRoster(new PlayerSlot[0]),
             GameModeId.None,
             new FakeGroundHeightProvider());
@@ -204,6 +210,63 @@ public class Level5BasketballOwnershipBindingTests
         Assert.AreSame(owner.basketball.GetComponent<BasketBall>(), owner.basketBallController);
         Assert.AreSame(owner.basketball.GetComponent<BasketBallState>(), owner.basketBallState);
         Assert.AreSame(owner.basketball.GetComponent<GameStats>(), owner.gameStats);
+    }
+
+    /// <summary>
+    /// AUD-010 Phase 2b0: GiveBall now also binds the coordinator's ResolvedMatchRules to the ball's
+    /// GameStats, immediately after IBasketballRuntime.BindOwner - the seam GameStats.BuildExperienceInput
+    /// depends on now that it no longer reads MatchRuntime directly.
+    /// </summary>
+    [Test]
+    public void HumanBallReceivesTheCoordinatorsMatchRules()
+    {
+        PlayerIdentifier owner = RegisterHumanParticipant(pid: 0);
+        GameObject humanPrefab = Resources.Load<GameObject>(Constants.PREFAB_PATH_BASKETBALL_human);
+
+        GiveBall(0, humanPrefab, forCpu: false);
+        spawned.Add(owner.basketball);
+
+        GameStats stats = owner.gameStats;
+        Assert.IsNotNull(stats);
+        Assert.IsTrue(stats.HasBoundMatchRules, "GiveBall must bind the match rules to the human ball's GameStats");
+        // rules.Hardcore is true here specifically because it is not ResolvedMatchRules' own default
+        // - this fails if GiveBall ever bound a different (e.g. freshly-constructed default) rules
+        // instance instead of this coordinator's own `rules` field.
+        Assert.That(stats.BuildExperienceInput().HardcoreEnabled, Is.EqualTo(rules.Hardcore),
+            "the bound rules must be the coordinator's own rules, not some other default-valued instance");
+    }
+
+    [Test]
+    public void CpuBallReceivesTheCoordinatorsMatchRules()
+    {
+        RegisterHumanParticipant(pid: 0);
+        PlayerIdentifier cpuOwner = RegisterCpuParticipant(pid: 1);
+        GameObject cpuPrefab = Resources.Load<GameObject>(Constants.PREFAB_PATH_BASKETBALL_cpu);
+
+        GiveBall(1, cpuPrefab, forCpu: true);
+        spawned.Add(cpuOwner.autoBasketball);
+
+        GameStats stats = cpuOwner.gameStats;
+        Assert.IsNotNull(stats);
+        Assert.IsTrue(stats.HasBoundMatchRules, "GiveBall must bind the match rules to the CPU ball's GameStats");
+        Assert.That(stats.BuildExperienceInput().HardcoreEnabled, Is.EqualTo(rules.Hardcore),
+            "the bound rules must be the coordinator's own rules, not some other default-valued instance");
+    }
+
+    [Test]
+    public void SecondaryHumanBallAlsoReceivesTheCoordinatorsMatchRules()
+    {
+        RegisterHumanParticipant(pid: 0);
+        PlayerIdentifier secondHuman = RegisterHumanParticipant(pid: 1);
+        GameObject humanPrefab = Resources.Load<GameObject>(Constants.PREFAB_PATH_BASKETBALL_human);
+
+        GiveBall(1, humanPrefab, forCpu: false);
+        spawned.Add(secondHuman.basketball);
+
+        Assert.That(secondHuman.gameStats.BuildExperienceInput().HardcoreEnabled, Is.EqualTo(rules.Hardcore),
+            "a secondary human's ball must be bound to the coordinator's own rules, not some other default-valued instance");
+        Assert.IsTrue(secondHuman.gameStats.HasBoundMatchRules,
+            "a secondary human's ball must not be skipped by rules composition");
     }
 
     [Test]

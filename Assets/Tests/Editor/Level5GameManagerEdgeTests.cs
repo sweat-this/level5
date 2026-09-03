@@ -63,16 +63,17 @@ public class Level5GameManagerEdgeTests
         // BasketBallShotMarker win-condition bookkeeping - shot-lifecycle.md already concluded the
         // marker state "correctly stays inline... it feeds GameRules.IsGameOver()'s win condition
         // directly." GameStats here is load-bearing: gameStats1/primaryGameStats call
-        // GameStats.getExperienceGainedFromSession(), which reads MatchRuntime and so cannot narrow
-        // to MatchStats (Level5.Core cannot reference MatchRuntime's assembly); SaveMatchResults'/
-        // GetPrimaryGameStats' GameStats feed DBConnector.savePlayerAllTimeStats(GameStats), a
-        // persistence-layer boundary this plan does not change.
+        // GameStats.getExperienceGainedFromSession(), which (AUD-010 Phase 2b0) needs the match's
+        // bound ResolvedMatchRules (GameStats.BindMatchRules) - composition state MatchStats does not
+        // hold, so this cannot narrow to MatchStats; SaveMatchResults'/GetPrimaryGameStats' GameStats
+        // feed DBConnector.savePlayerAllTimeStats(GameStats), a persistence-layer boundary this plan
+        // does not change.
         "GameRules.cs",
 
         // BasketBall.instance.BasketBallState/.LastShotDistance live-text reads and the
         // getSortedGameStatsList() scoreboard formatting are shot-lifecycle.md's deferred "move the
         // HUD off polling" design pass. GameStats here is load-bearing for the same
-        // getExperienceGainedFromSession() reason as GameRules.
+        // getExperienceGainedFromSession()/bound-ResolvedMatchRules reason as GameRules.
         "MatchHudPresenter.cs",
 
         // Spawning/registering participants is this class's whole job.

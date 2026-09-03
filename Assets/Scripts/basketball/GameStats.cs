@@ -22,9 +22,13 @@ using Level5.Core.Match;
 /// the caller reading that bool itself before passing it in. No member of this type takes a scene
 /// type as a parameter or return value.
 ///
-/// <see cref="BuildExperienceInput"/> stays here rather than moving, because it reads
-/// <c>MatchRuntime</c>, which lives in Assembly-CSharp and which <c>Level5.Core</c> cannot reference.
-/// That is the assembly boundary doing its job, not a gap in the extraction.
+/// <see cref="BuildExperienceInput"/> used to read <c>MatchRuntime</c> directly, because
+/// <c>MatchRuntime</c> lives in Assembly-CSharp and <c>Level5.Core</c> cannot reference it. AUD-010
+/// Phase 2b0 removed that read: composition (<see cref="SpawnCoordinator.GiveBall"/>) now binds the
+/// scene's already-resolved <see cref="ResolvedMatchRules"/> once, through <see cref="BindMatchRules"/>,
+/// and match-XP calculation reads that bound reference instead. This type still cannot become a
+/// second match-configuration owner - it holds one reference to the rules the scene already resolved,
+/// nothing more.
 /// </summary>
 public class GameStats : MonoBehaviour
 {
@@ -35,6 +39,18 @@ public class GameStats : MonoBehaviour
     [SerializeField] private MatchStats _stats = new MatchStats();
 
     /// <summary>
+    /// The rules this match is being played under, bound once by composition. Not serialized: it is
+    /// runtime-only, set after the component already exists (see <see cref="BindMatchRules"/>), and
+    /// <see cref="ResolvedMatchRules"/> is not itself <c>[Serializable]</c>.
+    ///
+    /// Null for every <c>GameStats</c> that is not a live match participant - the campaign
+    /// accumulator (<c>PlayerData.campaignGameStats</c>), the all-time-stats DTO
+    /// (<c>DBHelper.getAllTimeStats</c>) and test doubles all remain valid without ever calling
+    /// <see cref="BindMatchRules"/>; only match-XP calculation requires it.
+    /// </summary>
+    private ResolvedMatchRules matchRules;
+
+    /// <summary>
     /// The seam phase 1c migrates consumers onto.
     ///
     /// Every delegating member below goes through this rather than through <c>_stats</c> directly, so
@@ -43,6 +59,38 @@ public class GameStats : MonoBehaviour
     /// </summary>
     public MatchStats Stats => _stats ??= new MatchStats();
 
+    /// <summary>Whether <see cref="BindMatchRules"/> has already been accepted. Read-only diagnostic
+    /// for composition tests and callers that want to check before asking for match XP.</summary>
+    public bool HasBoundMatchRules => matchRules != null;
+
+    /// <summary>
+    /// Binds the rules this match is being played under. Composition
+    /// (<see cref="SpawnCoordinator.GiveBall"/>) calls this once, immediately after instantiating a
+    /// match participant's basketball, for every <c>GameStats</c> that can later be asked for match
+    /// XP - a generic/campaign/DB/versus-only <c>GameStats</c> is never bound and remains a valid
+    /// stats facade regardless.
+    ///
+    /// A null argument or a second bind attempt is rejected with an actionable error rather than
+    /// silently replacing or discarding the existing state, matching the rebind guard
+    /// <see cref="IBasketballRuntime.BindOwner"/> already uses for the same composition step.
+    /// </summary>
+    public void BindMatchRules(ResolvedMatchRules rules)
+    {
+        if (rules == null)
+        {
+            Debug.LogError("GameStats.BindMatchRules was called with null rules; this GameStats remains unbound.", this);
+            return;
+        }
+
+        if (matchRules != null)
+        {
+            Debug.LogError("GameStats.BindMatchRules was already called once; keeping the original rules.", this);
+            return;
+        }
+
+        matchRules = rules;
+    }
+
     public float getTotalPointAccuracy()
     {
         return Stats.TotalPointAccuracy;
@@ -50,17 +98,27 @@ public class GameStats : MonoBehaviour
 
     public int getExperienceGainedFromSession()
     {
+        if (matchRules == null)
+        {
+            Debug.LogError("GameStats.getExperienceGainedFromSession was called with no match rules bound; returning 0.", this);
+            ExperienceGained = 0;
+            return 0;
+        }
+
         ExperienceGained = MatchExperience.Calculate(BuildExperienceInput());
         return ExperienceGained;
     }
 
     // the award itself lives in Level5.Core so it can be unit tested without a scene.
     // this method's only job is reading the session's stats and mode flags into plain data.
-    //
-    // it stays on this side of the assembly boundary because MatchRuntime is an Assembly-CSharp
-    // static that Level5.Core cannot see - the same constraint ShooterAttributesMapper has.
     public MatchExperienceInput BuildExperienceInput()
     {
+        if (matchRules == null)
+        {
+            Debug.LogError("GameStats.BuildExperienceInput was called with no match rules bound; returning an inert input.", this);
+            return default;
+        }
+
         return new MatchExperienceInput
         {
             ShotAttempts = ShotAttempt,
@@ -78,12 +136,12 @@ public class GameStats : MonoBehaviour
             MinionsKilled = MinionsKilled,
             BossKilled = BossKilled,
 
-            TrafficEnabled = MatchRuntime.Rules.TrafficEnabled,
-            EnemiesEnabled = MatchRuntime.Rules.EnemiesEnabled || MatchRuntime.Rules.EnemiesOnly,
-            HardcoreEnabled = MatchRuntime.Rules.Hardcore,
-            SniperEnabled = MatchRuntime.Rules.SniperEnabled,
-            ArcadeMode = MatchRuntime.Rules.ArcadeMode,
-            DifficultySelected = MatchDifficulties.ToInt(MatchRuntime.Rules.Difficulty)
+            TrafficEnabled = matchRules.TrafficEnabled,
+            EnemiesEnabled = matchRules.EnemiesEnabled || matchRules.EnemiesOnly,
+            HardcoreEnabled = matchRules.Hardcore,
+            SniperEnabled = matchRules.SniperEnabled,
+            ArcadeMode = matchRules.ArcadeMode,
+            DifficultySelected = MatchDifficulties.ToInt(matchRules.Difficulty)
         };
     }
 
