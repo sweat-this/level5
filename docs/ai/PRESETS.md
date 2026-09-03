@@ -91,14 +91,14 @@ Standard mode is appropriate for ordinary scoped work. Automatically consider `d
 
 **Architecture** — broad manager ownership migration; state ownership moving between systems; assembly/asmdef restructuring; scene/bootstrap architecture; public/shared contracts; multiple gameplay modes; significant serialized-data migration; conflicting repository evidence.
 
-`deep` means deeper *targeted* investigation, not reading the whole repository.
+`deep` means deeper *targeted* investigation, not reading the whole repository or automatically running Level 3 validation.
 
 ## Evidence Reuse
 
 Reuse prior evidence across:
 
 ```text
-audit → plan → revised plan → implementation prompt → implementation continuation
+audit → plan → revised plan → implementation prompt → implementation continuation → review
 ```
 
 when:
@@ -118,28 +118,45 @@ Refresh only affected evidence when:
 
 Do not reread files solely to restate known scope in an implementation prompt.
 
+Validation evidence follows the same rule. Do not rerun still-current checks in a continuation or review unless implementation changed afterward, the result is untrusted, or reproduction is necessary to resolve a material finding.
+
 ## Detailed Workflows
 
 Load a workflow under [`docs/ai/skills/`](skills/) only when the route, mode, or risk requires it. See [`docs/ai/README.md`](README.md) for the full catalog and composition guidance.
 
 ## Impact-Based Validation
 
-Token reduction must not weaken verification. Match validation to the actual change:
+Token reduction must not weaken verification. Match local validation to the actual changed surface and let CI own broad checks where that capability is active.
 
-```text
-pure/system logic          → focused EditMode tests
-runtime gameplay behavior  → focused PlayMode tests + smoke test
-shot/scoring change        → affected shot lifecycle + relevant gameplay mode
-CPU/human shared behavior  → verify both applicable paths
-mode-sensitive behavior    → exercise affected modes
-scene/prefab change        → composition + serialized-reference validation
-persistence/network change → compatibility/migration/idempotency tests as applicable
-```
+| Change surface | Local validation | CI ownership |
+| --- | --- | --- |
+| Docs/comments/non-runtime metadata | inspection/lightweight checks | Repository Validation |
+| Isolated C# / deterministic system logic | compile when affected + focused EditMode tests | Repository Validation + Unity suites when enabled |
+| Runtime gameplay behavior | focused PlayMode test when useful; manual smoke only if acceptance requires observation | Unity suites when enabled |
+| Shot/scoring/match lifecycle | affected lifecycle tests + domain-required real-mode Play Mode path | Unity suites when enabled |
+| CPU/human shared behavior | verify both applicable paths, narrowly | Unity suites when enabled |
+| Mode-sensitive behavior | exercise only affected modes required by the contract | Unity suites when enabled |
+| Scene/prefab/serialized composition | focused composition/reference checks | Repository Validation; Unity suites when enabled |
+| Persistence/identity/versus | focused compatibility/migration/idempotency tests as applicable | Unity suites when enabled |
+| Repository invariant/script | affected `validate-repository.ps1` path | Repository Validation |
+| Release/certification | complete applicable certification | all active CI |
 
-Repository validation remains:
+Rules:
+
+- `standard` implementation defaults to Level 1 focused validation.
+- Do not run `./scripts/validate-repository.ps1` locally merely because implementation changed; PR CI already runs it. Run it locally when its invariant/script changed, it is needed for diagnosis, CI evidence is unavailable and required before completion, or certification is explicitly requested.
+- When Unity CI is confirmed active for the current PR, do not duplicate broad EditMode/PlayMode suites locally solely because CI will run them.
+- When Unity CI is disabled or unavailable, retain the focused local Unity tests required by the changed behavior; do not replace missing CI with an automatic full local suite.
+- Run expensive checks once after implementation is coherent rather than after intermediate edits.
+- A passing check remains current until a later edit touches its covered behavior or contract.
+- After failure, diagnose first and rerun the narrowest check that proves the fix.
+- For verbose commands, inspect exit status first and read only relevant failure excerpts.
+- Manual Play Mode is for runtime/visual evidence gaps and explicit domain rules, not automatic reassurance for every player-facing change.
+
+Repository Validation remains:
 
 ```powershell
 ./scripts/validate-repository.ps1
 ```
 
-Run validation appropriate to the actual change; do not turn every focused change into exhaustive project QA, and do not skip validation that the change actually requires.
+CI capability is defined by `.github/workflows/repository-quality.yml`; do not assume optional Unity CI coverage without current evidence.
