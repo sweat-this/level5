@@ -164,14 +164,11 @@ way the immutable properties were. Instead:
   money-ball branch, exactly the shape `ApplyMarkerAndMoneyBallOnShoot`'s existing
   no-`CurrentShotMarker` branch already used.
 
-`BasketballShotPipeline.cs` now has zero live `GameRules` references, pinned by
-`Level5BasketballGameRulesFacadeGuardTests.BasketballShotPipelineHasNoLiveGameRulesReferences`.
-`BasketBallShotMarker.cs` is the one production basketball file left with live `GameRules`
-dependencies (`MarkersRemaining`, `IsGameOver()`, `RequestGameOver()` - session-wide
-marker/match-lifecycle state, out of scope here), pinned by the stronger allowlist guard
-`OnlyBasketBallShotMarkerHasLiveGameRulesReferences` in the same file. This is a dependency-direction
+`BasketballShotPipeline.cs` now has zero live `GameRules` references. This is a dependency-direction
 change only: `MoneyBallEnabled` itself is not redesigned, rebalanced, or reset differently - it is
-still exactly the mutable bool `GameRules` has always owned.
+still exactly the mutable bool `GameRules` has always owned. At this point `BasketBallShotMarker.cs`
+was still the one production basketball file left with live `GameRules` dependencies
+(`MarkersRemaining`, `IsGameOver()`, `RequestGameOver()`) - closed in a later Phase 1c slice, below.
 
 `BasketBallShotMarker.Update()` resolves `IsPointContestMode()` once per frame and threads the
 result into `setDisplayText(bool)` and the two marker-completion branches, rather than each of up to
@@ -212,8 +209,8 @@ a rebalance:
 - **preserved current behavior** - the production threshold is still exactly zero, so scoring is
   bit-for-bit unchanged. Pinned by
   `Level5ShotScoringTests.TheProductionInThePocketThresholdOfZeroPaysFromTheFirstMake` and the
-  architecture guard `Level5BasketballGameRulesFacadeGuardTests.
-  BasketBallShotMadeHasNoLiveGameRulesReferences` (`BasketBallShotMade` now has zero live
+  folder-wide architecture guard `Level5BasketballGameRulesFacadeGuardTests.
+  ProductionBasketballHasZeroLiveGameRulesReferences` (`BasketBallShotMade` has zero live
   `GameRules` references of any kind, not just the five facade properties).
 - **future intended design, not addressed here** - whether In the Pocket should use a nonzero or
   configurable threshold is a separate gameplay decision. `Level5.Core.ShotScoring` and
@@ -226,6 +223,54 @@ they are outside `Assets/Scripts/basketball` and were not part of this slice. Th
 sides of what was one field now able to drift independently - see the note on
 `GameRules.InThePocketActivateValue` in `GameRules.cs` and
 `Level5BasketballGameRulesFacadeGuardTests` for where each side now lives.
+
+### `BasketBallShotMarker`'s last `GameRules` dependency removed (AUD-010 Phase 1c)
+
+`BasketBallShotMarker` read three more `GameRules` members: `MarkersRemaining` (get and decrement),
+`IsGameOver()` and `RequestGameOver()` - the session-wide remaining-marker count and match-end
+routing. Unlike the properties closed earlier, these stay genuinely mutable, session-wide state -
+`GameRules` remains the sole owner of `markersRemaining`, active marker-list setup and match-end
+routing; nothing about that ownership moved.
+
+- `Level5.Core.Match.IShotMarkerSession` is a narrow read/mutate contract over exactly that existing
+  state: `MarkersRemaining` (live read), `RecordMarkerCompleted()` (decrements by one and returns
+  whether `MatchEndConditions.MarkersCleared` is now true - never itself requests match end) and
+  `RequestMatchEnd()` (routes into the existing `RequestGameOver()` path).
+- `GameRules` implements it explicitly, over its existing `MarkersRemaining`/`IsGameOver()`/
+  `RequestGameOver()` members - those public members are untouched, so every other caller keeps
+  working exactly as before.
+- `GameRules.Awake()` binds itself as the live session to every active, scene-authored
+  `"shot_marker"`-tagged object's `BasketBallShotMarker`, via `BindShotMarkerSessionToMarkers()` - a
+  second one-time tag scan, deliberately separate from `SetPositionMarkers()` (still called from
+  `Start()`, still the sole owner of mode-specific marker filtering, the active-marker list,
+  position-marker ids and the initial `markersRemaining` count). Shot markers are scene-authored, not
+  spawned through `GameLevelManager`/`SpawnCoordinator`, so this binding pass needs no
+  `GameLevelManager` execution-order dependency - it only relies on Unity's ordinary guarantee that
+  every object's `Awake()` runs before any object's `Start()`, the same guarantee
+  `BindMoneyBallStateToBasketballs` already relies on.
+- `BasketBallShotMarker.BindShotMarkerSession(IShotMarkerSession)` is the same bind-once/null-guard/
+  no-rebind shape as `BasketBall.BindMoneyBallState`. Unlike the money-ball binding, this one *is* a
+  mandatory `Start()` dependency: every production marker reads the session for presentation the
+  moment `Start()` runs. A marker whose `Start()` finds no bound session logs an actionable
+  composition error and fails closed - `detectCollisions = false` and `this.enabled = false` - rather
+  than proceeding with a null reference. `detectCollisions` is set explicitly, not left to `enabled`
+  alone, because `OnTriggerEnter`/`OnTriggerExit` already gate on that flag directly rather than on
+  the component's enabled state.
+- The point-contest and non-point completion branches in `Update()` previously duplicated the same
+  five-step sequence (disable the marker, decrement the session count, hide the sprite, refresh the
+  display, conditionally request match end). Both now call one private `CompleteMarker(bool
+  isPointContestMode)` helper that preserves that exact order - `RecordMarkerCompleted()` runs, then
+  the sprite/display update, and only then `RequestMatchEnd()` if the objective just cleared - so
+  match end is still requested after presentation reflects the completed marker, exactly as before.
+  The readiness conditions deciding *when* each branch completes (max attempts reached and the
+  captured final-attempt runtime's actor/ball state, or `ShotMade >= MaxShotMade`) are unchanged.
+
+Production `Assets/Scripts/basketball` now has zero live `GameRules` references anywhere in the
+folder, pinned by `Level5BasketballGameRulesFacadeGuardTests.ProductionBasketballHasZeroLiveGameRulesReferences`,
+which replaced the earlier per-file allowlist guards. This closes the forward basketball -> `GameRules`
+edge; the reverse edge (`GameRules` discovering and owning the marker list, and now binding itself to
+markers in `Awake()`) still exists and is out of scope here, as is the wider game-manager <-> basketball
+dependency picture - see the architecture audit/remediation documents for that broader accounting.
 
 ## What a made shot is worth
 

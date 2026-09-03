@@ -46,6 +46,15 @@ public class BasketBallShotMarker : MonoBehaviour
     private IBasketballRuntime finalAttemptRuntime;
     private bool loggedMissingFinalAttemptRuntime;
 
+    /// <summary>
+    /// AUD-010 Phase 1c: live session-wide marker state, bound once by <see cref="GameRules"/>'s own
+    /// composition step (<see cref="BindShotMarkerSession"/>), before <see cref="Start"/> runs. Unlike
+    /// <see cref="BasketBall"/>'s <c>IMoneyBallState</c> binding, this one is a mandatory <see cref="Start"/>
+    /// dependency - every production marker reads it for presentation and completion, so a missing
+    /// binding fails the marker closed instead of proceeding with a null reference.
+    /// </summary>
+    private IShotMarkerSession markerSession;
+
     [SerializeField] public int positionMarkerId; // identitfy specific marker
     // spcific marker's stats
     [SerializeField] private int _shotMade;
@@ -71,6 +80,19 @@ public class BasketBallShotMarker : MonoBehaviour
     // Start is called before the first frame update
     void Start()
     {
+        // AUD-010 Phase 1c: fail-closed composition check, before the first call below that reads
+        // markerSession (setDisplayText). Every production marker receives its session from
+        // GameRules.Awake() before this Start() can run - a null here is a composition bug, not
+        // reachable gameplay state. detectCollisions is set explicitly (not just this.enabled) because
+        // OnTriggerEnter/OnTriggerExit gate on that flag directly, not on the component's enabled state.
+        if (markerSession == null)
+        {
+            Debug.LogError($"BasketBallShotMarker '{name}': Start() reached with no bound IShotMarkerSession - marker composition is incomplete; disabling this marker.", this);
+            detectCollisions = false;
+            this.enabled = false;
+            return;
+        }
+
         _shotMade = 0;
         _shotAttempt = 0;
 
@@ -166,18 +188,7 @@ public class BasketBallShotMarker : MonoBehaviour
                     && !finalAttemptRuntime.Actor.InAir
                     && !finalAttemptRuntime.State.InAir)
                 {
-                    markerEnabled = false;
-                    // decrease markers remaining
-                    GameRules.instance.MarkersRemaining--;
-                    spriteRenderer.color = new Color(1f, 1f, 1f, 0f); // opacity to 0
-                    setDisplayText(isPointContestMode);
-
-                    //check if last remaining shot marker
-                    if (GameRules.instance.IsGameOver())
-                    {
-                        //GameRules.instance.CounterTime = Timer.instance.CurrentTime;
-                        GameRules.instance.RequestGameOver();
-                    }
+                    CompleteMarker(isPointContestMode);
                 }
             }
         }
@@ -187,21 +198,33 @@ public class BasketBallShotMarker : MonoBehaviour
             // if made # of shots required at shot marker
             if (ShotMade >= MaxShotMade && markerEnabled)
             {
-                markerEnabled = false;
-                // decrease markers remaining
-                GameRules.instance.MarkersRemaining--;
-                spriteRenderer.color = new Color(1f, 1f, 1f, 0f); // opacity to 0
-                setDisplayText(isPointContestMode);
-
-                // check if last remaining shot marker
-                if (GameRules.instance.IsGameOver())
-                {
-                    //GameRules.instance.CounterTime = Timer.instance.CurrentTime;
-                    GameRules.instance.RequestGameOver();
-                }
+                CompleteMarker(isPointContestMode);
             }
         }
 
+    }
+
+    /// <summary>
+    /// AUD-010 Phase 1c: the shared completion sequence both the point-contest and non-point branches
+    /// above reach once their own readiness condition succeeds. Preserves the exact externally visible
+    /// order the two branches previously duplicated: disable this marker, record exactly one session
+    /// completion, hide the sprite, refresh the display, then - only if the objective just cleared -
+    /// request match end. <see cref="Level5.Core.Match.IShotMarkerSession.RecordMarkerCompleted"/>
+    /// itself never requests match end, so that ordering is enforced here, not by the session.
+    /// </summary>
+    private void CompleteMarker(bool isPointContestMode)
+    {
+        markerEnabled = false;
+
+        bool objectiveCleared = markerSession.RecordMarkerCompleted();
+
+        spriteRenderer.color = new Color(1f, 1f, 1f, 0f); // opacity to 0
+        setDisplayText(isPointContestMode);
+
+        if (objectiveCleared)
+        {
+            markerSession.RequestMatchEnd();
+        }
     }
 
     void OnTriggerEnter(Collider other)
@@ -365,7 +388,7 @@ public class BasketBallShotMarker : MonoBehaviour
         if ((PlayerOnMarker || _autoPlayerOnMarker) && markerEnabled
             && !isPointContestMode)
         {
-            displayCurrentMarkerStats.text = "markers remaining : " + GameRules.instance.MarkersRemaining + "\n"
+            displayCurrentMarkerStats.text = "markers remaining : " + markerSession.MarkersRemaining + "\n"
                                              // + "current marker : " + positionMarkerId + "\n"
                                              + "made : " + ShotMade + " / " + ShotAttempt + "\n"
                                              + "remaining : " + (maxShotMade - ShotMade);
@@ -373,7 +396,7 @@ public class BasketBallShotMarker : MonoBehaviour
         // if player not on marker or marker disabled (max shots made)
         if (!(PlayerOnMarker || _autoPlayerOnMarker) || !markerEnabled)//&& markerEnabled)
         {
-            displayCurrentMarkerStats.text = "markers remaining : " + GameRules.instance.MarkersRemaining + "\n"
+            displayCurrentMarkerStats.text = "markers remaining : " + markerSession.MarkersRemaining + "\n"
                                              //   + "current marker : \n"
                                              + "made : \n"
                                              + "remaining : ";
@@ -419,6 +442,30 @@ public class BasketBallShotMarker : MonoBehaviour
             shotTypeFour = false;
             shotTypeSeven = true;
         }
+    }
+
+    // ======================= IShotMarkerSession binding (AUD-010 Phase 1c) =======================
+
+    /// <summary>
+    /// Explicit shot-marker-session binding from <see cref="GameRules"/>'s own composition step
+    /// (<c>GameRules.Awake</c>), called once for every active, scene-authored marker before any
+    /// marker's own <see cref="Start"/> runs. Ownership-only - no gameplay side effects.
+    /// </summary>
+    public void BindShotMarkerSession(IShotMarkerSession session)
+    {
+        if (session == null)
+        {
+            Debug.LogError($"BasketBallShotMarker on '{gameObject.name}' was bound with a null shot-marker session.", this);
+            return;
+        }
+
+        if (markerSession != null)
+        {
+            Debug.LogError($"BasketBallShotMarker on '{gameObject.name}' already has a bound shot-marker session; ignoring a second BindShotMarkerSession call.", this);
+            return;
+        }
+
+        markerSession = session;
     }
 
     public int ShotMade
