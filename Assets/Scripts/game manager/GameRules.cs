@@ -9,7 +9,7 @@ using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
-public class GameRules : MonoBehaviour
+public class GameRules : MonoBehaviour, IMoneyBallState
 {
     private const int MaxProgressionSaveAttempts = 3;
     [SerializeField]
@@ -124,6 +124,66 @@ public class GameRules : MonoBehaviour
         matchProgressionResultId = MatchSession.EnsureCurrentMatch();
         timePlayedStart = Time.time;
         inThePocketActivateValue = 0;
+
+        // AUD-010 Phase 1c: binds this (the surviving, non-duplicate) instance as the live
+        // IMoneyBallState for every already-spawned basketball. GameLevelManager's execution order
+        // (-8000) guarantees SpawnPlayers()/SpawnBasketballs() have already run by the time this
+        // Awake() executes, and every basketball's own Start() runs only after every object's Awake()
+        // has - including this one - so the binding is always in place before a ball can reach a shot.
+        BindMoneyBallStateToBasketballs(GameLevelManager.instance != null ? GameLevelManager.instance.Registry : null);
+    }
+
+    /// <summary>
+    /// Binds <paramref name="registry"/>'s participants' basketballs to this instance's live
+    /// <see cref="IMoneyBallState"/>. Takes the registry explicitly, rather than reading
+    /// <c>GameLevelManager.instance</c> itself, so the composition logic is exercisable without a live
+    /// <c>GameLevelManager</c> - the same shape <see cref="SpawnCoordinator"/> already uses.
+    ///
+    /// A participant with no basketball at all (a defensive CPU, for example) is skipped, not an
+    /// error; a participant whose basketball GameObject exists but is missing the expected
+    /// BasketBall/BasketBallAuto component logs an actionable composition error instead.
+    /// </summary>
+    private void BindMoneyBallStateToBasketballs(PlayerRegistry registry)
+    {
+        if (registry == null)
+        {
+            Debug.LogError("GameRules could not bind money-ball state to any basketball: no participant registry.");
+            return;
+        }
+
+        foreach (PlayerIdentifier participant in registry.Participants)
+        {
+            if (participant == null)
+            {
+                continue;
+            }
+
+            if (participant.basketball != null)
+            {
+                BasketBall humanBall = participant.basketball.GetComponent<BasketBall>();
+                if (humanBall != null)
+                {
+                    humanBall.BindMoneyBallState(this);
+                }
+                else
+                {
+                    Debug.LogError($"GameRules could not bind money-ball state: participant {participant.pid}'s basketball '{participant.basketball.name}' has no BasketBall component.");
+                }
+            }
+
+            if (participant.autoBasketball != null)
+            {
+                BasketBallAuto cpuBall = participant.autoBasketball.GetComponent<BasketBallAuto>();
+                if (cpuBall != null)
+                {
+                    cpuBall.BindMoneyBallState(this);
+                }
+                else
+                {
+                    Debug.LogError($"GameRules could not bind money-ball state: participant {participant.pid}'s autoBasketball '{participant.autoBasketball.name}' has no BasketBallAuto component.");
+                }
+            }
+        }
     }
 
     private void Start()
@@ -712,6 +772,13 @@ public class GameRules : MonoBehaviour
 
     public bool GameModeRequiresMoneyBall => rules.RequiresMoneyBall;
 
+    /// <summary>
+    /// Live mutable session state - still owned here, still freely settable. AUD-010 Phase 1c:
+    /// also satisfies <see cref="IMoneyBallState"/>, the read-only view basketball now receives
+    /// through explicit binding (<see cref="BindMoneyBallStateToBasketballs"/>) instead of reaching
+    /// for <c>GameRules.instance</c> directly. This property's shape is unchanged by that - the
+    /// setter is not removed or narrowed, and nothing about this value's ownership moves.
+    /// </summary>
     public bool MoneyBallEnabled
     {
         get => moneyBallEnabled;

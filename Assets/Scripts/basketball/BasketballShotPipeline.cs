@@ -39,10 +39,16 @@ public static class BasketballShotPipeline
     /// from one <c>MatchRuntime.Rules</c> snapshot for the whole call, rather than
     /// <c>GameRules.instance.PositionMarkersRequired</c> - a compatibility cache <c>GameRules.Start</c>
     /// copies from the same immutable rule once, before match play can reach a shot. See
-    /// docs/shot-lifecycle.md. <c>GameRules.instance.MoneyBallEnabled</c> stays untouched: it is
-    /// separately mutable session state, not an immutable match rule.
+    /// docs/shot-lifecycle.md.
+    ///
+    /// AUD-010 Phase 1c: <paramref name="moneyBallState"/> replaces the direct
+    /// <c>GameRules.instance.MoneyBallEnabled</c> read - still separately mutable session state, not
+    /// an immutable match rule, still owned by <c>GameRules</c>. Taking the live provider rather than
+    /// its current bool value matters here: this method's own marker/contest gating above must run
+    /// (and can itself take time relative to other state) before this value is read, exactly where the
+    /// original read sat.
     /// </summary>
-    public static void ApplyMarkerAndMoneyBallOnShoot(IBasketballRuntime runtime)
+    public static void ApplyMarkerAndMoneyBallOnShoot(IBasketballRuntime runtime, IMoneyBallState moneyBallState)
     {
         BasketBallState basketBallState = runtime.State;
         GameStats gameStats = runtime.Stats;
@@ -72,7 +78,15 @@ public static class BasketballShotPipeline
             gameStats.Stats.MoneyBallAttempts++;
         }
 
-        if (GameRules.instance.MoneyBallEnabled)
+        if (moneyBallState == null)
+        {
+            // Every production ball receives its IMoneyBallState from GameRules' own composition
+            // step (GameRules.BindMoneyBallStateToBasketballs) before any Start() runs - a null here
+            // on a shot that reached this far is a composition bug, not reachable gameplay state.
+            // The marker attempt/snapshot work above already happened and must not be undone.
+            Debug.LogError($"BasketballShotPipeline.ApplyMarkerAndMoneyBallOnShoot: participant {runtime.ParticipantId} reached a qualifying marker shot with no bound IMoneyBallState - skipping money-ball accounting for this shot.");
+        }
+        else if (moneyBallState.MoneyBallEnabled)
         {
             basketBallState.MoneyBallEnabledOnShoot = true;
             gameStats.Stats.MoneyBallAttempts++;
