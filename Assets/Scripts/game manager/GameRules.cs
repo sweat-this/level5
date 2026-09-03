@@ -9,7 +9,7 @@ using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
-public class GameRules : MonoBehaviour, IMoneyBallState
+public class GameRules : MonoBehaviour, IMoneyBallState, IShotMarkerSession
 {
     private const int MaxProgressionSaveAttempts = 3;
     [SerializeField]
@@ -131,6 +131,40 @@ public class GameRules : MonoBehaviour, IMoneyBallState
         // Awake() executes, and every basketball's own Start() runs only after every object's Awake()
         // has - including this one - so the binding is always in place before a ball can reach a shot.
         BindMoneyBallStateToBasketballs(GameLevelManager.instance != null ? GameLevelManager.instance.Registry : null);
+
+        // AUD-010 Phase 1c: binds this (the surviving, non-duplicate) instance as the live
+        // IShotMarkerSession for every already-active, scene-authored shot marker. Shot markers are
+        // scene-authored, not spawned by GameLevelManager/SpawnCoordinator, so this reads the
+        // "shot_marker" tag directly rather than the Registry - no GameLevelManager execution-order
+        // dependency is needed here. Every object's Awake() (including this one) still runs before any
+        // object's Start(), so every marker is bound before its own Start() can read this session.
+        BindShotMarkerSessionToMarkers();
+    }
+
+    /// <summary>
+    /// Binds this instance as the live <see cref="IShotMarkerSession"/> to every active, scene-authored
+    /// <c>"shot_marker"</c>-tagged object's <see cref="BasketBallShotMarker"/>. Deliberately separate
+    /// from <see cref="SetPositionMarkers"/>: that method still owns mode-specific marker filtering,
+    /// the active-marker list, position-marker ids and <see cref="markersRemaining"/> initialization,
+    /// unchanged, in <see cref="Start"/>. This pass exists only to establish the session dependency
+    /// before a marker's own <see cref="BasketBallShotMarker.Start"/> can run - a second one-time tag
+    /// scan, not a registration framework.
+    /// </summary>
+    private void BindShotMarkerSessionToMarkers()
+    {
+        GameObject[] markerObjects = GameObject.FindGameObjectsWithTag("shot_marker");
+
+        foreach (GameObject markerObject in markerObjects)
+        {
+            BasketBallShotMarker marker = markerObject.GetComponent<BasketBallShotMarker>();
+            if (marker == null)
+            {
+                Debug.LogError($"GameRules could not bind a shot-marker session: '{markerObject.name}' is tagged 'shot_marker' but has no BasketBallShotMarker component.", markerObject);
+                continue;
+            }
+
+            marker.BindShotMarkerSession(this);
+        }
     }
 
     /// <summary>
@@ -827,6 +861,26 @@ public class GameRules : MonoBehaviour, IMoneyBallState
         get => markersRemaining;
         set => markersRemaining = value;
     }
+
+    // ======================= IShotMarkerSession (AUD-010 Phase 1c) =======================
+    //
+    // Explicit implementation: BasketBallShotMarker's own dependency boundary, not a new ordinary
+    // public API. MarkersRemaining/IsGameOver()/RequestGameOver() above are unchanged and remain the
+    // compatibility surface for every other caller.
+
+    int IShotMarkerSession.MarkersRemaining => MarkersRemaining;
+
+    bool IShotMarkerSession.RecordMarkerCompleted()
+    {
+        MarkersRemaining--;
+        return IsGameOver();
+    }
+
+    void IShotMarkerSession.RequestMatchEnd()
+    {
+        RequestGameOver();
+    }
+
     // Views onto the resolved rules, kept because callers still ask GameRules these questions.
     public bool GameModeRequiresConsecutiveShots => rules.RequiresConsecutiveShots;
     public bool GameModeThreePointContest => rules.IsThreePointContest;

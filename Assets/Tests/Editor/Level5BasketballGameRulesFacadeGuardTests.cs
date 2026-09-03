@@ -12,17 +12,18 @@ using NUnit.Framework;
 /// <c>GameModeAllPointContest</c>, <c>PositionMarkersRequired</c>) stay on <c>GameRules</c> for other
 /// callers - this only forbids the basketball folder from reaching for them again.
 ///
-/// Deliberately does not forbid <c>GameRules</c> itself: <c>MarkersRemaining</c>, <c>IsGameOver()</c>
-/// and <c>RequestGameOver()</c> remain valid, unresolved mutable session/lifecycle dependencies for
-/// <c>BasketBallShotMarker</c> - see docs/shot-lifecycle.md.
-/// <c>InThePocketActivateValue</c> was the first of these removed, from <c>BasketBallShotMade</c>
-/// (AUD-010 Phase 1c) - it was always 0 in production, so that file now uses an explicit constant
-/// instead and is banned from referencing <c>GameRules</c> at all, below. <c>MoneyBallEnabled</c> was
-/// the second, from <c>BasketballShotPipeline</c> - it stays live, mutable session state, still owned
-/// by <c>GameRules</c>, but basketball now reaches it through a bound
-/// <see cref="Level5.Core.Match.IMoneyBallState"/> instead of the singleton, so that file is banned
-/// below too. <c>BasketBallShotMarker</c> is the one file left with a live dependency; see
-/// <see cref="OnlyBasketBallShotMarkerHasLiveGameRulesReferences"/>.
+/// <c>InThePocketActivateValue</c> was the first live dependency removed, from
+/// <c>BasketBallShotMade</c> (AUD-010 Phase 1c) - it was always 0 in production, so that file now uses
+/// an explicit constant instead. <c>MoneyBallEnabled</c> was the second, from
+/// <c>BasketballShotPipeline</c> - it stays live, mutable session state, still owned by
+/// <c>GameRules</c>, but basketball now reaches it through a bound
+/// <see cref="Level5.Core.Match.IMoneyBallState"/> instead of the singleton.
+/// <c>MarkersRemaining</c>, <c>IsGameOver()</c> and <c>RequestGameOver()</c> were the last three, from
+/// <c>BasketBallShotMarker</c> - still live, mutable session/lifecycle state, still owned by
+/// <c>GameRules</c>, but basketball now reaches them through a bound
+/// <see cref="Level5.Core.Match.IShotMarkerSession"/> instead of the singleton. With all five closed,
+/// <see cref="ProductionBasketballHasZeroLiveGameRulesReferences"/> pins the whole folder at zero live
+/// references, replacing the earlier per-file allowlist guards.
 /// </summary>
 public class Level5BasketballGameRulesFacadeGuardTests
 {
@@ -72,66 +73,22 @@ public class Level5BasketballGameRulesFacadeGuardTests
     }
 
     /// <summary>
-    /// AUD-010 Phase 1c: <c>BasketBallShotMade</c>'s last live <c>GameRules</c> dependency
-    /// (<c>InThePocketActivateValue</c>, always 0 in production) was replaced by an explicit
-    /// constant - see <c>CurrentInThePocketStreakBonusThreshold</c> and docs/shot-lifecycle.md.
-    /// This pins that file at zero live GameRules references so the dependency cannot silently
-    /// come back.
+    /// AUD-010 Phase 1c: with <c>BasketBallShotMarker</c>'s last live dependency
+    /// (<c>MarkersRemaining</c>, <c>IsGameOver()</c>, <c>RequestGameOver()</c>) replaced by a bound
+    /// <see cref="Level5.Core.Match.IShotMarkerSession"/>, production basketball has zero live
+    /// <c>GameRules</c> references anywhere in the folder. This is the final, strongest form of the
+    /// earlier one-file allowlist guards above: every file in the folder is pinned at zero, so any
+    /// future reach for <c>GameRules</c> is caught immediately rather than silently allowed back in.
     /// </summary>
     [Test]
-    public void BasketBallShotMadeHasNoLiveGameRulesReferences()
-    {
-        string path = Path.Combine(BasketballRoot, "BasketBallShotMade.cs");
-        string text = Level5TestSourceText.StripComments(File.ReadAllText(path));
-
-        Assert.That(
-            Regex.IsMatch(text, @"\bGameRules\b"),
-            Is.False,
-            "AUD-010 Phase 1c: BasketBallShotMade must have zero live GameRules references - "
-            + "found one in " + Level5TestSourceText.Relative(path));
-    }
-
-    /// <summary>
-    /// AUD-010 Phase 1c: <c>BasketballShotPipeline</c>'s last live <c>GameRules</c> dependency
-    /// (<c>GameRules.instance.MoneyBallEnabled</c>) was replaced by a live
-    /// <see cref="Level5.Core.Match.IMoneyBallState"/> provider, bound once by <c>GameRules</c>' own
-    /// composition step (<c>GameRules.BindMoneyBallStateToBasketballs</c>) rather than resolved back
-    /// through the singleton. This pins that file at zero live GameRules references so the dependency
-    /// cannot silently come back - see docs/shot-lifecycle.md.
-    /// </summary>
-    [Test]
-    public void BasketballShotPipelineHasNoLiveGameRulesReferences()
-    {
-        string path = Path.Combine(BasketballRoot, "BasketballShotPipeline.cs");
-        string text = Level5TestSourceText.StripComments(File.ReadAllText(path));
-
-        Assert.That(
-            Regex.IsMatch(text, @"\bGameRules\b"),
-            Is.False,
-            "AUD-010 Phase 1c: BasketballShotPipeline must have zero live GameRules references - "
-            + "found one in " + Level5TestSourceText.Relative(path));
-    }
-
-    /// <summary>
-    /// AUD-010 Phase 1c: with <c>BasketballShotPipeline</c> now at zero (above),
-    /// <c>BasketBallShotMarker.cs</c> is the only production basketball file left with a live
-    /// <c>GameRules</c> dependency (<c>MarkersRemaining</c>, <c>IsGameOver()</c>,
-    /// <c>RequestGameOver()</c> - session-wide marker/match-lifecycle state, out of scope for this
-    /// slice). This is the stronger form of the two zero-reference guards above: rather than pinning
-    /// one file at zero, it pins every other file in the folder at zero, so the next file that starts
-    /// reaching for <c>GameRules</c> is caught immediately instead of silently joining
-    /// <c>BasketBallShotMarker</c>. Update the allowlist deliberately if a future slice narrows
-    /// <c>BasketBallShotMarker</c>'s own dependency instead of leaving it as the last one.
-    /// </summary>
-    [Test]
-    public void OnlyBasketBallShotMarkerHasLiveGameRulesReferences()
+    public void ProductionBasketballHasZeroLiveGameRulesReferences()
     {
         List<string> offenders = new List<string>();
 
         foreach (string path in Directory.EnumerateFiles(BasketballRoot, "*.cs", SearchOption.AllDirectories))
         {
             string normalized = path.Replace('\\', '/');
-            if (normalized.Contains("Legacy~") || normalized.EndsWith("/BasketBallShotMarker.cs"))
+            if (normalized.Contains("Legacy~"))
             {
                 continue;
             }
@@ -146,8 +103,7 @@ public class Level5BasketballGameRulesFacadeGuardTests
         Assert.That(
             offenders,
             Is.Empty,
-            "AUD-010 Phase 1c: BasketBallShotMarker.cs is the only production basketball file allowed "
-            + "a live GameRules reference (session-wide marker/match-lifecycle state) - found one "
-            + "elsewhere:\n" + string.Join("\n", offenders));
+            "AUD-010 Phase 1c: production basketball must have zero live GameRules references - "
+            + "found some in:\n" + string.Join("\n", offenders));
     }
 }

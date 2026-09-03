@@ -1,8 +1,10 @@
 using System.Reflection;
 using System.Collections.Generic;
 using Level5.Core;
+using Level5.Core.Match;
 using NUnit.Framework;
 using UnityEngine;
+using UnityEngine.UI;
 using UnityEngine.TestTools;
 using System.Text.RegularExpressions;
 
@@ -12,14 +14,16 @@ using System.Text.RegularExpressions;
 /// state, not an id resolved through <c>GameRules.BasketBallShotMarkersList</c> or
 /// <c>GameLevelManager.instance.players[0]</c>.
 ///
-/// <c>BasketBallShotMarker.OnTriggerExit</c> and <c>Update()</c> are not exercised directly here -
-/// both reach <c>GameRules.instance</c> (display text / MarkersRemaining / IsGameOver), and standing
-/// up a real <c>GameRules</c> singleton pulls in <c>MatchController</c>, <c>MatchHudPresenter</c> and
-/// <c>ProgressionService</c> with no existing lightweight test seam (no test in this suite
-/// instantiates <c>GameRules</c>). <c>OnTriggerEnter</c> - the new participant-resolution wiring this
-/// slice adds - has no such dependency and is exercised directly below; the occupancy/overlap/
-/// snapshot invariants it delegates to are exercised directly against <see cref="BasketBallState"/>
-/// and <see cref="BasketBallShotMarker.RegisterAttempt"/>, which also have none.
+/// AUD-010 Phase 1c (session-boundary slice): <c>BasketBallShotMarker.OnTriggerExit</c> and
+/// <c>Update()</c> used to be untestable here because both reached <c>GameRules.instance</c> directly
+/// (display text / <c>MarkersRemaining</c> / <c>IsGameOver()</c>), and standing up a real
+/// <c>GameRules</c> singleton pulls in <c>MatchController</c>, <c>MatchHudPresenter</c> and
+/// <c>ProgressionService</c> with no lightweight test seam. Now that the marker reaches that state
+/// through a bound <see cref="IShotMarkerSession"/> instead, both are exercised directly below against
+/// <see cref="FakeShotMarkerSession"/> - no real <c>GameRules</c> needed. <c>Start()</c> itself is
+/// still not driven end-to-end here (it also calls <c>GameObject.Find("basketBall_target")</c>, which
+/// this suite does not stand up), except for the composition-guard test that intentionally invokes it
+/// with no bound session to prove the marker fails closed.
 /// </summary>
 public class Level5BasketballMarkerOwnershipTests
 {
@@ -79,6 +83,29 @@ public class Level5BasketballMarkerOwnershipTests
         MethodInfo method = typeof(BasketBallShotMarker).GetMethod("OnTriggerEnter", BindingFlags.NonPublic | BindingFlags.Instance);
         Assert.IsNotNull(method, "BasketBallShotMarker must declare OnTriggerEnter");
         method.Invoke(marker, new object[] { other });
+    }
+
+    private static void InvokeOnTriggerExit(BasketBallShotMarker marker, Collider other)
+    {
+        MethodInfo method = typeof(BasketBallShotMarker).GetMethod("OnTriggerExit", BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.IsNotNull(method, "BasketBallShotMarker must declare OnTriggerExit");
+        method.Invoke(marker, new object[] { other });
+    }
+
+    /// <summary>
+    /// Prepares an already-created marker for direct exercise of session-dependent code
+    /// (<c>setDisplayText</c>/<c>Update</c>/<c>OnTriggerExit</c>/<c>CompleteMarker</c>) without driving
+    /// <c>Start()</c> itself, which also depends on <c>GameObject.Find("basketBall_target")</c> - see
+    /// the file header. Binds <paramref name="session"/>, stands in a real UI <c>Text</c> for
+    /// <c>displayCurrentMarkerStats</c> (the same technique <c>Level5ShotMeterOwnershipTests</c>/
+    /// <c>Level5RangeMeterOwnershipTests</c> already use), and a real <c>SpriteRenderer</c> for the
+    /// completion path's opacity write.
+    /// </summary>
+    private static void PrepareMarkerForSessionDependentBehavior(BasketBallShotMarker marker, IShotMarkerSession session)
+    {
+        marker.BindShotMarkerSession(session);
+        SetPrivateField(marker, "displayCurrentMarkerStats", marker.gameObject.AddComponent<Text>());
+        SetPrivateField(marker, "spriteRenderer", marker.gameObject.AddComponent<SpriteRenderer>());
     }
 
     private static void InvokePrivateMethod(object target, string methodName, params object[] args)
@@ -834,6 +861,276 @@ public class Level5BasketballMarkerOwnershipTests
         }
     }
 
+    // ==================== BasketBallShotMarker.BindShotMarkerSession (AUD-010 Phase 1c) ====================
+
+    [Test]
+    public void BindShotMarkerSession_ValidProvider_Binds()
+    {
+        BasketBallShotMarker marker = MakeMarker("marker");
+        FakeShotMarkerSession session = new FakeShotMarkerSession { MarkersRemaining = 3 };
+
+        marker.BindShotMarkerSession(session);
+
+        Assert.AreSame(session, GetPrivateField(marker, "markerSession"));
+    }
+
+    [Test]
+    public void BindShotMarkerSession_NullProvider_LogsAndLeavesUnbound()
+    {
+        BasketBallShotMarker marker = MakeMarker("marker");
+
+        LogAssert.Expect(LogType.Error, new Regex("null shot-marker session"));
+        marker.BindShotMarkerSession(null);
+
+        Assert.IsNull(GetPrivateField(marker, "markerSession"));
+    }
+
+    [Test]
+    public void BindShotMarkerSession_SecondCall_IsRejectedAndOriginalProviderRetained()
+    {
+        BasketBallShotMarker marker = MakeMarker("marker");
+        FakeShotMarkerSession first = new FakeShotMarkerSession { MarkersRemaining = 3 };
+        FakeShotMarkerSession second = new FakeShotMarkerSession { MarkersRemaining = 1 };
+        marker.BindShotMarkerSession(first);
+
+        LogAssert.Expect(LogType.Error, new Regex("already has a bound shot-marker session"));
+        marker.BindShotMarkerSession(second);
+
+        Assert.AreSame(first, GetPrivateField(marker, "markerSession"),
+            "a second BindShotMarkerSession call must not overwrite the original binding");
+    }
+
+    // ==================== Start() composition guard (AUD-010 Phase 1c) ====================
+
+    [Test]
+    public void Start_NoBoundSession_LogsActionableErrorAndFailsMarkerClosed()
+    {
+        BasketBallShotMarker marker = MakeMarker("marker"); // MakeMarker forces detectCollisions true; Start() must override it.
+
+        LogAssert.Expect(LogType.Error, new Regex("no bound IShotMarkerSession"));
+        InvokePrivateMethod(marker, "Start");
+
+        Assert.IsFalse(marker.enabled, "an unbound marker must disable itself so Update() never runs");
+        Assert.IsFalse((bool)GetPrivateField(marker, "detectCollisions"),
+            "an unbound marker must not process collisions - OnTriggerEnter/Exit gate on this flag directly, not on enabled");
+    }
+
+    // ==================== markerSession-backed presentation reads (AUD-010 Phase 1c) ====================
+
+    [Test]
+    public void SetDisplayText_NotOnMarker_ReadsMarkersRemainingFromTheBoundSession()
+    {
+        BasketBallShotMarker marker = MakeMarker("marker");
+        FakeShotMarkerSession session = new FakeShotMarkerSession { MarkersRemaining = 4 };
+        PrepareMarkerForSessionDependentBehavior(marker, session);
+
+        InvokePrivateMethod(marker, "setDisplayText", false);
+
+        Text text = (Text)GetPrivateField(marker, "displayCurrentMarkerStats");
+        Assert.That(text.text, Does.Contain("markers remaining : 4"),
+            "marker presentation must consume the bound session's live count, not a concrete manager");
+    }
+
+    // ==================== CompleteMarker / IShotMarkerSession completion (AUD-010 Phase 1c) ====================
+
+    [Test]
+    public void CompleteMarker_NonFinalMarker_DecrementsRecordsOneCompletionAndDoesNotRequestEnd()
+    {
+        BasketBallShotMarker marker = MakeMarker("marker");
+        FakeShotMarkerSession session = new FakeShotMarkerSession { MarkersRemaining = 2 };
+        PrepareMarkerForSessionDependentBehavior(marker, session);
+        marker.MarkerEnabled = true;
+
+        InvokePrivateMethod(marker, "CompleteMarker", false);
+
+        Assert.That(session.MarkersRemaining, Is.EqualTo(1));
+        Assert.That(session.CompletionRecords, Is.EqualTo(1));
+        Assert.That(session.EndRequests, Is.EqualTo(0), "markers remain - match end must not be requested");
+        Assert.IsFalse(marker.MarkerEnabled);
+    }
+
+    [Test]
+    public void CompleteMarker_FinalMarker_DecrementsToZeroRecordsOneCompletionAndRequestsEndOnce()
+    {
+        BasketBallShotMarker marker = MakeMarker("marker");
+        FakeShotMarkerSession session = new FakeShotMarkerSession { MarkersRemaining = 1 };
+        PrepareMarkerForSessionDependentBehavior(marker, session);
+        marker.MarkerEnabled = true;
+
+        InvokePrivateMethod(marker, "CompleteMarker", false);
+
+        Assert.That(session.MarkersRemaining, Is.EqualTo(0));
+        Assert.That(session.CompletionRecords, Is.EqualTo(1));
+        Assert.That(session.EndRequests, Is.EqualTo(1));
+    }
+
+    [Test]
+    public void CompleteMarker_HidesSprite()
+    {
+        BasketBallShotMarker marker = MakeMarker("marker");
+        FakeShotMarkerSession session = new FakeShotMarkerSession { MarkersRemaining = 2 };
+        PrepareMarkerForSessionDependentBehavior(marker, session);
+        marker.MarkerEnabled = true;
+        SpriteRenderer spriteRenderer = (SpriteRenderer)GetPrivateField(marker, "spriteRenderer");
+
+        InvokePrivateMethod(marker, "CompleteMarker", false);
+
+        Assert.That(spriteRenderer.color.a, Is.EqualTo(0f));
+    }
+
+    [Test]
+    public void CompleteMarker_RequestsMatchEndOnlyAfterPresentationAlreadyReflectsCompletion()
+    {
+        // Pins the ordering CompleteMarker's own doc comment describes: markerEnabled/decrement/sprite/
+        // display must all already be applied before RequestMatchEnd is called. Uses only observable
+        // marker state (the display text, the sprite alpha) rather than production instrumentation.
+        BasketBallShotMarker marker = MakeMarker("marker");
+        FakeShotMarkerSession session = new FakeShotMarkerSession { MarkersRemaining = 1 };
+        PrepareMarkerForSessionDependentBehavior(marker, session);
+        marker.MarkerEnabled = true;
+        Text text = (Text)GetPrivateField(marker, "displayCurrentMarkerStats");
+        SpriteRenderer spriteRenderer = (SpriteRenderer)GetPrivateField(marker, "spriteRenderer");
+        string textAtEndRequest = null;
+        float alphaAtEndRequest = -1f;
+        session.OnRequestMatchEnd = () =>
+        {
+            textAtEndRequest = text.text;
+            alphaAtEndRequest = spriteRenderer.color.a;
+        };
+
+        InvokePrivateMethod(marker, "CompleteMarker", false);
+
+        Assert.That(session.EndRequests, Is.EqualTo(1), "precondition: end must have actually been requested for this assertion to mean anything");
+        Assert.That(textAtEndRequest, Does.Contain("markers remaining : 0"),
+            "presentation must already reflect the completed count before match end is requested");
+        Assert.That(alphaAtEndRequest, Is.EqualTo(0f),
+            "the sprite must already be hidden before match end is requested");
+    }
+
+    // ==================== Update() completion branches (AUD-010 Phase 1c) ====================
+
+    [Test]
+    public void Update_PointContestMode_ReadyFinalAttempt_CompletesMarkerExactlyOnce()
+    {
+        BasketBallShotMarker marker = MakeMarker("marker", maxShotAttempt: 1);
+        FakeShotMarkerSession session = new FakeShotMarkerSession { MarkersRemaining = 2 };
+        PrepareMarkerForSessionDependentBehavior(marker, session);
+        marker.MarkerEnabled = true;
+        FakeShooterActor readyActor = new FakeShooterActor { HasBasketball = false, InAir = false };
+        BasketBallState readyState = MakeState("shooter-state");
+        readyState.InAir = false;
+        marker.RegisterAttempt(new FakeRuntime { ParticipantId = 0, Actor = readyActor, State = readyState });
+
+        GameOptionsSnapshot snapshot = GameOptionsSnapshot.Capture();
+        try
+        {
+            ActiveMatch.Clear();
+            GameOptions.gameModeThreePointContest = true;
+            GameOptions.gameModeFourPointContest = false;
+            GameOptions.gameModeSevenPointContest = false;
+            GameOptions.gameModeAllPointContest = false;
+
+            InvokePrivateMethod(marker, "Update");
+
+            Assert.That(session.CompletionRecords, Is.EqualTo(1));
+            Assert.That(session.MarkersRemaining, Is.EqualTo(1));
+            Assert.That(session.EndRequests, Is.EqualTo(0), "one marker remaining after this one - match end must not be requested");
+            Assert.IsFalse(marker.MarkerEnabled);
+        }
+        finally
+        {
+            snapshot.Restore();
+            ActiveMatch.Clear();
+        }
+    }
+
+    [Test]
+    public void Update_NonPointMode_ShotMadeReachesMax_CompletesMarkerExactlyOnce()
+    {
+        BasketBallShotMarker marker = MakeMarker("marker");
+        FakeShotMarkerSession session = new FakeShotMarkerSession { MarkersRemaining = 1 };
+        PrepareMarkerForSessionDependentBehavior(marker, session);
+        marker.MarkerEnabled = true;
+        SetPrivateField(marker, "maxShotMade", 3);
+        marker.ShotMade = 3;
+
+        GameOptionsSnapshot snapshot = GameOptionsSnapshot.Capture();
+        try
+        {
+            ActiveMatch.Clear();
+            GameOptions.gameModeThreePointContest = false;
+            GameOptions.gameModeFourPointContest = false;
+            GameOptions.gameModeSevenPointContest = false;
+            GameOptions.gameModeAllPointContest = false;
+
+            InvokePrivateMethod(marker, "Update");
+
+            Assert.That(session.CompletionRecords, Is.EqualTo(1));
+            Assert.That(session.MarkersRemaining, Is.EqualTo(0));
+            Assert.That(session.EndRequests, Is.EqualTo(1), "this was the last marker - match end must be requested exactly once");
+            Assert.IsFalse(marker.MarkerEnabled);
+        }
+        finally
+        {
+            snapshot.Restore();
+            ActiveMatch.Clear();
+        }
+    }
+
+    // ==================== OnTriggerExit real path (AUD-010 Phase 1c) ====================
+    //
+    // Previously not exercised here at all (see file header) because setDisplayText reached
+    // GameRules.instance. Now exercised directly against a bound FakeShotMarkerSession, preserving the
+    // existing multi-occupant invariant OnTriggerEnter already pins above.
+
+    [Test]
+    public void OnTriggerExit_HumanHitbox_UpdatesParticipantStateAndPreservesMultiOccupantPresence()
+    {
+        BasketBallShotMarker marker = MakeMarker("marker");
+        FakeShotMarkerSession session = new FakeShotMarkerSession { MarkersRemaining = 3 };
+        PrepareMarkerForSessionDependentBehavior(marker, session);
+        BasketBallState humanA = MakeState("human-a-state");
+        BasketBallState humanB = MakeState("human-b-state");
+        GameObject hitboxA = MakeHumanParticipant("human-a", humanA);
+        GameObject hitboxB = MakeHumanParticipant("human-b", humanB);
+        InvokeOnTriggerEnter(marker, hitboxA.GetComponent<Collider>());
+        InvokeOnTriggerEnter(marker, hitboxB.GetComponent<Collider>());
+        Assert.IsTrue(marker.PlayerOnMarker);
+
+        InvokeOnTriggerExit(marker, hitboxA.GetComponent<Collider>());
+
+        Assert.IsFalse(humanA.PlayerOnMarker);
+        Assert.IsNull(humanA.CurrentShotMarker);
+        Assert.IsTrue(marker.PlayerOnMarker, "human B's collider is still inside the marker");
+        Assert.IsTrue(humanB.PlayerOnMarker);
+
+        InvokeOnTriggerExit(marker, hitboxB.GetComponent<Collider>());
+
+        Assert.IsFalse(marker.PlayerOnMarker);
+        Assert.IsFalse(humanB.PlayerOnMarker);
+        Assert.IsNull(humanB.CurrentShotMarker);
+    }
+
+    [Test]
+    public void OnTriggerExit_CpuHitbox_UpdatesParticipantStateAndClearsLocked()
+    {
+        BasketBallShotMarker marker = MakeMarker("marker");
+        FakeShotMarkerSession session = new FakeShotMarkerSession { MarkersRemaining = 3 };
+        PrepareMarkerForSessionDependentBehavior(marker, session);
+        marker.locked = true;
+        BasketBallState cpuState = MakeState("cpu-state");
+        GameObject hitbox = MakeCpuParticipant("cpu", cpuState);
+        InvokeOnTriggerEnter(marker, hitbox.GetComponent<Collider>());
+        Assert.IsTrue(marker.AutoPlayerOnMarker);
+
+        InvokeOnTriggerExit(marker, hitbox.GetComponent<Collider>());
+
+        Assert.IsFalse(marker.AutoPlayerOnMarker);
+        Assert.IsFalse(cpuState.PlayerOnMarker);
+        Assert.IsNull(cpuState.CurrentShotMarker);
+        Assert.IsFalse(marker.locked, "OnTriggerExit's CPU branch must clear the locked flag");
+    }
+
     // ==================== test doubles ====================
 
     private sealed class FakeShooterActor : IShooterActor
@@ -868,6 +1165,36 @@ public class Level5BasketballMarkerOwnershipTests
 
         public void BindOwner(int participantId, bool isCpu, bool isPrimary, GameObject ownerActor, IShooterActor actor)
         {
+        }
+    }
+
+    /// <summary>
+    /// AUD-010 Phase 1c: the fake <see cref="IShotMarkerSession"/> this file's marker-session tests
+    /// drive <see cref="BasketBallShotMarker"/> against. <see cref="RecordMarkerCompleted"/> mirrors
+    /// <c>GameRules</c>' own explicit implementation exactly (decrement, then
+    /// <see cref="MatchEndConditions.MarkersCleared"/>) rather than reimplementing the rule
+    /// differently. <see cref="OnRequestMatchEnd"/> is an optional test-only hook - not production
+    /// instrumentation - used only by the ordering test to observe the marker's own state at the
+    /// moment match end is requested.
+    /// </summary>
+    private sealed class FakeShotMarkerSession : IShotMarkerSession
+    {
+        public int MarkersRemaining { get; set; }
+        public int CompletionRecords { get; private set; }
+        public int EndRequests { get; private set; }
+        public System.Action OnRequestMatchEnd;
+
+        public bool RecordMarkerCompleted()
+        {
+            CompletionRecords++;
+            MarkersRemaining--;
+            return MatchEndConditions.MarkersCleared(MarkersRemaining);
+        }
+
+        public void RequestMatchEnd()
+        {
+            EndRequests++;
+            OnRequestMatchEnd?.Invoke();
         }
     }
 }
