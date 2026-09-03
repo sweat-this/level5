@@ -20,6 +20,7 @@ public sealed class SpawnCoordinator
     private readonly PlayerRoster roster;
     private readonly GameModeId modeId;
     private readonly IGroundHeightProvider groundHeightProvider;
+    private readonly bool hasActiveMatchConfiguration;
 
     /// <summary>
     /// AUD-010 Phase 1c: <paramref name="groundHeightProvider"/> is optional so every existing direct
@@ -28,6 +29,15 @@ public sealed class SpawnCoordinator
     /// (<c>GameLevelManager</c>) always supplies one; a human ball spawned through a coordinator built
     /// without one fails clearly in its own <c>Start()</c> instead of silently inventing a fallback -
     /// see <see cref="GiveBall"/> and <c>BasketBall.BindGroundHeightProvider</c>.
+    ///
+    /// AUD-010 Phase 2b0: <see cref="hasActiveMatchConfiguration"/> is captured here rather than taken
+    /// as a parameter, exactly once for this coordinator's lifetime - mirroring how <paramref
+    /// name="rules"/> is already owned - instead of re-reading <c>MatchRuntime.HasConfiguration</c> on
+    /// every <see cref="BindRangeMeters"/> call. Production (<c>GameLevelManager.Awake</c>) always
+    /// constructs a coordinator after <c>ActiveMatch</c> is already established for this scene load and
+    /// before any participant is spawned, so this capture point is equivalent to reading it at the top
+    /// of <see cref="SpawnPlayers"/> - but it is now a structural fact instead of one relying on
+    /// re-reads happening to agree.
     /// </summary>
     public SpawnCoordinator(
         SpawnLocations locations,
@@ -43,6 +53,7 @@ public sealed class SpawnCoordinator
         this.roster = roster;
         this.modeId = modeId;
         this.groundHeightProvider = groundHeightProvider;
+        this.hasActiveMatchConfiguration = MatchRuntime.HasConfiguration;
     }
 
     /// <summary>The spawn points a gameplay scene has to provide, resolved once.</summary>
@@ -419,16 +430,23 @@ public sealed class SpawnCoordinator
     /// reaches inactive/disabled authored copies, which is harmless since binding itself has no
     /// presentation side effects.
     ///
+    /// AUD-010 Phase 2b0: also binds this coordinator's already-resolved <see cref="rules"/> and its
+    /// captured <see cref="hasActiveMatchConfiguration"/> to the same meters, mirroring
+    /// <see cref="BindShotMeters"/>, so a RangeMeter never has to reach for MatchRuntime itself. An
+    /// instance method (unlike the previous static shape) so it can reach the coordinator's own fields
+    /// without threading them through as parameters.
+    ///
     /// Code review note: this binds through the concrete RangeMeter type rather than an interface,
     /// unlike GiveBall's IBasketballRuntime below - RangeMeter has exactly one implementation, so an
     /// interface here would be ceremony with no second consumer. Widens the game-manager -> basketball
     /// edge by one concrete reference; worth naming explicitly the next time that edge is remeasured.
     /// </summary>
-    private static void BindRangeMeters(GameObject participant, IShooterActor actor, bool isCpu)
+    private void BindRangeMeters(GameObject participant, IShooterActor actor, bool isCpu)
     {
         foreach (RangeMeter meter in participant.GetComponentsInChildren<RangeMeter>(true))
         {
             meter.BindOwner(actor, isCpu);
+            meter.BindMatchContext(rules, hasActiveMatchConfiguration);
         }
     }
 
