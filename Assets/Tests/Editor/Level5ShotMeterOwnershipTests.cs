@@ -17,6 +17,12 @@ using UnityEngine.UI;
 /// (<see cref="ShotMeter.BindBasketballRuntime"/>), once that participant's basketball exists. A
 /// defensive/no-ball CPU never receives one and remains a valid, bound ShotMeter.
 ///
+/// AUD-010 Phase 2b0: <see cref="ShotMeter"/> also reads its match rules through a separately, and
+/// independently, bound <see cref="ResolvedMatchRules"/> (<see cref="ShotMeter.BindMatchRules"/>),
+/// bound by <see cref="SpawnCoordinator"/> alongside actor ownership, instead of reaching
+/// <c>MatchRuntime.Rules</c> itself. Both bindings are mandatory for a valid <see cref="ShotMeter.Start"/>;
+/// only the basketball runtime remains optional.
+///
 /// Mirrors <see cref="Level5RangeMeterOwnershipTests"/>'s shape: synthetic-actor tests exercise
 /// ShotMeter directly, and the SpawnCoordinator_*/GiveBall_* tests drive the real
 /// RegisterHuman/RegisterCpu/GiveBall private methods (the sole production composition path) to prove
@@ -27,6 +33,7 @@ public class Level5ShotMeterOwnershipTests
     private readonly List<GameObject> spawned = new List<GameObject>();
     private PlayerRegistry registry;
     private SpawnCoordinator coordinator;
+    private ResolvedMatchRules coordinatorRules;
     private MethodInfo registerHuman;
     private MethodInfo registerCpu;
     private MethodInfo giveBall;
@@ -34,15 +41,20 @@ public class Level5ShotMeterOwnershipTests
     [SetUp]
     public void SetUp()
     {
-        // ShotMeter's visibility gate reads MatchRuntime.Rules (via ActiveMatch); clearing it makes
-        // "no active match" deterministic regardless of what ran before this test.
+        // ShotMeter's visibility gate used to read MatchRuntime.Rules (via ActiveMatch); it now reads
+        // an explicitly bound ResolvedMatchRules instead, but clearing this still keeps every other
+        // MatchRuntime-reading system deterministic regardless of what ran before this test.
         ActiveMatch.Clear();
 
         registry = new PlayerRegistry();
+        // AUD-010 Phase 2b0: a non-default rules object (CombatMode.Standard, not the default None) so
+        // a ShotMeter that accidentally binds a fresh default ResolvedMatchRules instead of this exact
+        // reference cannot pass the AreSame assertions below.
+        coordinatorRules = new ResolvedMatchRules(combatMode: CombatMode.Standard, enemiesEnabled: false, hardcore: false, enemiesOnly: false);
         coordinator = new SpawnCoordinator(
             new SpawnCoordinator.SpawnLocations(),
             registry,
-            new ResolvedMatchRules(combatMode: CombatMode.Standard, enemiesEnabled: false, hardcore: false, enemiesOnly: false),
+            coordinatorRules,
             new PlayerRoster(new PlayerSlot[0]),
             GameModeId.None,
             new FakeGroundHeightProvider());
@@ -207,6 +219,49 @@ public class Level5ShotMeterOwnershipTests
         Assert.IsFalse((bool)GetPrivateField(meter, "isCpu"), "a second BindOwner call must not overwrite the original role");
     }
 
+    // ==================== BindMatchRules ====================
+
+    private static ResolvedMatchRules NormalRules()
+    {
+        return new ResolvedMatchRules(combatMode: CombatMode.Standard, enemiesEnabled: false, hardcore: false, enemiesOnly: false);
+    }
+
+    [Test]
+    public void BindMatchRules_ValidRules_Binds()
+    {
+        ShotMeter meter = Spawn("meter").AddComponent<ShotMeter>();
+        ResolvedMatchRules rules = NormalRules();
+
+        meter.BindMatchRules(rules);
+
+        Assert.AreSame(rules, GetPrivateField(meter, "matchRules"));
+    }
+
+    [Test]
+    public void BindMatchRules_Null_LogsAndLeavesUnbound()
+    {
+        ShotMeter meter = Spawn("meter").AddComponent<ShotMeter>();
+
+        LogAssert.Expect(LogType.Error, new Regex("null match rules"));
+        meter.BindMatchRules(null);
+
+        Assert.IsNull(GetPrivateField(meter, "matchRules"));
+    }
+
+    [Test]
+    public void BindMatchRules_SecondCall_IsRejectedAndOriginalRulesRetained()
+    {
+        ShotMeter meter = Spawn("meter").AddComponent<ShotMeter>();
+        ResolvedMatchRules first = NormalRules();
+        ResolvedMatchRules second = new ResolvedMatchRules(hardcore: true);
+        meter.BindMatchRules(first);
+
+        LogAssert.Expect(LogType.Error, new Regex("already has bound match rules"));
+        meter.BindMatchRules(second);
+
+        Assert.AreSame(first, GetPrivateField(meter, "matchRules"), "a second BindMatchRules call must not overwrite the original binding");
+    }
+
     // ==================== Start() ====================
 
     [Test]
@@ -222,13 +277,27 @@ public class Level5ShotMeterOwnershipTests
     }
 
     [Test]
+    public void Start_OwnerBoundWithoutMatchRules_DisablesOnlyTheComponent()
+    {
+        ShotMeter meter = Spawn("rules-unbound-meter").AddComponent<ShotMeter>();
+        meter.BindOwner(new FakeShooterActor(), isCpu: false);
+
+        LogAssert.Expect(LogType.Error, new Regex("no bound match rules"));
+        InvokeStart(meter);
+
+        Assert.IsFalse(meter.enabled, "a ShotMeter with no bound match rules must disable itself");
+        Assert.IsTrue(meter.gameObject.activeSelf, "a ShotMeter with no bound match rules must not deactivate its whole GameObject");
+    }
+
+    [Test]
     public void Start_ActorBoundWithNoBasketballRuntime_Succeeds()
     {
-        // A defensive/no-ball CPU: actor ownership alone is sufficient. No runtime is ever bound for
-        // it, and Start() must not require one - this is the no-ball composition this migration must
-        // keep valid.
+        // A defensive/no-ball CPU: actor ownership and match rules alone are sufficient. No runtime is
+        // ever bound for it, and Start() must not require one - this is the no-ball composition this
+        // migration must keep valid.
         ShotMeter meter = MakePresentableMeter("defender-meter");
         meter.BindOwner(new FakeShooterActor(), isCpu: true);
+        meter.BindMatchRules(NormalRules());
 
         Assert.DoesNotThrow(() => InvokeStart(meter));
         Assert.IsTrue(meter.enabled);
@@ -239,6 +308,64 @@ public class Level5ShotMeterOwnershipTests
     {
         ShotMeter meter = MakePresentableMeter("human-meter");
         meter.BindOwner(new FakeShooterActor(), isCpu: false);
+        meter.BindMatchRules(NormalRules());
+
+        InvokeStart(meter);
+
+        Assert.IsTrue(meter.meterRed.activeSelf);
+        Assert.IsTrue(meter.meterHandle.activeSelf);
+    }
+
+    [Test]
+    public void Start_HardcoreHuman_HidesMeterGraphics()
+    {
+        ShotMeter meter = MakePresentableMeter("hardcore-human-meter");
+        meter.BindOwner(new FakeShooterActor(), isCpu: false);
+        meter.BindMatchRules(new ResolvedMatchRules(hardcore: true, enemiesOnly: false, combatMode: CombatMode.None));
+
+        InvokeStart(meter);
+
+        Assert.IsFalse(meter.meterRed.activeSelf);
+        Assert.IsFalse(meter.meterHandle.activeSelf);
+    }
+
+    [Test]
+    public void Start_EnemiesOnlyHuman_HidesMeterGraphics()
+    {
+        ShotMeter meter = MakePresentableMeter("enemies-only-human-meter");
+        meter.BindOwner(new FakeShooterActor(), isCpu: false);
+        meter.BindMatchRules(new ResolvedMatchRules(hardcore: false, enemiesOnly: true, combatMode: CombatMode.None));
+
+        InvokeStart(meter);
+
+        Assert.IsFalse(meter.meterRed.activeSelf);
+        Assert.IsFalse(meter.meterHandle.activeSelf);
+    }
+
+    [Test]
+    public void Start_BattleRoyalHuman_HidesMeterGraphics()
+    {
+        ShotMeter meter = MakePresentableMeter("battle-royal-human-meter");
+        meter.BindOwner(new FakeShooterActor(), isCpu: false);
+        meter.BindMatchRules(new ResolvedMatchRules(hardcore: false, enemiesOnly: false, combatMode: CombatMode.BattleRoyal));
+
+        InvokeStart(meter);
+
+        Assert.IsFalse(meter.meterRed.activeSelf);
+        Assert.IsFalse(meter.meterHandle.activeSelf);
+    }
+
+    [Test]
+    public void Start_EnemiesEnabledOnlyHuman_MeterGraphicsRemainVisible()
+    {
+        // Regression guard: EnemiesEnabled (a shooting mode with the enemies modifier switched on) is
+        // distinct from EnemiesOnly (a fighting mode) and must never, by itself, hide the meter - the
+        // exact old MatchRuntime.Rules predicate never included it, and this migration must not widen
+        // the check to include it either.
+        ShotMeter meter = MakePresentableMeter("enemies-enabled-human-meter");
+        meter.BindOwner(new FakeShooterActor(), isCpu: false);
+        meter.BindMatchRules(new ResolvedMatchRules(
+            hardcore: false, enemiesOnly: false, combatMode: CombatMode.None, enemiesEnabled: true));
 
         InvokeStart(meter);
 
@@ -254,6 +381,7 @@ public class Level5ShotMeterOwnershipTests
         // bound role.
         ShotMeter meter = MakePresentableMeter("cpu-meter");
         meter.BindOwner(new FakeShooterActor(), isCpu: true);
+        meter.BindMatchRules(NormalRules());
 
         InvokeStart(meter);
 
@@ -267,6 +395,7 @@ public class Level5ShotMeterOwnershipTests
         ShotMeter meter = MakePresentableMeter("fill-time-meter");
         FakeShooterActor actor = new FakeShooterActor { JumpForce = 12.5f };
         meter.BindOwner(actor, isCpu: true);
+        meter.BindMatchRules(NormalRules());
 
         InvokeStart(meter);
 
@@ -289,6 +418,7 @@ public class Level5ShotMeterOwnershipTests
         ShotMeter meter = MakePresentableMeter("human-timing-meter");
         FakeShooterActor actor = new FakeShooterActor { JumpForce = 500f };
         meter.BindOwner(actor, isCpu: false);
+        meter.BindMatchRules(NormalRules());
         InvokeStart(meter);
 
         float fillTime = meter.meterFillTime;
@@ -410,6 +540,7 @@ public class Level5ShotMeterOwnershipTests
         // BasketBallAuto.LaunchBasketBall's WaitUntil must still run on this path.
         ShotMeter meter = MakePresentableMeter("cpu-no-runtime");
         meter.BindOwner(new FakeShooterActor(), isCpu: true);
+        meter.BindMatchRules(NormalRules());
         InvokeStart(meter);
         SetPrivateField(meter, "meterEnded", true);
 
@@ -426,6 +557,7 @@ public class Level5ShotMeterOwnershipTests
         ShotMeter meter = MakePresentableMeter("cpu-wrong-runtime-type");
         FakeShooterActor actor = new FakeShooterActor();
         meter.BindOwner(actor, isCpu: true);
+        meter.BindMatchRules(NormalRules());
         InvokeStart(meter);
         meter.BindBasketballRuntime(new FakeBasketballRuntime { Actor = actor, IsCpu = true });
         SetPrivateField(meter, "meterEnded", true);
@@ -448,6 +580,7 @@ public class Level5ShotMeterOwnershipTests
         ShotMeter meter = MakePresentableMeter("cpu-real-runtime");
         FakeShooterActor actor = new FakeShooterActor();
         meter.BindOwner(actor, isCpu: true);
+        meter.BindMatchRules(NormalRules());
         InvokeStart(meter);
 
         GameObject ballGo = Spawn("cpu-real-ball");
@@ -512,6 +645,7 @@ public class Level5ShotMeterOwnershipTests
         Assert.IsTrue(meter.Bound);
         Assert.AreSame(actorGo.GetComponent<PlayerController>(), GetPrivateField(meter, "actor"));
         Assert.IsFalse((bool)GetPrivateField(meter, "isCpu"));
+        Assert.AreSame(coordinatorRules, GetPrivateField(meter, "matchRules"));
     }
 
     [Test]
@@ -525,6 +659,7 @@ public class Level5ShotMeterOwnershipTests
         Assert.IsTrue(meter.Bound);
         Assert.AreSame(actorGo.GetComponent<AutoPlayerController>(), GetPrivateField(meter, "actor"));
         Assert.IsTrue((bool)GetPrivateField(meter, "isCpu"));
+        Assert.AreSame(coordinatorRules, GetPrivateField(meter, "matchRules"));
     }
 
     [Test]
@@ -542,6 +677,24 @@ public class Level5ShotMeterOwnershipTests
         Assert.AreSame(secondary.GetComponent<PlayerController>(), boundActor);
         Assert.AreNotSame(primary.GetComponent<PlayerController>(), boundActor,
             "a secondary participant's ShotMeter must never collapse to the primary participant's actor");
+        Assert.AreSame(coordinatorRules, GetPrivateField(secondaryMeter, "matchRules"),
+            "a secondary participant's ShotMeter must still receive this match's own resolved rules");
+    }
+
+    [Test]
+    public void SpawnCoordinator_InactiveChildShotMeter_ReceivesBothBindings()
+    {
+        // GetComponentsInChildren(true) reaches inactive/disabled authored copies - binding itself has
+        // no presentation side effects, so an inactive meter must be composed correctly in case it is
+        // activated later.
+        GameObject actorGo = SpawnHumanParticipantWithShotMeter(pid: 0);
+        ShotMeter meter = actorGo.GetComponentInChildren<ShotMeter>(true);
+        meter.gameObject.SetActive(false);
+
+        InvokeRegisterHuman(actorGo, 0, null);
+
+        Assert.IsTrue(meter.Bound);
+        Assert.AreSame(coordinatorRules, GetPrivateField(meter, "matchRules"));
     }
 
     [Test]
@@ -570,6 +723,8 @@ public class Level5ShotMeterOwnershipTests
         ShotMeter meter = defender.GetComponentInChildren<ShotMeter>(true);
         Assert.IsTrue(meter.Bound);
         Assert.IsNull(GetPrivateField(meter, "basketballRuntime"));
+        Assert.AreSame(coordinatorRules, GetPrivateField(meter, "matchRules"),
+            "a defensive/no-ball CPU's ShotMeter must still receive this match's resolved rules");
     }
 
     // ==================== GiveBall wiring ====================

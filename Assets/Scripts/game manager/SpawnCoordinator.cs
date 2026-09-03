@@ -437,12 +437,19 @@ public sealed class SpawnCoordinator
     /// own IShooterActor, mirroring <see cref="BindRangeMeters"/> above. Runs before Unity calls
     /// Start() on any of them. A participant's basketball runtime (needed only for a CPU's automatic
     /// meter resolution) is bound separately, once that participant's ball exists - see GiveBall.
+    ///
+    /// AUD-010 Phase 2b0: also binds this coordinator's already-resolved <see cref="rules"/> to the
+    /// same meters, immediately alongside actor ownership, so a ShotMeter never has to reach for
+    /// MatchRuntime itself. An instance method (unlike the static <see cref="BindRangeMeters"/>) so it
+    /// can reach the coordinator's own <see cref="rules"/> field without threading it through as a
+    /// parameter.
     /// </summary>
-    private static void BindShotMeters(GameObject participant, IShooterActor actor, bool isCpu)
+    private void BindShotMeters(GameObject participant, IShooterActor actor, bool isCpu)
     {
         foreach (ShotMeter meter in participant.GetComponentsInChildren<ShotMeter>(true))
         {
             meter.BindOwner(actor, isCpu);
+            meter.BindMatchRules(rules);
         }
     }
 
