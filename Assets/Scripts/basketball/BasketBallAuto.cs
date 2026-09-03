@@ -38,6 +38,15 @@ public class BasketBallAuto : MonoBehaviour, IBasketballRuntime
     IShooterActor actor;
 
     /// <summary>
+    /// AUD-010 Phase 1c: live money-ball session state, bound once by <see cref="GameRules"/>'s own
+    /// composition step, before <see cref="Start"/> runs. Never a mandatory <see cref="Start"/>
+    /// dependency - a ball whose shot path never reaches a qualifying marker shot is valid with this
+    /// left null; <see cref="BasketballShotPipeline"/> is what checks for a missing binding, at the
+    /// point it would actually be used.
+    /// </summary>
+    IMoneyBallState moneyBallState;
+
+    /// <summary>
     /// Phase 1c seam: one place that reads the shooter into the shot pipeline's contract, so the
     /// call sites that need it build it the same way. Player↔basketball cycle-cut slice: now read
     /// once from <see cref="IShooterActor.ShooterAttributes"/> in <see cref="Start"/> rather than
@@ -359,7 +368,7 @@ public class BasketBallAuto : MonoBehaviour, IBasketballRuntime
         updateBasketBallStateShotTypeOnShoot(two, three, four, seven);
 
         // player on shot marker and game mode requires markers
-        BasketballShotPipeline.ApplyMarkerAndMoneyBallOnShoot(this);
+        BasketballShotPipeline.ApplyMarkerAndMoneyBallOnShoot(this, moneyBallState);
         //calculate shot distance 
         Vector3 tempPos = new Vector3(basketBallState.BasketBallTarget.transform.position.x,
             0, basketBallState.BasketBallTarget.transform.position.z);
@@ -582,5 +591,29 @@ public class BasketBallAuto : MonoBehaviour, IBasketballRuntime
 
         basketBallState = GetComponent<BasketBallState>();
         basketBallState.BindOwner(isCpu, ownerActor);
+    }
+
+    // ======================= IMoneyBallState binding (AUD-010 Phase 1c) =======================
+
+    /// <summary>
+    /// Explicit money-ball-state binding from <see cref="GameRules"/>'s own composition step, called
+    /// once immediately after it resolves this participant's spawned ball. Ownership-only - no
+    /// gameplay side effects, and the reference is never read here.
+    /// </summary>
+    public void BindMoneyBallState(IMoneyBallState state)
+    {
+        if (state == null)
+        {
+            Debug.LogError($"BasketBallAuto on '{gameObject.name}' was bound with a null money-ball state provider.", this);
+            return;
+        }
+
+        if (moneyBallState != null)
+        {
+            Debug.LogError($"BasketBallAuto on '{gameObject.name}' already has a bound money-ball state provider; ignoring a second BindMoneyBallState call.", this);
+            return;
+        }
+
+        moneyBallState = state;
     }
 }

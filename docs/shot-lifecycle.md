@@ -117,7 +117,8 @@ The boundary this draws:
 
 `BasketballShotPipeline.ApplyMarkerAndMoneyBallOnShoot` already read `MatchRuntime.Rules` directly
 before this slice (it predates the `GameRules` forwarding properties being used there) and was left
-as-is; its `MoneyBallEnabled` read is mutable session state and stays on `GameRules`, untouched.
+as-is; its `MoneyBallEnabled` read was mutable session state and stayed on `GameRules` at the time -
+migrated off in a later Phase 1c slice, below.
 
 **`PositionMarkersRequired` migrated in a follow-up Phase 1c slice.** `GameRules.PositionMarkersRequired`
 was never independent state: `GameRules.Start` sets its backing field to `true` exactly once, only
@@ -128,8 +129,49 @@ now reads `rules.RequiresAnyShotMarkers` from its own `MatchRuntime.Rules` snaps
 marker-required gate no longer depends on `GameRules.Start` having already run. The property itself
 (`GameRules.PositionMarkersRequired` and its backing field) is kept for callers outside basketball;
 `Assets/Scripts/basketball` is now forbidden from reaching for it, enforced by the same
-`Level5BasketballGameRulesFacadeGuardTests` guard as the properties above. `MoneyBallEnabled`
-remains the one live, independently-mutable `GameRules` dependency left in this method.
+`Level5BasketballGameRulesFacadeGuardTests` guard as the properties above. At that point,
+`MoneyBallEnabled` was the one live, independently-mutable `GameRules` dependency left in this
+method - closed in the next slice.
+
+**`MoneyBallEnabled` closed the last direct `GameRules` dependency (AUD-010 Phase 1c).** Unlike the
+properties above, `MoneyBallEnabled` is genuinely mutable session state - a player can toggle it while
+the ball is airborne, and the next qualifying shot must observe the live value, not one snapshotted
+earlier. That ruled out simply reading it from a `ResolvedMatchRules`-shaped snapshot the
+way the immutable properties were. Instead:
+
+- `Level5.Core.Match.IMoneyBallState` is a one-member read-only contract (`bool MoneyBallEnabled { get; }`)
+  over exactly the existing state - not a new owner, not a copy, not an event.
+- `GameRules` implements it directly over its existing `MoneyBallEnabled` property; the property's
+  public setter is untouched, so every existing writer keeps working exactly as before.
+- `GameRules.Awake()` binds itself as the live provider to every already-spawned participant's
+  basketball (`GameRules.BindMoneyBallStateToBasketballs`, reading `GameLevelManager.instance.Registry`).
+  This relies on `GameLevelManager`'s `-8000` script execution order: `GameLevelManager.Awake()` -
+  which runs `SpawnCoordinator.SpawnPlayers()`/`SpawnBasketballs()` - is guaranteed to finish before
+  `GameRules.Awake()` (default order) starts, and every basketball's own `Start()` runs only after
+  every object's `Awake()` has, including `GameRules`'s - so the binding is always in place before a
+  ball can reach a shot. The (already-existing) duplicate-instance guard at the top of `GameRules.Awake()`
+  means only the surviving instance ever binds.
+- `BasketBall`/`BasketBallAuto` each expose `BindMoneyBallState(IMoneyBallState)`, the same
+  bind-once/null-guard/no-rebind shape `BindGroundHeightProvider` already established for the
+  no-Terrain drop-shadow fallback. It is deliberately not a `Start()`-time requirement the way the
+  ground-height provider is: a ball whose shot path never reaches a qualifying marker shot is valid
+  with it left unbound.
+- `ApplyMarkerAndMoneyBallOnShoot` takes the live `IMoneyBallState` reference as a parameter (not the
+  current bool value) and reads `.MoneyBallEnabled` at the same point the old `GameRules.instance`
+  read sat - after the marker gate and the contest fifth-attempt credit, so a missing provider still
+  preserves whatever marker accounting already happened for that shot. A qualifying shot that reaches
+  this point with no bound provider logs an actionable composition error and skips only the
+  money-ball branch, exactly the shape `ApplyMarkerAndMoneyBallOnShoot`'s existing
+  no-`CurrentShotMarker` branch already used.
+
+`BasketballShotPipeline.cs` now has zero live `GameRules` references, pinned by
+`Level5BasketballGameRulesFacadeGuardTests.BasketballShotPipelineHasNoLiveGameRulesReferences`.
+`BasketBallShotMarker.cs` is the one production basketball file left with live `GameRules`
+dependencies (`MarkersRemaining`, `IsGameOver()`, `RequestGameOver()` - session-wide
+marker/match-lifecycle state, out of scope here), pinned by the stronger allowlist guard
+`OnlyBasketBallShotMarkerHasLiveGameRulesReferences` in the same file. This is a dependency-direction
+change only: `MoneyBallEnabled` itself is not redesigned, rebalanced, or reset differently - it is
+still exactly the mutable bool `GameRules` has always owned.
 
 `BasketBallShotMarker.Update()` resolves `IsPointContestMode()` once per frame and threads the
 result into `setDisplayText(bool)` and the two marker-completion branches, rather than each of up to
