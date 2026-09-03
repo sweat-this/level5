@@ -47,6 +47,14 @@ public class BasketBallAuto : MonoBehaviour, IBasketballRuntime
     IMoneyBallState moneyBallState;
 
     /// <summary>
+    /// AUD-010 Phase 2b0: the rules this match is being played under, bound once by composition
+    /// (<see cref="SpawnCoordinator.GiveBall"/>), before <see cref="Start"/> runs. Not serialized: it
+    /// is runtime-only, set after the component already exists, and <see cref="ResolvedMatchRules"/>
+    /// is not itself <c>[Serializable]</c>.
+    /// </summary>
+    private ResolvedMatchRules matchRules;
+
+    /// <summary>
     /// Phase 1c seam: one place that reads the shooter into the shot pipeline's contract, so the
     /// call sites that need it build it the same way. Player↔basketball cycle-cut slice: now read
     /// once from <see cref="IShooterActor.ShooterAttributes"/> in <see cref="Start"/> rather than
@@ -115,6 +123,13 @@ public class BasketBallAuto : MonoBehaviour, IBasketballRuntime
             return;
         }
 
+        if (matchRules == null)
+        {
+            Debug.LogError($"BasketBallAuto on '{gameObject.name}' reached Start() with no bound match rules.", this);
+            gameObject.SetActive(false);
+            return;
+        }
+
         instance = this;
         currentShooter = actor.ShooterAttributes;
         basketBallPosition = autoPlayer.transform.Find("basketBall_position").gameObject;
@@ -164,7 +179,7 @@ public class BasketBallAuto : MonoBehaviour, IBasketballRuntime
         //InvokeRepeating("CheckIsBallFacingGoalAuto", 0, 0.5f);
         //InvokeRepeating("displayUiStats", 0, 0.5f);
 
-        if (MatchRuntime.Rules.EnemiesOnly)
+        if (matchRules.EnemiesOnly)
         {
             transform.position = new Vector3(transform.position.x, transform.position.y + 20, transform.position.z);
             rigidbody.constraints = RigidbodyConstraints.FreezeAll;
@@ -178,7 +193,7 @@ public class BasketBallAuto : MonoBehaviour, IBasketballRuntime
     {
         // get speed for basketball animation
         CheckIsBallFacingGoalAuto();
-        if (!MatchRuntime.Rules.EnemiesOnly)
+        if (!matchRules.EnemiesOnly)
         {
             if (rigidbody.linearVelocity.magnitude > maxBasketballSpeed && !basketBallState.InAir)
             {
@@ -615,5 +630,33 @@ public class BasketBallAuto : MonoBehaviour, IBasketballRuntime
         }
 
         moneyBallState = state;
+    }
+
+    // ======================= Match rules binding (AUD-010 Phase 2b0) =======================
+
+    /// <summary>
+    /// Explicit match-rules binding from the same composition operation that spawns the ball
+    /// (<see cref="SpawnCoordinator.GiveBall"/>), so <see cref="Start"/>/<see cref="Update"/> no
+    /// longer read <c>MatchRuntime.Rules</c> directly. Mirrors <see cref="BasketBallState"/>'s own
+    /// <c>BindMatchRules</c> bind-once/null-guard/no-rebind shape.
+    /// </summary>
+    public void BindMatchRules(ResolvedMatchRules rules)
+    {
+        // Checked before the null-argument branch below: a null second call after a real bind
+        // already succeeded must report "already bound", not "remaining unbound" - matchRules is
+        // still the original valid reference either way, and the log should say so.
+        if (matchRules != null)
+        {
+            Debug.LogError($"BasketBallAuto on '{gameObject.name}' already has bound match rules; ignoring a second BindMatchRules call.", this);
+            return;
+        }
+
+        if (rules == null)
+        {
+            Debug.LogError($"BasketBallAuto on '{gameObject.name}' was bound with null match rules; remaining unbound.", this);
+            return;
+        }
+
+        matchRules = rules;
     }
 }
