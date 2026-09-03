@@ -269,6 +269,112 @@ public class Level5BasketballOwnershipBindingTests
             "a secondary human's ball must not be skipped by rules composition");
     }
 
+    /// <summary>
+    /// AUD-010 Phase 2b0: GiveBall now also binds the coordinator's ResolvedMatchRules to the ball's
+    /// BasketBallState, immediately after IBasketballRuntime.BindOwner - the seam BasketBallState.Update
+    /// depends on now that it no longer reads MatchRuntime directly.
+    /// </summary>
+    [Test]
+    public void HumanBallStateReceivesTheCoordinatorsMatchRules()
+    {
+        PlayerIdentifier owner = RegisterHumanParticipant(pid: 0);
+        GameObject humanPrefab = Resources.Load<GameObject>(Constants.PREFAB_PATH_BASKETBALL_human);
+
+        GiveBall(0, humanPrefab, forCpu: false);
+        spawned.Add(owner.basketball);
+
+        BasketBallState state = owner.basketBallState;
+        Assert.IsNotNull(state);
+        Assert.AreSame(rules, GetPrivateField(state, "matchRules"),
+            "GiveBall must bind the coordinator's own rules to the human ball's BasketBallState, not some other default-valued instance");
+    }
+
+    [Test]
+    public void CpuBallStateReceivesTheCoordinatorsMatchRules()
+    {
+        RegisterHumanParticipant(pid: 0);
+        PlayerIdentifier cpuOwner = RegisterCpuParticipant(pid: 1);
+        GameObject cpuPrefab = Resources.Load<GameObject>(Constants.PREFAB_PATH_BASKETBALL_cpu);
+
+        GiveBall(1, cpuPrefab, forCpu: true);
+        spawned.Add(cpuOwner.autoBasketball);
+
+        BasketBallState state = cpuOwner.basketBallState;
+        Assert.IsNotNull(state);
+        Assert.AreSame(rules, GetPrivateField(state, "matchRules"),
+            "GiveBall must bind the coordinator's own rules to the CPU ball's BasketBallState, not some other default-valued instance");
+    }
+
+    [Test]
+    public void SecondaryHumanBallStateAlsoReceivesTheCoordinatorsMatchRules()
+    {
+        RegisterHumanParticipant(pid: 0);
+        PlayerIdentifier secondHuman = RegisterHumanParticipant(pid: 1);
+        GameObject humanPrefab = Resources.Load<GameObject>(Constants.PREFAB_PATH_BASKETBALL_human);
+
+        GiveBall(1, humanPrefab, forCpu: false);
+        spawned.Add(secondHuman.basketball);
+
+        BasketBallState state = secondHuman.basketBallState;
+        Assert.AreSame(rules, GetPrivateField(state, "matchRules"),
+            "a secondary human's ball must be bound to the coordinator's own rules, not left unbound");
+    }
+
+    // ======================= BasketBallState.BindMatchRules (AUD-010 Phase 2b0) =======================
+
+    [Test]
+    public void BasketBallStateRejectsNullMatchRulesBind()
+    {
+        GameObject go = Spawn("basketball-state-null-rules");
+        BasketBallState state = go.AddComponent<BasketBallState>();
+
+        LogAssert.Expect(LogType.Error, new Regex("null match rules"));
+        state.BindMatchRules(null);
+
+        Assert.IsNull(GetPrivateField(state, "matchRules"), "a rejected null bind must leave the state unbound");
+    }
+
+    [Test]
+    public void BasketBallStateAcceptsFirstMatchRulesBind()
+    {
+        GameObject go = Spawn("basketball-state-first-rules");
+        BasketBallState state = go.AddComponent<BasketBallState>();
+        ResolvedMatchRules boundRules = new ResolvedMatchRules(requiresBasketball: false);
+
+        state.BindMatchRules(boundRules);
+
+        Assert.AreSame(boundRules, GetPrivateField(state, "matchRules"));
+    }
+
+    [Test]
+    public void BasketBallStateRejectsSecondMatchRulesBind()
+    {
+        GameObject go = Spawn("basketball-state-second-rules");
+        BasketBallState state = go.AddComponent<BasketBallState>();
+        ResolvedMatchRules first = new ResolvedMatchRules(requiresBasketball: false);
+        ResolvedMatchRules second = new ResolvedMatchRules(requiresBasketball: true);
+        state.BindMatchRules(first);
+
+        LogAssert.Expect(LogType.Error, new Regex("already has bound match rules"));
+        state.BindMatchRules(second);
+
+        Assert.AreSame(first, GetPrivateField(state, "matchRules"), "a second BindMatchRules call must not overwrite the original rules");
+    }
+
+    [Test]
+    public void MissingMatchRulesIsDetectedClearlyOnBasketBallStateStart()
+    {
+        GameObject go = Spawn("basketball-state-missing-rules");
+        BasketBallState state = go.AddComponent<BasketBallState>();
+        GameObject owner = Spawn("basketball-state-missing-rules-owner");
+        state.BindOwner(false, owner);
+
+        LogAssert.Expect(LogType.Error, new Regex("no bound match rules"));
+        InvokeStart(state);
+
+        Assert.IsFalse(go.activeSelf, "BasketBallState with a bound owner but no bound match rules must deactivate its GameObject rather than run Update() against a null rules reference");
+    }
+
     [Test]
     public void MissingRuntimeBindingIsDetectedClearlyOnHumanBallStart()
     {
