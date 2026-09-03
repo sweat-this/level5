@@ -3,12 +3,17 @@ using System.Text.RegularExpressions;
 using NUnit.Framework;
 
 /// <summary>
-/// AUD-010 Phase 1c permanent guards: <c>ShotMeter</c> must resolve its shooter data through an
-/// explicitly bound <see cref="Level5.Core.IShooterActor"/> (<see cref="ShotMeter.BindOwner"/>), never
-/// through a parent <c>PlayerIdentifier</c> or a concrete player type - and a CPU's automatic meter
-/// resolution must reach its own basketball only through an explicitly bound and validated
-/// <see cref="IBasketballRuntime"/> (<see cref="ShotMeter.BindBasketballRuntime"/>), never a global
-/// lookup.
+/// Permanent guards over <c>ShotMeter</c>'s three explicit composition boundaries:
+///
+/// - actor ownership (AUD-010 Phase 1c) - resolved through an explicitly bound
+///   <see cref="Level5.Core.IShooterActor"/> (<see cref="ShotMeter.BindOwner"/>), never through a
+///   parent <c>PlayerIdentifier</c> or a concrete player type;
+/// - match rules (AUD-010 Phase 2b0) - resolved through an explicitly bound
+///   <see cref="Level5.Core.Match.ResolvedMatchRules"/> (<see cref="ShotMeter.BindMatchRules"/>), never
+///   through <c>MatchRuntime</c>;
+/// - a CPU's automatic meter resolution - reaches its own basketball only through an explicitly bound
+///   and validated <see cref="IBasketballRuntime"/> (<see cref="ShotMeter.BindBasketballRuntime"/>),
+///   never a global lookup.
 ///
 /// Mirrors <see cref="Level5RangeMeterArchitectureGuardTests"/>'s shape and scope: this guard is
 /// scoped to <c>ShotMeter.cs</c> alone.
@@ -77,5 +82,38 @@ public class Level5ShotMeterArchitectureGuardTests
             Does.Match(@"public\s+void\s+BindBasketballRuntime\s*\(\s*IBasketballRuntime\s+\w+\s*\)"),
             "ShotMeter must expose an explicit BindBasketballRuntime(IBasketballRuntime) API for a "
             + "CPU's automatic meter resolution, separate from actor ownership binding.");
+    }
+
+    /// <summary>
+    /// AUD-010 Phase 2b0 permanent guard: <c>ShotMeter</c> must carry no <c>MatchRuntime</c>
+    /// dependency. <c>Start()</c>'s visibility gate used to read <c>MatchRuntime.Rules</c> directly;
+    /// match rules now arrive once through <c>BindMatchRules(ResolvedMatchRules)</c>, bound by
+    /// composition (<c>SpawnCoordinator.BindShotMeters</c>). This fails the build if a future change
+    /// reintroduces a direct <c>MatchRuntime</c> read on this type instead of using the bound
+    /// reference.
+    /// </summary>
+    [Test]
+    public void ShotMeterHasNoMatchRuntimeReference()
+    {
+        string text = SourceText();
+
+        Assert.That(
+            text,
+            Does.Not.Match(@"\bMatchRuntime\b"),
+            "ShotMeter must have zero MatchRuntime references - match rules must arrive through "
+            + "BindMatchRules(ResolvedMatchRules), bound once at match composition, not by reading "
+            + "MatchRuntime directly.");
+    }
+
+    [Test]
+    public void ShotMeterExposesExplicitMatchRulesBinding()
+    {
+        string text = SourceText();
+
+        Assert.That(
+            text,
+            Does.Match(@"public\s+void\s+BindMatchRules\s*\(\s*ResolvedMatchRules\s+\w+\s*\)"),
+            "ShotMeter must expose an explicit BindMatchRules(ResolvedMatchRules) API rather than "
+            + "reading MatchRuntime.Rules directly, separate from actor ownership binding.");
     }
 }

@@ -6,20 +6,24 @@ using Level5.Core;
 using Level5.Core.Match;
 
 /// <summary>
-/// Actor-owned basketball presentation. Bound explicitly by <see cref="SpawnCoordinator"/> during
-/// participant composition (<see cref="BindOwner"/>) instead of reading a parent
-/// <c>PlayerIdentifier</c> - AUD-010 Phase 1c's ShotMeter slice, mirroring <see cref="RangeMeter"/>.
+/// Actor-owned basketball presentation, bound explicitly by <see cref="SpawnCoordinator"/> during
+/// participant composition across three independent boundaries:
 ///
-/// A CPU shooter's automatic meter resolution additionally needs its own owning
-/// <see cref="IBasketballRuntime"/>, bound separately and optionally (<see cref="BindBasketballRuntime"/>)
-/// once that participant's basketball exists. A defensive/no-ball CPU never receives one - actor
-/// ownership alone is sufficient for a valid <see cref="Start"/>.
+/// - actor ownership (<see cref="BindOwner"/>) - AUD-010 Phase 1c, mirroring <see cref="RangeMeter"/>,
+///   instead of reading a parent <c>PlayerIdentifier</c>;
+/// - match rules (<see cref="BindMatchRules"/>) - AUD-010 Phase 2b0, instead of reading
+///   <c>MatchRuntime.Rules</c> directly;
+/// - a CPU's own <see cref="IBasketballRuntime"/> (<see cref="BindBasketballRuntime"/>), bound
+///   separately and optionally once that participant's basketball exists, needed only to resolve a
+///   CPU's automatic meter value. A defensive/no-ball CPU never receives one - actor ownership and
+///   match rules alone are sufficient for a valid <see cref="Start"/>.
 /// </summary>
 public class ShotMeter : MonoBehaviour
 {
     IShooterActor actor;
     bool isCpu;
     IBasketballRuntime basketballRuntime;
+    private ResolvedMatchRules matchRules;
 
     /// <summary>Whether <see cref="BindOwner"/> has run. Set once, at spawn time.</summary>
     public bool Bound { get; private set; }
@@ -131,12 +135,41 @@ public class ShotMeter : MonoBehaviour
         basketballRuntime = runtime;
     }
 
+    /// <summary>
+    /// Explicit match-rules binding from <see cref="SpawnCoordinator"/>, called once during participant
+    /// composition alongside <see cref="BindOwner"/> and before Unity calls <see cref="Start"/>.
+    /// Independent of actor ownership - binding has no gameplay or presentation side effects.
+    /// </summary>
+    public void BindMatchRules(ResolvedMatchRules rules)
+    {
+        if (rules == null)
+        {
+            Debug.LogError($"ShotMeter on '{gameObject.name}' was bound with null match rules.", this);
+            return;
+        }
+
+        if (matchRules != null)
+        {
+            Debug.LogError($"ShotMeter on '{gameObject.name}' already has bound match rules; ignoring a second BindMatchRules call.", this);
+            return;
+        }
+
+        matchRules = rules;
+    }
+
     // Start is called before the first frame update
     void Start()
     {
         if (!Bound)
         {
             Debug.LogError($"ShotMeter on '{gameObject.name}' reached Start() with no bound owner.", this);
+            enabled = false;
+            return;
+        }
+
+        if (matchRules == null)
+        {
+            Debug.LogError($"ShotMeter on '{gameObject.name}' reached Start() with no bound match rules.", this);
             enabled = false;
             return;
         }
@@ -149,8 +182,7 @@ public class ShotMeter : MonoBehaviour
         sliderMessageText = transform.Find(sliderMessageName).GetComponent<Text>();
         sliderMessageText.text = "";
 
-        if (MatchRuntime.Rules.Hardcore || MatchRuntime.Rules.EnemiesOnly
-            || MatchRuntime.Rules.IsBattleRoyal /*|| !MatchRuntime.HasConfiguration*/ || isCpu)
+        if (matchRules.Hardcore || matchRules.EnemiesOnly || matchRules.IsBattleRoyal || isCpu)
         {
             meterRed.SetActive(false);
             meterYellow.SetActive(false);
