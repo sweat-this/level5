@@ -53,6 +53,13 @@ public class BasketBallState : MonoBehaviour
     private int _currentShotType;
     private int _currentShotMade;
 
+    /// <summary>
+    /// The rules this match is being played under, bound once by composition. Not serialized: it is
+    /// runtime-only, set after the component already exists (see <see cref="BindMatchRules"/>), and
+    /// <see cref="ResolvedMatchRules"/> is not itself <c>[Serializable]</c>.
+    /// </summary>
+    private ResolvedMatchRules matchRules;
+
     public int CurrentShotType => _currentShotType;
     //public static BasketBallState instance;
 
@@ -83,6 +90,31 @@ public class BasketBallState : MonoBehaviour
         Bound = true;
     }
 
+    /// <summary>
+    /// AUD-010 Phase 2b0: explicit match-rules binding from the same composition operation that
+    /// spawns the ball (<see cref="SpawnCoordinator.GiveBall"/>), so <see cref="Update"/> no longer
+    /// reads <c>MatchRuntime.Rules</c> directly.
+    /// </summary>
+    public void BindMatchRules(ResolvedMatchRules rules)
+    {
+        // Checked before the null-argument branch below: a null second call after a real bind
+        // already succeeded must report "already bound", not "remaining unbound" - matchRules is
+        // still the original valid reference either way, and the log should say so.
+        if (matchRules != null)
+        {
+            Debug.LogError($"BasketBallState on '{gameObject.name}' already has bound match rules; ignoring a second BindMatchRules call.", this);
+            return;
+        }
+
+        if (rules == null)
+        {
+            Debug.LogError($"BasketBallState on '{gameObject.name}' was bound with null match rules; remaining unbound.", this);
+            return;
+        }
+
+        matchRules = rules;
+    }
+
     void Start()
     {
         if (!Bound)
@@ -95,13 +127,24 @@ public class BasketBallState : MonoBehaviour
             return;
         }
 
+        if (matchRules == null)
+        {
+            // Same fail-closed shape as the missing-owner branch above: BasketBall/BasketBallAuto
+            // share this GameObject and rely on this component's range/shot state, so deactivating
+            // only this component would leave a partially operational basketball with stale/default
+            // state.
+            Debug.LogError($"BasketBallState on '{gameObject.name}' reached Start() with no bound match rules.", this);
+            gameObject.SetActive(false);
+            return;
+        }
+
         //position to shoot basketball at (middle of rim)
         _basketBallTarget = GameObject.Find("basketBall_target");
 
     }
     void Update()
     {
-        if (MatchRuntime.Rules.RequiresBasketball)
+        if (matchRules.RequiresBasketball)
         {
             PlayerDistanceFromRim = Vector3.Distance(new Vector3(player.transform.position.x,0, player.transform.position.z), new Vector3(_basketBallTarget.transform.position.x,0, _basketBallTarget.transform.position.z));
             //PlayerDistanceFromRim = Mathf.Abs( GameLevelManager.instance.Player.transform.position.z - _basketBallTarget.transform.position.z);

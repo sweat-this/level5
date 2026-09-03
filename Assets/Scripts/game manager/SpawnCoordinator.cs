@@ -524,6 +524,27 @@ public sealed class SpawnCoordinator
         GameObject ownerActor = forCpu ? owner.autoPlayer : owner.player;
         runtime.BindOwner(owner.pid, forCpu, slotId == 0, ownerActor, owner.Actor);
 
+        // AUD-010 Phase 2b0: binds this match's already-resolved rules to the ball's own
+        // BasketBallState, immediately after BindOwner - runtime.State is already valid at this
+        // point, since both BasketBall.BindOwner and BasketBallAuto.BindOwner resolve and bind their
+        // BasketBallState synchronously within their own BindOwner before returning here.
+        //
+        // Code review: on both current implementations this null branch cannot actually fire - a
+        // missing BasketBallState component would already have thrown inside runtime.BindOwner above
+        // (it dereferences the same GetComponent result unconditionally). Kept as defense-in-depth
+        // against a future BindOwner that resolves/binds BasketBallState some other way, mirroring the
+        // GameStats null-check just below (which is independently reachable, since it calls
+        // GetComponent<GameStats> itself rather than reusing BindOwner's result).
+        BasketBallState state = runtime.State;
+        if (state == null)
+        {
+            Debug.LogError($"Basketball prefab '{prefab.name}' has no bound BasketBallState.", ball);
+        }
+        else
+        {
+            state.BindMatchRules(rules);
+        }
+
         // AUD-010 Phase 2b0: binds this match's already-resolved rules to the ball's own GameStats,
         // immediately after BindOwner, so match-XP calculation never has to reach for MatchRuntime
         // itself. Every production basketball prefab carries a GameStats component (phase 1b
