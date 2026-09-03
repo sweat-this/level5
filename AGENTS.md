@@ -165,21 +165,38 @@ Treat save formats, stable IDs, ruleset identifiers, and network payloads as con
 
 ## Validation
 
-Compilation alone is insufficient.
+Validation is risk-based. Local agent validation establishes confidence in the changed behavior and directly affected contracts; it does not recertify every Level 5 mode or repository invariant before each pull request.
 
-For relevant changes:
+Domain-specific requirements above, especially the Basketball and Match Integrity rules, override the default validation level when they require stronger evidence.
 
-1. Run `./scripts/validate-repository.ps1` from the repository root.
-2. Compile with the Unity version pinned by `ProjectSettings/ProjectVersion.txt`.
-3. Run focused EditMode tests for pure/system behavior where applicable.
-4. Run focused PlayMode tests for runtime behavior where applicable.
-5. Inspect Unity errors and warnings related to the changed flow.
-6. Validate affected scenes, prefabs, serialized references, and build contents.
-7. Perform a manual Play Mode smoke test for behavior that automation does not establish.
-8. For mode-sensitive work, exercise the affected modes rather than validating only a generic scene.
-9. Report validation that could not be run and why; never claim it passed.
+### Ownership
 
-CI runs a `Repository Validation` check on every pull request and push to `dev`, independent of Unity licensing. A separate `Unity Tests` job runs `game-ci/unity-test-runner` against the editor pinned by `ProjectSettings/ProjectVersion.txt` for EditMode and PlayMode. It only executes when the repository variable `UNITY_CI_ENABLED` is `true` and Unity credentials are configured as repository secrets. Until an administrator enables that capability and confirms real EditMode/PlayMode runs in GitHub Actions, treat Unity CI as not executing and keep local validation aligned with the checks above instead of assuming CI coverage. See issue #63 for current status.
+- **Local implementation:** run the smallest checks that meaningfully cover the current change. Prefer focused tests and targeted runtime checks.
+- **Repository Validation CI:** `./scripts/validate-repository.ps1` runs on every pull request and push to `dev`; do not duplicate it locally solely because CI will run it.
+- **Unity CI:** when `UNITY_CI_ENABLED` is `true` and credentials are configured, PR CI owns broad EditMode/PlayMode regression suites. When that capability is disabled or unavailable, do not assume Unity CI coverage; retain the focused local Unity checks required by the changed behavior.
+- **Manual Unity validation:** use when an acceptance criterion or domain guardrail requires runtime/visual evidence that automation cannot reasonably establish.
+
+### Local validation levels
+
+- **Level 0 — inspection only:** documentation, comments, non-executable metadata, and similarly non-runtime changes. Do not start Unity solely for these changes.
+- **Level 1 — focused (default):** inspect the completed diff; compile when compilation can be affected; run the smallest relevant EditMode or PlayMode tests when useful coverage exists; then stop.
+- **Level 2 — integration:** use when changing scene/prefab composition, serialized references, shared gameplay contracts, scoring/match lifecycle, persistence/identity, input ownership, versus/network boundaries, or cross-system runtime ownership. Run Level 1 plus only the affected integration paths and domain-required manual checks.
+- **Level 3 — certification:** use only for explicit release/certification work, major build/project configuration changes, or tasks that specifically require broad regression evidence before proceeding.
+
+Run `./scripts/validate-repository.ps1` locally when its repository invariant changed, the script itself changed, a focused failure needs it for diagnosis, CI evidence is unavailable and the task requires it before completion, or local certification is explicitly requested. Do not run it automatically for every implementation.
+
+### Stop and reuse rules
+
+- Run expensive validation after the implementation is coherent, not after every intermediate edit.
+- A successful check remains valid until a later edit touches the behavior or contract it covers.
+- Do not rerun successful checks merely for additional reassurance.
+- After a failure, diagnose before retrying and rerun the narrowest check that can confirm the fix.
+- Do not repeatedly retry environment failures such as Unity licensing, unavailable editor processes, missing external dependencies, or infrastructure failures.
+- Reuse still-current validation evidence across audit, plan, implementation, continuation, and review.
+- For verbose commands, check exit status first. Do not read successful logs in full; inspect only relevant failure excerpts.
+- Report checks not run and why; never convert `not run` or `blocked` into `passed`.
+
+CI capability remains defined by `.github/workflows/repository-quality.yml`; do not assume the optional Unity job is active without current evidence.
 
 ## Scope Control
 
