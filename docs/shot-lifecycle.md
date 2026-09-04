@@ -404,6 +404,18 @@ Being honest about what AUD-010 has and has not achieved:
   doesn't; CPU has `shootTrigger`/`Locked` resets the human path doesn't), and each
   `LaunchBasketBall` coroutine's `MeterEnded` wait condition, which the two files check on opposite
   values - confirmed intentional, left untouched.
+- **AUD-010 Phase 2b0, 2026-09-04.** `BasketBall.Launch`'s analytics call is no longer a direct
+  `AnaylticsManager.PlayerShoot(actor.ShotMeterSliderValue)` reach. It now invokes a bound
+  `Action<float>` (`BasketBall.BindShotTelemetry`), composed once by `SpawnCoordinator.GiveBall` for
+  human basketballs only (`humanBall.BindShotTelemetry(AnaylticsManager.PlayerShoot)`) - inverting the
+  dependency direction from `BasketBall -> AnaylticsManager` to
+  `SpawnCoordinator composition -> bound callback -> BasketBall`. The call site, its position in
+  `Launch` (still last, still after `actor.EndShootCycle()`), the exact slider value forwarded, the
+  event name/fields, and `AnaylticsManager.PlayerShoot`'s own `MatchRuntime.PrimaryCharacterDisplayName`
+  attribution are all unchanged. CPU shots (`BasketBallAuto`) still receive no telemetry binding -
+  `BasketBallAuto` was deliberately not extended with an equivalent method, so this remains a
+  human-only call exactly as before. See AUD-010 in `docs/architecture-audit.md` for the dependency
+  closure this closed.
 
 ## Why this blocks the assembly split
 

@@ -69,6 +69,16 @@ public class BasketBall : MonoBehaviour, IBasketballRuntime
     /// </summary>
     private ResolvedMatchRules matchRules;
 
+    /// <summary>
+    /// AUD-010 Phase 2b0: human shot telemetry, bound once by composition
+    /// (<see cref="SpawnCoordinator.GiveBall"/>) to <see cref="AnaylticsManager.PlayerShoot"/> for
+    /// human basketballs only - replacing <see cref="Launch"/>'s previous direct call to it. Not
+    /// serialized: it is runtime-only, set after the component already exists, and a delegate is not
+    /// itself <c>[Serializable]</c>. Optional from basketball's own perspective - <see cref="Launch"/>
+    /// invokes it defensively so a missing binding cannot affect shot behavior.
+    /// </summary>
+    private Action<float> shotTelemetryCallback;
+
     Text scoreText;
     Text shootProfileText;
 
@@ -491,8 +501,9 @@ public class BasketBall : MonoBehaviour, IBasketballRuntime
         // Symmetric with BasketBallAuto.Launch's CPU-2 call - a no-op on the human implementation.
         actor.EndShootCycle();
 
-        // analytics
-        AnaylticsManager.PlayerShoot(actor.ShotMeterSliderValue);
+        // AUD-010 Phase 2b0: telemetry is optional from basketball's own perspective, so a missing
+        // binding (no analytics call bound, e.g. in a test double) must not affect launch behavior.
+        shotTelemetryCallback?.Invoke(actor.ShotMeterSliderValue);
     }
 
     // ============================ Functions and Properties ==========================================
@@ -678,5 +689,34 @@ public class BasketBall : MonoBehaviour, IBasketballRuntime
         }
 
         matchRules = rules;
+    }
+
+    // ======================= Shot telemetry binding (AUD-010 Phase 2b0) =======================
+
+    /// <summary>
+    /// Explicit human shot-telemetry binding from the same composition operation that spawns the ball
+    /// (<see cref="SpawnCoordinator.GiveBall"/>), so <see cref="Launch"/> no longer calls
+    /// <see cref="AnaylticsManager.PlayerShoot"/> directly. Mirrors <see cref="BindMatchRules"/>'s
+    /// bind-once/null-guard/no-rebind shape; performs no analytics, gameplay, physics, or presentation
+    /// work itself - the callback is only invoked from <see cref="Launch"/>.
+    /// </summary>
+    public void BindShotTelemetry(Action<float> callback)
+    {
+        // Checked before the null-argument branch below: a null second call after a real bind
+        // already succeeded must report "already bound", not "remaining unbound" - shotTelemetryCallback
+        // is still the original valid callback either way, and the log should say so.
+        if (shotTelemetryCallback != null)
+        {
+            Debug.LogError($"BasketBall on '{gameObject.name}' already has a bound shot-telemetry callback; ignoring a second BindShotTelemetry call.", this);
+            return;
+        }
+
+        if (callback == null)
+        {
+            Debug.LogError($"BasketBall on '{gameObject.name}' was bound with a null shot-telemetry callback; remaining unbound.", this);
+            return;
+        }
+
+        shotTelemetryCallback = callback;
     }
 }
