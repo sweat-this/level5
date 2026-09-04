@@ -39,6 +39,7 @@ public class GameLevelManager : MonoBehaviour, IGroundHeightProvider
     private SpawnCoordinator _spawnCoordinator;
     private ResolvedMatchRules _rules;
     private PlayerRoster _roster;
+    private GameModeId _modeId;
 
     private Vector3 _basketballRimVector;
 
@@ -83,6 +84,7 @@ public class GameLevelManager : MonoBehaviour, IGroundHeightProvider
         // to change what it was launched as.
         _rules = MatchRuntime.Rules;
         _roster = MatchRuntime.Roster;
+        _modeId = MatchRuntime.ModeId;
         numPlayers = Mathf.Max(1, _roster.Count);
         MatchSession.EnsureCurrentMatch();
 
@@ -94,6 +96,8 @@ public class GameLevelManager : MonoBehaviour, IGroundHeightProvider
         LevelRuntimeContext context = FindAnyObjectByType<LevelRuntimeContext>()
             ?? gameObject.AddComponent<LevelRuntimeContext>();
         context.AdoptPlayerRegistry(registry);
+
+        BindBasketballShotMadeContext();
 
         _spawnLocations = SpawnCoordinator.SpawnLocations.FindInScene();
         if (!_spawnLocations.Validate(_roster, _rules))
@@ -110,7 +114,7 @@ public class GameLevelManager : MonoBehaviour, IGroundHeightProvider
             joystick = GameObject.FindGameObjectWithTag("joystick").GetComponentInChildren<FloatingJoystick>();
         }
 
-        _spawnCoordinator = new SpawnCoordinator(_spawnLocations, registry, _rules, _roster, MatchRuntime.ModeId, this);
+        _spawnCoordinator = new SpawnCoordinator(_spawnLocations, registry, _rules, _roster, _modeId, this);
 
         try
         {
@@ -127,6 +131,30 @@ public class GameLevelManager : MonoBehaviour, IGroundHeightProvider
         _spawnCoordinator.SpawnCheerleader(MatchRuntime.Cheerleader.ObjectName, terrainHeight);
 
         ArenaBootstrap.HideDuplicateCharacterActors(MatchRuntime.PrimaryCharacterObjectName, _rules.TrafficEnabled);
+    }
+
+    /// <summary>
+    /// AUD-010 Phase 2b0: binds this scene's <see cref="BasketBallShotMade"/> - the made-shot trigger
+    /// authored on the basketball_goal prefab/hierarchy, exactly one per gameplay scene - to the
+    /// already-resolved <see cref="_rules"/>/<see cref="_modeId"/>, so it no longer has to read
+    /// <c>MatchRuntime</c> itself. Not spawned by <see cref="SpawnCoordinator"/> (it is scene-authored
+    /// on the hoop, not per-participant), so <c>FindAnyObjectByType</c> is the narrowest route that
+    /// reliably reaches the one production instance - the same pattern already used for
+    /// <see cref="LevelRuntimeContext"/> just above. Every current gameplay scene has exactly one, so a
+    /// missing hoop is logged (not thrown/disabled) rather than assumed silently intentional - the same
+    /// "should always be present, log if it isn't" shape <c>SpawnCoordinator.GiveBall</c> already uses
+    /// for a basketball's <c>GameStats</c>/<c>BasketBallState</c>.
+    /// </summary>
+    private void BindBasketballShotMadeContext()
+    {
+        BasketBallShotMade shotMade = FindAnyObjectByType<BasketBallShotMade>();
+        if (shotMade == null)
+        {
+            Debug.LogWarning("GameLevelManager could not find a BasketBallShotMade to bind match context to - any made shot in this scene will fail closed with no score.");
+            return;
+        }
+
+        shotMade.BindMatchContext(_rules, _modeId);
     }
 
     private float setTerrainHeight()

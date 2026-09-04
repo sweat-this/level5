@@ -28,6 +28,18 @@ public class BasketBallShotMade : MonoBehaviour
     /// decision, not addressed by this constant.
     /// </summary>
     private const int CurrentInThePocketStreakBonusThreshold = 0;
+
+    /// <summary>
+    /// AUD-010 Phase 2b0: explicit bind-once match context, replacing this component's own
+    /// <c>MatchRuntime.Rules</c>/<c>MatchRuntime.RawModeId</c> reads. Composition
+    /// (<c>GameLevelManager.Awake</c>) supplies both once, the same bind-once/null-guard/no-rebind
+    /// shape <c>BasketBall.BindMatchRules</c> already established. <see cref="hasBoundMatchContext"/>
+    /// is a separate flag rather than checking <see cref="gameModeId"/> against a sentinel, because
+    /// <see cref="GameModeId.None"/> is itself a valid bound value, not "unbound".
+    /// </summary>
+    private ResolvedMatchRules matchRules;
+    private GameModeId gameModeId;
+    private bool hasBoundMatchContext;
     //int _consecutiveShotsMade = 0;
     //int _currentShotMade = 0;
     //int _currentShotAttempts = 0;
@@ -122,9 +134,20 @@ public class BasketBallShotMade : MonoBehaviour
         shotMade1 = false;
         shotMade2 = false;
 
-        // AUD-010 Phase 1c: one immutable-rules snapshot for the whole made-shot operation, reused
-        // by every decision below instead of each resolving MatchRuntime.Rules separately.
-        ResolvedMatchRules rules = MatchRuntime.Rules;
+        // AUD-010 Phase 2b0: an unbound component is a composition failure, not reachable gameplay
+        // state on any production instance - GameLevelManager.Awake binds every scene's
+        // BasketBallShotMade before any Start() can run. Fails closed before any scoring/marker/
+        // money-ball mutation or MadeShotResult publication, but only after the latch reset above, so
+        // the hoop does not get stuck waiting for a make that will never resolve.
+        if (!hasBoundMatchContext)
+        {
+            Debug.LogError($"BasketBallShotMade on '{gameObject.name}' has no bound match context; skipping scoring for participant {runtime.ParticipantId}'s made shot.", this);
+            return;
+        }
+
+        // AUD-010 Phase 1c/2b0: one immutable-rules snapshot for the whole made-shot operation,
+        // reused by every decision below instead of each resolving MatchRuntime.Rules separately.
+        ResolvedMatchRules rules = matchRules;
 
         float shotDistance = runtime.LastShotDistance;
         // add to total shot distance made total
@@ -171,6 +194,36 @@ public class BasketBallShotMade : MonoBehaviour
         //    GameRules.instance.updatePlayerScore();
         //}
         // update game rules ui
+    }
+
+    /// <summary>
+    /// AUD-010 Phase 2b0: composition's one-time seam for this component's match context. Called by
+    /// <c>GameLevelManager.Awake</c>, which already resolves <see cref="ResolvedMatchRules"/> and the
+    /// scene's <see cref="GameModeId"/> for every other basketball binding - this component is
+    /// scene-authored on the hoop (not spawned by <c>SpawnCoordinator</c>), so it is found and bound
+    /// the same way <c>LevelRuntimeContext</c> already is in that method.
+    /// </summary>
+    public void BindMatchContext(ResolvedMatchRules rules, GameModeId modeId)
+    {
+        // Checked before the null-argument branch below: a null second call after a real bind
+        // already succeeded must report "already bound", not "leaving it unbound" - matchRules is
+        // still the original valid reference either way, and the log should say so. Mirrors
+        // BasketBall/BasketBallAuto/BasketBallState's BindMatchRules ordering.
+        if (hasBoundMatchContext)
+        {
+            Debug.LogError($"BasketBallShotMade on '{gameObject.name}' already has bound match context; ignoring a second BindMatchContext call.", this);
+            return;
+        }
+
+        if (rules == null)
+        {
+            Debug.LogError($"BasketBallShotMade on '{gameObject.name}' received a null ResolvedMatchRules in BindMatchContext; leaving it unbound.", this);
+            return;
+        }
+
+        matchRules = rules;
+        gameModeId = modeId;
+        hasBoundMatchContext = true;
     }
 
     void instantiateMoney(float value)
@@ -266,8 +319,11 @@ public class BasketBallShotMade : MonoBehaviour
                 || rules.IsFourPointContest
                 || rules.IsSevenPointContest
                 || rules.IsAllPointContest,
-            ScoresByDistance = MatchRuntime.RawModeId == Modes.PointsByDistance,
-            HasStreakBonus = MatchRuntime.RawModeId == Modes.InThePocket,
+            // AUD-010 Phase 2b0: typed GameModeId identity replaces the raw MatchRuntime.RawModeId
+            // comparison. Consecutive Shots is a distinct mode (ResolvedMatchRules.RequiresConsecutiveShots)
+            // and is deliberately not treated as In the Pocket here - see docs/shot-lifecycle.md.
+            ScoresByDistance = gameModeId == GameModeId.PointsByDistance,
+            HasStreakBonus = gameModeId == GameModeId.InThePocket,
             ConsecutiveShotsMade = gameStats.Stats.ConsecutiveShotsMade,
             StreakBonusThreshold = CurrentInThePocketStreakBonusThreshold,
             OnEnabledMarker = basketBallState.PlayerOnMarkerOnShoot
