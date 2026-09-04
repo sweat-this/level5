@@ -13,12 +13,12 @@ detailed Level 5 workflow only when necessary
     ↓
 work
     ↓
-impact-based validation
+minimum credible verification
 ```
 
 ## Routing: Route + Mode + Risk
 
-Pick a **route** describing the task shape, a **mode** describing how much investigation it needs, then let **risk** (below) upgrade the mode if warranted.
+Pick a **route** describing the task shape, a **mode** describing how much investigation it needs, then let **risk** upgrade the mode if warranted.
 
 **Routes**
 
@@ -32,7 +32,7 @@ Pick a **route** describing the task shape, a **mode** describing how much inves
 
 - `lean` — minimal evidence, no broad investigation.
 - `standard` — targeted evidence, normal engineering rigor. Default.
-- `deep` — full investigation/review depth. A mode, not a route.
+- `deep` — deeper targeted investigation. A mode, not a route.
 
 ### Default behavior
 
@@ -43,15 +43,9 @@ Evidence reuse: enabled while relevant state remains current
 Output: concise
 ```
 
-Use `lean` for:
+Use `lean` for state checks, merged/stale verification, next-action questions, continuation where current state is already known, and small documentation/process work.
 
-- is-this-done checks;
-- merged/stale verification;
-- next-action questions;
-- continuation where current state is already known;
-- small documentation/process work.
-
-Use `deep` only when risk warrants it (see below) or the user explicitly requests deep analysis.
+Use `deep` only when risk warrants it or the user explicitly requests deep analysis.
 
 ## Evidence/Token Gate
 
@@ -71,15 +65,14 @@ Rules:
 - Search/navigate before broad reads where practical.
 - Expand one dependency/ownership boundary at a time.
 - Stop once sufficient evidence exists.
-- Do not read every architecture document by default.
-- Do not read every AI workflow by default.
+- Do not read every architecture document or AI workflow by default.
 - Do not perform whole-repository audits unless explicitly requested.
 - File-count limits must not override correctness.
-- Cross-system Level 5 behavior may legitimately require following the entire affected state flow — do not truncate a trace for token savings.
+- Cross-system Level 5 behavior may legitimately require following the entire affected state flow; do not truncate a necessary trace for token savings.
 
 ## Critical-Flow Escalation to `deep`
 
-Standard mode is appropriate for ordinary scoped work. Automatically consider `deep` when materially touching:
+Standard mode is appropriate for ordinary scoped work. Consider `deep` when materially touching:
 
 **Basketball integrity** — shot attempt/launch/make lifecycle; scoring; player statistics; point-value determination; match completion; CPU/human behavior parity; mode-specific shot rules. Use [`docs/shot-lifecycle.md`](../shot-lifecycle.md).
 
@@ -91,72 +84,68 @@ Standard mode is appropriate for ordinary scoped work. Automatically consider `d
 
 **Architecture** — broad manager ownership migration; state ownership moving between systems; assembly/asmdef restructuring; scene/bootstrap architecture; public/shared contracts; multiple gameplay modes; significant serialized-data migration; conflicting repository evidence.
 
-`deep` means deeper *targeted* investigation, not reading the whole repository or automatically running Level 3 validation.
+`deep` means deeper targeted investigation, not reading the whole repository or automatically running Level 3 validation.
 
 ## Evidence Reuse
 
-Reuse prior evidence across:
+Reuse prior evidence across audit, plan, revised plan, implementation prompt, implementation continuation, and review when the task and affected implementation remain materially unchanged.
 
-```text
-audit → plan → revised plan → implementation prompt → implementation continuation → review
-```
-
-when:
-
-- the issue/task remains the same;
-- the relevant branch/head has not materially changed;
-- the affected implementation has not materially changed;
-- no overlapping PR invalidated the conclusions.
-
-Refresh only affected evidence when:
-
-- the branch/head changed materially;
-- overlapping work merged;
-- affected files changed;
-- acceptance criteria changed;
-- repository evidence conflicts.
+Refresh only affected evidence when the branch/head, overlapping work, acceptance criteria, or relevant files changed materially or when evidence conflicts.
 
 Do not reread files solely to restate known scope in an implementation prompt.
 
-Validation evidence follows the same rule. Do not rerun still-current checks in a continuation or review unless implementation changed afterward, the result is untrusted, or reproduction is necessary to resolve a material finding.
+Verification evidence follows the same rule. Do not rerun still-current checks in a continuation or review unless implementation changed afterward, the result is untrusted, or reproduction is necessary to resolve a material finding.
+
+## Verification Budget
+
+Routine implementation should not spend a large share of tokens or execution time on testing and validation.
+
+Default `standard` implementation budget outside domain-specific requirements in `AGENTS.md`:
+
+```text
+final diff / affected composition inspection
++ compile when compilation can be affected
++ optional single focused test only for a concrete regression/contract risk
+→ STOP
+```
+
+Rules:
+
+- Tests are not required merely because code changed.
+- Do not create new test infrastructure for small scoped work unless acceptance criteria, a known regression, or a deterministic/high-risk contract justifies it.
+- Do not automatically run both automated and manual checks for the same claim.
+- Manual Play Mode is reserved for runtime/visual evidence gaps and explicit domain rules.
+- Do not run `./scripts/validate-repository.ps1` locally merely because implementation changed; PR CI already owns it.
+- Broad EditMode/PlayMode suites belong to Unity CI when active. Missing Unity CI does not automatically justify every local suite.
+- Validation sections in plans and completion reports should normally contain only the one to three highest-value checks.
+- Stop once credible evidence exists for the changed behavior.
+
+The Basketball and Match Integrity rules in `AGENTS.md` override this budget when they require regression coverage and a real-mode Play Mode path.
 
 ## Detailed Workflows
 
 Load a workflow under [`docs/ai/skills/`](skills/) only when the route, mode, or risk requires it. See [`docs/ai/README.md`](README.md) for the full catalog and composition guidance.
 
-## Impact-Based Validation
+`unity-playability-validator.md` is intentionally specialized. Use it for explicit playability/regression verification, certification, or a material runtime evidence gap; do not append it automatically to ordinary implementation work.
 
-Token reduction must not weaken verification. Match local validation to the actual changed surface and let CI own broad checks where that capability is active.
+## Route Guidance
 
-| Change surface | Local validation | CI ownership |
-| --- | --- | --- |
-| Docs/comments/non-runtime metadata | inspection/lightweight checks | Repository Validation |
-| Isolated C# / deterministic system logic | compile when affected + focused EditMode tests | Repository Validation + Unity suites when enabled |
-| Runtime gameplay behavior | focused PlayMode test when useful; manual smoke only if acceptance requires observation | Unity suites when enabled |
-| Shot/scoring/match lifecycle | affected lifecycle tests + domain-required real-mode Play Mode path | Unity suites when enabled |
-| CPU/human shared behavior | verify both applicable paths, narrowly | Unity suites when enabled |
-| Mode-sensitive behavior | exercise only affected modes required by the contract | Unity suites when enabled |
-| Scene/prefab/serialized composition | focused composition/reference checks | Repository Validation; Unity suites when enabled |
-| Persistence/identity/versus | focused compatibility/migration/idempotency tests as applicable | Unity suites when enabled |
-| Repository invariant/script | affected `validate-repository.ps1` path | Repository Validation |
-| Release/certification | complete applicable certification | all active CI |
+### status
 
-Rules:
+Use the minimum branch/PR/current-state evidence needed. Output concise state, blockers, and next action if obvious.
 
-- `standard` implementation defaults to Level 1 focused validation.
-- Do not run `./scripts/validate-repository.ps1` locally merely because implementation changed; PR CI already runs it. Run it locally when its invariant/script changed, it is needed for diagnosis, CI evidence is unavailable and required before completion, or certification is explicitly requested.
-- When Unity CI is confirmed active for the current PR, do not duplicate broad EditMode/PlayMode suites locally solely because CI will run them.
-- When Unity CI is disabled or unavailable, retain the focused local Unity tests required by the changed behavior; do not replace missing CI with an automatic full local suite.
-- Run expensive checks once after implementation is coherent rather than after intermediate edits.
-- A passing check remains current until a later edit touches its covered behavior or contract.
-- After failure, diagnose first and rerun the narrowest check that proves the fix.
-- For verbose commands, inspect exit status first and read only relevant failure excerpts.
-- Manual Play Mode is for runtime/visual evidence gaps and explicit domain rules, not automatic reassurance for every player-facing change.
+### plan
 
-Repository Validation remains:
+Produce a scoped sequence based on current ownership and acceptance criteria. Include minimum verification, not a broad test matrix. Use `skills/implementation-plan-red-team.md` when adversarial review is requested or risk justifies it.
 
-```powershell
-./scripts/validate-repository.ps1
-```
+### implement
 
-CI capability is defined by `.github/workflows/repository-quality.yml`; do not assume optional Unity CI coverage without current evidence.
+Implement the narrowest complete change. Default verification is final diff + compile when affected, with one focused test only for concrete risk unless `AGENTS.md` domain rules require more. Use `skills/unity-implementation-agent.md` when implementation needs more guidance.
+
+### bug
+
+Establish root cause before fixing. Use focused reproduction/log/source evidence and `skills/unity-debug-investigator.md` for non-obvious failures.
+
+### review
+
+Assess correctness, scope, architecture, and regressions from the supplied diff/PR plus still-current evidence. Do not rerun validation merely to review. Mention missing validation only when it materially reduces confidence in a changed contract.

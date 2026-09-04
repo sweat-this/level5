@@ -69,7 +69,7 @@ Prefer, in order:
 Before modifying code or Unity assets:
 
 1. Inspect the directly affected scripts and call sites.
-2. Inspect relevant scenes, prefabs, ScriptableObjects, tests, project settings, and documentation.
+2. Inspect relevant scenes, prefabs, ScriptableObjects, tests, project settings, and documentation when plausibly affected.
 3. Trace the actual runtime flow end to end when behavior crosses systems.
 4. Identify the current owner of each piece of state being changed.
 5. Establish requested behavior and acceptance criteria.
@@ -163,6 +163,24 @@ Treat save formats, stable IDs, ruleset identifiers, and network payloads as con
 - Do not commit machine-local Unity state, caches, credentials, secrets, or generated project files.
 - Preserve repository Git LFS behavior for binary assets.
 
+## Efficiency and Verification Budget
+
+Implementation and root-cause work are the primary tasks. Testing and validation are supporting evidence, not a default deliverable to maximize.
+
+For ordinary scoped work outside the high-risk domain rules above:
+
+- inspect the completed diff;
+- compile when the change can affect compilation;
+- run a focused automated test only when it targets a concrete regression risk, changed deterministic contract, or acceptance criterion;
+- do not create new tests solely because code changed or to increase coverage numbers;
+- do not add a manual Play Mode pass merely for reassurance when code/asset inspection or focused automation already establishes the claim;
+- keep validation plans and completion reports short—normally the one to three highest-value checks, not an exhaustive matrix;
+- stop once the changed behavior has credible evidence and let PR CI own broad regression coverage.
+
+Escalate beyond this budget when a domain rule above requires it or when the change crosses scoring/match lifecycle, persistence, identity, versus/networking, input ownership, serialized composition, project/build configuration, or another known high-risk boundary.
+
+`unity-playability-validator.md` is a specialist workflow for explicit playability/regression verification or a material runtime evidence gap. It is not a standard final phase of ordinary implementation work.
+
 ## Validation
 
 Validation is risk-based. Local agent validation establishes confidence in the changed behavior and directly affected contracts; it does not recertify every Level 5 mode or repository invariant before each pull request.
@@ -171,16 +189,16 @@ Domain-specific requirements above, especially the Basketball and Match Integrit
 
 ### Ownership
 
-- **Local implementation:** run the smallest checks that meaningfully cover the current change. Prefer focused tests and targeted runtime checks.
+- **Local implementation:** use the minimum credible evidence for the current change. For ordinary code changes this is often final-diff inspection plus compilation; add focused tests only when they materially improve confidence or a domain rule requires them.
 - **Repository Validation CI:** `./scripts/validate-repository.ps1` runs on every pull request and push to `dev`; do not duplicate it locally solely because CI will run it.
-- **Unity CI:** when `UNITY_CI_ENABLED` is `true` and credentials are configured, PR CI owns broad EditMode/PlayMode regression suites. When that capability is disabled or unavailable, do not assume Unity CI coverage; retain the focused local Unity checks required by the changed behavior.
+- **Unity CI:** when `UNITY_CI_ENABLED` is `true` and credentials are configured, PR CI owns broad EditMode/PlayMode regression suites. When that capability is disabled or unavailable, do not assume Unity CI coverage; retain only the focused local Unity checks required by the changed behavior or domain rules.
 - **Manual Unity validation:** use when an acceptance criterion or domain guardrail requires runtime/visual evidence that automation cannot reasonably establish.
 
 ### Local validation levels
 
 - **Level 0 — inspection only:** documentation, comments, non-executable metadata, and similarly non-runtime changes. Do not start Unity solely for these changes.
-- **Level 1 — focused (default):** inspect the completed diff; compile when compilation can be affected; run the smallest relevant EditMode or PlayMode tests when useful coverage exists; then stop.
-- **Level 2 — integration:** use when changing scene/prefab composition, serialized references, shared gameplay contracts, scoring/match lifecycle, persistence/identity, input ownership, versus/network boundaries, or cross-system runtime ownership. Run Level 1 plus only the affected integration paths and domain-required manual checks.
+- **Level 1 — focused (default):** inspect the completed diff; compile when compilation can be affected; run at most the smallest directly relevant automated test when a concrete failure risk justifies it; otherwise stop after compile.
+- **Level 2 — integration:** use when changing scene/prefab composition, serialized references, shared gameplay contracts, scoring/match lifecycle, persistence/identity, input ownership, versus/network boundaries, or cross-system runtime ownership. Run Level 1 plus only the affected integration path or domain-required manual check. Do not automatically add both automated and manual coverage.
 - **Level 3 — certification:** use only for explicit release/certification work, major build/project configuration changes, or tasks that specifically require broad regression evidence before proceeding.
 
 Run `./scripts/validate-repository.ps1` locally when its repository invariant changed, the script itself changed, a focused failure needs it for diagnosis, CI evidence is unavailable and the task requires it before completion, or local certification is explicitly requested. Do not run it automatically for every implementation.
@@ -194,7 +212,7 @@ Run `./scripts/validate-repository.ps1` locally when its repository invariant ch
 - Do not repeatedly retry environment failures such as Unity licensing, unavailable editor processes, missing external dependencies, or infrastructure failures.
 - Reuse still-current validation evidence across audit, plan, implementation, continuation, and review.
 - For verbose commands, check exit status first. Do not read successful logs in full; inspect only relevant failure excerpts.
-- Report checks not run and why; never convert `not run` or `blocked` into `passed`.
+- Report checks not run only when the omission matters to confidence or acceptance criteria; never convert `not run` or `blocked` into `passed`.
 
 CI capability remains defined by `.github/workflows/repository-quality.yml`; do not assume the optional Unity job is active without current evidence.
 
@@ -219,7 +237,7 @@ Use only workflows relevant to the current task:
 - Implementation planning and adversarial review: `implementation-plan-red-team.md`
 - Approved implementation work: `unity-implementation-agent.md`
 - Bugs and unexplained Unity behavior: `unity-debug-investigator.md`
-- Playability/regression verification: `unity-playability-validator.md`
+- Playability/regression verification: `unity-playability-validator.md` — explicit verification work only; do not append it automatically to normal implementation
 - Scope and modernization triage: `level5-scope-guardian.md`
 
 Read [`docs/ai/README.md`](docs/ai/README.md) for composition guidance.
