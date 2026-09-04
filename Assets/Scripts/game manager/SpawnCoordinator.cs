@@ -576,6 +576,12 @@ public sealed class SpawnCoordinator
         if (runtime is BasketBall humanBall)
         {
             humanBall.BindGroundHeightProvider(groundHeightProvider);
+
+            // AUD-010 Phase 2b0: binds this match's already-resolved rules to the human implementation
+            // directly, immediately after the ground-height provider - the same seam BasketBall.Start()/
+            // Update() now read instead of MatchRuntime.Rules.EnemiesOnly/IsBattleRoyal. Not part of
+            // IBasketballRuntime: only the concrete human type has this dependency today.
+            humanBall.BindMatchRules(rules);
         }
 
         if (forCpu)
