@@ -531,6 +531,13 @@ public sealed class SpawnCoordinator
         if (runtime is BasketBallAuto autoBall)
         {
             autoBall.BindMatchRules(rules);
+
+            // AUD-010 Phase 2b0: binds the CPU ball's swish/critical-success presentation to the
+            // same late-resolving adapter as the human ball below, inverting BasketBallAuto's former
+            // direct BehaviorNpcCritical.instance dependency. CPU swishes receive this presentation
+            // exactly like human ones, so this is bound unconditionally here rather than only inside
+            // the `is BasketBall humanBall` branch the telemetry binding above lives in.
+            autoBall.BindCriticalSuccessPresentation(PlayCriticalSuccessPresentation);
         }
 
         // AUD-010 Phase 2b0: binds this match's already-resolved rules to the ball's own
@@ -589,6 +596,11 @@ public sealed class SpawnCoordinator
             // CPU shots (BasketBallAuto) deliberately receive no telemetry binding, preserving the
             // existing human-only PlayerShoot behavior.
             humanBall.BindShotTelemetry(AnaylticsManager.PlayerShoot);
+
+            // AUD-010 Phase 2b0: binds human swish/critical-success presentation to the same
+            // late-resolving adapter as the CPU ball above, inverting BasketBall's former direct
+            // BehaviorNpcCritical.instance dependency.
+            humanBall.BindCriticalSuccessPresentation(PlayCriticalSuccessPresentation);
         }
 
         if (forCpu)
@@ -601,6 +613,25 @@ public sealed class SpawnCoordinator
         }
 
         BindShotMeterRuntime(ownerActor, runtime);
+    }
+
+    /// <summary>
+    /// AUD-010 Phase 2b0: the swish/critical-success presentation callback bound to both
+    /// <see cref="BasketBall"/> and <see cref="BasketBallAuto"/> above, replacing their former direct
+    /// <c>BehaviorNpcCritical.instance.playAnimationCriticalSuccesful()</c> calls.
+    ///
+    /// A named method rather than a captured local: at basketball-spawn time the cheerleader (whose
+    /// <c>Start()</c> assigns <see cref="BehaviorNpcCritical.instance"/>) may not exist yet -
+    /// <see cref="SpawnCoordinator.SpawnBasketballs"/> runs before the cheerleader is spawned - so the
+    /// singleton must be resolved here, at the point a swish actually invokes this callback, never
+    /// captured at composition time.
+    /// </summary>
+    private static void PlayCriticalSuccessPresentation()
+    {
+        if (BehaviorNpcCritical.instance != null)
+        {
+            BehaviorNpcCritical.instance.playAnimationCriticalSuccesful();
+        }
     }
 
     /// <summary>
