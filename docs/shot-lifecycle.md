@@ -187,6 +187,36 @@ fallback described in the next paragraph for scenes entered without a validated 
 this slice only changes how the shot pipeline reaches an already-resolved rules value, not that
 fallback itself.
 
+**`BasketBallShotMade`'s `MatchRuntime` dependency closed (AUD-010 Phase 2b0).** `shotMade()` read
+`MatchRuntime.Rules` directly, and `updateShotMadeBasketBallStats` compared `MatchRuntime.RawModeId`
+against `Modes.PointsByDistance`/`Modes.InThePocket` to decide which of the two mode-specific scoring
+branches applied. Both are now supplied once through `BasketBallShotMade.BindMatchContext(ResolvedMatchRules,
+GameModeId)`, and the raw mode comparisons are replaced by typed `gameModeId == GameModeId.PointsByDistance`/
+`GameModeId.InThePocket` checks. `GameModeId.ConsecutiveShots` - a distinct mode, identified by
+`ResolvedMatchRules.RequiresConsecutiveShots` - is deliberately not treated as In the Pocket.
+
+Unlike every other file this migration has touched, `BasketBallShotMade` is not spawned by
+`SpawnCoordinator` - it is authored on the hoop itself (the `basketball_goal*` prefabs/scene
+hierarchy), exactly one production instance per gameplay scene. So the bind happens from
+`GameLevelManager.Awake()` instead, via `FindAnyObjectByType<BasketBallShotMade>()` - the same lookup
+shape that method already uses a few lines above to find the scene's `LevelRuntimeContext`.
+`GameLevelManager` now also captures `MatchRuntime.ModeId` once into its own `_modeId` field alongside
+its existing `_rules`, rather than reading it inline at the `SpawnCoordinator` construction site.
+
+A distinct `hasBoundMatchContext` flag - not a null check on the bound rules, and not a sentinel mode
+value - marks whether the bind happened, because `GameModeId.None` is itself a valid bound value (a
+mode that authors nothing special), not "unbound". A made shot that reaches `shotMade()` with no bound
+context logs an actionable error and returns immediately after the existing collision-latch reset
+(`isColliding`/`shotMade1`/`shotMade2`) - so the hoop cannot get stuck waiting on a make that will
+never resolve - but before any scoring, marker-made-count, money-ball, or `MadeShotResult` mutation.
+This mirrors `ApplyMarkerAndMoneyBallOnShoot`'s existing fail-closed shape for a null rules argument,
+just above.
+
+`Assets/Scripts/basketball/BasketBallShotMade.cs` now has zero live `MatchRuntime` references, guarded
+by a new `Level5BasketBallShotMadeDependencyGuardTests`. `BasketBallShotMarker` is now the one
+remaining production basketball file with live `MatchRuntime`/`GameRules` references - a separate,
+unresolved migration.
+
 `BasketBallShotMarker.Update()` resolves `IsPointContestMode()` once per frame and threads the
 result into `setDisplayText(bool)` and the two marker-completion branches, rather than each of up to
 three call sites resolving it (and therefore `MatchRuntime.Rules`) separately. For a directly-entered
