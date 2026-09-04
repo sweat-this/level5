@@ -61,6 +61,14 @@ public class BasketBall : MonoBehaviour, IBasketballRuntime
     /// </summary>
     IMoneyBallState moneyBallState;
 
+    /// <summary>
+    /// AUD-010 Phase 2b0: the rules this match is being played under, bound once by composition
+    /// (<see cref="SpawnCoordinator.GiveBall"/>), before <see cref="Start"/> runs. Not serialized: it
+    /// is runtime-only, set after the component already exists, and <see cref="ResolvedMatchRules"/>
+    /// is not itself <c>[Serializable]</c>.
+    /// </summary>
+    private ResolvedMatchRules matchRules;
+
     Text scoreText;
     Text shootProfileText;
 
@@ -109,6 +117,14 @@ public class BasketBall : MonoBehaviour, IBasketballRuntime
             // behavior on this GameObject assumes a fully composed basketball, so disabling only this
             // component is not enough.
             Debug.LogError($"BasketBall on '{gameObject.name}' reached Start() with no bound ground-height provider.", this);
+            gameObject.SetActive(false);
+            return;
+        }
+
+        if (matchRules == null)
+        {
+            // Same fail-closed shape as the missing-owner/missing-provider branches above.
+            Debug.LogError($"BasketBall on '{gameObject.name}' reached Start() with no bound match rules.", this);
             gameObject.SetActive(false);
             return;
         }
@@ -169,7 +185,7 @@ public class BasketBall : MonoBehaviour, IBasketballRuntime
         InvokeRepeating("CheckIsBallFacingGoal", 0, 0.5f);
         InvokeRepeating("displayUiStats", 0, 0.5f);
 
-        if (MatchRuntime.Rules.EnemiesOnly || MatchRuntime.Rules.IsBattleRoyal)//|| MatchRuntime.HasConfiguration)
+        if (matchRules.EnemiesOnly || matchRules.IsBattleRoyal)
         {
             transform.position = new Vector3(transform.position.x, transform.position.y + 20, transform.position.z);
             rigidbody.constraints = RigidbodyConstraints.FreezeAll;
@@ -183,7 +199,7 @@ public class BasketBall : MonoBehaviour, IBasketballRuntime
     private void Update()
     {
         // get speed for basketball animation
-        if (!MatchRuntime.Rules.EnemiesOnly)
+        if (!matchRules.EnemiesOnly)
         {
             if (rigidbody.linearVelocity.magnitude > maxBasketballSpeed && !basketBallState.InAir)
             {
@@ -634,5 +650,33 @@ public class BasketBall : MonoBehaviour, IBasketballRuntime
         }
 
         moneyBallState = state;
+    }
+
+    // ======================= Match rules binding (AUD-010 Phase 2b0) =======================
+
+    /// <summary>
+    /// Explicit match-rules binding from the same composition operation that spawns the ball
+    /// (<see cref="SpawnCoordinator.GiveBall"/>), so <see cref="Start"/>/<see cref="Update"/> no
+    /// longer read <c>MatchRuntime.Rules</c> directly. Mirrors <see cref="BasketBallState"/>'s and
+    /// <see cref="BasketBallAuto"/>'s own <c>BindMatchRules</c> bind-once/null-guard/no-rebind shape.
+    /// </summary>
+    public void BindMatchRules(ResolvedMatchRules rules)
+    {
+        // Checked before the null-argument branch below: a null second call after a real bind
+        // already succeeded must report "already bound", not "remaining unbound" - matchRules is
+        // still the original valid reference either way, and the log should say so.
+        if (matchRules != null)
+        {
+            Debug.LogError($"BasketBall on '{gameObject.name}' already has bound match rules; ignoring a second BindMatchRules call.", this);
+            return;
+        }
+
+        if (rules == null)
+        {
+            Debug.LogError($"BasketBall on '{gameObject.name}' was bound with null match rules; remaining unbound.", this);
+            return;
+        }
+
+        matchRules = rules;
     }
 }
