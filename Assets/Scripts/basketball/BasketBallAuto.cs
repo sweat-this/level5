@@ -55,6 +55,18 @@ public class BasketBallAuto : MonoBehaviour, IBasketballRuntime
     private ResolvedMatchRules matchRules;
 
     /// <summary>
+    /// AUD-010 Phase 2b0: optional swish/critical-success presentation, bound once by composition
+    /// (<see cref="SpawnCoordinator.GiveBall"/>) - replacing <see cref="Launch"/>'s previous direct
+    /// <c>BehaviorNpcCritical.instance.playAnimationCriticalSuccesful()</c> call. Not serialized: it is
+    /// runtime-only, set after the component already exists, and a delegate is not itself
+    /// <c>[Serializable]</c>. Optional from basketball's own perspective - a match with no cheerleader
+    /// (and so no bound callback) remains valid; <see cref="Launch"/> invokes it defensively. CPU
+    /// swishes receive this presentation exactly like human ones - this callback is not restricted the
+    /// way <see cref="BasketBall"/>'s telemetry binding is human-only.
+    /// </summary>
+    private Action criticalSuccessPresentationCallback;
+
+    /// <summary>
     /// Phase 1c seam: one place that reads the shooter into the shot pipeline's contract, so the
     /// call sites that need it build it the same way. Player↔basketball cycle-cut slice: now read
     /// once from <see cref="IShooterActor.ShooterAttributes"/> in <see cref="Start"/> rather than
@@ -449,9 +461,9 @@ public class BasketBallAuto : MonoBehaviour, IBasketballRuntime
             LastShotDistance,
             actor.ShotMeterSliderValue);
 
-        if (computation.IsSwish && BehaviorNpcCritical.instance != null)
+        if (computation.IsSwish)
         {
-            BehaviorNpcCritical.instance.playAnimationCriticalSuccesful();
+            criticalSuccessPresentationCallback?.Invoke();
         }
 
         actor.DisplayShotMeterMessage(computation.ShotMeterMessage);
@@ -658,5 +670,35 @@ public class BasketBallAuto : MonoBehaviour, IBasketballRuntime
         }
 
         matchRules = rules;
+    }
+
+    // ======================= Critical-success presentation binding (AUD-010 Phase 2b0) =======================
+
+    /// <summary>
+    /// Explicit swish/critical-success presentation binding from the same composition operation that
+    /// spawns the ball (<see cref="SpawnCoordinator.GiveBall"/>), so <see cref="Launch"/> no longer
+    /// references <c>BehaviorNpcCritical</c> directly. Mirrors <see cref="BasketBall.BindCriticalSuccessPresentation"/>'s
+    /// bind-once/null-guard/no-rebind shape; performs no presentation work itself - the callback is
+    /// only invoked from <see cref="Launch"/>.
+    /// </summary>
+    public void BindCriticalSuccessPresentation(Action callback)
+    {
+        // Checked before the null-argument branch below: a null second call after a real bind
+        // already succeeded must report "already bound", not "remaining unbound" -
+        // criticalSuccessPresentationCallback is still the original valid callback either way, and
+        // the log should say so.
+        if (criticalSuccessPresentationCallback != null)
+        {
+            Debug.LogError($"BasketBallAuto on '{gameObject.name}' already has a bound critical-success presentation callback; ignoring a second BindCriticalSuccessPresentation call.", this);
+            return;
+        }
+
+        if (callback == null)
+        {
+            Debug.LogError($"BasketBallAuto on '{gameObject.name}' was bound with a null critical-success presentation callback; remaining unbound.", this);
+            return;
+        }
+
+        criticalSuccessPresentationCallback = callback;
     }
 }
