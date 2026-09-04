@@ -123,9 +123,17 @@ public class Level5ShotMarkerSessionCompositionPlayModeTests
 
             // AUD-010 Phase 2b0: the same composition step also binds this match's resolved
             // ResolvedMatchRules - proves the real GameRules.Awake() -> BindShotMarkerSessionToMarkers()
-            // pass reaches this dependency too, not just the pre-existing session.
+            // pass reaches this dependency too, not just the pre-existing session. Checked against
+            // GameRules' own resolved rules field, the same reference-identity rigor as the session
+            // assertion above, so a future change that gave each marker its own separately-resolved
+            // rules instance (instead of sharing GameRules' one) would fail this too.
             object boundRules = FieldObject(marker, "matchRules");
             Assert.That(boundRules, Is.Not.Null, $"BasketBallShotMarker '{marker.gameObject.name}' reached play with no bound match rules - GameRules.Awake()'s composition step did not reach it");
+            object gameRulesOwnRules = FieldObject(GameRules.instance, "resolvedRules");
+            Assert.That(
+                ReferenceEquals(boundRules, gameRulesOwnRules),
+                Is.True,
+                $"BasketBallShotMarker '{marker.gameObject.name}' is bound to match rules that are not GameRules' own resolved rules reference");
         }
     }
 
