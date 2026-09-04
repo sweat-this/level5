@@ -5,7 +5,7 @@ Use this workflow for nontrivial Level 5 changes after the current behavior and 
 Choose a mode before starting:
 
 - **Standard** — default for ordinary scoped changes. One integrated review, one revision.
-- **Deep** — full independent two-pass adversarial review. Use when risk warrants it (see "When to Use Deep Planning" below) or when explicitly requested.
+- **Deep** — full independent two-pass adversarial review. Use when risk warrants it or when explicitly requested.
 
 ## Step 1 — Build the Initial Plan
 
@@ -15,12 +15,13 @@ Create an ordered implementation plan that identifies:
 - current and target state ownership;
 - preserved behavior;
 - migration/compatibility steps;
-- tests;
-- scene/prefab/serialized-reference impact;
-- manual Play Mode checks;
+- scene/prefab/serialized-reference impact when relevant;
+- the minimum credible verification for the changed behavior;
 - explicit non-goals.
 
 The plan must be implementable in small coherent slices. Avoid vague steps such as "refactor architecture" or "clean up manager."
+
+Do not create a large test matrix for routine changes. Verification belongs with the implementation step it proves where practical.
 
 ## Standard Planning
 
@@ -55,8 +56,8 @@ Challenge the plan for applicable risks:
 - mode-specific behavior;
 - human/CPU parity;
 - persistence/network compatibility;
-- regression coverage;
-- validation that proves only compilation rather than gameplay.
+- a material behavior claim with no credible evidence path;
+- validation work that is disproportionate to the risk.
 
 For basketball-related changes, also review:
 
@@ -66,24 +67,25 @@ attempt → launch → make/miss → stats → rules → UI
 
 Revise the plan once to address material findings, then produce the final plan.
 
-## Deep Planning
+## Verification Budget
 
-Preserve the existing independent two-pass structure.
+For standard planning outside domain-specific requirements in `AGENTS.md`, validation should normally be one to three highest-value checks total.
+
+Prefer in order:
+
+1. final diff/composition inspection;
+2. compilation when affected;
+3. one focused automated or runtime check for a concrete regression/integration risk.
+
+Do not require new tests by default. Do not require both automated and manual verification for the same claim. Broad regression suites belong to PR CI unless the task explicitly requires local certification.
+
+Basketball/match integrity and other high-risk domain rules in `AGENTS.md` may require stronger evidence; preserve those requirements without expanding beyond them.
+
+## Deep Planning
 
 ### Review Pass 1 — Architecture and Unity Failure Modes
 
-Challenge the plan for:
-
-- wrong or duplicated state ownership;
-- hidden scene/global dependencies;
-- MonoBehaviour lifecycle/order assumptions;
-- prefab/scene serialization breakage;
-- stale references after disable/destroy/scene changes;
-- animation event dependency;
-- ScriptableObject runtime-state misuse;
-- input ownership conflicts;
-- UI becoming an owner of gameplay state;
-- insufficient test seams.
+Challenge the plan for wrong/duplicated ownership, hidden dependencies, lifecycle/order assumptions, prefab/scene serialization, stale references, animation events, ScriptableObject misuse, input ownership, UI ownership, and any missing evidence for a materially risky behavior claim.
 
 For Level 5, also inspect shot/scoring, player identity, match mode, CPU parity, persistence, and versus boundaries when touched.
 
@@ -91,18 +93,7 @@ Revise the plan to address material findings.
 
 ### Review Pass 2 — Scope, Compatibility, and Regression Risk
 
-Challenge the revised plan for:
-
-- unnecessary abstraction;
-- speculative extensibility;
-- broad rewrites where staged migration is safer;
-- unrelated cleanup;
-- missing legacy compatibility;
-- data/save/network contract changes;
-- missing mode-specific cases;
-- missing failure paths;
-- inadequate regression coverage;
-- validation that proves only compilation rather than gameplay.
+Challenge unnecessary abstraction, speculative extensibility, broad rewrites, unrelated cleanup, missing legacy compatibility, data/save/network contract changes, mode-specific cases, failure paths, and excessive testing/validation that is not justified by risk or domain rules.
 
 Revise again.
 
@@ -129,10 +120,9 @@ Return:
 
 1. final ordered implementation plan;
 2. acceptance criteria mapped to steps;
-3. automated validation;
-4. manual Play Mode matrix;
-5. preserved behavior/compatibility notes;
-6. explicit deferred work;
-7. concise record of important issues found in review (the integrated review for standard mode, or pass 1 and pass 2 for deep mode).
+3. minimum verification — normally one to three checks, expanded only for domain rules/deep risk;
+4. preserved behavior/compatibility notes;
+5. explicit deferred work;
+6. concise record of important issues found in review.
 
-Do not implement while running this workflow unless implementation was explicitly requested as part of the same approved task.
+Do not implement while running this workflow unless implementation was explicitly requested as part of the same approved task. Do not inflate the plan with exhaustive testing scenarios that CI or a dedicated certification task owns.
