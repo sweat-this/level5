@@ -100,10 +100,18 @@ public class Level5BasketballMarkerOwnershipTests
     /// <c>displayCurrentMarkerStats</c> (the same technique <c>Level5ShotMeterOwnershipTests</c>/
     /// <c>Level5RangeMeterOwnershipTests</c> already use), and a real <c>SpriteRenderer</c> for the
     /// completion path's opacity write.
+    ///
+    /// AUD-010 Phase 2b0: also binds <paramref name="rules"/> (an ordinary, non-contest
+    /// <see cref="ResolvedMatchRules"/> by default), since <c>OnTriggerExit</c> and <c>Update</c> both
+    /// reach <c>IsPointContestMode()</c>, which now reads the marker's own bound rules field instead of
+    /// falling back to <c>MatchRuntime.Rules</c>. Callers that need a contest classification pass their
+    /// own <paramref name="rules"/> instead of letting <c>BindMatchRules</c> reject a second call.
     /// </summary>
-    private static void PrepareMarkerForSessionDependentBehavior(BasketBallShotMarker marker, IShotMarkerSession session)
+    private static void PrepareMarkerForSessionDependentBehavior(
+        BasketBallShotMarker marker, IShotMarkerSession session, ResolvedMatchRules rules = null)
     {
         marker.BindShotMarkerSession(session);
+        marker.BindMatchRules(rules ?? new ResolvedMatchRules());
         SetPrivateField(marker, "displayCurrentMarkerStats", marker.gameObject.AddComponent<Text>());
         SetPrivateField(marker, "spriteRenderer", marker.gameObject.AddComponent<SpriteRenderer>());
     }
@@ -740,125 +748,62 @@ public class Level5BasketballMarkerOwnershipTests
         Assert.IsFalse(marker.PlayerOnMarker);
     }
 
-    // ==================== IsPointContestMode / AUD-010 Phase 1c rule-source migration ====================
+    // ==================== IsPointContestMode / AUD-010 Phase 2b0 rule-source migration ====================
     //
-    // Unlike Update()/OnTriggerExit above, IsPointContestMode() reaches only MatchRuntime.Rules, not
-    // GameRules.instance, so it needs none of the GameRules seam this file's header explains is
-    // missing. Driven the same way Level5CpuBaselineInitializationTests drives other
-    // ResolvedMatchRules-dependent code: GameOptionsSnapshot around the mutation, ActiveMatch.Clear()
-    // so MatchRuntime.Rules falls back to the legacy GameOptions globals instead of a real
-    // MatchConfiguration.
+    // IsPointContestMode() now reaches only the marker's own bound matchRules field, not
+    // MatchRuntime.Rules/GameRules.instance, so each case below binds an explicit ResolvedMatchRules
+    // directly instead of mutating the GameOptions globals MatchRuntime used to fall back to.
 
-    private static bool InvokeIsPointContestMode()
+    private static bool InvokeIsPointContestMode(BasketBallShotMarker marker)
     {
-        MethodInfo method = typeof(BasketBallShotMarker).GetMethod("IsPointContestMode", BindingFlags.NonPublic | BindingFlags.Static);
+        MethodInfo method = typeof(BasketBallShotMarker).GetMethod("IsPointContestMode", BindingFlags.NonPublic | BindingFlags.Instance);
         Assert.IsNotNull(method, "BasketBallShotMarker must declare IsPointContestMode");
-        return (bool)method.Invoke(null, null);
+        return (bool)method.Invoke(marker, null);
     }
 
     [Test]
     public void IsPointContestMode_OrdinaryShootingMode_ReturnsFalse()
     {
-        GameOptionsSnapshot snapshot = GameOptionsSnapshot.Capture();
-        try
-        {
-            ActiveMatch.Clear();
-            GameOptions.gameModeThreePointContest = false;
-            GameOptions.gameModeFourPointContest = false;
-            GameOptions.gameModeSevenPointContest = false;
-            GameOptions.gameModeAllPointContest = false;
+        BasketBallShotMarker marker = MakeMarker("marker");
+        marker.BindMatchRules(new ResolvedMatchRules(shotRule: ShotRule.Any));
 
-            Assert.IsFalse(InvokeIsPointContestMode(), "ordinary shooting must not be classified as a marker contest");
-        }
-        finally
-        {
-            snapshot.Restore();
-            ActiveMatch.Clear();
-        }
+        Assert.IsFalse(InvokeIsPointContestMode(marker), "ordinary shooting must not be classified as a marker contest");
     }
 
     [Test]
     public void IsPointContestMode_ThreePointContest_ReturnsTrue()
     {
-        GameOptionsSnapshot snapshot = GameOptionsSnapshot.Capture();
-        try
-        {
-            ActiveMatch.Clear();
-            GameOptions.gameModeThreePointContest = true;
-            GameOptions.gameModeFourPointContest = false;
-            GameOptions.gameModeSevenPointContest = false;
-            GameOptions.gameModeAllPointContest = false;
+        BasketBallShotMarker marker = MakeMarker("marker");
+        marker.BindMatchRules(new ResolvedMatchRules(shotRule: ShotRule.ThreePoint));
 
-            Assert.IsTrue(InvokeIsPointContestMode());
-        }
-        finally
-        {
-            snapshot.Restore();
-            ActiveMatch.Clear();
-        }
+        Assert.IsTrue(InvokeIsPointContestMode(marker));
     }
 
     [Test]
     public void IsPointContestMode_FourPointContest_ReturnsTrue()
     {
-        GameOptionsSnapshot snapshot = GameOptionsSnapshot.Capture();
-        try
-        {
-            ActiveMatch.Clear();
-            GameOptions.gameModeThreePointContest = false;
-            GameOptions.gameModeFourPointContest = true;
-            GameOptions.gameModeSevenPointContest = false;
-            GameOptions.gameModeAllPointContest = false;
+        BasketBallShotMarker marker = MakeMarker("marker");
+        marker.BindMatchRules(new ResolvedMatchRules(shotRule: ShotRule.FourPoint));
 
-            Assert.IsTrue(InvokeIsPointContestMode());
-        }
-        finally
-        {
-            snapshot.Restore();
-            ActiveMatch.Clear();
-        }
+        Assert.IsTrue(InvokeIsPointContestMode(marker));
     }
 
     [Test]
     public void IsPointContestMode_SevenPointContest_ReturnsTrue()
     {
-        GameOptionsSnapshot snapshot = GameOptionsSnapshot.Capture();
-        try
-        {
-            ActiveMatch.Clear();
-            GameOptions.gameModeThreePointContest = false;
-            GameOptions.gameModeFourPointContest = false;
-            GameOptions.gameModeSevenPointContest = true;
-            GameOptions.gameModeAllPointContest = false;
+        BasketBallShotMarker marker = MakeMarker("marker");
+        marker.BindMatchRules(new ResolvedMatchRules(shotRule: ShotRule.SevenPoint));
 
-            Assert.IsTrue(InvokeIsPointContestMode());
-        }
-        finally
-        {
-            snapshot.Restore();
-            ActiveMatch.Clear();
-        }
+        Assert.IsTrue(InvokeIsPointContestMode(marker));
     }
 
     [Test]
     public void IsPointContestMode_AllPointContest_ReturnsTrue()
     {
-        GameOptionsSnapshot snapshot = GameOptionsSnapshot.Capture();
-        try
-        {
-            ActiveMatch.Clear();
-            GameOptions.gameModeThreePointContest = false;
-            GameOptions.gameModeFourPointContest = false;
-            GameOptions.gameModeSevenPointContest = false;
-            GameOptions.gameModeAllPointContest = true;
+        BasketBallShotMarker marker = MakeMarker("marker");
+        marker.BindMatchRules(new ResolvedMatchRules(shotRule: ShotRule.AllRanges));
 
-            Assert.IsTrue(InvokeIsPointContestMode());
-        }
-        finally
-        {
-            snapshot.Restore();
-            ActiveMatch.Clear();
-        }
+        Assert.IsTrue(InvokeIsPointContestMode(marker));
     }
 
     // ==================== BasketBallShotMarker.BindShotMarkerSession (AUD-010 Phase 1c) ====================
@@ -900,7 +845,64 @@ public class Level5BasketballMarkerOwnershipTests
             "a second BindShotMarkerSession call must not overwrite the original binding");
     }
 
-    // ==================== Start() composition guard (AUD-010 Phase 1c) ====================
+    // ==================== BasketBallShotMarker.BindMatchRules (AUD-010 Phase 2b0) ====================
+
+    [Test]
+    public void BindMatchRules_ValidRules_Binds()
+    {
+        BasketBallShotMarker marker = MakeMarker("marker");
+        ResolvedMatchRules rules = new ResolvedMatchRules(shotRule: ShotRule.ThreePoint);
+
+        marker.BindMatchRules(rules);
+
+        Assert.AreSame(rules, GetPrivateField(marker, "matchRules"));
+    }
+
+    [Test]
+    public void BindMatchRules_NullRules_LogsAndLeavesUnbound()
+    {
+        BasketBallShotMarker marker = MakeMarker("marker");
+
+        LogAssert.Expect(LogType.Error, new Regex("null match rules"));
+        marker.BindMatchRules(null);
+
+        Assert.IsNull(GetPrivateField(marker, "matchRules"));
+    }
+
+    [Test]
+    public void BindMatchRules_SecondCall_IsRejectedAndOriginalRulesRetained()
+    {
+        BasketBallShotMarker marker = MakeMarker("marker");
+        ResolvedMatchRules first = new ResolvedMatchRules(shotRule: ShotRule.ThreePoint);
+        ResolvedMatchRules second = new ResolvedMatchRules(shotRule: ShotRule.FourPoint);
+        marker.BindMatchRules(first);
+
+        LogAssert.Expect(LogType.Error, new Regex("already has bound match rules"));
+        marker.BindMatchRules(second);
+
+        Assert.AreSame(first, GetPrivateField(marker, "matchRules"),
+            "a second BindMatchRules call must not overwrite the original rules");
+    }
+
+    /// <summary>
+    /// Mirrors <c>BasketBall</c>'s own <c>BindMatchRulesRejectsNullSecondBindWithAnAlreadyBoundMessage</c>:
+    /// a null second call after a real bind already succeeded must report "already bound", not
+    /// "remaining unbound" - the marker is not unbound, it still holds the original valid rules.
+    /// </summary>
+    [Test]
+    public void BindMatchRules_NullSecondCall_IsRejectedWithAnAlreadyBoundMessage()
+    {
+        BasketBallShotMarker marker = MakeMarker("marker");
+        ResolvedMatchRules first = new ResolvedMatchRules(shotRule: ShotRule.ThreePoint);
+        marker.BindMatchRules(first);
+
+        LogAssert.Expect(LogType.Error, new Regex("already has bound match rules"));
+        marker.BindMatchRules(null);
+
+        Assert.AreSame(first, GetPrivateField(marker, "matchRules"), "a null second bind must not clear the original rules");
+    }
+
+    // ==================== Start() composition guard (AUD-010 Phase 1c / Phase 2b0) ====================
 
     [Test]
     public void Start_NoBoundSession_LogsActionableErrorAndFailsMarkerClosed()
@@ -913,6 +915,25 @@ public class Level5BasketballMarkerOwnershipTests
         Assert.IsFalse(marker.enabled, "an unbound marker must disable itself so Update() never runs");
         Assert.IsFalse((bool)GetPrivateField(marker, "detectCollisions"),
             "an unbound marker must not process collisions - OnTriggerEnter/Exit gate on this flag directly, not on enabled");
+    }
+
+    /// <summary>
+    /// AUD-010 Phase 2b0: the session-bound/rules-unbound half of the fail-closed composition guard -
+    /// distinct from <see cref="Start_NoBoundSession_LogsActionableErrorAndFailsMarkerClosed"/>'s
+    /// missing-session message, and only reachable once a session is already bound.
+    /// </summary>
+    [Test]
+    public void Start_SessionBoundButNoMatchRules_LogsDistinctActionableErrorAndFailsMarkerClosed()
+    {
+        BasketBallShotMarker marker = MakeMarker("marker");
+        marker.BindShotMarkerSession(new FakeShotMarkerSession { MarkersRemaining = 1 });
+
+        LogAssert.Expect(LogType.Error, new Regex("no bound match rules"));
+        InvokePrivateMethod(marker, "Start");
+
+        Assert.IsFalse(marker.enabled, "a marker with no bound match rules must disable itself so Update() never runs");
+        Assert.IsFalse((bool)GetPrivateField(marker, "detectCollisions"),
+            "a marker with no bound match rules must not process collisions");
     }
 
     // ==================== markerSession-backed presentation reads (AUD-010 Phase 1c) ====================
@@ -1014,34 +1035,19 @@ public class Level5BasketballMarkerOwnershipTests
     {
         BasketBallShotMarker marker = MakeMarker("marker", maxShotAttempt: 1);
         FakeShotMarkerSession session = new FakeShotMarkerSession { MarkersRemaining = 2 };
-        PrepareMarkerForSessionDependentBehavior(marker, session);
+        PrepareMarkerForSessionDependentBehavior(marker, session, new ResolvedMatchRules(shotRule: ShotRule.ThreePoint));
         marker.MarkerEnabled = true;
         FakeShooterActor readyActor = new FakeShooterActor { HasBasketball = false, InAir = false };
         BasketBallState readyState = MakeState("shooter-state");
         readyState.InAir = false;
         marker.RegisterAttempt(new FakeRuntime { ParticipantId = 0, Actor = readyActor, State = readyState });
 
-        GameOptionsSnapshot snapshot = GameOptionsSnapshot.Capture();
-        try
-        {
-            ActiveMatch.Clear();
-            GameOptions.gameModeThreePointContest = true;
-            GameOptions.gameModeFourPointContest = false;
-            GameOptions.gameModeSevenPointContest = false;
-            GameOptions.gameModeAllPointContest = false;
+        InvokePrivateMethod(marker, "Update");
 
-            InvokePrivateMethod(marker, "Update");
-
-            Assert.That(session.CompletionRecords, Is.EqualTo(1));
-            Assert.That(session.MarkersRemaining, Is.EqualTo(1));
-            Assert.That(session.EndRequests, Is.EqualTo(0), "one marker remaining after this one - match end must not be requested");
-            Assert.IsFalse(marker.MarkerEnabled);
-        }
-        finally
-        {
-            snapshot.Restore();
-            ActiveMatch.Clear();
-        }
+        Assert.That(session.CompletionRecords, Is.EqualTo(1));
+        Assert.That(session.MarkersRemaining, Is.EqualTo(1));
+        Assert.That(session.EndRequests, Is.EqualTo(0), "one marker remaining after this one - match end must not be requested");
+        Assert.IsFalse(marker.MarkerEnabled);
     }
 
     [Test]
@@ -1049,32 +1055,17 @@ public class Level5BasketballMarkerOwnershipTests
     {
         BasketBallShotMarker marker = MakeMarker("marker");
         FakeShotMarkerSession session = new FakeShotMarkerSession { MarkersRemaining = 1 };
-        PrepareMarkerForSessionDependentBehavior(marker, session);
+        PrepareMarkerForSessionDependentBehavior(marker, session, new ResolvedMatchRules(shotRule: ShotRule.Any));
         marker.MarkerEnabled = true;
         SetPrivateField(marker, "maxShotMade", 3);
         marker.ShotMade = 3;
 
-        GameOptionsSnapshot snapshot = GameOptionsSnapshot.Capture();
-        try
-        {
-            ActiveMatch.Clear();
-            GameOptions.gameModeThreePointContest = false;
-            GameOptions.gameModeFourPointContest = false;
-            GameOptions.gameModeSevenPointContest = false;
-            GameOptions.gameModeAllPointContest = false;
+        InvokePrivateMethod(marker, "Update");
 
-            InvokePrivateMethod(marker, "Update");
-
-            Assert.That(session.CompletionRecords, Is.EqualTo(1));
-            Assert.That(session.MarkersRemaining, Is.EqualTo(0));
-            Assert.That(session.EndRequests, Is.EqualTo(1), "this was the last marker - match end must be requested exactly once");
-            Assert.IsFalse(marker.MarkerEnabled);
-        }
-        finally
-        {
-            snapshot.Restore();
-            ActiveMatch.Clear();
-        }
+        Assert.That(session.CompletionRecords, Is.EqualTo(1));
+        Assert.That(session.MarkersRemaining, Is.EqualTo(0));
+        Assert.That(session.EndRequests, Is.EqualTo(1), "this was the last marker - match end must be requested exactly once");
+        Assert.IsFalse(marker.MarkerEnabled);
     }
 
     // ==================== OnTriggerExit real path (AUD-010 Phase 1c) ====================

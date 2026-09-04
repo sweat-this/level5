@@ -142,13 +142,16 @@ public class GameRules : MonoBehaviour, IMoneyBallState, IShotMarkerSession
     }
 
     /// <summary>
-    /// Binds this instance as the live <see cref="IShotMarkerSession"/> to every active, scene-authored
-    /// <c>"shot_marker"</c>-tagged object's <see cref="BasketBallShotMarker"/>. Deliberately separate
-    /// from <see cref="SetPositionMarkers"/>: that method still owns mode-specific marker filtering,
-    /// the active-marker list, position-marker ids and <see cref="markersRemaining"/> initialization,
-    /// unchanged, in <see cref="Start"/>. This pass exists only to establish the session dependency
-    /// before a marker's own <see cref="BasketBallShotMarker.Start"/> can run - a second one-time tag
-    /// scan, not a registration framework.
+    /// Binds this instance as the live <see cref="IShotMarkerSession"/>, and this match's resolved
+    /// <see cref="ResolvedMatchRules"/>, to every active, scene-authored <c>"shot_marker"</c>-tagged
+    /// object's <see cref="BasketBallShotMarker"/>. Deliberately separate from
+    /// <see cref="SetPositionMarkers"/>: that method still owns mode-specific marker filtering, the
+    /// active-marker list, position-marker ids and <see cref="markersRemaining"/> initialization,
+    /// unchanged, in <see cref="Start"/>. This pass exists only to establish these dependencies before
+    /// a marker's own <see cref="BasketBallShotMarker.Start"/> can run - a second one-time tag scan,
+    /// not a registration framework. AUD-010 Phase 2b0 added the rules bind alongside the pre-existing
+    /// session bind - the same resolved <see cref="rules"/> reference every other basketball composition
+    /// path already shares, not a second resolution.
     /// </summary>
     private void BindShotMarkerSessionToMarkers()
     {
@@ -164,6 +167,7 @@ public class GameRules : MonoBehaviour, IMoneyBallState, IShotMarkerSession
             }
 
             marker.BindShotMarkerSession(this);
+            marker.BindMatchRules(rules);
         }
     }
 

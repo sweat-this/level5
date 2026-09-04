@@ -120,6 +120,12 @@ public class Level5ShotMarkerSessionCompositionPlayModeTests
                 ReferenceEquals(bound, GameRules.instance),
                 Is.True,
                 $"BasketBallShotMarker '{marker.gameObject.name}' is bound to a shot-marker session that is not the real live GameRules instance");
+
+            // AUD-010 Phase 2b0: the same composition step also binds this match's resolved
+            // ResolvedMatchRules - proves the real GameRules.Awake() -> BindShotMarkerSessionToMarkers()
+            // pass reaches this dependency too, not just the pre-existing session.
+            object boundRules = FieldObject(marker, "matchRules");
+            Assert.That(boundRules, Is.Not.Null, $"BasketBallShotMarker '{marker.gameObject.name}' reached play with no bound match rules - GameRules.Awake()'s composition step did not reach it");
         }
     }
 
