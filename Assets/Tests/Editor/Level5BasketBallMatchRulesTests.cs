@@ -100,7 +100,7 @@ public class Level5BasketBallMatchRulesTests
     /// </summary>
     private BasketBall BuildBoundBall(
         ResolvedMatchRules rules, out GameObject ballGo, out FakeShooterActor actor,
-        bool bindGroundHeightProvider = true)
+        bool bindGroundHeightProvider = true, bool isPrimary = true)
     {
         GameObject playerGo = Spawn("human-actor");
         GameObject basketballPositionGo = Spawn("basketBall_position");
@@ -116,7 +116,7 @@ public class Level5BasketBallMatchRulesTests
 
         BasketBall ball = ballGo.AddComponent<BasketBall>();
         actor = new FakeShooterActor();
-        ball.BindOwner(0, false, true, playerGo, actor);
+        ball.BindOwner(0, false, isPrimary, playerGo, actor);
         if (bindGroundHeightProvider)
         {
             ball.BindGroundHeightProvider(new FakeGroundHeightProvider());
@@ -212,6 +212,29 @@ public class Level5BasketBallMatchRulesTests
         InvokeStart(ball);
 
         Assert.AreSame(ball, BasketBall.instance, "a valid primary basketball must still claim the static exactly as before");
+    }
+
+    /// <summary>
+    /// Code review follow-up: proves the early-return actually protects a real pre-existing static, not
+    /// just that a never-set-to-begin-with static stays null. A second, non-primary ball with no bound
+    /// match rules must fail closed without disturbing the first ball's claim on the static.
+    /// </summary>
+    [Test]
+    public void InvalidSecondBallDoesNotClobberAPreExistingInstance()
+    {
+        ResolvedMatchRules rules = new ResolvedMatchRules(enemiesOnly: false);
+        BasketBall firstBall = BuildBoundBall(rules, out _, out _);
+        InvokeStart(firstBall);
+        Assert.AreSame(firstBall, BasketBall.instance, "test setup sanity: the first ball must have claimed the static");
+
+        BasketBall secondBall = BuildBoundBall(null, out GameObject secondBallGo, out _, isPrimary: false);
+
+        LogAssert.Expect(LogType.Error, new Regex("no bound match rules"));
+        InvokeStart(secondBall);
+
+        Assert.IsFalse(secondBallGo.activeSelf, "the second, invalid ball must still deactivate its GameObject");
+        Assert.AreSame(firstBall, BasketBall.instance,
+            "a second, invalid ball reaching Start() with no bound match rules must not clobber a pre-existing valid instance");
     }
 
     /// <summary>

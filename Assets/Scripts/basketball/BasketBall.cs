@@ -185,7 +185,7 @@ public class BasketBall : MonoBehaviour, IBasketballRuntime
         InvokeRepeating("CheckIsBallFacingGoal", 0, 0.5f);
         InvokeRepeating("displayUiStats", 0, 0.5f);
 
-        if (matchRules.EnemiesOnly || matchRules.IsBattleRoyal)//|| MatchRuntime.HasConfiguration)
+        if (matchRules.EnemiesOnly || matchRules.IsBattleRoyal)
         {
             transform.position = new Vector3(transform.position.x, transform.position.y + 20, transform.position.z);
             rigidbody.constraints = RigidbodyConstraints.FreezeAll;
