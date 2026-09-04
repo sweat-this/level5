@@ -409,7 +409,7 @@ public class BasketBall : MonoBehaviour, IBasketballRuntime
         updateBasketBallStateShotTypeOnShoot(two, three, four, seven);
 
         // player on shot marker and game mode requires markers
-        BasketballShotPipeline.ApplyMarkerAndMoneyBallOnShoot(this, moneyBallState);
+        BasketballShotPipeline.ApplyMarkerAndMoneyBallOnShoot(this, moneyBallState, matchRules);
         //calculate shot distance 
         Vector3 tempPos = new Vector3(
             basketBallState.BasketBallTarget.transform.position.x,
