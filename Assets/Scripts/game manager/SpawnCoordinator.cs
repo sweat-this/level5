@@ -582,6 +582,13 @@ public sealed class SpawnCoordinator
             // Update() now read instead of MatchRuntime.Rules.EnemiesOnly/IsBattleRoyal. Not part of
             // IBasketballRuntime: only the concrete human type has this dependency today.
             humanBall.BindMatchRules(rules);
+
+            // AUD-010 Phase 2b0: binds human shot telemetry to the existing AnaylticsManager.PlayerShoot
+            // analytics call, inverting BasketBall's former direct dependency on it - the ball's own
+            // Launch() now invokes a bound Action<float> instead of calling AnaylticsManager itself.
+            // CPU shots (BasketBallAuto) deliberately receive no telemetry binding, preserving the
+            // existing human-only PlayerShoot behavior.
+            humanBall.BindShotTelemetry(AnaylticsManager.PlayerShoot);
         }
 
         if (forCpu)
