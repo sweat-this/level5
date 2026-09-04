@@ -213,17 +213,38 @@ This mirrors `ApplyMarkerAndMoneyBallOnShoot`'s existing fail-closed shape for a
 just above.
 
 `Assets/Scripts/basketball/BasketBallShotMade.cs` now has zero live `MatchRuntime` references, guarded
-by a new `Level5BasketBallShotMadeDependencyGuardTests`. `BasketBallShotMarker` is now the one
-remaining production basketball file with live `MatchRuntime`/`GameRules` references - a separate,
-unresolved migration.
+by a new `Level5BasketBallShotMadeDependencyGuardTests`. `BasketBallShotMarker` was then the one
+remaining production basketball file with live `MatchRuntime`/`GameRules` references - closed next,
+below.
+
+**`BasketBallShotMarker`'s `MatchRuntime` dependency closed (AUD-010 Phase 2b0).** `Start()` read
+`MatchRuntime.Rules.RequiresShotMarkers3s`/`RequiresShotMarkers4s`/`RequiresShotMarkers7s` directly to
+decide whether the marker is needed at all, and `IsPointContestMode()` (a static method) read
+`MatchRuntime.Rules.IsThreePointContest`/`IsFourPointContest`/`IsSevenPointContest`/`IsAllPointContest`
+directly. Both are now supplied once through `BasketBallShotMarker.BindMatchRules(ResolvedMatchRules)`,
+the same bind-once/null-guard/no-rebind shape the rest of this migration already established;
+`IsPointContestMode()` is now an instance method reading the bound field instead of a static method
+re-resolving `MatchRuntime.Rules`. The bind happens from the same composition step that already binds
+the marker's `IShotMarkerSession` - `GameRules.BindShotMarkerSessionToMarkers()`, called from
+`GameRules.Awake()` - using the same resolved `rules` reference every other basketball composition path
+already shares (`GameRules`'s own lazy `resolvedRules ??= MatchRuntime.Rules` getter), not a second
+resolution. `Start()`'s fail-closed guard now checks match rules second, after the pre-existing missing-
+session check, with its own distinct actionable error - a marker missing either dependency still
+disables itself (`detectCollisions = false`, `this.enabled = false`) before touching any gameplay state.
+
+`Assets/Scripts/basketball/BasketBallShotMarker.cs` now has zero live `MatchRuntime` references. With
+every production basketball file migrated, the folder as a whole now has zero live `MatchRuntime`
+references anywhere, guarded by a new folder-wide
+`Level5BasketballMatchRuntimeFolderGuardTests.ProductionBasketballHasZeroLiveMatchRuntimeReferences`
+(the same shape as `Level5BasketballGameRulesFacadeGuardTests`'s folder-wide `GameRules` guard),
+alongside the existing per-file guards this slice did not need to remove. `MatchRuntime` itself, and
+its legacy-globals fallback for a directly-entered scene, are unchanged - this closes only how
+production basketball reaches an already-resolved rules value, not that fallback.
 
 `BasketBallShotMarker.Update()` resolves `IsPointContestMode()` once per frame and threads the
 result into `setDisplayText(bool)` and the two marker-completion branches, rather than each of up to
-three call sites resolving it (and therefore `MatchRuntime.Rules`) separately. For a directly-entered
-scene, `MatchRuntime.Rules` rebuilds a fresh `ResolvedMatchRules` from the legacy globals on every
-call (it is a validated match's `MatchConfiguration.Rules` that is the stable, allocation-free
-reference); collapsing three potential resolutions into one keeps that cost from scaling with the
-number of call sites inside a single frame.
+three call sites resolving it separately - unchanged by this slice except that the resolution now
+reads the marker's own bound field instead of a fresh `MatchRuntime.Rules` snapshot.
 
 **Marker-local presentation occupancy vs. participant gameplay occupancy.** `BasketBallState`'s
 `CurrentShotMarker`/`PlayerOnMarker`/`OnShootShotMarker` above are per-participant and unaffected by

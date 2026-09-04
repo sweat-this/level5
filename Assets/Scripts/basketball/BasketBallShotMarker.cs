@@ -55,6 +55,15 @@ public class BasketBallShotMarker : MonoBehaviour
     /// </summary>
     private IShotMarkerSession markerSession;
 
+    /// <summary>
+    /// AUD-010 Phase 2b0: the rules this match is being played under, bound once by <see cref="GameRules"/>'s
+    /// own composition step (<see cref="GameRules.BindShotMarkerSessionToMarkers"/>, called from
+    /// <c>GameRules.Awake()</c>), before <see cref="Start"/> runs. Mirrors <see cref="BasketBall"/>'s/
+    /// <see cref="BasketBallAuto"/>'s/<see cref="BasketballState"/>'s own <c>BindMatchRules</c>
+    /// bind-once/null-guard/no-rebind shape - the last of this migration's files to adopt it.
+    /// </summary>
+    private ResolvedMatchRules matchRules;
+
     [SerializeField] public int positionMarkerId; // identitfy specific marker
     // spcific marker's stats
     [SerializeField] private int _shotMade;
@@ -93,6 +102,16 @@ public class BasketBallShotMarker : MonoBehaviour
             return;
         }
 
+        // AUD-010 Phase 2b0: same fail-closed shape as the missing-session guard above, checked
+        // second so a missing session is still reported first when both are unbound.
+        if (matchRules == null)
+        {
+            Debug.LogError($"BasketBallShotMarker '{name}': Start() reached with no bound match rules - marker composition is incomplete; disabling this marker.", this);
+            detectCollisions = false;
+            this.enabled = false;
+            return;
+        }
+
         _shotMade = 0;
         _shotAttempt = 0;
 
@@ -109,8 +128,8 @@ public class BasketBallShotMarker : MonoBehaviour
         // using basketball state
         setMarkerShotType();
         //test flag
-        //MatchRuntime.Rules.RequiresShotMarkers4s = true;
-        if (MatchRuntime.Rules.RequiresShotMarkers3s || MatchRuntime.Rules.RequiresShotMarkers4s || MatchRuntime.Rules.RequiresShotMarkers7s)
+        //matchRules.RequiresShotMarkers4s = true;
+        if (matchRules.RequiresShotMarkers3s || matchRules.RequiresShotMarkers4s || matchRules.RequiresShotMarkers7s)
         {
             markerEnabled = true;
             setDisplayText(IsPointContestMode());
@@ -148,10 +167,8 @@ public class BasketBallShotMarker : MonoBehaviour
             displayCurrentMarkerStats.text = "";
         }
 
-        // AUD-010 Phase 1c: resolved once per frame and reused by every call below - IsPointContestMode()
-        // resolves a fresh MatchRuntime.Rules snapshot for a directly-entered scene (no MatchConfiguration),
-        // so calling it once here instead of once per call site avoids allocating that snapshot repeatedly
-        // in a single Update().
+        // AUD-010 Phase 1c: resolved once per frame and reused by every call below, rather than each of
+        // up to three call sites resolving it separately.
         bool isPointContestMode = IsPointContestMode();
 
         // this needs to be turned off if ball hits ground
@@ -403,14 +420,12 @@ public class BasketBallShotMarker : MonoBehaviour
         }
     }
 
-    private static bool IsPointContestMode()
+    private bool IsPointContestMode()
     {
-        ResolvedMatchRules rules = MatchRuntime.Rules;
-
-        return rules.IsThreePointContest
-            || rules.IsFourPointContest
-            || rules.IsSevenPointContest
-            || rules.IsAllPointContest;
+        return matchRules.IsThreePointContest
+            || matchRules.IsFourPointContest
+            || matchRules.IsSevenPointContest
+            || matchRules.IsAllPointContest;
     }
 
     // the shot type is set manually but this is a failsafe check that sets it automatically based 
@@ -466,6 +481,34 @@ public class BasketBallShotMarker : MonoBehaviour
         }
 
         markerSession = session;
+    }
+
+    // ======================= Match rules binding (AUD-010 Phase 2b0) =======================
+
+    /// <summary>
+    /// Explicit match-rules binding from the same composition step that binds the shot-marker session
+    /// (<see cref="GameRules.BindShotMarkerSessionToMarkers"/>), so <see cref="Start"/>/<see cref="Update"/>/
+    /// <see cref="IsPointContestMode"/> no longer read <c>MatchRuntime.Rules</c> directly. Mirrors
+    /// <see cref="BasketBall.BindMatchRules"/>'s bind-once/null-guard/no-rebind shape.
+    /// </summary>
+    public void BindMatchRules(ResolvedMatchRules rules)
+    {
+        // Checked before the null-argument branch below: a null second call after a real bind already
+        // succeeded must report "already bound", not "remaining unbound" - matchRules is still the
+        // original valid reference either way, and the log should say so.
+        if (matchRules != null)
+        {
+            Debug.LogError($"BasketBallShotMarker on '{gameObject.name}' already has bound match rules; ignoring a second BindMatchRules call.", this);
+            return;
+        }
+
+        if (rules == null)
+        {
+            Debug.LogError($"BasketBallShotMarker on '{gameObject.name}' was bound with null match rules; remaining unbound.", this);
+            return;
+        }
+
+        matchRules = rules;
     }
 
     public int ShotMade

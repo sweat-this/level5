@@ -16,6 +16,11 @@ using UnityEngine.TestTools;
 /// This file covers <c>GameRules</c>' composition-time wiring; the marker's own
 /// <c>BindShotMarkerSession</c>/completion behavior is covered by
 /// <see cref="Level5BasketballMarkerOwnershipTests"/>.
+///
+/// AUD-010 Phase 2b0 extended the same composition step to also bind each marker's
+/// <see cref="ResolvedMatchRules"/> (<c>marker.BindMatchRules(rules)</c>, using the same resolved
+/// <c>rules</c> reference every other basketball composition path shares) - covered below alongside
+/// the pre-existing session-binding coverage rather than in a parallel suite.
 /// </summary>
 public class Level5BasketballShotMarkerSessionTests
 {
@@ -102,6 +107,39 @@ public class Level5BasketballShotMarkerSessionTests
 
         Assert.AreSame(gameRules, GetPrivateField(markerA, "markerSession"));
         Assert.AreSame(gameRules, GetPrivateField(markerB, "markerSession"));
+    }
+
+    /// <summary>
+    /// AUD-010 Phase 2b0: the same scan that binds the live session also binds this match's resolved
+    /// <see cref="ResolvedMatchRules"/> - <c>GameRules</c>' own <c>rules</c> property, resolved through
+    /// its lazy <c>resolvedRules ??= MatchRuntime.Rules</c> getter the first time anything (including
+    /// this scan) asks for it.
+    /// </summary>
+    [Test]
+    public void BindShotMarkerSessionToMarkers_ActiveTaggedMarker_ReceivesGameRulesResolvedMatchRules()
+    {
+        GameRules gameRules = MakeGameRules();
+        BasketBallShotMarker marker = MakeActiveTaggedMarker("marker");
+
+        InvokeBindShotMarkerSessionToMarkers(gameRules);
+
+        object resolvedRules = GetPrivateField(gameRules, "resolvedRules");
+        Assert.IsNotNull(resolvedRules, "GameRules must have resolved its match rules while binding markers");
+        Assert.AreSame(resolvedRules, GetPrivateField(marker, "matchRules"));
+    }
+
+    [Test]
+    public void BindShotMarkerSessionToMarkers_MultipleActiveTaggedMarkers_AllReceiveTheSameResolvedMatchRules()
+    {
+        GameRules gameRules = MakeGameRules();
+        BasketBallShotMarker markerA = MakeActiveTaggedMarker("marker-a");
+        BasketBallShotMarker markerB = MakeActiveTaggedMarker("marker-b");
+
+        InvokeBindShotMarkerSessionToMarkers(gameRules);
+
+        object resolvedRules = GetPrivateField(gameRules, "resolvedRules");
+        Assert.AreSame(resolvedRules, GetPrivateField(markerA, "matchRules"));
+        Assert.AreSame(resolvedRules, GetPrivateField(markerB, "matchRules"));
     }
 
     [Test]
