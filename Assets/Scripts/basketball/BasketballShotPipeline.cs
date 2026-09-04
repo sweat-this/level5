@@ -35,11 +35,21 @@ public static class BasketballShotPipeline
     /// exact <see cref="BasketBallState.CurrentShotMarker"/> reference this participant is standing
     /// on - never an id resolved back through <c>GameRules.BasketBallShotMarkersList</c>.
     ///
-    /// AUD-010 Phase 1c: the marker-required gate now reads <see cref="ResolvedMatchRules.RequiresAnyShotMarkers"/>
-    /// from one <c>MatchRuntime.Rules</c> snapshot for the whole call, rather than
+    /// AUD-010 Phase 1c: the marker-required gate reads <see cref="ResolvedMatchRules.RequiresAnyShotMarkers"/>
+    /// from one rules snapshot for the whole call, rather than
     /// <c>GameRules.instance.PositionMarkersRequired</c> - a compatibility cache <c>GameRules.Start</c>
     /// copies from the same immutable rule once, before match play can reach a shot. See
     /// docs/shot-lifecycle.md.
+    ///
+    /// AUD-010 Phase 2b0: <paramref name="rules"/> replaces this method's own <c>MatchRuntime.Rules</c>
+    /// lookup. Both production callers (<see cref="BasketBall.shootBasketBall"/>,
+    /// <see cref="BasketBallAuto.shootBasketBall"/>) already hold the exact <see cref="ResolvedMatchRules"/>
+    /// reference their own <c>BindMatchRules</c> received from <c>SpawnCoordinator</c> at composition
+    /// time - this just threads that same reference in, rather than re-resolving an equivalent value
+    /// from <c>MatchRuntime</c> a second time. A null argument is a composition bug (a caller that
+    /// never bound its own match rules could not have reached this call either), so it fails closed
+    /// before any marker or money-ball state is touched, the same shape the no-<c>CurrentShotMarker</c>
+    /// and no-<c>IMoneyBallState</c> branches below already use.
     ///
     /// AUD-010 Phase 1c: <paramref name="moneyBallState"/> replaces the direct
     /// <c>GameRules.instance.MoneyBallEnabled</c> read - still separately mutable session state, not
@@ -48,11 +58,16 @@ public static class BasketballShotPipeline
     /// (and can itself take time relative to other state) before this value is read, exactly where the
     /// original read sat.
     /// </summary>
-    public static void ApplyMarkerAndMoneyBallOnShoot(IBasketballRuntime runtime, IMoneyBallState moneyBallState)
+    public static void ApplyMarkerAndMoneyBallOnShoot(IBasketballRuntime runtime, IMoneyBallState moneyBallState, ResolvedMatchRules rules)
     {
+        if (rules == null)
+        {
+            Debug.LogError($"BasketballShotPipeline.ApplyMarkerAndMoneyBallOnShoot: participant {runtime.ParticipantId} reached a shot with no supplied ResolvedMatchRules - skipping marker and money-ball accounting for this shot.");
+            return;
+        }
+
         BasketBallState basketBallState = runtime.State;
         GameStats gameStats = runtime.Stats;
-        ResolvedMatchRules rules = MatchRuntime.Rules;
 
         if (!basketBallState.PlayerOnMarker || !rules.RequiresAnyShotMarkers)
         {

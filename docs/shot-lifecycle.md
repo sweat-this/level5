@@ -170,6 +170,23 @@ still exactly the mutable bool `GameRules` has always owned. At this point `Bask
 was still the one production basketball file left with live `GameRules` dependencies
 (`MarkersRemaining`, `IsGameOver()`, `RequestGameOver()`) - closed in a later Phase 1c slice, below.
 
+**`MatchRuntime.Rules` closed too (AUD-010 Phase 2b0).** `ApplyMarkerAndMoneyBallOnShoot` had kept its
+own `MatchRuntime.Rules` read (see the paragraph above dated before this slice) even after `BasketBall`
+and `BasketBallAuto` were themselves migrated onto explicit `ResolvedMatchRules` binding
+(`BindMatchRules`, bound once by `SpawnCoordinator.GiveBall`). It now takes that same rules reference
+as an explicit third parameter -
+`ApplyMarkerAndMoneyBallOnShoot(IBasketballRuntime, IMoneyBallState, ResolvedMatchRules)` - rather than
+re-resolving an equivalent value from `MatchRuntime` a second time; both callers pass their own bound
+`matchRules` field unchanged. A null argument is treated as a composition bug (a caller that reached
+this call already had to have bound its own match rules first) and fails closed - logging an
+actionable error and mutating no marker or money-ball state - before the existing
+no-`CurrentShotMarker` and no-`IMoneyBallState` guards even run. `BasketballShotPipeline.cs` now has
+zero live `MatchRuntime` references, guarded by a new
+`Level5BasketballShotPipelineDependencyGuardTests`. `MatchRuntime` still owns the legacy-globals
+fallback described in the next paragraph for scenes entered without a validated match configuration -
+this slice only changes how the shot pipeline reaches an already-resolved rules value, not that
+fallback itself.
+
 `BasketBallShotMarker.Update()` resolves `IsPointContestMode()` once per frame and threads the
 result into `setDisplayText(bool)` and the two marker-completion branches, rather than each of up to
 three call sites resolving it (and therefore `MatchRuntime.Rules`) separately. For a directly-entered

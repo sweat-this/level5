@@ -319,97 +319,65 @@ public class Level5BasketballShotPipelineTests
         Assert.That(float.IsNaN(result.GlobalVelocity.z), Is.False, "z component must not be NaN");
     }
 
-    // ==================== AUD-010 Phase 1c: ApplyMarkerAndMoneyBallOnShoot's marker-required gate ====================
+    // ==================== AUD-010 Phase 2b0: ApplyMarkerAndMoneyBallOnShoot's marker-required gate ====================
     //
-    // GameOptionsSnapshot + ActiveMatch.Clear() drives MatchRuntime.Rules through the legacy-globals
-    // fallback exactly like Level5BasketballMarkerOwnershipTests' IsPointContestMode tests, since none
-    // of these tests build a validated MatchConfiguration.
+    // AUD-010 Phase 2b0: the pipeline now takes its ResolvedMatchRules as an explicit parameter
+    // instead of resolving MatchRuntime.Rules itself, so these tests construct the rules they need
+    // directly rather than shaping them indirectly through GameOptions + MatchRuntime's legacy-globals
+    // fallback. That fallback itself is unrelated to the pipeline and remains covered by
+    // Level5MatchBridgeParityTests.
 
     [Test]
     public void ApplyMarkerAndMoneyBallOnShoot_MarkerModeDisabled_RegistersNoMarkerAttempt()
     {
-        GameOptionsSnapshot snapshot = GameOptionsSnapshot.Capture();
-        try
-        {
-            ActiveMatch.Clear();
-            GameOptions.gameModeRequiresShotMarkers3s = false;
-            GameOptions.gameModeRequiresShotMarkers4s = false;
-            GameOptions.gameModeRequiresShotMarkers7s = false;
-            GameRules gameRules = MakeGameRules();
+        ResolvedMatchRules rules = new ResolvedMatchRules(shotMarkers: ShotMarkerRequirement.None);
+        GameRules gameRules = MakeGameRules();
 
-            BasketBallShotMarker marker = MakeMarker("marker");
-            BasketBallState state = MakeState(twoPoints: true);
-            state.EnterShotMarker(marker);
-            FakeRuntime runtime = new FakeRuntime { State = state, Stats = MakeStats() };
+        BasketBallShotMarker marker = MakeMarker("marker");
+        BasketBallState state = MakeState(twoPoints: true);
+        state.EnterShotMarker(marker);
+        FakeRuntime runtime = new FakeRuntime { State = state, Stats = MakeStats() };
 
-            BasketballShotPipeline.ApplyMarkerAndMoneyBallOnShoot(runtime, gameRules);
+        BasketballShotPipeline.ApplyMarkerAndMoneyBallOnShoot(runtime, gameRules, rules);
 
-            Assert.That(marker.ShotAttempt, Is.EqualTo(0), "a mode that does not require markers must not register an attempt");
-            Assert.That(state.OnShootShotMarker, Is.Null, "the launch-time marker snapshot must not be taken when markers are not required");
-        }
-        finally
-        {
-            snapshot.Restore();
-            ActiveMatch.Clear();
-        }
+        Assert.That(marker.ShotAttempt, Is.EqualTo(0), "a mode that does not require markers must not register an attempt");
+        Assert.That(state.OnShootShotMarker, Is.Null, "the launch-time marker snapshot must not be taken when markers are not required");
     }
 
     [Test]
     public void ApplyMarkerAndMoneyBallOnShoot_MarkerModeRequired_RegistersAttemptOnTheExactCurrentMarker()
     {
-        GameOptionsSnapshot snapshot = GameOptionsSnapshot.Capture();
-        try
-        {
-            ActiveMatch.Clear();
-            GameOptions.gameModeRequiresShotMarkers3s = true;
-            GameOptions.gameModeRequiresShotMarkers4s = false;
-            GameOptions.gameModeRequiresShotMarkers7s = false;
-            GameRules gameRules = MakeGameRules();
+        ResolvedMatchRules rules = new ResolvedMatchRules(shotMarkers: ShotMarkerRequirement.ThreePoint);
+        GameRules gameRules = MakeGameRules();
 
-            BasketBallShotMarker onMarker = MakeMarker("on-marker");
-            BasketBallShotMarker otherMarker = MakeMarker("other-marker");
-            BasketBallState state = MakeState(twoPoints: true);
-            state.EnterShotMarker(onMarker);
-            FakeRuntime runtime = new FakeRuntime { State = state, Stats = MakeStats() };
+        BasketBallShotMarker onMarker = MakeMarker("on-marker");
+        BasketBallShotMarker otherMarker = MakeMarker("other-marker");
+        BasketBallState state = MakeState(twoPoints: true);
+        state.EnterShotMarker(onMarker);
+        FakeRuntime runtime = new FakeRuntime { State = state, Stats = MakeStats() };
 
-            BasketballShotPipeline.ApplyMarkerAndMoneyBallOnShoot(runtime, gameRules);
+        BasketballShotPipeline.ApplyMarkerAndMoneyBallOnShoot(runtime, gameRules, rules);
 
-            Assert.That(onMarker.ShotAttempt, Is.EqualTo(1), "the marker the participant is standing on must receive the attempt");
-            Assert.That(otherMarker.ShotAttempt, Is.EqualTo(0), "a different marker must not be credited");
-            Assert.AreSame(onMarker, state.OnShootShotMarker);
-        }
-        finally
-        {
-            snapshot.Restore();
-            ActiveMatch.Clear();
-        }
+        Assert.That(onMarker.ShotAttempt, Is.EqualTo(1), "the marker the participant is standing on must receive the attempt");
+        Assert.That(otherMarker.ShotAttempt, Is.EqualTo(0), "a different marker must not be credited");
+        Assert.AreSame(onMarker, state.OnShootShotMarker);
     }
 
     [Test]
     public void ApplyMarkerAndMoneyBallOnShoot_NoMarkerOccupancy_RegistersNoMarkerAccountingEvenWhenMarkersRequired()
     {
-        GameOptionsSnapshot snapshot = GameOptionsSnapshot.Capture();
-        try
-        {
-            ActiveMatch.Clear();
-            GameOptions.gameModeRequiresShotMarkers3s = true;
-            GameRules gameRules = MakeGameRules();
+        ResolvedMatchRules rules = new ResolvedMatchRules(shotMarkers: ShotMarkerRequirement.ThreePoint);
+        GameRules gameRules = MakeGameRules();
 
-            BasketBallShotMarker marker = MakeMarker("marker");
-            BasketBallState state = MakeState(twoPoints: true);
-            // deliberately not entering a marker - PlayerOnMarker stays false
-            FakeRuntime runtime = new FakeRuntime { State = state, Stats = MakeStats() };
+        BasketBallShotMarker marker = MakeMarker("marker");
+        BasketBallState state = MakeState(twoPoints: true);
+        // deliberately not entering a marker - PlayerOnMarker stays false
+        FakeRuntime runtime = new FakeRuntime { State = state, Stats = MakeStats() };
 
-            BasketballShotPipeline.ApplyMarkerAndMoneyBallOnShoot(runtime, gameRules);
+        BasketballShotPipeline.ApplyMarkerAndMoneyBallOnShoot(runtime, gameRules, rules);
 
-            Assert.That(marker.ShotAttempt, Is.EqualTo(0));
-            Assert.That(state.OnShootShotMarker, Is.Null);
-        }
-        finally
-        {
-            snapshot.Restore();
-            ActiveMatch.Clear();
-        }
+        Assert.That(marker.ShotAttempt, Is.EqualTo(0));
+        Assert.That(state.OnShootShotMarker, Is.Null);
     }
 
     [Test]
@@ -418,96 +386,63 @@ public class Level5BasketballShotPipelineTests
         // BasketBallState.EnterShotMarker is the only production writer of PlayerOnMarker=true, and it
         // always sets CurrentShotMarker alongside it - so this is an unreachable ownership/composition
         // bug path, exercised here only to pin the defensive log-and-skip behavior.
-        GameOptionsSnapshot snapshot = GameOptionsSnapshot.Capture();
-        try
-        {
-            ActiveMatch.Clear();
-            GameOptions.gameModeRequiresShotMarkers3s = true;
-            GameRules gameRules = MakeGameRules();
+        ResolvedMatchRules rules = new ResolvedMatchRules(shotMarkers: ShotMarkerRequirement.ThreePoint);
+        GameRules gameRules = MakeGameRules();
 
-            BasketBallState state = MakeState(twoPoints: true);
-            state.PlayerOnMarker = true; // CurrentShotMarker deliberately left null
-            FakeRuntime runtime = new FakeRuntime { State = state, Stats = MakeStats(), ParticipantId = 3 };
+        BasketBallState state = MakeState(twoPoints: true);
+        state.PlayerOnMarker = true; // CurrentShotMarker deliberately left null
+        FakeRuntime runtime = new FakeRuntime { State = state, Stats = MakeStats(), ParticipantId = 3 };
 
-            LogAssert.Expect(LogType.Error, new System.Text.RegularExpressions.Regex("participant 3 has PlayerOnMarker true but no CurrentShotMarker"));
+        LogAssert.Expect(LogType.Error, new System.Text.RegularExpressions.Regex("participant 3 has PlayerOnMarker true but no CurrentShotMarker"));
 
-            Assert.DoesNotThrow(() => BasketballShotPipeline.ApplyMarkerAndMoneyBallOnShoot(runtime, gameRules));
-        }
-        finally
-        {
-            snapshot.Restore();
-            ActiveMatch.Clear();
-        }
+        Assert.DoesNotThrow(() => BasketballShotPipeline.ApplyMarkerAndMoneyBallOnShoot(runtime, gameRules, rules));
     }
 
     [Test]
     public void ApplyMarkerAndMoneyBallOnShoot_ThreePointContestFinalAttempt_IncrementsMoneyBallAttempts()
     {
-        GameOptionsSnapshot snapshot = GameOptionsSnapshot.Capture();
-        try
+        ResolvedMatchRules rules = new ResolvedMatchRules(
+            shotMarkers: ShotMarkerRequirement.ThreePoint,
+            shotRule: ShotRule.ThreePoint);
+        GameRules gameRules = MakeGameRules(moneyBallEnabled: false);
+
+        BasketBallShotMarker marker = MakeMarker("marker", maxShotAttempt: 5);
+        BasketBallState state = MakeState(twoPoints: true);
+        GameStats stats = MakeStats();
+        FakeRuntime runtime = new FakeRuntime { State = state, Stats = stats };
+
+        for (int i = 0; i < 5; i++)
         {
-            ActiveMatch.Clear();
-            GameOptions.gameModeRequiresShotMarkers3s = true;
-            GameOptions.gameModeThreePointContest = true;
-            GameRules gameRules = MakeGameRules(moneyBallEnabled: false);
-
-            BasketBallShotMarker marker = MakeMarker("marker", maxShotAttempt: 5);
-            BasketBallState state = MakeState(twoPoints: true);
-            GameStats stats = MakeStats();
-            FakeRuntime runtime = new FakeRuntime { State = state, Stats = stats };
-
-            for (int i = 0; i < 5; i++)
-            {
-                state.EnterShotMarker(marker);
-                BasketballShotPipeline.ApplyMarkerAndMoneyBallOnShoot(runtime, gameRules);
-            }
-
-            Assert.That(marker.ShotAttempt, Is.EqualTo(5));
-            Assert.That(stats.Stats.MoneyBallAttempts, Is.EqualTo(1), "the fifth attempt in a three-point contest must credit exactly one money-ball attempt");
+            state.EnterShotMarker(marker);
+            BasketballShotPipeline.ApplyMarkerAndMoneyBallOnShoot(runtime, gameRules, rules);
         }
-        finally
-        {
-            snapshot.Restore();
-            ActiveMatch.Clear();
-        }
+
+        Assert.That(marker.ShotAttempt, Is.EqualTo(5));
+        Assert.That(stats.Stats.MoneyBallAttempts, Is.EqualTo(1), "the fifth attempt in a three-point contest must credit exactly one money-ball attempt");
     }
 
     [Test]
     public void ApplyMarkerAndMoneyBallOnShoot_OrdinaryMarkerMode_FifthAttemptDoesNotCreditMoneyBallAttempt()
     {
         // Contrast with the contest test above: same fifth-attempt marker count, but no contest rule
-        // active, so the ShotAttempt == 5 branch's contest-flag check must stay false.
-        GameOptionsSnapshot snapshot = GameOptionsSnapshot.Capture();
-        try
+        // active (shotRule defaults to ShotRule.Any), so the ShotAttempt == 5 branch's contest-flag
+        // check must stay false.
+        ResolvedMatchRules rules = new ResolvedMatchRules(shotMarkers: ShotMarkerRequirement.ThreePoint);
+        GameRules gameRules = MakeGameRules(moneyBallEnabled: false);
+
+        BasketBallShotMarker marker = MakeMarker("marker", maxShotAttempt: 5);
+        BasketBallState state = MakeState(twoPoints: true);
+        GameStats stats = MakeStats();
+        FakeRuntime runtime = new FakeRuntime { State = state, Stats = stats };
+
+        for (int i = 0; i < 5; i++)
         {
-            ActiveMatch.Clear();
-            GameOptions.gameModeRequiresShotMarkers3s = true;
-            // explicitly zeroed, not left to ambient/default state - matches
-            // Level5BasketballMarkerOwnershipTests.IsPointContestMode_OrdinaryShootingMode_ReturnsFalse
-            GameOptions.gameModeThreePointContest = false;
-            GameOptions.gameModeFourPointContest = false;
-            GameOptions.gameModeSevenPointContest = false;
-            GameRules gameRules = MakeGameRules(moneyBallEnabled: false);
-
-            BasketBallShotMarker marker = MakeMarker("marker", maxShotAttempt: 5);
-            BasketBallState state = MakeState(twoPoints: true);
-            GameStats stats = MakeStats();
-            FakeRuntime runtime = new FakeRuntime { State = state, Stats = stats };
-
-            for (int i = 0; i < 5; i++)
-            {
-                state.EnterShotMarker(marker);
-                BasketballShotPipeline.ApplyMarkerAndMoneyBallOnShoot(runtime, gameRules);
-            }
-
-            Assert.That(marker.ShotAttempt, Is.EqualTo(5));
-            Assert.That(stats.Stats.MoneyBallAttempts, Is.EqualTo(0));
+            state.EnterShotMarker(marker);
+            BasketballShotPipeline.ApplyMarkerAndMoneyBallOnShoot(runtime, gameRules, rules);
         }
-        finally
-        {
-            snapshot.Restore();
-            ActiveMatch.Clear();
-        }
+
+        Assert.That(marker.ShotAttempt, Is.EqualTo(5));
+        Assert.That(stats.Stats.MoneyBallAttempts, Is.EqualTo(0));
     }
 
     [Test]
@@ -517,29 +452,19 @@ public class Level5BasketballShotPipelineTests
         // session state - only how basketball reaches it moved, from GameRules.instance to a bound
         // IMoneyBallState (here, GameRules itself, which implements it). Still additive with the
         // marker-contest money-ball credit.
-        GameOptionsSnapshot snapshot = GameOptionsSnapshot.Capture();
-        try
-        {
-            ActiveMatch.Clear();
-            GameOptions.gameModeRequiresShotMarkers3s = true;
-            GameRules gameRules = MakeGameRules(moneyBallEnabled: true);
+        ResolvedMatchRules rules = new ResolvedMatchRules(shotMarkers: ShotMarkerRequirement.ThreePoint);
+        GameRules gameRules = MakeGameRules(moneyBallEnabled: true);
 
-            BasketBallShotMarker marker = MakeMarker("marker");
-            BasketBallState state = MakeState(twoPoints: true);
-            state.EnterShotMarker(marker);
-            GameStats stats = MakeStats();
-            FakeRuntime runtime = new FakeRuntime { State = state, Stats = stats };
+        BasketBallShotMarker marker = MakeMarker("marker");
+        BasketBallState state = MakeState(twoPoints: true);
+        state.EnterShotMarker(marker);
+        GameStats stats = MakeStats();
+        FakeRuntime runtime = new FakeRuntime { State = state, Stats = stats };
 
-            BasketballShotPipeline.ApplyMarkerAndMoneyBallOnShoot(runtime, gameRules);
+        BasketballShotPipeline.ApplyMarkerAndMoneyBallOnShoot(runtime, gameRules, rules);
 
-            Assert.IsTrue(state.MoneyBallEnabledOnShoot);
-            Assert.That(stats.Stats.MoneyBallAttempts, Is.EqualTo(1));
-        }
-        finally
-        {
-            snapshot.Restore();
-            ActiveMatch.Clear();
-        }
+        Assert.IsTrue(state.MoneyBallEnabledOnShoot);
+        Assert.That(stats.Stats.MoneyBallAttempts, Is.EqualTo(1));
     }
 
     /// <summary>
@@ -550,42 +475,32 @@ public class Level5BasketballShotPipelineTests
     [Test]
     public void ApplyMarkerAndMoneyBallOnShoot_ProviderTogglesBetweenShots_EachShotObservesTheLiveValue()
     {
-        GameOptionsSnapshot snapshot = GameOptionsSnapshot.Capture();
-        try
-        {
-            ActiveMatch.Clear();
-            GameOptions.gameModeRequiresShotMarkers3s = true;
-            FakeMoneyBallState moneyBallState = new FakeMoneyBallState { MoneyBallEnabled = false };
+        ResolvedMatchRules rules = new ResolvedMatchRules(shotMarkers: ShotMarkerRequirement.ThreePoint);
+        FakeMoneyBallState moneyBallState = new FakeMoneyBallState { MoneyBallEnabled = false };
 
-            BasketBallShotMarker marker = MakeMarker("marker");
-            BasketBallState state = MakeState(twoPoints: true);
-            GameStats stats = MakeStats();
-            FakeRuntime runtime = new FakeRuntime { State = state, Stats = stats };
+        BasketBallShotMarker marker = MakeMarker("marker");
+        BasketBallState state = MakeState(twoPoints: true);
+        GameStats stats = MakeStats();
+        FakeRuntime runtime = new FakeRuntime { State = state, Stats = stats };
 
-            state.EnterShotMarker(marker);
-            BasketballShotPipeline.ApplyMarkerAndMoneyBallOnShoot(runtime, moneyBallState);
-            Assert.IsFalse(state.MoneyBallEnabledOnShoot, "the first shot must observe the provider's value at that time (false)");
-            Assert.That(stats.Stats.MoneyBallAttempts, Is.EqualTo(0));
+        state.EnterShotMarker(marker);
+        BasketballShotPipeline.ApplyMarkerAndMoneyBallOnShoot(runtime, moneyBallState, rules);
+        Assert.IsFalse(state.MoneyBallEnabledOnShoot, "the first shot must observe the provider's value at that time (false)");
+        Assert.That(stats.Stats.MoneyBallAttempts, Is.EqualTo(0));
 
-            moneyBallState.MoneyBallEnabled = true;
-            state.ResetShotAttemptSnapshot();
-            state.EnterShotMarker(marker);
-            BasketballShotPipeline.ApplyMarkerAndMoneyBallOnShoot(runtime, moneyBallState);
-            Assert.IsTrue(state.MoneyBallEnabledOnShoot, "the second shot must observe the same provider's new value (true), proving the reference - not a copied bool - was retained");
-            Assert.That(stats.Stats.MoneyBallAttempts, Is.EqualTo(1));
+        moneyBallState.MoneyBallEnabled = true;
+        state.ResetShotAttemptSnapshot();
+        state.EnterShotMarker(marker);
+        BasketballShotPipeline.ApplyMarkerAndMoneyBallOnShoot(runtime, moneyBallState, rules);
+        Assert.IsTrue(state.MoneyBallEnabledOnShoot, "the second shot must observe the same provider's new value (true), proving the reference - not a copied bool - was retained");
+        Assert.That(stats.Stats.MoneyBallAttempts, Is.EqualTo(1));
 
-            moneyBallState.MoneyBallEnabled = false;
-            state.ResetShotAttemptSnapshot();
-            state.EnterShotMarker(marker);
-            BasketballShotPipeline.ApplyMarkerAndMoneyBallOnShoot(runtime, moneyBallState);
-            Assert.IsFalse(state.MoneyBallEnabledOnShoot, "a third shot after the provider flips back to false must observe false again");
-            Assert.That(stats.Stats.MoneyBallAttempts, Is.EqualTo(1), "no further credit for a shot with the provider back off");
-        }
-        finally
-        {
-            snapshot.Restore();
-            ActiveMatch.Clear();
-        }
+        moneyBallState.MoneyBallEnabled = false;
+        state.ResetShotAttemptSnapshot();
+        state.EnterShotMarker(marker);
+        BasketballShotPipeline.ApplyMarkerAndMoneyBallOnShoot(runtime, moneyBallState, rules);
+        Assert.IsFalse(state.MoneyBallEnabledOnShoot, "a third shot after the provider flips back to false must observe false again");
+        Assert.That(stats.Stats.MoneyBallAttempts, Is.EqualTo(1), "no further credit for a shot with the provider back off");
     }
 
     /// <summary>
@@ -595,90 +510,82 @@ public class Level5BasketballShotPipelineTests
     [Test]
     public void ApplyMarkerAndMoneyBallOnShoot_NoBoundProviderOnQualifyingMarkerShot_LogsAndSkipsMoneyBallAccountingButKeepsMarkerAttempt()
     {
-        GameOptionsSnapshot snapshot = GameOptionsSnapshot.Capture();
-        try
-        {
-            ActiveMatch.Clear();
-            GameOptions.gameModeRequiresShotMarkers3s = true;
+        ResolvedMatchRules rules = new ResolvedMatchRules(shotMarkers: ShotMarkerRequirement.ThreePoint);
 
-            BasketBallShotMarker marker = MakeMarker("marker");
-            BasketBallState state = MakeState(twoPoints: true);
-            state.EnterShotMarker(marker);
-            GameStats stats = MakeStats();
-            FakeRuntime runtime = new FakeRuntime { State = state, Stats = stats, ParticipantId = 7 };
+        BasketBallShotMarker marker = MakeMarker("marker");
+        BasketBallState state = MakeState(twoPoints: true);
+        state.EnterShotMarker(marker);
+        GameStats stats = MakeStats();
+        FakeRuntime runtime = new FakeRuntime { State = state, Stats = stats, ParticipantId = 7 };
 
-            LogAssert.Expect(LogType.Error, new System.Text.RegularExpressions.Regex("participant 7 reached a qualifying marker shot with no bound IMoneyBallState"));
+        LogAssert.Expect(LogType.Error, new System.Text.RegularExpressions.Regex("participant 7 reached a qualifying marker shot with no bound IMoneyBallState"));
 
-            Assert.DoesNotThrow(() => BasketballShotPipeline.ApplyMarkerAndMoneyBallOnShoot(runtime, null));
+        Assert.DoesNotThrow(() => BasketballShotPipeline.ApplyMarkerAndMoneyBallOnShoot(runtime, null, rules));
 
-            Assert.That(marker.ShotAttempt, Is.EqualTo(1), "the marker attempt already registered before the money-ball check must not be undone");
-            Assert.AreSame(marker, state.OnShootShotMarker);
-            Assert.IsFalse(state.MoneyBallEnabledOnShoot);
-            Assert.That(stats.Stats.MoneyBallAttempts, Is.EqualTo(0));
-        }
-        finally
-        {
-            snapshot.Restore();
-            ActiveMatch.Clear();
-        }
+        Assert.That(marker.ShotAttempt, Is.EqualTo(1), "the marker attempt already registered before the money-ball check must not be undone");
+        Assert.AreSame(marker, state.OnShootShotMarker);
+        Assert.IsFalse(state.MoneyBallEnabledOnShoot);
+        Assert.That(stats.Stats.MoneyBallAttempts, Is.EqualTo(0));
     }
 
     /// <summary>A non-marker path with no bound provider must not even reach the missing-provider check.</summary>
     [Test]
     public void ApplyMarkerAndMoneyBallOnShoot_NonMarkerPathWithNoBoundProvider_EarlyReturnsWithNoProviderError()
     {
-        GameOptionsSnapshot snapshot = GameOptionsSnapshot.Capture();
-        try
-        {
-            ActiveMatch.Clear();
-            GameOptions.gameModeRequiresShotMarkers3s = false;
-            GameOptions.gameModeRequiresShotMarkers4s = false;
-            GameOptions.gameModeRequiresShotMarkers7s = false;
+        ResolvedMatchRules rules = new ResolvedMatchRules(shotMarkers: ShotMarkerRequirement.None);
 
-            BasketBallState state = MakeState(twoPoints: true);
-            FakeRuntime runtime = new FakeRuntime { State = state, Stats = MakeStats() };
+        BasketBallState state = MakeState(twoPoints: true);
+        FakeRuntime runtime = new FakeRuntime { State = state, Stats = MakeStats() };
 
-            Assert.DoesNotThrow(() => BasketballShotPipeline.ApplyMarkerAndMoneyBallOnShoot(runtime, null));
+        Assert.DoesNotThrow(() => BasketballShotPipeline.ApplyMarkerAndMoneyBallOnShoot(runtime, null, rules));
 
-            Assert.IsFalse(state.MoneyBallEnabledOnShoot);
-        }
-        finally
-        {
-            snapshot.Restore();
-            ActiveMatch.Clear();
-        }
+        Assert.IsFalse(state.MoneyBallEnabledOnShoot);
     }
 
     [Test]
-    public void ApplyMarkerAndMoneyBallOnShoot_DirectEntryLegacyFallback_MarkerRequiredGateMatchesLegacyGlobals()
+    public void ApplyMarkerAndMoneyBallOnShoot_FourPointMarkerRule_RegistersAttemptOnTheExactCurrentMarker()
     {
-        // Section 9 / direct-entry support: with no validated MatchConfiguration active,
-        // MatchRuntime.Rules reconstructs ResolvedMatchRules from the legacy GameOptions globals on
-        // every call - the same path GameRules.Start used to seed positionMarkersRequired from.
-        GameOptionsSnapshot snapshot = GameOptionsSnapshot.Capture();
-        try
-        {
-            ActiveMatch.Clear();
-            Assert.IsFalse(ActiveMatch.IsActive, "this test exercises the legacy-globals fallback, not a validated configuration");
-            GameOptions.gameModeRequiresShotMarkers3s = false;
-            GameOptions.gameModeRequiresShotMarkers4s = true;
-            GameOptions.gameModeRequiresShotMarkers7s = false;
-            GameRules gameRules = MakeGameRules();
+        // Contrast with the other marker-required tests above, which all use ShotMarkerRequirement.ThreePoint
+        // - this pins the FourPoint bit of the same flags enum separately, since RequiresAnyShotMarkers
+        // does not distinguish which marker-required bit is set.
+        ResolvedMatchRules rules = new ResolvedMatchRules(shotMarkers: ShotMarkerRequirement.FourPoint);
+        GameRules gameRules = MakeGameRules();
 
-            BasketBallShotMarker marker = MakeMarker("marker");
-            BasketBallState state = MakeState(twoPoints: false);
-            state.FourPoints = true;
-            state.EnterShotMarker(marker);
-            FakeRuntime runtime = new FakeRuntime { State = state, Stats = MakeStats() };
+        BasketBallShotMarker marker = MakeMarker("marker");
+        BasketBallState state = MakeState(twoPoints: false);
+        state.FourPoints = true;
+        state.EnterShotMarker(marker);
+        FakeRuntime runtime = new FakeRuntime { State = state, Stats = MakeStats() };
 
-            BasketballShotPipeline.ApplyMarkerAndMoneyBallOnShoot(runtime, gameRules);
+        BasketballShotPipeline.ApplyMarkerAndMoneyBallOnShoot(runtime, gameRules, rules);
 
-            Assert.That(marker.ShotAttempt, Is.EqualTo(1), "a mode requiring four-point markers, entered directly with no launch configuration, must still gate on the legacy globals' equivalent rule");
-        }
-        finally
-        {
-            snapshot.Restore();
-            ActiveMatch.Clear();
-        }
+        Assert.That(marker.ShotAttempt, Is.EqualTo(1), "a mode requiring four-point markers must gate on that rule the same way three-point-marker modes do above");
+    }
+
+    /// <summary>
+    /// AUD-010 Phase 2b0: a null <see cref="ResolvedMatchRules"/> is a composition bug - every
+    /// production caller already holds its own bound, non-null rules reference before it can reach a
+    /// shot - so this must fail closed before any marker or money-ball state is touched, the same
+    /// shape the no-<c>CurrentShotMarker</c> and no-<see cref="Level5.Core.Match.IMoneyBallState"/>
+    /// branches above already use.
+    /// </summary>
+    [Test]
+    public void ApplyMarkerAndMoneyBallOnShoot_NullRules_LogsActionableErrorAndPerformsNoMutation()
+    {
+        BasketBallShotMarker marker = MakeMarker("marker");
+        BasketBallState state = MakeState(twoPoints: true);
+        state.EnterShotMarker(marker);
+        GameStats stats = MakeStats();
+        FakeRuntime runtime = new FakeRuntime { State = state, Stats = stats, ParticipantId = 9 };
+        FakeMoneyBallState moneyBallState = new FakeMoneyBallState { MoneyBallEnabled = true };
+
+        LogAssert.Expect(LogType.Error, new System.Text.RegularExpressions.Regex("participant 9 reached a shot with no supplied ResolvedMatchRules"));
+
+        Assert.DoesNotThrow(() => BasketballShotPipeline.ApplyMarkerAndMoneyBallOnShoot(runtime, moneyBallState, null));
+
+        Assert.That(marker.ShotAttempt, Is.EqualTo(0), "no marker attempt may be registered when rules are missing");
+        Assert.That(state.OnShootShotMarker, Is.Null);
+        Assert.IsFalse(state.MoneyBallEnabledOnShoot);
+        Assert.That(stats.Stats.MoneyBallAttempts, Is.EqualTo(0));
     }
 }
