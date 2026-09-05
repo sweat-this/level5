@@ -1,0 +1,20 @@
+{
+    "name": "Level5.Basketball",
+    "rootNamespace": "",
+    "references": [
+        "Level5.Core",
+        "Level5.Utility",
+        "Level5.Audio",
+        "Level5.Constants",
+        "Level5.Misc"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

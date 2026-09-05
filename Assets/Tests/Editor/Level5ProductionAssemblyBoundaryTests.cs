@@ -79,6 +79,25 @@ public class Level5ProductionAssemblyBoundaryTests
     // needs this guard - no production assembly references another yet - so it wasn't worth chasing
     // false positives to keep. Revisit if/when that stops being true.
 
+    /// <summary>
+    /// AUD-012 Phase 2b: proves production basketball types actually compile into the
+    /// <c>Level5.Basketball</c> asmdef created for this slice, rather than falling back into
+    /// <c>Assembly-CSharp</c> because of a misconfigured asmdef scope. Complements
+    /// <see cref="NoMigratedProductionAssemblyReachesIntoAssemblyCSharp"/>, which checks the outbound
+    /// edge (basketball source doesn't reach into Assembly-CSharp); this checks the assembly the
+    /// compiler actually produced. This file has no asmdef of its own (see the class summary), so it
+    /// compiles into Assembly-CSharp-Editor, which auto-references every autoReferenced runtime
+    /// assembly - including Level5.Basketball - letting these types be referenced directly.
+    /// </summary>
+    [Test]
+    public void BasketballProductionTypesCompileIntoLevel5Basketball()
+    {
+        const string expected = "Level5.Basketball";
+        Assert.That(typeof(BasketBall).Assembly.GetName().Name, Is.EqualTo(expected));
+        Assert.That(typeof(GameStats).Assembly.GetName().Name, Is.EqualTo(expected));
+        Assert.That(typeof(BasketBallShotMarker).Assembly.GetName().Name, Is.EqualTo(expected));
+    }
+
     [Test]
     public void NoProductionAssemblyReferencesAKnownEditorOnlyPackageAssembly()
     {
