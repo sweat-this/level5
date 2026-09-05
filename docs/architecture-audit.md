@@ -177,6 +177,20 @@ sets `SerializationMode.ForceText` on load. That confirms the project has not be
 since that policy was added. The first open will convert them - which also makes AUD-046's
 uninspectable serialized value greppable for the first time.
 
+**Superseded by `docs/systems-restructure-plan.md`, "Phase 2 - Assembly split" (current status).** This
+2026-08-07 note describes the blocker as it stood before Phase 2's leaf-by-leaf migration started; it is
+historically accurate but no longer the current picture. As of 2026-09-04, `Level5.Basketball` exists
+(AUD-012 Phase 2b, Slice 11 in the restructure plan) alongside 14 other production runtime assemblies
+(`Level5.Core`, `Level5.Constants`, `Level5.Pooling`, `Level5.Audio`, `Level5.Input`, `Level5.Combat`,
+`Level5.Enemy`, `Level5.PlayerRacing`, `Level5.Vehicle`, `Level5.MenuProgression`, `Level5.Utility`,
+`Level5.Misc`, `Level5.Models`, `Level5.MenuStart`). The remaining blocker is no longer "attempt this from
+an open Unity session and read whatever the console names" - it is now specifically `player` and
+`game manager`, which still form a mutual dependency cycle with each other (basketball's own outbound
+edges into that pair were cut by a separate `AUD-010` Phase 2b0 pass before Slice 11 moved it). AUD-012 is
+**not** closed: giving the rest of `Assets/Scripts` its own assembly boundary still requires cutting that
+remaining cycle first. See `docs/systems-restructure-plan.md`'s Phase 2 section for the authoritative,
+currently-maintained status.
+
 ## Finding Details
 
 ### AUD-001: Combat State Ownership Is Split

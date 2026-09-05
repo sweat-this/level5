@@ -9,6 +9,7 @@
   <Project Path="Level5.PlayModeTests.csproj" />
   <Project Path="Level5.Enemy.csproj" />
   <Project Path="Level5.Input.csproj" />
+  <Project Path="Level5.Basketball.csproj" />
   <Project Path="Level5.Constants.csproj" />
   <Project Path="Level5.PlayerRacing.csproj" />
   <Project Path="Level5.Pooling.csproj" />

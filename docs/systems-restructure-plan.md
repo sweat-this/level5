@@ -293,12 +293,68 @@ disqualifying reference, easy to verify) more than an automated "this is clean" 
 claim, and the one place it was checked by hand instead of trusted, it missed a two-hop chain through
 a getter property). Read full file contents before moving anything, every time.
 
-**Running total after slices 1-10:** 27 files across 10 leaf assemblies (`Level5.Input`,
+**Slice 11 — `Level5.Basketball` (2026-09-04), the first leaf out of the former player/basketball/game-manager
+triangle.** The 2026-08-20 remeasurement above found player, basketball and game manager still one strongly
+connected component. Between then and this slice, a separate run of `AUD-010` Phase 2b0 (PRs #94-#99: binding
+`BasketBallShotMarker` to `ResolvedMatchRules`, `BasketBall`/`BasketBallAuto` shot telemetry to a callback,
+moving `PickupObject` into `Level5.Misc`, and removing basketball's last live `BehaviorNpcCritical` reference)
+cut basketball's outbound edges into `Assembly-CSharp` to zero without moving basketball itself into an asmdef
+yet — leaving basketball a clean leaf even though `player` and `game manager` remain coupled to each other and
+to basketball's own former call sites. This slice is `AUD-012` Phase 2b: give `Assets/Scripts/basketball`
+(12 production `.cs` files plus the ignored `Legacy~/` folder, fully commented out) its own asmdef, source files
+left in place.
+
+Re-verified against `dev` at `248648d0b` (PR #99 landed) rather than trusting the 2026-08-20 measurement: every
+live (non-comment, non-XML-doc) identifier in `Assets/Scripts/basketball/*.cs` resolves to `Level5.Core`
+(including the `Level5.Core.Match` sub-namespace — one asmdef, not a separate assembly), `Level5.Utility`
+(`UtilityFunctions.FindDeepChild`/`RollPercent`, the copy under `Utility/Level5Utility/`, not the same-named
+loose files still in `Assembly-CSharp`), `Level5.Audio` (`SFXBB`), `Level5.Constants` (`Constants.DISTANCE_*`)
+or `Level5.Misc` (`PickupObject`, moved there by PR #98). Every remaining mention of `GameLevelManager`,
+`SpawnCoordinator`, `GameRules`, `MatchRuntime`, `AnaylticsManager`, `BehaviorNpcCritical` or `PlayerController`
+inside the basketball folder is inside an XML-doc `<see cref>`/`<c>` tag or a commented-out line — grepped
+individually, none is live code. Reverse edge also checked (new for this slice, since this is the first
+migrated assembly with external `Assembly-CSharp` consumers reaching into it): 32 files outside
+`Assets/Scripts/basketball` reference a basketball type (`SpawnCoordinator`, `GameRules`, `GameLevelManager`,
+`PlayerController`, `AutoPlayerController`, `versus/*`, `database/*`, etc.) — counted by excluding
+basketball's own 13 self-referencing files (12 production files plus the ignored `Legacy~` one) from the
+raw 45-file grep match. Basketball declares no `internal`
+member (one stale comment mentions a former `internal set`, already gone), no `protected` member, and no
+external type inherits from a basketball type — every top-level basketball type is `public` — so none of those
+32 external call sites relies on same-assembly visibility the new boundary would break. Assembly-sensitive type
+identity checked and clean: no `[SerializeReference]`, `Type.GetType`, `Assembly.Load`/`LoadFrom`,
+`AssemblyQualifiedName` or `TypeNameHandling` touches a basketball type anywhere in the repo.
+
+`Level5.Basketball.asmdef`: `autoReferenced: true`, `overrideReferences: false`, references
+`["Level5.Core", "Level5.Utility", "Level5.Audio", "Level5.Constants", "Level5.Misc"]` — no `Unity.ugui`
+reference needed despite basketball's `UnityEngine.UI` usage, consistent with every other Phase 2 slice's
+`autoReferenced` cascade. Headless Unity 6000.5.7f1 compile clean (`Level5.Basketball.dll`, 144 defines, 300
+references, zero new `CS` errors; the only warnings anywhere in the log are pre-existing `CS0618
+FindObjectsSortMode` obsolete-API notices in unrelated PlayMode/EditMode test files). Added
+`BasketballProductionTypesCompileIntoLevel5Basketball` to `Level5ProductionAssemblyBoundaryTests.cs`
+(`typeof(BasketBall)`/`typeof(GameStats)`/`typeof(BasketBallShotMarker)`'s assembly name now asserted equal to
+`"Level5.Basketball"`); that fixture's two pre-existing text-scan guards already cover `Level5.Basketball`
+automatically, since they discover every non-test `.asmdef` under `Assets/Scripts`/`Assets/Level5` at run time
+rather than from a hand-maintained list. Focused EditMode run (this fixture only): 3/3 passed. Ran the existing
+`Level5BasketBallShotTelemetryCompositionPlayModeTests` fixture — which drives the real
+`SpawnCoordinator.GiveBall` → basketball composition path, not a hand-built substitute — as the one real
+composition-path check: 1/1 passed. Per this repository's risk-based validation policy, the full EditMode/
+PlayMode suites were not re-run for an assembly-boundary-only change with no behavior modification; PR CI owns
+that broader regression coverage.
+
+This does **not** close `AUD-012`/Phase 2 as a whole, and does not by itself unblock 2c: `player` and
+`game manager` still form a cycle with each other (and still hold the call sites basketball used to reach into,
+now removed from basketball's side only), so the asmdef-free `Level5GameplayPlayModeTests` workaround — whose
+four files also instantiate `GameStats`/`MatchController`/`PlayerController` directly, not just `BasketBall` —
+remains blocked on migrating `player`/`game manager` themselves, unchanged from the 2026-08-20 finding.
+
+**Running total after slices 1-11:** `Assets/Scripts/basketball`'s 12 production files (source left in place,
+no `.meta` moved) plus the 27 files across 10 leaf assemblies from slices 1-10 (`Level5.Input`,
 `Level5.Combat`, `Level5.Enemy`, `Level5.PlayerRacing`, `Level5.Vehicle`, `Level5.MenuProgression`,
 `Level5.Utility`, `Level5.Misc`, `Level5.Models`, `Level5.MenuStart`) plus the 4 pre-existing ones
-(`Level5.Core`, `Level5.Constants`, `Level5.Pooling`, `Level5.Audio`) — 14 production runtime
+(`Level5.Core`, `Level5.Constants`, `Level5.Pooling`, `Level5.Audio`) — 15 production runtime
 assemblies total, out of roughly 218 `.cs` files in `Assets/Scripts` before this phase started. The
-remainder is either inside the blocked player/basketball/game-manager triangle, or reaches into it
+remainder is either `player`/`game manager` themselves (still mutually coupled, and still what the
+asmdef-free gameplay PlayMode workaround needs), or reaches into that pair
 (directly or
 transitively) and so is blocked the same way `versus`/`analytics`/`Models/HighScoreModel` were.
 
@@ -325,6 +381,12 @@ is an exit consequence of 2b, not an early migration step.
 triangle. None of slices 1-10 touched that triangle (2b0's gate forbids it), so none of this phase's
 migrated assemblies are what these tests need. 2c cannot complete until the triangle itself is cut,
 which is not this phase's work - see 2b0's remeasurement above.
+
+**Still blocked after Slice 11 (2026-09-04).** `BasketBall` itself now lives in `Level5.Basketball`,
+but every file in the workaround folder that references it also references `GameStats`,
+`MatchController`, or `PlayerController` - all still `Assembly-CSharp`, since Slice 11 only cut
+basketball's own outbound edges and did not touch `player` or `game manager`. 2c's exit condition is
+unchanged: it needs `player`/`game manager` migrated too, not just basketball.
 
 #### 2d — Architecture guards and exit verification
 
