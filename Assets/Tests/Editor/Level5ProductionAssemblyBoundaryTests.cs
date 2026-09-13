@@ -11,7 +11,9 @@ using UnityEngine;
 ///
 /// Reads source as text rather than referencing it, the same trick <see cref="Level5GameManagerEdgeTests"/>
 /// uses: this file has no asmdef of its own, so it can see every folder - including the still-blocked
-/// player/basketball/game-manager triangle - without becoming part of the dependency graph it checks.
+/// basketball/game-manager legs (the player leg closed in Slice 51 - see
+/// <see cref="NoProductionSourceExistsDirectlyUnderThePlayerRootOutsideLevel5Player"/>) - without
+/// becoming part of the dependency graph it checks.
 ///
 /// The production asmdef list is discovered at run time (every runtime, non-test .asmdef under
 /// Assets/Scripts and Assets/Level5), not hard-coded, so this guard covers every future 2b slice
@@ -597,6 +599,57 @@ public class Level5ProductionAssemblyBoundaryTests
         Assert.That(
             typeof(PlayerRegistry).Assembly.GetName().Name,
             Is.EqualTo("Level5.Player"));
+    }
+
+    /// <summary>
+    /// AUD-012 Phase 2b, Slice 51: proves <c>PlayerStats</c> and <c>SelectedLoadout</c> - the last two
+    /// loose player-domain production types, deliberately left behind by Slice 50 as "non-target
+    /// trivial leaves" - actually compile into <c>Level5.Player</c>, the same identity check
+    /// <see cref="RemainingPlayerDomainTargetsCompileIntoLevel5Player"/> does for its 15 siblings. Pure
+    /// ownership moves: <c>PlayerStats</c> stays a live compatibility <c>MonoBehaviour</c> for old
+    /// scenes/prefabs that still serialize its MonoScript GUID (<c>a215fc91b23f9574fa89bf961cf9a25a</c>,
+    /// unchanged by the move); <c>SelectedLoadout</c> keeps its GUID
+    /// (<c>a64efc12b3c5482cb504cb0e6b557221</c>) too. This closes the player-root ownership boundary -
+    /// see <see cref="NoProductionSourceExistsDirectlyUnderThePlayerRootOutsideLevel5Player"/> for the
+    /// permanent invariant that follows from it.
+    /// </summary>
+    [Test]
+    public void FinalPlayerRootTypesCompileIntoLevel5Player()
+    {
+        const string expected = "Level5.Player";
+
+        Assert.That(typeof(PlayerStats).Assembly.GetName().Name, Is.EqualTo(expected));
+        Assert.That(typeof(SelectedLoadout).Assembly.GetName().Name, Is.EqualTo(expected));
+    }
+
+    /// <summary>
+    /// AUD-012 Phase 2b, Slice 51: the player-root ownership boundary this slice completes - every
+    /// production <c>.cs</c> beneath <c>Assets/Scripts/player/</c> is now owned by
+    /// <c>Assets/Scripts/player/Level5Player/</c>, with no loose file left directly under the player
+    /// root (<see cref="FinalPlayerRootTypesCompileIntoLevel5Player"/> moved the last two). Reuses
+    /// <see cref="EnumerateFilesUnder"/> the same way every other structural guard in this fixture
+    /// does, scoped to only the player root. The invariant intentionally describes the current
+    /// architecture, not a configurable repository-wide path-policy system - a future deliberate
+    /// player subassembly must update this guard explicitly.
+    /// </summary>
+    [Test]
+    public void NoProductionSourceExistsDirectlyUnderThePlayerRootOutsideLevel5Player()
+    {
+        string playerRoot = Path.Combine(ScriptsRoot, "player");
+        string level5PlayerPrefix = Path.Combine(playerRoot, "Level5Player").Replace('\\', '/') + "/";
+
+        List<string> offenders = EnumerateFilesUnder(new[] { playerRoot })
+            .Where(file => !file.Replace('\\', '/')
+                .StartsWith(level5PlayerPrefix, StringComparison.OrdinalIgnoreCase))
+            .Select(Level5TestSourceText.Relative)
+            .ToList();
+
+        Assert.That(
+            offenders,
+            Is.Empty,
+            "every production .cs beneath Assets/Scripts/player/ must be owned by "
+                + "Assets/Scripts/player/Level5Player/ - found loose file(s) directly under the player "
+                + "root:\n" + string.Join("\n", offenders));
     }
 
     /// <summary>
