@@ -37,7 +37,15 @@ public class PlayerHealthBar : MonoBehaviour
     /// <summary>
     /// Explicit composition of everything this HUD needs, from
     /// <c>GameLevelManager.BindPlayerHealthBarContext</c>, called once from
-    /// <c>GameLevelManager.Start()</c> after the primary human has been spawned. Replaces this HUD's
+    /// <c>GameLevelManager.Awake()</c> after the primary human has been spawned - not <c>Start()</c>:
+    /// this HUD's own <c>Start()</c> consumes the bound context synchronously to decide whether to
+    /// activate itself, and Unity does not order <c>Start()</c> across independent components, so
+    /// binding from <c>GameLevelManager.Start()</c> could race this component's <c>Start()</c> and
+    /// leave the HUD permanently deactivated for the match. Binding from <c>Awake()</c> guarantees this
+    /// call precedes every <c>Start()</c> in the scene; everything it reads is already final by then
+    /// (<c>PlayerHealth.Awake()</c> sets Health/Block/Special, and a human's
+    /// <c>CharacterProfile.playerDisplayName</c> is set synchronously by
+    /// <c>SpawnCoordinator.RegisterHuman</c> during that same <c>Awake()</c>). Replaces this HUD's
     /// former direct <c>MatchRuntime.Rules</c> read and its
     /// <c>GameLevelManager.instance.Player1</c>/<c>PlayerController1</c> reach-throughs. <paramref
     /// name="damageDisplayTextReader"/> is a live <see cref="Func{Text}"/> rather than a captured

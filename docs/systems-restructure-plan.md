@@ -4072,10 +4072,11 @@ moving) and moved source-identically. The other 7 required a dependency cut firs
   cycle without an enemy-specific abstraction on the player side.
 - **`PlayerHealthBar`** took the primary human's `PlayerHealth`, character display name and
   `ResolvedMatchRules`, plus a live `Func<Text>` damage-display-text reader, via one
-  `BindPrimaryHumanContext` call from a new `GameLevelManager.BindPlayerHealthBarContext`
-  (`GameLevelManager.Start()`, alongside the existing arena-context binds - this HUD is a
-  scene-authored UI singleton, not a per-participant component, so it is not spawned or bound
-  through `SpawnCoordinator`). The reader stays a live `Func`, not a captured `Text`, because
+  `BindPrimaryHumanContext` call from a new `GameLevelManager.BindPlayerHealthBarContext` (called
+  from `GameLevelManager.Awake()` - see the independent review follow-up below for why this moved
+  off `Start()` - this HUD is a scene-authored UI singleton, not a per-participant component, so it
+  is not spawned or bound through `SpawnCoordinator`). The reader stays a live `Func`, not a
+  captured `Text`, because
   `PlayerController.DamageDisplayValueText` is only populated inside that controller's own
   `Start()`, whose ordering relative to this bind is not guaranteed.
 - **`PlayerAnimationEvents`** took a projectile-spawn delegate (`BindProjectileSpawner`,

@@ -558,7 +558,7 @@ public sealed class SpawnCoordinator
         BindCallBallMatchRules(spawned);
         BindPlayerHealthMatchRules(spawned);
         BindPlayerAttackQueueContext(spawned);
-        BindPlayerCollisionsContext(spawned);
+        BindPlayerCollisionsContext(spawned, slot);
         BindPlayerAnimationEventsContext(spawned);
         registry.Add(identifier);
     }
@@ -766,23 +766,40 @@ public sealed class SpawnCoordinator
     }
 
     /// <summary>
-    /// AUD-012 Phase 2b: binds this coordinator's already-resolved <see cref="rules"/>, the human
-    /// spawn point's transform (the fall-respawn destination), and the <c>GameRules.killedOnIdle</c>
-    /// forwarding callback to the participant's own <see cref="PlayerCollisions"/>, from
-    /// <see cref="RegisterHuman"/> only - <see cref="PlayerCollisions"/> is the human-only collision
-    /// handler; <see cref="AutoPlayerCollisions"/> is its CPU twin, bound separately below. Replaces
-    /// that component's former direct <c>MatchRuntime.Rules</c> read and its
+    /// AUD-012 Phase 2b Slice 50a: binds this coordinator's already-resolved <see cref="rules"/>, this
+    /// human's own roster-slot spawn point (the fall-respawn destination), and the
+    /// <c>GameRules.killedOnIdle</c> forwarding callback to the participant's own
+    /// <see cref="PlayerCollisions"/>, from <see cref="RegisterHuman"/> only -
+    /// <see cref="PlayerCollisions"/> is the human-only collision handler;
+    /// <see cref="AutoPlayerCollisions"/> is its CPU twin, bound separately below. Replaces that
+    /// component's former direct <c>MatchRuntime.Rules</c> read and its
     /// <c>GameLevelManager.instance.Player1</c>/<c>PlayerSpawnLocation</c>/<c>GameRules.instance</c>
     /// reach-throughs. <c>GetComponentsInChildren</c>, not <c>GetComponent</c>: this component is
     /// authored on the hitbox child, not the participant root, mirroring how it resolves its own
     /// <c>PlayerIdentifier</c> via <c>GetComponentInParent</c>.
+    ///
+    /// <paramref name="slot"/> is <see cref="RegisterHuman"/>'s own roster slot for this participant,
+    /// resolved through <see cref="SpawnLocations.ForSlot"/> - the same slot-to-spawn mapping
+    /// <see cref="SpawnPlayers"/> already uses to place the participant in the first place. Slice 50
+    /// bound every human to <see cref="SpawnLocations.Player1"/> unconditionally, so a second local
+    /// human who fell off the level respawned at slot 0's spawn point instead of their own. A null
+    /// slot (no known production call site; only direct-construction tests exercise
+    /// <see cref="RegisterHuman"/> without one) falls back to <see cref="SpawnLocations.Player1"/>,
+    /// preserving the original single-human behavior rather than inventing a new destination. A slot
+    /// whose <c>ForSlot</c> result is missing from the scene binds a null destination, which
+    /// <see cref="PlayerCollisions.OnTriggerEnter"/> already treats as "do not teleport" - scene
+    /// validation (<see cref="SpawnLocations.Validate"/>) is what actually guarantees a required spawn
+    /// point exists, not this bind.
     /// </summary>
-    private void BindPlayerCollisionsContext(GameObject participant)
+    private void BindPlayerCollisionsContext(GameObject participant, PlayerSlot slot)
     {
+        GameObject respawnPoint = slot != null ? locations.ForSlot(slot.SlotId) : locations.Player1;
+        Transform respawnDestination = respawnPoint != null ? respawnPoint.transform : null;
+
         foreach (PlayerCollisions collisions in participant.GetComponentsInChildren<PlayerCollisions>(true))
         {
             collisions.BindMatchRules(rules);
-            collisions.BindFallRespawnDestination(locations.Player1 != null ? locations.Player1.transform : null);
+            collisions.BindFallRespawnDestination(respawnDestination);
             collisions.BindKilledOnIdleCallback(MarkKilledOnIdle);
         }
     }
@@ -792,6 +809,14 @@ public sealed class SpawnCoordinator
     /// <see cref="AutoPlayerCollisions"/> from <see cref="RegisterCpu"/> only. No
     /// <c>GameRules.killedOnIdle</c> callback: unlike its human twin, <see cref="AutoPlayerCollisions"/>
     /// never read that field.
+    ///
+    /// AUD-012 Phase 2b Slice 50a: deliberately still binds <see cref="SpawnLocations.Player1"/>
+    /// unconditionally, unlike its human twin's slot-aware destination since that slice. Not an
+    /// oversight - CPU fall-respawn is a separate, currently inert behavior:
+    /// <c>AutoPlayerCollisions.OnTriggerEnter</c>'s fall branch tests <c>CompareTag("playerHitbox")</c>,
+    /// but authored CPU hitboxes carry <c>autoPlayerHitbox</c>, so this destination is never actually
+    /// reached today. Giving CPUs a per-slot destination here requires its own intended-behavior
+    /// decision (and likely the tag fix first), not a mechanical copy of the human fix.
     /// </summary>
     private void BindAutoPlayerCollisionsContext(GameObject participant)
     {
