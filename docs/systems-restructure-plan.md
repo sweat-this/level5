@@ -4202,6 +4202,81 @@ only; no other runtime logic, serialized data, or public contract changed.
 siblings if any remain); the manual Play Mode verification bullet from Slice 2's exit criteria has
 still not been performed for this slice.
 
+**Slice 51 (2026-09-13, audited against `dev` SHA `c601c465b777bffbdf4733486b93cdccb8c32268`, matching
+Slice 50a/PR #144, Unity `6000.5.7f1 (017862109af0)`): final player-root closeout -
+`PlayerStats`/`SelectedLoadout` moved into `Level5.Player`, no behavior change.**
+
+At this SHA, `PlayerStats.cs` and `SelectedLoadout.cs` were confirmed the only production `.cs` files
+directly under `Assets/Scripts/player/`, exactly as Slice 50 left them.
+
+Moved, source and `.meta` together via `git mv` (git recognized both as pure renames, zero content
+diff):
+
+- `Assets/Scripts/player/PlayerStats.cs`/`.cs.meta` -> `Assets/Scripts/player/Level5Player/PlayerStats.cs`/`.cs.meta`,
+  GUID `a215fc91b23f9574fa89bf961cf9a25a` unchanged.
+- `Assets/Scripts/player/SelectedLoadout.cs`/`.cs.meta` -> `Assets/Scripts/player/Level5Player/SelectedLoadout.cs`/`.cs.meta`,
+  GUID `a64efc12b3c5482cb504cb0e6b557221` unchanged.
+
+Both types depend on nothing but `UnityEngine` (`PlayerStats`) or `System`/`System.Collections.Generic`
+(`SelectedLoadout`) - already dependency-closed, so the move needed no new
+`Level5.Player.asmdef` reference and introduced no assembly cycle. A project-wide search found every
+non-self reference to `PlayerStats`/`SelectedLoadout` in production source is inside a comment
+(`BasketBall.cs`, `BasketBallAuto.cs`, `MatchHudPresenter.cs`, `PickupObject.cs`, `TouchInputController.cs`,
+`DevFunctions.cs`) or an unrelated same-named identifier (`StartMenuTextUiObjects.PlayerStatsNumbers`);
+no live `Assembly-CSharp` (or any assembly) call site depends on either type today.
+
+`PlayerStats` prefab/scene compatibility: the GUID is still referenced by `player_christy.prefab`,
+`auto_players/auto_player_drblood.prefab`, and `level_01_scrapyard_cpu_defense_test.unity`. Since the
+`.meta` file (and therefore the GUID) moved unchanged, all three references resolve identically after
+the move; no prefab or scene was opened, resaved, or otherwise touched. `SelectedLoadout` managed-serialization
+audit: a targeted search for `[SerializeReference]`, `Type.GetType`, `AssemblyQualifiedName`,
+`Assembly.Load`/`LoadFrom`, and Newtonsoft `TypeNameHandling` across project-authored source found no
+mechanism that names `SelectedLoadout` by string/reflection; it is an ordinary `[Serializable]` plain
+class with no persisted assembly-qualified name, so the move carries no managed-serialization risk.
+
+Final `Level5.Player.asmdef` dependency state: unchanged from Slice 50 -
+`Level5.Core`/`Level5.Combat`/`Level5.Constants`/`Level5.Basketball`/`Level5.Utility`/`Level5.Input`/`Level5.Audio`.
+
+New permanent invariant added to `Level5ProductionAssemblyBoundaryTests`:
+`FinalPlayerRootTypesCompileIntoLevel5Player` (assembly-identity check for both types, the same
+pattern as every other Slice 2b type) and
+`NoProductionSourceExistsDirectlyUnderThePlayerRootOutsideLevel5Player` (recurses
+`Assets/Scripts/player/`, asserts every `.cs` file lives under `Level5Player/`, reusing this fixture's
+existing `EnumerateFilesUnder` helper). This closes **player-domain Phase 2b**: every production `.cs`
+beneath `Assets/Scripts/player/` now compiles into `Level5.Player`, and zero loose files remain
+directly under the player root.
+
+**Freshly measured remaining AUD-012 Phase 2 blockers (this SHA, player domain excluded as closed):**
+
+- `Assets/Scripts/game manager/` still has 11 loose production `.cs` files compiling into
+  `Assembly-CSharp` outside the `Level5Match` subfolder: `ArenaBootstrap.cs`, `GameLevelManager.cs`,
+  `GameRules.cs`, `LevelRuntimeContext.cs`, `MatchHudPresenter.cs`, `MatchRuntime.cs`, `Pause.cs`,
+  `PauseUiObjects.cs`, `SpawnCoordinator.cs`, `Timer.cs`, `messageLog.cs`. This is the one remaining
+  leg of the `player`/`basketball`/`game manager` triangle Phase 1 cut and Slice 2's exit criteria name
+  as blocked; migrating it is the next Phase 2b work and was deliberately not started in this slice.
+- `Assets/Scripts/basketball/` is **not** a blocker, corrected from an earlier draft of this section:
+  unlike `player`'s and `game manager`'s asmdefs, `Level5.Basketball.asmdef` sits directly in
+  `Assets/Scripts/basketball/` itself rather than a `Level5Basketball` subfolder, so asmdef ownership
+  (recursive over the folder the `.asmdef` lives in) already covers every `.cs` file physically in that
+  folder - `BasketBall.cs`, `BasketBallAuto.cs`, `BasketBallShotMade.cs`,
+  `BasketBallShotMadeCollision.cs`, `BasketBallShotMarker.cs`, `BasketballShotPipeline.cs`,
+  `BasketballState.cs`, `GameStats.cs`, `IBasketballParticipantStateProvider.cs`,
+  `IBasketballRuntime.cs`, `RangeMeter.cs`, `ShotMeter.cs` all already compile into `Level5.Basketball`,
+  confirmed both by that folder adjacency and by the pre-existing, passing
+  `BasketballProductionTypesCompileIntoLevel5Basketball` identity check (`BasketBall`, `GameStats`,
+  `BasketBallShotMarker`) plus `NoMigratedProductionAssemblyReachesIntoAssemblyCSharp` (zero
+  `Assembly-CSharp` reach-out from any file in that folder). The basketball leg of AUD-012's
+  player/basketball/game-manager triangle is therefore already closed on source ownership; nothing
+  further to migrate there.
+- The manual Play Mode verification bullet from Slice 2's exit criteria remains outstanding, as noted
+  above for Slice 50.
+
+Overall AUD-012 Phase 2 is **not** complete: the `game manager` leg above remains in `Assembly-CSharp`.
+
+**Production behavior impact:** none. This slice is a pure compile-time ownership move - no field,
+method, serialized value, prefab, scene, or ScriptableObject was changed; `PlayerStats.Money` and
+`SelectedLoadout`'s fields keep identical names, types, and initialization semantics.
+
 ### Phase 3 — Converge the human/CPU pairs
 
 Not "one type". The pairs carry real, intended differences: the human path has an analytics call and
