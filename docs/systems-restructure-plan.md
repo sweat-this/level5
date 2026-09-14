@@ -4414,6 +4414,107 @@ closed):** `ArenaBootstrap.cs`, `GameLevelManager.cs`, `GameRules.cs`, `LevelRun
 `Level5Match` subfolder, one fewer than Slice 51's count of 11. `Assets/Scripts/basketball/` remains not
 a blocker (unchanged from Slice 51's finding). Overall AUD-012 Phase 2 is **not** complete.
 
+**Slice 53 (2026-09-13, audited against `dev` SHA `4eec244acf153cb74a3a6f56c693e599980febc3`, matching
+Slice 52/PR #146, Unity `6000.5.7f1 (017862109af0)`): `LevelRuntimeContext` and `ArenaBootstrap` moved
+into `Level5.Match` source-identically.**
+
+**Dependency closure.** Both targets were already dependency-closed at this SHA, confirmed by reading
+base classes, field/property/parameter/return types, generics, attributes and member accesses (not just
+`using` directives) - `see cref` was checked separately and neither file had one; both used only plain
+`<c>` doc tags naming `GameLevelManager`, so no documentation-only edit was needed either.
+`ArenaBootstrap` needed only `UnityEngine` and `Level5.Core.Match` (already referenced). `LevelRuntimeContext`
+needed `UnityEngine`, `Level5.Core.Match`, and the concrete `PlayerRegistry` it exposes as `Players` -
+the one type still outside what `Level5.Match` referenced. `MatchConfiguration`/`ResolvedMatchRules`/
+`PlayerRoster`/`MatchEndReason` all resolve through the already-referenced `Level5.Core.Match`;
+`MatchController`/`MatchRuntime` already compile into `Level5.Match` itself (Slice 12/Slice 52). No
+other `Assembly-CSharp` executable dependency existed on either type at this SHA.
+
+**The move.** Both `.cs`/`.meta` pairs moved via `git mv` into
+`Assets/Scripts/game manager/Level5Match/`, byte-for-byte: no executable change to either file, no
+change to `GameLevelManager`'s composition (it still resolves `LevelRuntimeContext` via
+`FindAnyObjectByType<LevelRuntimeContext>() ?? gameObject.AddComponent<LevelRuntimeContext>()`, still
+calls `context.AdoptPlayerRegistry(registry)` once, and still calls `ArenaBootstrap.Apply`/
+`FindRimVector`/`HideDuplicateCharacterActors` at the same call sites). GUIDs preserved exactly:
+`LevelRuntimeContext` keeps `56906c34a98e4bf49ad23df94887af50`; `ArenaBootstrap` keeps
+`fe819971be3e00340a49c45f42895611`. A repository-wide search for both GUIDs across `.unity`/`.prefab`/
+`.asset` files found no serialized reference to either, at this SHA as at the audited baseline, so no
+scene/prefab/ScriptableObject required any change.
+
+**`Level5.Match.asmdef`.** Gained one direct reference: `Level5.Player`, for `PlayerRegistry`.
+
+```text
+before: Level5.Core
+after:  Level5.Core, Level5.Player
+```
+
+No transitive references were added explicitly, and the compiler requested nothing beyond this one edge.
+
+**Cycle and layering verification.** `Level5.Player`'s own references (`Level5.Core`, `Level5.Combat`,
+`Level5.Constants`, `Level5.Basketball`, `Level5.Utility`, `Level5.Input`, `Level5.Audio`) were each read
+directly, and none of them - nor anything those in turn reference (`Level5.Basketball` -> `Level5.Core`/
+`Level5.Utility`/`Level5.Audio`/`Level5.Constants`/`Level5.Misc`; `Level5.Utility` -> `Level5.Core`;
+`Level5.Input` -> `Unity.InputSystem`) - has any path back to `Level5.Match`. `Level5.Versus` is the only
+other production asmdef that already referenced `Level5.Match`, and it sits outside `Level5.Player`'s
+reference graph entirely, so it adds no cycle risk either. `Level5.Match -> Level5.Player` is therefore
+acyclic, and matches this plan's own recorded layering finding (`game manager -> player` is the direction
+this migration keeps; `player -> game manager` is the direction it cuts) - `LevelRuntimeContext` and
+`ArenaBootstrap` are scene/runtime match infrastructure exactly as this plan already classifies
+`ActiveMatch`/`MatchRuntime`/`MatchController`, so the direct dependency is layer-appropriate, not just
+cycle-free.
+
+**No new abstraction.** `LevelRuntimeContext.Players` keeps exposing the concrete `PlayerRegistry` it
+always has; no `IPlayerRegistry` or other seam was introduced; `PlayerRegistry` itself did not move.
+
+**Registry and lifecycle preserved exactly.** `Awake()` still creates a fresh, empty `PlayerRegistry`
+before anything can adopt one; `AdoptPlayerRegistry` still only replaces `Players` when given a non-null
+registry (a null call is a no-op, not a clear); `GameLevelManager` still calls it exactly once with the
+registry its own spawning fills, so the exposed registry keeps GameLevelManager's reference identity, not
+a copy. `[DefaultExecutionOrder(-100)]`, the static `instance` duplicate-guard, `OnDestroy`'s
+`instance = null` clear, and `RequestMatchEnd`'s delegation to a resolved `MatchController` are all
+unchanged.
+
+**Focused tests added.** `Level5LevelRuntimeContextTests` (8 tests, `Assets/Tests/Editor/`) covers: the
+configured path capturing `ActiveMatch`'s own `Rules`/`Roster` by reference; the registry existing,
+empty, before any adoption; adoption replacing the pre-Awake default with the exact supplied instance
+(not a copy); a null adoption leaving the active registry in place; `OnDestroy` clearing the static
+`instance`; `RequestMatchEnd` delegating to a resolved `MatchController` (and returning `false` with none
+present); and - added during independent code review, see below - the `FindAnyObjectByType` fallback
+branch of the same resolution when the controller is not on the context's own GameObject (the shape
+`GameLevelManager` actually relies on, since it never assigns the serialized `matchController` field
+before creating/finding the context). One finding surfaced while writing these: `[DefaultExecutionOrder(-100)]` -
+`LevelRuntimeContext`'s only user in the whole project - defers Unity's own `Awake()` dispatch past a
+synchronous `AddComponent` call in this EditMode batch harness, unlike the plain-order MonoBehaviours
+other fixtures add and read from immediately (e.g. `GameRules` in
+`Level5BasketballShotMarkerSessionTests`). The fixture drives `Awake()`/`OnDestroy()` explicitly via
+reflection instead, the same way `Level5BasketBallMatchRulesTests.InvokeStart` already drives `Start()`
+for the same class of reason - a test-harness quirk, not a production behavior change.
+`Level5ProductionAssemblyBoundaryTests.SceneRuntimeBridgeTypesCompileIntoLevel5Match` is the
+assembly-identity check, the same pattern as every other Slice 2b type.
+
+**Independent code review pass, before merge.** Found and fixed one coverage gap: the initial six tests
+only exercised `MatchController` resolution via the same-GameObject `GetComponent` branch, never the
+`FindAnyObjectByType` fallback - the branch production actually depends on. Added
+`Awake_ResolvesAMatchControllerElsewhereInTheSceneWhenNotOnItsOwnGameObject` to close it, and a doc-comment
+note on `InvokeAwake` recording that a future Unity fix to the deferred-dispatch quirk above would cause
+a harmless double invocation, not a silent one, given every field `Awake()` currently sets is an
+idempotent reassignment.
+
+**Validation.** Focused EditMode run (`Level5LevelRuntimeContextTests`,
+`Level5ProductionAssemblyBoundaryTests`, `Level5MatchLifecycleTests`, `Level5MatchArchitectureTests`,
+`Level5PlayerControllerArenaContextTests`, `Level5MatchRuntimeLegacyFallbackTests`, 94 tests): green. Full
+EditMode: 1258 (up from 1249 - the 8 new `LevelRuntimeContext` tests plus the new boundary test), all
+green. Full PlayMode: green (17 tests, unchanged). `scripts/validate-repository.ps1`: green.
+
+**Remaining loose `game manager` files (freshly measured, this SHA):** `GameLevelManager.cs`,
+`GameRules.cs`, `MatchHudPresenter.cs`, `Pause.cs`, `PauseUiObjects.cs`, `SpawnCoordinator.cs`,
+`Timer.cs`, `messageLog.cs` - 8 loose production `.cs` files, two fewer than Slice 52's count of 10.
+Neither target needed to be left behind; both moved in this slice. Overall AUD-012 Phase 2 is **not**
+complete.
+
+**Production behavior impact:** none intended. Both types moved byte-for-byte; `GameLevelManager`'s
+composition, `LevelRuntimeContext`'s lifecycle/registry semantics, and `ArenaBootstrap`'s scene setup
+(including the preserved battle-royal/no-configuration goal-hiding oddity) are all unchanged.
+
 ### Phase 3 — Converge the human/CPU pairs
 
 Not "one type". The pairs carry real, intended differences: the human path has an analytics call and

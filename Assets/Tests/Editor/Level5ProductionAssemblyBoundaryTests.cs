@@ -685,6 +685,26 @@ public class Level5ProductionAssemblyBoundaryTests
             Is.EqualTo("Level5.Match"));
     }
 
+    /// <summary>
+    /// AUD-012 Phase 2b, Slice 53: proves the scene-runtime bridge types - <c>LevelRuntimeContext</c>
+    /// (the gameplay scene's composition root) and <c>ArenaBootstrap</c> (its mode-driven arena
+    /// setup), moved together as one dependency-closed batch - actually compile into
+    /// <c>Level5.Match</c>, the same identity check <see cref="MatchRuntimeCompilesIntoLevel5Match"/>
+    /// does for <c>MatchRuntime</c>. <c>LevelRuntimeContext</c> needed a new direct
+    /// <c>Level5.Match</c> -&gt; <c>Level5.Player</c> reference for the concrete <c>PlayerRegistry</c>
+    /// it exposes; <c>ArenaBootstrap</c> needed none. Both moved source-identically, and their caller,
+    /// <c>GameLevelManager</c>, stays in <c>Assembly-CSharp</c> and reaches them through
+    /// <c>autoReferenced</c>.
+    /// </summary>
+    [Test]
+    public void SceneRuntimeBridgeTypesCompileIntoLevel5Match()
+    {
+        const string expected = "Level5.Match";
+
+        Assert.That(typeof(LevelRuntimeContext).Assembly.GetName().Name, Is.EqualTo(expected));
+        Assert.That(typeof(ArenaBootstrap).Assembly.GetName().Name, Is.EqualTo(expected));
+    }
+
     [Test]
     public void NoProductionAssemblyReferencesAKnownEditorOnlyPackageAssembly()
     {

@@ -2,7 +2,8 @@
     "name": "Level5.Match",
     "rootNamespace": "",
     "references": [
-        "Level5.Core"
+        "Level5.Core",
+        "Level5.Player"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],
