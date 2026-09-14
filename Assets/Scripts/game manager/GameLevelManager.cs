@@ -115,7 +115,16 @@ public class GameLevelManager : MonoBehaviour, IGroundHeightProvider, IPlayerMat
             joystick = GameObject.FindGameObjectWithTag("joystick").GetComponentInChildren<FloatingJoystick>();
         }
 
-        _spawnCoordinator = new SpawnCoordinator(_spawnLocations, registry, _rules, _roster, _modeId, this, TryResolveCampaignCpuPrefab);
+        _spawnCoordinator = new SpawnCoordinator(
+            _spawnLocations,
+            registry,
+            _rules,
+            _roster,
+            _modeId,
+            this,
+            TryResolveCampaignCpuPrefab,
+            SpawnProjectileForAnimationEvents,
+            HasAutoPlayerForAnimationEvents);
 
         try
         {
@@ -272,6 +281,33 @@ public class GameLevelManager : MonoBehaviour, IGroundHeightProvider, IPlayerMat
 
         prefab = levels[levelIndex].CpuPlayer;
         return true;
+    }
+
+    /// <summary>
+    /// AUD-012 Phase 2b Slice 55: the composition adapter <see cref="SpawnCoordinator"/> now forwards to
+    /// every spawned <see cref="PlayerAnimationEvents"/> instead of calling <c>ProjectilePool.Spawn</c>
+    /// itself. <c>ProjectilePool</c> lives in loose <c>Assets/Scripts/projectile/</c> (<c>Assembly-CSharp</c>,
+    /// not <c>Level5.Pooling</c>), so this is the narrowest existing owner for the call - not a new
+    /// <c>ProjectilePool</c> consumer, this class already sits in the same assembly. Preserves the exact
+    /// prefab/position/rotation arguments and pooled-spawn return value the former inline call had; no
+    /// pooling behavior is touched.
+    /// </summary>
+    private static GameObject SpawnProjectileForAnimationEvents(GameObject prefab, Vector3 position, Quaternion rotation)
+    {
+        return ProjectilePool.Spawn(prefab, position, rotation);
+    }
+
+    /// <summary>
+    /// AUD-012 Phase 2b Slice 55: the composition adapter <see cref="SpawnCoordinator"/> now forwards to
+    /// every spawned <see cref="PlayerAnimationEvents"/> instead of resolving
+    /// <c>GameLevelManager.instance.AutoPlayer</c> itself. Reads the static <see cref="instance"/> field
+    /// live on every call, exactly as the former direct <c>GameLevelManager.instance.AutoPlayer</c> read
+    /// did - deliberately not a captured reference to <c>this</c>, so the check still observes the
+    /// current manager if the static is ever replaced or cleared, matching pre-slice behavior exactly.
+    /// </summary>
+    private static bool HasAutoPlayerForAnimationEvents()
+    {
+        return instance != null && instance.AutoPlayer != null;
     }
 
     private float setTerrainHeight()

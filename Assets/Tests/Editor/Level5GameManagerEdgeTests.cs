@@ -188,6 +188,36 @@ public class Level5GameManagerEdgeTests
             + "docs/phase1d-game-manager-edge-plan.md:\n" + string.Join("\n", offenders));
     }
 
+    /// <summary>
+    /// AUD-012 Phase 2b Slice 55 permanent guard: <c>SpawnCoordinator</c> no longer implements the
+    /// projectile-spawn/has-auto-player callbacks it hands to <c>PlayerAnimationEvents</c> itself - it
+    /// only distributes the <c>projectileSpawner</c>/<c>hasAutoPlayerReader</c> delegates it was
+    /// constructed with (see <c>GameLevelManager.SpawnProjectileForAnimationEvents</c>/
+    /// <c>HasAutoPlayerForAnimationEvents</c>). Uses <see cref="Level5TestSourceText.StripCommentsAndLiterals"/>,
+    /// not this file's own comment-only <see cref="StripComments"/>: several of <c>SpawnCoordinator.cs</c>'s
+    /// own <c>Debug.LogError</c> messages spell "GameLevelManager" inside a string literal (e.g. "GameLevelManager
+    /// missing required player or basketball spawn locations."), which a comment-only strip would still
+    /// see as a false-positive hit.
+    /// </summary>
+    [Test]
+    public void SpawnCoordinatorHasNoProjectilePoolOrGameLevelManagerReferences()
+    {
+        string file = EnumerateGameManagerScripts()
+            .FirstOrDefault(path => Path.GetFileName(path).Equals("SpawnCoordinator.cs", StringComparison.OrdinalIgnoreCase));
+        Assert.IsNotNull(file, "SpawnCoordinator.cs not found under " + GameManagerRoot);
+
+        string text = Level5TestSourceText.StripCommentsAndLiterals(File.ReadAllText(file));
+
+        Assert.That(text, Does.Not.Match(@"\bProjectilePool\b"),
+            "SpawnCoordinator must have zero executable ProjectilePool references - projectile "
+            + "spawning must go through the bound projectileSpawner delegate forwarded to "
+            + "PlayerAnimationEvents, supplied by GameLevelManager.SpawnProjectileForAnimationEvents.");
+        Assert.That(text, Does.Not.Match(@"\bGameLevelManager\b"),
+            "SpawnCoordinator must have zero executable GameLevelManager references - the "
+            + "has-auto-player check must go through the bound hasAutoPlayerReader delegate forwarded "
+            + "to PlayerAnimationEvents, supplied by GameLevelManager.HasAutoPlayerForAnimationEvents.");
+    }
+
     [Test]
     public void TheSpelledTypeAllowlistHasNoStaleEntries()
     {
