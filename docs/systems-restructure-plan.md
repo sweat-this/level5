@@ -5208,6 +5208,152 @@ unguarded-dereference failure mode if `GameRules` is ever absent; direct-scene e
 `LoadedData`; CPU collision handling is untouched; every other `SpawnCoordinator` responsibility is
 untouched.
 
+**Slice 58 (2026-09-14, audited against `dev` SHA `c4fdaea180906eedfd3c5598e113f97de9da8659`, matching
+Slice 57/PR #151, Unity `6000.5.7f1 (017862109af0)`): moves `SpawnCoordinator` into `Level5.Match`,
+resolving the one remaining `Level5.MenuStart` direction issue by neutralizing the cheerleader "none"
+sentinel first.**
+
+**Re-audit.** Re-read `SpawnCoordinator.cs` in full and grepped it for every known former blocker
+(`LoadedData`, `GameRules`, `GameLevelManager`, `ProjectilePool`, `AnaylticsManager`,
+`BehaviorNpcCritical`, `GameOptions`, `CameraManager`, `SniperManager`) - every hit is inside an XML
+doc comment (`<c>...</c>`) or a `Debug.LogError` string literal, none executable. Confirmed the sole
+production construction site remains `GameLevelManager.Awake` (`Assets/Scripts/game
+manager/GameLevelManager.cs:118`, repository-wide search for `new SpawnCoordinator(`). Confirmed the
+asmdef graph: `Level5.Match` referenced only `Level5.Core`/`Level5.Player`; `Level5.Basketball`
+references `Level5.Core`/`Level5.Utility`/`Level5.Audio`/`Level5.Constants`/`Level5.Misc`;
+`Level5.Constants` references nothing; `Level5.MenuStart` referenced only `Unity.TextMeshPro` - adding
+`Level5.Match -> Level5.Basketball`/`Level5.Constants` and `Level5.MenuStart -> Level5.Core` both stay
+acyclic (neither target references back).
+
+**The sentinel fix.** Added `CheerleaderSelection.LegacyNoneObjectName` (`"none"`) to the existing
+`Level5.Core.Match` cheerleader-selection contract (`Assets/Level5/Core/Match/CharacterSelection.cs`).
+`CheerleaderProfile.NoneObjectName` (`Level5.MenuStart`) becomes a compatibility alias -
+`public const string NoneObjectName = Level5.Core.Match.CheerleaderSelection.LegacyNoneObjectName;` -
+not a second declaration; `CheerleaderSelection.None` is untouched, a completely separate sentinel (the
+typed "no cheerleader selected" value vs. this string's "the authored default object name"), per the
+implementation prompt's explicit instruction not to conflate them. `Level5.MenuStart.asmdef` gained one
+reference, `Level5.Core` - legal direction (`Level5.MenuStart -> Level5.Core`), and the one direction
+that must never exist (`Level5.Match -> Level5.MenuStart`) still does not.
+`SpawnCoordinator.SpawnCheerleader`'s "none" check now reads `CheerleaderSelection.LegacyNoneObjectName`
+instead of `CheerleaderProfile.NoneObjectName` - same string, same `OrdinalIgnoreCase` comparison, zero
+behavior change.
+
+**The move.** `SpawnCoordinator.cs`/`.meta` moved into `Assets/Scripts/game manager/Level5Match/`,
+GUID `335efcf1ed4b69f4e988210235b8fe6d` unchanged, global namespace and type name unchanged, every
+public API unchanged. `Level5.Match.asmdef` gained two direct references, `Level5.Basketball` and
+`Level5.Constants` - both proven from current source (the `BasketBall`/`BasketBallAuto`/
+`BasketBallState`/`GameStats`/`IBasketballRuntime`/`RangeMeter`/`ShotMeter`/`Constants` types
+`SpawnCoordinator` actually uses), not assumed from the implementation prompt's "expected additions" hint.
+`Level5.MenuStart` was never added to `Level5.Match.asmdef` - the sentinel fix above removed the need.
+
+**Documentation-only reverse references.** `cref="SpawnCoordinator` appears in `Level5.Basketball`
+files (`BasketBall.cs` et al.) and `GameRules.cs`. The `Level5.Basketball` hits were already
+unresolvable before this move (a custom asmdef cannot reference the predefined `Assembly-CSharp`
+`SpawnCoordinator` compiled into, before this slice) and remain exactly as unresolvable after it
+(`Level5.Basketball` still does not reference `Level5.Match`) - status quo unchanged, so left as
+pre-existing documentation debt rather than "fixed" by this slice inventing a reverse edge that was
+never implied. The `GameRules.cs` hit needs no change: `GameRules.cs` itself has no covering `.asmdef`
+(still `Assembly-CSharp`), which can reference any custom assembly already.
+
+**Compiler-backed ownership.** Added `SpawnCoordinatorCompilesIntoLevel5Match`
+(`Level5ProductionAssemblyBoundaryTests.cs`), matching the identity-check pattern every prior 2b move
+uses.
+
+**Validation.** Full EditMode, headless Unity `6000.5.7f1`: 1309/1309 green (up from 1308 - the one
+net-new identity test). Full PlayMode: 17/17 green, unchanged.
+
+**Review pass 1 (correctness/lifecycle/serialization).** `SpawnCoordinator` is a plain sealed class,
+never a `MonoBehaviour` - no scene/prefab component references it directly, so its move carries no
+serialized-reference risk of its own (only its GUID, preserved, matters for any future reflective
+lookup). No Awake/Start/Update timing exists to change. No null guard was added or removed anywhere in
+this slice - only the "none" sentinel's source constant changed identity, not its value or comparison.
+
+**Review pass 2 (architecture/scope).** No new service locator, DI container or generic interface. The
+neutral constant lives on the existing `CheerleaderSelection` class, not a new type. No unrelated
+cleanup: `CheerleaderProfile`'s other members, `CheerleaderSelection.None`, and every other
+`SpawnCoordinator` responsibility are untouched.
+
+**Fresh dependency count: zero `Assembly-CSharp`, zero `Level5.MenuStart`.** `SpawnCoordinator`'s
+custom-assembly dependencies are now exactly `Level5.Core`, `Level5.Player`, `Level5.Basketball`,
+`Level5.Constants` - all legal, all direct.
+
+**Production behavior impact:** none. The "none" cheerleader check is semantically byte-identical (same
+string, same comparison); every other responsibility (spawning, registration, binding) is source-
+identical, only relocated.
+
+**Incidental scope note (corrected here, not by rewriting the commit):** this slice's commit
+(`AUD-012 Phase 2b Slice 58`) also physically moved `messageLog.cs` and `PauseUiObjects.cs` into
+`Level5Match/`, because both had already been staged by their own `git mv` before the commit was made
+and the targeted `git add` for the SpawnCoordinator unit did not exclude them. Neither had its own
+identity test or a post-move validation run at commit time - only `SpawnCoordinator`'s move had been
+validated. See Slice 59 immediately below, which closes that gap. Recorded here rather than amending
+the prior commit, per this repository's git policy of new commits over rewritten history.
+
+**Slice 59 (2026-09-14, same `dev` position as Slice 58 - no intervening commit changed either file):
+certifies `messageLog` and `PauseUiObjects`, the two dependency-clean serialized-UI leaves moved
+incidentally by Slice 58's commit, with their own identity coverage and a dedicated validation pass.**
+
+**Why these two.** Both were named explicitly in the Phase 2b Phase C implementation prompt as "known
+examples to re-audit early": dependency-clean (only `System`/`UnityEngine`/`UnityEngine.UI`) but
+authored onto `Resources/Prefabs/critical/GameManager.prefab` - `PauseUiObjects` also onto three scenes
+that author their own inline `Pause` (`level_17_rumble_pit.unity`, `level_18_aveb2.unity`,
+`minigame_racing.unity`) - so serialized compatibility, not dependency closure, is the actual gate.
+
+**Serialized-reference audit.** GUID search across the repository: `messageLog`
+(`3d10fa061130e9349807fe521f924bac`) appears only on `GameManager.prefab` and the standalone
+`messageDisplay.prefab`, plus the same three scenes; the type name `messageLog` is never referenced
+from any other `.cs` file (no `messageLog.instance` reader exists anywhere in `Assets/Scripts` -
+confirmed by repository-wide search - it is a fully self-contained component, wired only through
+Unity's own serialized-component binding, not called into from other code). `PauseUiObjects`
+(`de200191bf884016880301428fa0a7fd`) appears on the same prefab and scenes, plus is referenced by name
+from `Assets/Level5/Editor/MenuUiObjectsWiring.cs` (an Editor-only one-off wiring tool),
+`Pause.cs` (`Assembly-CSharp`, legal), and two Editor test files - all either Editor-assembly or
+`Assembly-CSharp`, both of which may reference any custom assembly already.
+
+**The `m_EditorClassIdentifier` finding.** Every authored `PauseUiObjects` instance (the prefab and all
+three scenes) carries `m_EditorClassIdentifier: Assembly-CSharp::PauseUiObjects` - the exact
+`AssemblyName::FullTypeName` format also seen on the built-in `Volume`
+(`Unity.RenderPipelines.Core.Runtime::UnityEngine.Rendering.Volume`) and
+`UniversalAdditionalCameraData`
+(`Unity.RenderPipelines.Universal.Runtime::...UniversalAdditionalCameraData`) components in the same
+files. `messageLog`'s own instances carry no such field (empty). Traced to `MenuUiObjectsWiring.WirePause`/
+`WirePauseInScene`, both of which call `host.AddComponent<PauseUiObjects>()` from Editor script code
+(`AddOrGet<T>`) rather than through the Editor's normal "Add Component" UI flow - the same
+scripted-add code path that, empirically, is the one that populates this field for a user script. This
+is a secondary identifier Unity's own serializer writes for extra safety in certain add-component code
+paths; the primary resolution path for a normal user script (unlike the render-pipeline components
+above, which do not ship a discoverable `.meta` GUID at all and rely on this field entirely) is
+`m_Script`'s GUID, unchanged by this move. Not hand-edited: no supported repository tooling makes
+editing authored serialized YAML the sanctioned route, and the field going stale after an assembly move
+is the same already-tolerated condition the two built-in components already demonstrate for their own
+(immutable, package-owned) identifiers.
+
+**Compiler-backed ownership.** Added `SerializedManagerUiLeavesCompileIntoLevel5Match`
+(`Level5ProductionAssemblyBoundaryTests.cs`), asserting both types compile into `Level5.Match`.
+
+**Validation.** Full EditMode, headless Unity `6000.5.7f1`: 1310/1310 green (up from 1309 - the one
+net-new identity test), including `Level5MenuUiObjectsTests.PauseUiObjectsDoesNotRequireTheFooter` and
+its sibling `PauseUiObjects`/`messageLog` cases, all passing unmodified; the batch log carries zero
+"missing script"/"could not be found" warnings. Full PlayMode: 17/17 green, unchanged.
+`scripts/validate-repository.ps1`: passed.
+
+**Review pass 1 (correctness/lifecycle/serialization).** No Awake/Start/Update timing changed in either
+type - both moved source-identically, byte-for-byte. No serialized field, public API, or GUID changed.
+The `m_EditorClassIdentifier` finding above was investigated rather than dismissed or silently edited;
+the empirical evidence (zero missing-script warnings, the focused `PauseUiObjects` test suite passing,
+every authored reference still resolving) is the load-bearing proof, not an assumption about Unity's
+internals.
+
+**Review pass 2 (architecture/scope).** No new UI-domain assembly was created for two leaf types - both
+join the existing `Level5.Match` asmdef that already owns the rest of the migrated game-manager
+surface, consistent with "reuse an existing domain boundary before adding a new one." No unrelated
+cleanup: neither file's content changed at all, only its location and owning assembly.
+
+**Fresh dependency count:** both types have zero `Assembly-CSharp` and zero custom-assembly executable
+dependencies of their own (pure `UnityEngine`/`UnityEngine.UI`/`System`).
+
+**Production behavior impact:** none. Both types are source-identical to their pre-move content.
+
 ### Phase 3 — Converge the human/CPU pairs
 
 Not "one type". The pairs carry real, intended differences: the human path has an analytics call and
