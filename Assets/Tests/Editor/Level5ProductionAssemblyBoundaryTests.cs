@@ -669,6 +669,22 @@ public class Level5ProductionAssemblyBoundaryTests
             Is.EqualTo("Level5.Combat"));
     }
 
+    /// <summary>
+    /// AUD-012 Phase 2b, Slice 52: proves <c>MatchRuntime</c> - dependency-closed by replacing its
+    /// direct <c>GameOptions</c>/<c>Modes</c> reads with a <c>LegacyMatchRuntimeSnapshot</c> resolved
+    /// through one installable reader (<c>GameOptions.CaptureMatchRuntimeSnapshot</c>, still
+    /// <c>Assembly-CSharp</c>, installed by that file's own <c>RuntimeInitializeOnLoadMethod</c>
+    /// bootstrap) - actually compiles into <c>Level5.Match</c>, the same identity check
+    /// <see cref="ActiveMatchCompilesIntoLevel5Match"/> does for <c>ActiveMatch</c>.
+    /// </summary>
+    [Test]
+    public void MatchRuntimeCompilesIntoLevel5Match()
+    {
+        Assert.That(
+            typeof(MatchRuntime).Assembly.GetName().Name,
+            Is.EqualTo("Level5.Match"));
+    }
+
     [Test]
     public void NoProductionAssemblyReferencesAKnownEditorOnlyPackageAssembly()
     {

@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using Level5.Core;
+using Level5.Core.Match;
 using UnityEngine;
 
 public static class GameOptions
@@ -150,4 +151,190 @@ public static class GameOptions
     //static public Sprite currentRoundPlayerLoserImage;
     //static public Sprite currentRoundCpuWinnerImage;
     //static public Sprite currentRoundCpuLoserImage;
+
+    // AUD-012 Phase 2b Slice 52: MatchRuntime moved into Level5.Match and can no longer read these
+    // fields directly for its direct-scene-entry fallback. It resolves through the one reader
+    // installed below instead - see LegacyMatchRuntimeSnapshot for why the shape is resolved answers
+    // (ResolvedMatchRules, PlayerRoster, typed mode/level identity, ...) rather than a mirror of every
+    // field on this class. The reconstruction logic itself is unchanged from what used to live in
+    // MatchRuntime.cs; only its owner moved, to the legacy side that already owns the fields it reads.
+
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
+    private static void InstallMatchRuntimeLegacyFallback()
+    {
+        MatchRuntime.InstallLegacyFallbackReader(CaptureMatchRuntimeSnapshot);
+    }
+
+    /// <summary>
+    /// Builds the answers <see cref="MatchRuntime"/> needs for a directly entered gameplay scene,
+    /// read from these fields as they are right now. Called fresh on every fallback read - see
+    /// <see cref="LegacyMatchRuntimeSnapshot"/> - never cached here either.
+    ///
+    /// Private: nothing outside this file needs to build one directly - production only ever needs
+    /// the reader installed above, and a test that wants the real production mapping (rather than a
+    /// fake) reaches this through reflection, the same pattern several fixtures already use for a
+    /// private field or method (e.g. the <c>GetPrivateField</c>/<c>InvokePrivate</c> helpers in
+    /// <c>Level5PlayerMatchRuntimeCompositionTests</c>).
+    /// </summary>
+    private static LegacyMatchRuntimeSnapshot CaptureMatchRuntimeSnapshot()
+    {
+        return new LegacyMatchRuntimeSnapshot(
+            rules: BuildResolvedMatchRulesFromLegacyGlobals,
+            roster: BuildPlayerRosterFromLegacyGlobals,
+            modeId: GameModeIds.FromInt(gameModeSelectedId),
+            rawModeId: gameModeSelectedId,
+            modeDisplayName: gameModeSelectedName,
+            levelDisplayName: levelDisplayName,
+            levelId: levelId,
+            levelRequiresTimeOfDay: levelRequiresTimeOfDay,
+            levelHasWeather: levelRequiresWeather,
+            levelHasSevenPointers: levelHasSevenPointers,
+            primaryCharacterDisplayName: characterDisplayName,
+            primaryCharacterObjectName: characterObjectName,
+            primaryCharacterId: characterId,
+            cheerleader: new CheerleaderSelection(0, cheerleaderObjectName, cheerleaderDisplayName),
+            getHumanPlayerInputSlot: GetHumanPlayerInputSlot);
+    }
+
+    private static ResolvedMatchRules BuildResolvedMatchRulesFromLegacyGlobals()
+    {
+        return new ResolvedMatchRules(
+            objective: MatchObjective.Score,
+            clockMode: LegacyClockMode(),
+            customTimerSeconds: customTimer,
+            matchLengthSeconds: MatchClock.StartSeconds(customTimer),
+            combatMode: LegacyCombatMode(),
+            shotRule: LegacyShotRule(),
+            shotMarkers: LegacyShotMarkers(),
+            requiresBasketball: gameModeRequiresBasketball,
+            basketballCount: Mathf.Max(1, numPlayers),
+            allowsCpuShooters: gameModeAllowsCpuShooters,
+            enemiesEnabled: enemiesEnabled,
+            trafficEnabled: trafficEnabled,
+            obstaclesEnabled: obstaclesEnabled,
+            sniper: LegacySniperMode(),
+            difficulty: MatchDifficulties.FromInt(difficultySelected),
+            hardcore: hardcoreModeEnabled,
+            addsImplicitDefender: gameModeSelectedId == Modes.Lockdown,
+            enemiesOnly: EnemiesOnlyEnabled);
+    }
+
+    private static MatchClockMode LegacyClockMode()
+    {
+        if (gameModeRequiresCountDown)
+        {
+            return MatchClockMode.Countdown;
+        }
+
+        return gameModeRequiresCounter ? MatchClockMode.CountUp : MatchClockMode.None;
+    }
+
+    private static CombatMode LegacyCombatMode()
+    {
+        CombatMode combat = CombatMode.None;
+        if (battleRoyalEnabled)
+        {
+            combat |= CombatMode.BattleRoyal;
+        }
+
+        if (cageMatchEnabled)
+        {
+            combat |= CombatMode.Cage;
+        }
+
+        if (combat == CombatMode.None && EnemiesOnlyEnabled)
+        {
+            combat = CombatMode.Standard;
+        }
+
+        return combat;
+    }
+
+    private static ShotRule LegacyShotRule()
+    {
+        ShotRule rule = ShotRule.Any;
+        if (gameModeThreePointContest)
+        {
+            rule |= ShotRule.ThreePoint;
+        }
+
+        if (gameModeFourPointContest)
+        {
+            rule |= ShotRule.FourPoint;
+        }
+
+        if (gameModeSevenPointContest)
+        {
+            rule |= ShotRule.SevenPoint;
+        }
+
+        if (gameModeAllPointContest)
+        {
+            rule |= ShotRule.AllRanges;
+        }
+
+        return rule;
+    }
+
+    private static ShotMarkerRequirement LegacyShotMarkers()
+    {
+        ShotMarkerRequirement markers = ShotMarkerRequirement.None;
+        if (gameModeRequiresShotMarkers3s)
+        {
+            markers |= ShotMarkerRequirement.ThreePoint;
+        }
+
+        if (gameModeRequiresShotMarkers4s)
+        {
+            markers |= ShotMarkerRequirement.FourPoint;
+        }
+
+        if (gameModeRequiresShotMarkers7s)
+        {
+            markers |= ShotMarkerRequirement.SevenPoint;
+        }
+
+        return markers;
+    }
+
+    private static SniperMode LegacySniperMode()
+    {
+        if (sniperEnabledLaser)
+        {
+            return SniperMode.Laser;
+        }
+
+        if (sniperEnabledBulletAuto)
+        {
+            return SniperMode.MachineGun;
+        }
+
+        return sniperEnabledBullet ? SniperMode.Bullet : SniperMode.None;
+    }
+
+    private static PlayerRoster BuildPlayerRosterFromLegacyGlobals()
+    {
+        int count = Mathf.Clamp(numPlayers, 1, PlayerRoster.MaxSlots);
+        List<PlayerRosterEntry> entries = new List<PlayerRosterEntry>();
+
+        for (int slot = 0; slot < count; slot++)
+        {
+            string objectName = characterObjectNames != null && slot < characterObjectNames.Count
+                ? characterObjectNames[slot]
+                : string.Empty;
+
+            CharacterSelection character = new CharacterSelection(
+                slot == 0 ? characterId : 0,
+                objectName,
+                slot == 0 ? characterDisplayName : objectName,
+                true,
+                true);
+
+            entries.Add(new PlayerRosterEntry(
+                IsCpuPlayer(slot) ? PlayerControlType.Cpu : PlayerControlType.LocalHuman,
+                character));
+        }
+
+        return PlayerRoster.Build(entries);
+    }
 }
