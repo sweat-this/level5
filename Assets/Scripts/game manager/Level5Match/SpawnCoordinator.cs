@@ -560,7 +560,12 @@ public sealed class SpawnCoordinator
         // load below and reported every cheerleader-less match as an error, which is most of them.
         // There is no bonus mismatch to warn about here either - the "none" record carries no
         // bonuses, so nothing is being paid out for an absent actor.
-        if (string.Equals(cheerleaderObjectName, CheerleaderProfile.NoneObjectName,
+        //
+        // AUD-012 Phase 2b Slice 58: reads the neutral Level5.Core.Match constant rather than
+        // CheerleaderProfile.NoneObjectName (Level5.MenuStart) - a menu-domain assembly this class's
+        // eventual Level5.Match home must not depend on. Same string, same OrdinalIgnoreCase
+        // comparison; CheerleaderProfile.NoneObjectName is now a compatibility alias to this constant.
+        if (string.Equals(cheerleaderObjectName, CheerleaderSelection.LegacyNoneObjectName,
                 System.StringComparison.OrdinalIgnoreCase))
         {
             return;

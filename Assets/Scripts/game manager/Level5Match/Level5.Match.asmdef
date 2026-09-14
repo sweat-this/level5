@@ -3,7 +3,9 @@
     "rootNamespace": "",
     "references": [
         "Level5.Core",
-        "Level5.Player"
+        "Level5.Player",
+        "Level5.Basketball",
+        "Level5.Constants"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

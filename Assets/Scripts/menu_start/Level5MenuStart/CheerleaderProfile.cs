@@ -4,12 +4,14 @@ using UnityEngine;
 public class CheerleaderProfile : MonoBehaviour
 {
     /// <summary>
-    /// The authored <c>cheerleaderObjectName</c> for "no cheerleader" - see
-    /// <c>Resources/Prefabs/menu_start/cheerleader_default_objects/cheerleader_00_none.prefab</c>.
-    /// It is the default selection, so anything spawning by name has to recognise it rather than
-    /// look for a <c>cheerleader_none</c> prefab that deliberately does not exist.
+    /// Compatibility alias for <see cref="Level5.Core.Match.CheerleaderSelection.LegacyNoneObjectName"/>
+    /// (AUD-012 Phase 2b Slice 58). Existing callers keep reading this exact constant; the neutral
+    /// definition now lives in the <c>Level5.Core.Match</c> cheerleader-selection contract so that
+    /// runtime code outside <c>Level5.MenuStart</c> (e.g. the eventual <c>Level5.Match</c> home for
+    /// <c>SpawnCoordinator</c>) can recognise the sentinel without a <c>Level5.Match -&gt;
+    /// Level5.MenuStart</c> reference.
     /// </summary>
-    public const string NoneObjectName = "none";
+    public const string NoneObjectName = Level5.Core.Match.CheerleaderSelection.LegacyNoneObjectName;
 
     [SerializeField] private string cheerleaderDisplayName;
     [SerializeField] private string cheerleaderObjectName;

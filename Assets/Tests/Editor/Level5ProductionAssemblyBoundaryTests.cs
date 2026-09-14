@@ -705,6 +705,24 @@ public class Level5ProductionAssemblyBoundaryTests
         Assert.That(typeof(ArenaBootstrap).Assembly.GetName().Name, Is.EqualTo(expected));
     }
 
+    /// <summary>
+    /// AUD-012 Phase 2b, Slice 58: proves <c>SpawnCoordinator</c> - dependency-closed on
+    /// <c>Assembly-CSharp</c> since Slice 57, its remaining <c>Level5.MenuStart</c> direction issue
+    /// resolved by reading the new neutral <c>CheerleaderSelection.LegacyNoneObjectName</c> constant
+    /// instead of <c>CheerleaderProfile.NoneObjectName</c> - actually compiles into <c>Level5.Match</c>,
+    /// the same identity check <see cref="SceneRuntimeBridgeTypesCompileIntoLevel5Match"/> does for
+    /// <c>LevelRuntimeContext</c>/<c>ArenaBootstrap</c>. Its one production construction site,
+    /// <c>GameLevelManager.Awake</c>, stays in <c>Assembly-CSharp</c> and reaches it through
+    /// <c>autoReferenced</c>.
+    /// </summary>
+    [Test]
+    public void SpawnCoordinatorCompilesIntoLevel5Match()
+    {
+        Assert.That(
+            typeof(SpawnCoordinator).Assembly.GetName().Name,
+            Is.EqualTo("Level5.Match"));
+    }
+
     [Test]
     public void NoProductionAssemblyReferencesAKnownEditorOnlyPackageAssembly()
     {
