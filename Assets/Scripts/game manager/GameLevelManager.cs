@@ -374,6 +374,55 @@ public class GameLevelManager : MonoBehaviour, IGroundHeightProvider, IPlayerMat
         GameRules.instance.killedOnIdle = true;
     }
 
+    /// <summary>
+    /// AUD-012 Phase 2b Slice 60: the composition adapter <see cref="Timer"/> now calls instead of
+    /// reading <c>GameRules.instance.GameOver</c> itself. <see langword="null"/> means "no live
+    /// <c>GameRules</c>" - the same condition the former direct <c>GameRules.instance == null</c>
+    /// guard tested - so <see cref="Timer"/>'s clock keeps not counting at all until a <c>GameRules</c>
+    /// exists, exactly as before. Resolves the singleton fresh on every call, matching every other
+    /// adapter in this class.
+    /// </summary>
+    private static bool? ReadGameOverForTimer()
+    {
+        return GameRules.instance != null ? GameRules.instance.GameOver : (bool?)null;
+    }
+
+    /// <summary>
+    /// AUD-012 Phase 2b Slice 60: the composition adapter <see cref="Timer.ReportTimeExpired"/> (via
+    /// <see cref="Timer.BindMatchEndContext"/>) now calls instead of reading
+    /// <c>GameRules.instance.GameModeRequiresConsecutiveShots</c> itself. No null guard, matching the
+    /// former unconditional dereference: <c>ReportTimeExpired</c> is only ever reached after
+    /// <see cref="ReadGameOverForTimer"/> already found a live <c>GameRules</c> this frame, the same
+    /// reasoning that keeps <see cref="RequestMatchEndForTimer"/> below unguarded too.
+    /// </summary>
+    private static bool ReadGameModeRequiresConsecutiveShotsForTimer()
+    {
+        return GameRules.instance.GameModeRequiresConsecutiveShots;
+    }
+
+    /// <summary>
+    /// AUD-012 Phase 2b Slice 60: the composition adapter <see cref="Timer.ReportTimeExpired"/> now
+    /// calls instead of reading <c>GameLevelManager.instance.Player1</c> itself. Reads the static
+    /// <see cref="instance"/> field live on every call, mirroring
+    /// <see cref="HasAutoPlayerForAnimationEvents"/> just above.
+    /// </summary>
+    private static PlayerIdentifier ReadPrimaryPlayerForTimer()
+    {
+        return instance != null ? instance.Player1 : null;
+    }
+
+    /// <summary>
+    /// AUD-012 Phase 2b Slice 60: the composition adapter <see cref="Timer.ReportTimeExpired"/> now
+    /// calls instead of calling <c>GameRules.instance.RequestEnd</c> itself. Deliberately keeps the
+    /// exact preserved behaviour of the direct call it replaces: no null guard, and the returned
+    /// <c>bool</c> (true only for the request that ended the match) is discarded exactly as the former
+    /// direct call already discarded it.
+    /// </summary>
+    private static void RequestMatchEndForTimer(MatchEndReason reason)
+    {
+        GameRules.instance.RequestEnd(reason);
+    }
+
     private float setTerrainHeight()
     {
         switch (SceneManager.GetActiveScene().name)
@@ -434,6 +483,27 @@ public class GameLevelManager : MonoBehaviour, IGroundHeightProvider, IPlayerMat
         // was built at all.
         _spawnCoordinator?.BindHumanArenaContext(_basketballRimVector, this);
         _spawnCoordinator?.BindCpuArenaContext(_basketballRimVector, this);
+
+        // AUD-012 Phase 2b Slice 60: replaces Timer's former direct GameRules.instance/
+        // GameLevelManager.instance.Player1 reads. Bound here, not Awake(): Unity does not order
+        // Awake() across independent components either, so Timer.instance (set in Timer's own Awake)
+        // is not guaranteed non-null yet during this manager's own Awake - but every component's
+        // Awake() is guaranteed to precede every component's Start(), and Timer's Update() (the only
+        // place this binding is read) cannot run before every Start() in the scene has completed. A
+        // scene with no Timer leaves this a no-op, exactly as a scene with no GameRules already left
+        // Timer's own clock permanently idle.
+        //
+        // `if (Timer.instance != null)`, not `Timer.instance?.` - AUD-061: `?.` does not go through
+        // Unity's overloaded destroyed-object `==` check (Level5SingletonLifetimeTests.
+        // NoNullConditionalOnASingletonInstance).
+        if (Timer.instance != null)
+        {
+            Timer.instance.BindMatchEndContext(
+                ReadGameOverForTimer,
+                ReadGameModeRequiresConsecutiveShotsForTimer,
+                ReadPrimaryPlayerForTimer,
+                RequestMatchEndForTimer);
+        }
     }
 
     /// <summary>
