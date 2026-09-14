@@ -752,6 +752,24 @@ public class Level5ProductionAssemblyBoundaryTests
         Assert.That(typeof(PauseUiObjects).Assembly.GetName().Name, Is.EqualTo(expected));
     }
 
+    /// <summary>
+    /// AUD-012 Phase 2b, Slice 61: proves <c>Timer</c> - dependency-closed by Slice 60's
+    /// <c>GameRules</c>/<c>GameLevelManager</c> cut - actually compiles into <c>Level5.Match</c>, the
+    /// same identity check <see cref="SpawnCoordinatorCompilesIntoLevel5Match"/> does for
+    /// <c>SpawnCoordinator</c>. GUID unchanged (<c>0cbb2e138afa4ae49ac2b8f677d09f1f</c>); no authored
+    /// <c>m_EditorClassIdentifier</c> anomaly (unlike <c>PauseUiObjects</c> - see Slice 59) since every
+    /// authored instance was added through the Editor's normal "Add Component" flow. Its consumers -
+    /// <c>GameRules.setTimer</c> and <c>MatchHudPresenter</c>'s several <c>Timer.instance</c> reads -
+    /// stay in <c>Assembly-CSharp</c> and reach it through <c>autoReferenced</c>.
+    /// </summary>
+    [Test]
+    public void TimerCompilesIntoLevel5Match()
+    {
+        Assert.That(
+            typeof(Timer).Assembly.GetName().Name,
+            Is.EqualTo("Level5.Match"));
+    }
+
     [Test]
     public void NoProductionAssemblyReferencesAKnownEditorOnlyPackageAssembly()
     {
