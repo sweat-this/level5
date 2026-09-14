@@ -208,6 +208,13 @@ public class Level5GameManagerEdgeTests
     /// <c>SpawnCoordinatorHasNoProjectilePoolOrGameLevelManagerReferences</c> to
     /// <c>SpawnCoordinatorHasNoAssemblyCSharpIntegrationReferences</c> at this slice, now that it guards
     /// four types rather than two - the old name undersold what it actually checks.
+    ///
+    /// AUD-012 Phase 2b Slice 57 extends the same guard again: <c>SpawnCoordinator</c> also no longer
+    /// implements the saved-profile lookup/killed-on-idle write it hands to a spawned human's
+    /// <c>CharacterProfile</c>/<c>PlayerCollisions</c> itself - it only distributes the
+    /// <c>loadedCharacterProfileResolver</c>/<c>markKilledOnIdle</c> delegates it was constructed with
+    /// (see <c>GameLevelManager.ResolveLoadedCharacterProfile</c>/<c>MarkKilledOnIdle</c>). This closes
+    /// this class's last two loose <c>Assembly-CSharp</c> integration adapters.
     /// </summary>
     [Test]
     public void SpawnCoordinatorHasNoAssemblyCSharpIntegrationReferences()
@@ -234,6 +241,14 @@ public class Level5GameManagerEdgeTests
             "SpawnCoordinator must have zero executable BehaviorNpcCritical references - "
             + "critical-success presentation must go through the bound criticalSuccessPresentation "
             + "delegate, supplied by GameLevelManager.PlayCriticalSuccessPresentation.");
+        Assert.That(text, Does.Not.Match(@"\bLoadedData\b"),
+            "SpawnCoordinator must have zero executable LoadedData references - the saved-profile "
+            + "lookup must go through the bound loadedCharacterProfileResolver delegate, supplied by "
+            + "GameLevelManager.ResolveLoadedCharacterProfile.");
+        Assert.That(text, Does.Not.Match(@"\bGameRules\b"),
+            "SpawnCoordinator must have zero executable GameRules references - the killed-on-idle "
+            + "write must go through the bound markKilledOnIdle delegate, supplied by "
+            + "GameLevelManager.MarkKilledOnIdle.");
     }
 
     [Test]

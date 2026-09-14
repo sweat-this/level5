@@ -35,6 +35,8 @@ public sealed class SpawnCoordinator
     private readonly Func<bool> hasAutoPlayerReader;
     private readonly Action<float> humanShotTelemetry;
     private readonly Action criticalSuccessPresentation;
+    private readonly Func<int, CharacterProfile> loadedCharacterProfileResolver;
+    private readonly Action markKilledOnIdle;
     private readonly bool hasActiveMatchConfiguration;
 
     /// <summary>
@@ -80,6 +82,21 @@ public sealed class SpawnCoordinator
     /// always supplies both - the exact <c>AnaylticsManager.PlayerShoot</c> method group and its own
     /// <c>PlayCriticalSuccessPresentation</c> adapter, which replace this class's former direct
     /// ownership of both integrations.
+    ///
+    /// AUD-012 Phase 2b Slice 57: <paramref name="loadedCharacterProfileResolver"/> and <paramref
+    /// name="markKilledOnIdle"/> are optional for the same reason as every dependency above - every
+    /// existing direct-construction test site keeps compiling unchanged. <see
+    /// cref="InitializeHumanProfile"/> only forwards <paramref name="loadedCharacterProfileResolver"/>,
+    /// unexamined, into <c>CharacterProfile.PrepareHumanMatchContext</c>; <see
+    /// cref="BindPlayerCollisionsContext"/> only forwards <paramref name="markKilledOnIdle"/>,
+    /// unexamined, into <c>PlayerCollisions.BindKilledOnIdleCallback</c>. A coordinator built without
+    /// either behaves exactly as the former direct implementations did when their own singleton was
+    /// absent/never reached - <c>CharacterProfile</c> already fails closed on a null/absent resolver
+    /// (see <c>intializeShooterStatsFromProfile</c>), and <c>PlayerCollisions</c>' own
+    /// <c>markKilledOnIdle?.Invoke()</c> already treats an unbound callback as a no-op. Production
+    /// (<c>GameLevelManager</c>) always supplies both - <c>GameLevelManager.ResolveLoadedCharacterProfile</c>
+    /// and <c>GameLevelManager.MarkKilledOnIdle</c>, which replace this class's former direct ownership
+    /// of the <c>LoadedData</c>/<c>GameRules</c> integrations.
     /// </summary>
     public SpawnCoordinator(
         SpawnLocations locations,
@@ -92,7 +109,9 @@ public sealed class SpawnCoordinator
         Func<GameObject, Vector3, Quaternion, GameObject> projectileSpawner = null,
         Func<bool> hasAutoPlayerReader = null,
         Action<float> humanShotTelemetry = null,
-        Action criticalSuccessPresentation = null)
+        Action criticalSuccessPresentation = null,
+        Func<int, CharacterProfile> loadedCharacterProfileResolver = null,
+        Action markKilledOnIdle = null)
     {
         this.locations = locations;
         this.registry = registry;
@@ -105,6 +124,8 @@ public sealed class SpawnCoordinator
         this.hasAutoPlayerReader = hasAutoPlayerReader;
         this.humanShotTelemetry = humanShotTelemetry;
         this.criticalSuccessPresentation = criticalSuccessPresentation;
+        this.loadedCharacterProfileResolver = loadedCharacterProfileResolver;
+        this.markKilledOnIdle = markKilledOnIdle;
         this.hasActiveMatchConfiguration = MatchRuntime.HasConfiguration;
     }
 
@@ -651,7 +672,7 @@ public sealed class SpawnCoordinator
         }
 
         identifier.characterProfile.PrepareHumanMatchContext(
-            ResolveLoadedCharacterProfile,
+            loadedCharacterProfileResolver,
             MatchRuntime.Cheerleader,
             rules);
 
@@ -661,20 +682,6 @@ public sealed class SpawnCoordinator
         }
 
         identifier.characterProfile.intializeShooterStatsFromProfile(ResolveHumanCharacterId(slot));
-    }
-
-    /// <summary>
-    /// The saved-profile lookup <see cref="InitializeHumanProfile"/> hands to a human's
-    /// <c>CharacterProfile</c>, so that type asks for a saved profile without knowing that
-    /// <c>LoadedData</c> is what answers (AUD-012 Phase 2b Slice 27). Deliberately a narrow adapter
-    /// over the existing accessor - the null guard is the one the profile itself used to carry, moved
-    /// to the side that owns the singleton - and not a persistence redesign.
-    /// </summary>
-    private static CharacterProfile ResolveLoadedCharacterProfile(int characterId)
-    {
-        return LoadedData.instance != null
-            ? LoadedData.instance.getSelectedCharacterProfile(characterId)
-            : null;
     }
 
     /// <summary>
@@ -855,7 +862,7 @@ public sealed class SpawnCoordinator
         {
             collisions.BindMatchRules(rules);
             collisions.BindFallRespawnDestination(respawnDestination);
-            collisions.BindKilledOnIdleCallback(MarkKilledOnIdle);
+            collisions.BindKilledOnIdleCallback(markKilledOnIdle);
         }
     }
 
@@ -880,18 +887,6 @@ public sealed class SpawnCoordinator
             collisions.BindMatchRules(rules);
             collisions.BindFallRespawnDestination(locations.Player1 != null ? locations.Player1.transform : null);
         }
-    }
-
-    /// <summary>
-    /// Marks the match as killed-on-idle, forwarding to the same <c>GameRules.instance.killedOnIdle</c>
-    /// field <see cref="PlayerCollisions"/> used to write directly. A named method rather than a
-    /// captured lambda so the exact behaviour (including the lack of a null guard - <c>GameRules</c>
-    /// is expected to exist for the life of a gameplay scene, matching the original direct write) is
-    /// visible at a glance rather than inlined at every call site.
-    /// </summary>
-    private static void MarkKilledOnIdle()
-    {
-        GameRules.instance.killedOnIdle = true;
     }
 
     /// <summary>
