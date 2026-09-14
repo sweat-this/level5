@@ -124,7 +124,9 @@ public class GameLevelManager : MonoBehaviour, IGroundHeightProvider, IPlayerMat
             this,
             TryResolveCampaignCpuPrefab,
             SpawnProjectileForAnimationEvents,
-            HasAutoPlayerForAnimationEvents);
+            HasAutoPlayerForAnimationEvents,
+            AnaylticsManager.PlayerShoot,
+            PlayCriticalSuccessPresentation);
 
         try
         {
@@ -308,6 +310,28 @@ public class GameLevelManager : MonoBehaviour, IGroundHeightProvider, IPlayerMat
     private static bool HasAutoPlayerForAnimationEvents()
     {
         return instance != null && instance.AutoPlayer != null;
+    }
+
+    /// <summary>
+    /// AUD-012 Phase 2b Slice 56: the composition adapter <see cref="SpawnCoordinator"/> now forwards to
+    /// every spawned human and CPU basketball's critical-success presentation binding, instead of
+    /// implementing the <c>BehaviorNpcCritical.instance</c> lookup itself. This class already sits in
+    /// the same assembly as <c>BehaviorNpcCritical</c> and already constructs the coordinator, so it is
+    /// the narrowest existing owner for this adapter - not a new <c>BehaviorNpcCritical</c> consumer.
+    ///
+    /// A bare <c>private static</c> method, not a captured local: at basketball-spawn time the
+    /// cheerleader (whose <c>Start()</c> assigns <see cref="BehaviorNpcCritical.instance"/>) may not
+    /// exist yet - <c>SpawnCoordinator.SpawnBasketballs</c> runs before <c>SpawnCheerleader</c> - so the
+    /// singleton must be resolved here, at the point a swish actually invokes this callback, never
+    /// captured at composition time. Passed to the constructor as a method group so the bound delegate
+    /// stays targetless, matching the exact preserved semantics of the adapter this replaces.
+    /// </summary>
+    private static void PlayCriticalSuccessPresentation()
+    {
+        if (BehaviorNpcCritical.instance != null)
+        {
+            BehaviorNpcCritical.instance.playAnimationCriticalSuccesful();
+        }
     }
 
     private float setTerrainHeight()
