@@ -33,6 +33,8 @@ public sealed class SpawnCoordinator
     private readonly TryResolveCampaignCpuPrefab campaignCpuPrefabResolver;
     private readonly Func<GameObject, Vector3, Quaternion, GameObject> projectileSpawner;
     private readonly Func<bool> hasAutoPlayerReader;
+    private readonly Action<float> humanShotTelemetry;
+    private readonly Action criticalSuccessPresentation;
     private readonly bool hasActiveMatchConfiguration;
 
     /// <summary>
@@ -66,6 +68,18 @@ public sealed class SpawnCoordinator
     /// a coordinator built without one binds that null, which <c>PlayerAnimationEvents</c> itself
     /// already treats as "do nothing" for a projectile spawn / "no auto player" for the reader. Production
     /// (<c>GameLevelManager</c>) always supplies both.
+    ///
+    /// AUD-012 Phase 2b Slice 56: <paramref name="humanShotTelemetry"/> and <paramref
+    /// name="criticalSuccessPresentation"/> are optional for the same reason as every dependency above -
+    /// every existing direct-construction test site keeps compiling unchanged. <see cref="GiveBall"/>
+    /// only distributes them, unexamined, to the basketballs it spawns: <paramref
+    /// name="humanShotTelemetry"/> to the primary/secondary human ball only, <paramref
+    /// name="criticalSuccessPresentation"/> to every human and CPU ball. A coordinator built without
+    /// either simply leaves that ball unbound, which <c>BasketBall</c>/<c>BasketBallAuto</c>'s own
+    /// <c>?.Invoke()</c> call sites already treat as a safe no-op. Production (<c>GameLevelManager</c>)
+    /// always supplies both - the exact <c>AnaylticsManager.PlayerShoot</c> method group and its own
+    /// <c>PlayCriticalSuccessPresentation</c> adapter, which replace this class's former direct
+    /// ownership of both integrations.
     /// </summary>
     public SpawnCoordinator(
         SpawnLocations locations,
@@ -76,7 +90,9 @@ public sealed class SpawnCoordinator
         IGroundHeightProvider groundHeightProvider = null,
         TryResolveCampaignCpuPrefab campaignCpuPrefabResolver = null,
         Func<GameObject, Vector3, Quaternion, GameObject> projectileSpawner = null,
-        Func<bool> hasAutoPlayerReader = null)
+        Func<bool> hasAutoPlayerReader = null,
+        Action<float> humanShotTelemetry = null,
+        Action criticalSuccessPresentation = null)
     {
         this.locations = locations;
         this.registry = registry;
@@ -87,6 +103,8 @@ public sealed class SpawnCoordinator
         this.campaignCpuPrefabResolver = campaignCpuPrefabResolver;
         this.projectileSpawner = projectileSpawner;
         this.hasAutoPlayerReader = hasAutoPlayerReader;
+        this.humanShotTelemetry = humanShotTelemetry;
+        this.criticalSuccessPresentation = criticalSuccessPresentation;
         this.hasActiveMatchConfiguration = MatchRuntime.HasConfiguration;
     }
 
@@ -1013,12 +1031,18 @@ public sealed class SpawnCoordinator
         {
             autoBall.BindMatchRules(rules);
 
-            // AUD-010 Phase 2b0: binds the CPU ball's swish/critical-success presentation to the
-            // same late-resolving adapter as the human ball below, inverting BasketBallAuto's former
-            // direct BehaviorNpcCritical.instance dependency. CPU swishes receive this presentation
-            // exactly like human ones, so this is bound unconditionally here rather than only inside
-            // the `is BasketBall humanBall` branch the telemetry binding above lives in.
-            autoBall.BindCriticalSuccessPresentation(PlayCriticalSuccessPresentation);
+            // AUD-012 Phase 2b Slice 56: binds the CPU ball's swish/critical-success presentation to
+            // whichever adapter this coordinator was constructed with, rather than implementing (or
+            // naming) that adapter itself. CPU swishes receive this presentation exactly like human
+            // ones, so this is bound unconditionally here rather than only inside the
+            // `is BasketBall humanBall` branch the telemetry binding below lives in. A coordinator
+            // built without one (every direct/test construction site that omits it) leaves this ball
+            // unbound rather than calling BindCriticalSuccessPresentation(null), which both concrete
+            // basketball types reject as a composition error.
+            if (criticalSuccessPresentation != null)
+            {
+                autoBall.BindCriticalSuccessPresentation(criticalSuccessPresentation);
+            }
         }
 
         // AUD-010 Phase 2b0: binds this match's already-resolved rules to the ball's own
@@ -1071,17 +1095,24 @@ public sealed class SpawnCoordinator
             // IBasketballRuntime: only the concrete human type has this dependency today.
             humanBall.BindMatchRules(rules);
 
-            // AUD-010 Phase 2b0: binds human shot telemetry to the existing AnaylticsManager.PlayerShoot
-            // analytics call, inverting BasketBall's former direct dependency on it - the ball's own
-            // Launch() now invokes a bound Action<float> instead of calling AnaylticsManager itself.
+            // AUD-012 Phase 2b Slice 56: binds human shot telemetry to whichever callback this
+            // coordinator was constructed with, rather than naming AnaylticsManager.PlayerShoot itself
+            // - the ball's own Launch() invokes a bound Action<float> it already treats as optional.
             // CPU shots (BasketBallAuto) deliberately receive no telemetry binding, preserving the
-            // existing human-only PlayerShoot behavior.
-            humanBall.BindShotTelemetry(AnaylticsManager.PlayerShoot);
+            // existing human-only PlayerShoot behavior. A coordinator built without one (every
+            // direct/test construction site that omits it) leaves this ball unbound rather than
+            // calling BindShotTelemetry(null), which BasketBall rejects as a composition error.
+            if (humanShotTelemetry != null)
+            {
+                humanBall.BindShotTelemetry(humanShotTelemetry);
+            }
 
-            // AUD-010 Phase 2b0: binds human swish/critical-success presentation to the same
-            // late-resolving adapter as the CPU ball above, inverting BasketBall's former direct
-            // BehaviorNpcCritical.instance dependency.
-            humanBall.BindCriticalSuccessPresentation(PlayCriticalSuccessPresentation);
+            // AUD-012 Phase 2b Slice 56: binds human swish/critical-success presentation to the same
+            // adapter as the CPU ball above, rather than implementing it itself.
+            if (criticalSuccessPresentation != null)
+            {
+                humanBall.BindCriticalSuccessPresentation(criticalSuccessPresentation);
+            }
         }
 
         if (forCpu)
@@ -1094,25 +1125,6 @@ public sealed class SpawnCoordinator
         }
 
         BindShotMeterRuntime(ownerActor, runtime);
-    }
-
-    /// <summary>
-    /// AUD-010 Phase 2b0: the swish/critical-success presentation callback bound to both
-    /// <see cref="BasketBall"/> and <see cref="BasketBallAuto"/> above, replacing their former direct
-    /// <c>BehaviorNpcCritical.instance.playAnimationCriticalSuccesful()</c> calls.
-    ///
-    /// A named method rather than a captured local: at basketball-spawn time the cheerleader (whose
-    /// <c>Start()</c> assigns <see cref="BehaviorNpcCritical.instance"/>) may not exist yet -
-    /// <see cref="SpawnCoordinator.SpawnBasketballs"/> runs before the cheerleader is spawned - so the
-    /// singleton must be resolved here, at the point a swish actually invokes this callback, never
-    /// captured at composition time.
-    /// </summary>
-    private static void PlayCriticalSuccessPresentation()
-    {
-        if (BehaviorNpcCritical.instance != null)
-        {
-            BehaviorNpcCritical.instance.playAnimationCriticalSuccesful();
-        }
     }
 
     /// <summary>

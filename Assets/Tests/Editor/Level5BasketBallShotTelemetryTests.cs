@@ -251,9 +251,14 @@ public class Level5BasketBallShotTelemetryTests
     }
 
     /// <summary>
-    /// Proves the coordinator hands the human ball the exact <c>AnaylticsManager.PlayerShoot</c>
-    /// method, without ever invoking it - invoking it would call into <c>UnityEngine.Analytics</c>,
-    /// which this issue explicitly does not need to re-certify (see file header).
+    /// AUD-012 Phase 2b Slice 56: <c>SpawnCoordinator</c> no longer manufactures
+    /// <c>AnaylticsManager.PlayerShoot</c> internally - it only forwards whatever telemetry callback it
+    /// was constructed with. This supplies the exact production method group explicitly (mirroring
+    /// production composition, see <c>GameLevelManager.Awake</c>) and proves the coordinator forwards it
+    /// unchanged, without ever invoking it - invoking it would call into <c>UnityEngine.Analytics</c>,
+    /// which this issue explicitly does not need to re-certify (see file header). The exact production
+    /// wiring (<c>GameLevelManager</c> -&gt; <c>SpawnCoordinator</c> -&gt; <c>BasketBall</c>) is proven
+    /// end-to-end by <c>Level5BasketBallShotTelemetryCompositionPlayModeTests</c>.
     /// </summary>
     [Test]
     public void PrimaryHumanBallReceivesAnaylticsManagerPlayerShootAsItsTelemetryCallback()
@@ -263,7 +268,8 @@ public class Level5BasketBallShotTelemetryTests
         ResolvedMatchRules rules = new ResolvedMatchRules(enemiesOnly: false);
         SpawnCoordinator coordinator = new SpawnCoordinator(
             new SpawnCoordinator.SpawnLocations(), registry, rules, new PlayerRoster(new PlayerSlot[0]),
-            GameModeId.None, new FakeGroundHeightProvider());
+            GameModeId.None, new FakeGroundHeightProvider(),
+            humanShotTelemetry: AnaylticsManager.PlayerShoot);
         GameObject humanPrefab = Resources.Load<GameObject>(Constants.PREFAB_PATH_BASKETBALL_human);
         Assert.IsNotNull(humanPrefab, "human basketball prefab failed to load");
 
@@ -275,7 +281,7 @@ public class Level5BasketBallShotTelemetryTests
 
         BasketBall runtime = ball.GetComponent<BasketBall>();
         System.Delegate bound = GetBoundTelemetryDelegate(runtime);
-        Assert.IsNotNull(bound, "GiveBall must bind a shot-telemetry callback to the primary human ball");
+        Assert.IsNotNull(bound, "GiveBall must bind the supplied shot-telemetry callback to the primary human ball");
         Assert.That(bound.Method.DeclaringType, Is.EqualTo(typeof(AnaylticsManager)));
         Assert.That(bound.Method.Name, Is.EqualTo(nameof(AnaylticsManager.PlayerShoot)));
     }
@@ -289,7 +295,8 @@ public class Level5BasketBallShotTelemetryTests
         ResolvedMatchRules rules = new ResolvedMatchRules(enemiesOnly: false);
         SpawnCoordinator coordinator = new SpawnCoordinator(
             new SpawnCoordinator.SpawnLocations(), registry, rules, new PlayerRoster(new PlayerSlot[0]),
-            GameModeId.None, new FakeGroundHeightProvider());
+            GameModeId.None, new FakeGroundHeightProvider(),
+            humanShotTelemetry: AnaylticsManager.PlayerShoot);
         GameObject humanPrefab = Resources.Load<GameObject>(Constants.PREFAB_PATH_BASKETBALL_human);
 
         GiveBallVia(coordinator, 0, humanPrefab, forCpu: false);
@@ -301,6 +308,61 @@ public class Level5BasketBallShotTelemetryTests
 
         BasketBall secondRuntime = secondBall.GetComponent<BasketBall>();
         Assert.IsNotNull(GetBoundTelemetryDelegate(secondRuntime), "a second human ball must also receive a telemetry binding");
+    }
+
+    /// <summary>
+    /// AUD-012 Phase 2b Slice 56: proves <c>GiveBall</c> forwards the exact supplied delegate instance -
+    /// not a wrapper, not a re-created method group - the sharper form of "does the coordinator forward
+    /// the dependency it was given" than the declaring-type/method-name check above can express, since a
+    /// method-group check alone would still pass for a value=>value forwarding wrapper.
+    /// </summary>
+    [Test]
+    public void GiveBallForwardsTheSuppliedTelemetryDelegateInstanceUnchanged()
+    {
+        PlayerRegistry registry = new PlayerRegistry();
+        RegisterHumanParticipant(0, registry);
+        ResolvedMatchRules rules = new ResolvedMatchRules(enemiesOnly: false);
+        System.Action<float> callback = _ => { };
+        SpawnCoordinator coordinator = new SpawnCoordinator(
+            new SpawnCoordinator.SpawnLocations(), registry, rules, new PlayerRoster(new PlayerSlot[0]),
+            GameModeId.None, new FakeGroundHeightProvider(),
+            humanShotTelemetry: callback);
+        GameObject humanPrefab = Resources.Load<GameObject>(Constants.PREFAB_PATH_BASKETBALL_human);
+
+        GiveBallVia(coordinator, 0, humanPrefab, forCpu: false);
+
+        GameObject ball = registry.GetBySlot(0).basketball;
+        spawned.Add(ball);
+        BasketBall runtime = ball.GetComponent<BasketBall>();
+        Assert.AreSame(callback, GetBoundTelemetryDelegate(runtime),
+            "GiveBall must forward the exact supplied delegate instance, not a wrapper around it");
+    }
+
+    /// <summary>
+    /// AUD-012 Phase 2b Slice 56: a coordinator built without a telemetry callback (every existing
+    /// direct/test construction site that omits the new optional parameter) must leave the human ball
+    /// unbound rather than calling <c>BindShotTelemetry(null)</c>, which <c>BasketBall</c> rejects as a
+    /// composition error (see <c>Level5BasketBallShotTelemetryTests.BindShotTelemetryRejectsNullFirstBind</c>).
+    /// No <see cref="LogAssert"/> expectation is set up: if <c>GiveBall</c> regressed to calling the
+    /// rejecting bind with null, the resulting unexpected error log would already fail this test.
+    /// </summary>
+    [Test]
+    public void NoTelemetryCallbackLeavesHumanBallUnboundWithoutError()
+    {
+        PlayerRegistry registry = new PlayerRegistry();
+        RegisterHumanParticipant(0, registry);
+        ResolvedMatchRules rules = new ResolvedMatchRules(enemiesOnly: false);
+        SpawnCoordinator coordinator = new SpawnCoordinator(
+            new SpawnCoordinator.SpawnLocations(), registry, rules, new PlayerRoster(new PlayerSlot[0]),
+            GameModeId.None, new FakeGroundHeightProvider());
+        GameObject humanPrefab = Resources.Load<GameObject>(Constants.PREFAB_PATH_BASKETBALL_human);
+
+        GiveBallVia(coordinator, 0, humanPrefab, forCpu: false);
+
+        GameObject ball = registry.GetBySlot(0).basketball;
+        spawned.Add(ball);
+        BasketBall runtime = ball.GetComponent<BasketBall>();
+        Assert.IsNull(GetBoundTelemetryDelegate(runtime), "a coordinator built without a telemetry callback must leave the ball unbound");
     }
 
     /// <summary>

@@ -13,14 +13,20 @@ using UnityEngine.TestTools;
 /// <c>BehaviorNpcCritical.instance.playAnimationCriticalSuccesful()</c> calls are replaced by a
 /// bind-once <c>Action</c> callback (<see cref="BasketBall.BindCriticalSuccessPresentation"/>,
 /// <see cref="BasketBallAuto.BindCriticalSuccessPresentation"/>), bound once by composition
-/// (<c>SpawnCoordinator.GiveBall</c>) to a shared late-resolving adapter
-/// (<c>SpawnCoordinator.PlayCriticalSuccessPresentation</c>) - mirroring the bind/rebind/null-guard
-/// shape <see cref="Level5BasketBallShotTelemetryTests"/> already established for the same seam. This
-/// file covers <c>BindCriticalSuccessPresentation</c> itself on both concrete types, the exact
-/// human/CPU launch invocation conditions (including the human-only <c>!isCpu</c> gate), an unbound
-/// callback's no-op safety, the coordinator's composition-time wiring to both basketball types, and
-/// that the bound callback is a bare static method reference rather than a closure that could have
-/// captured a composition-time <c>BehaviorNpcCritical.instance</c> snapshot.
+/// (<c>SpawnCoordinator.GiveBall</c>) to a shared late-resolving adapter - mirroring the
+/// bind/rebind/null-guard shape <see cref="Level5BasketBallShotTelemetryTests"/> already established for
+/// the same seam.
+///
+/// AUD-012 Phase 2b Slice 56: that adapter moved from <c>SpawnCoordinator</c> (a bound-in-code static
+/// method it implemented itself) to <c>GameLevelManager.PlayCriticalSuccessPresentation</c> - the
+/// Assembly-CSharp composition side. <c>SpawnCoordinator</c> now only forwards whatever
+/// <c>criticalSuccessPresentation</c> callback it was constructed with, unexamined. This file covers
+/// <c>BindCriticalSuccessPresentation</c> itself on both concrete types, the exact human/CPU launch
+/// invocation conditions (including the human-only <c>!isCpu</c> gate), an unbound callback's no-op
+/// safety, the coordinator's composition-time forwarding of a supplied callback to both basketball
+/// types, that human and CPU receive the exact same supplied delegate instance, the production adapter's
+/// ownership/identity (<c>GameLevelManager</c>, not <c>SpawnCoordinator</c>) and its late-resolution
+/// lifecycle (absent, late-assigned, replaced, cleared).
 /// </summary>
 public class Level5BasketBallCriticalSuccessPresentationTests
 {
@@ -406,8 +412,23 @@ public class Level5BasketBallCriticalSuccessPresentationTests
     }
 
     /// <summary>
-    /// Proves the coordinator hands the human ball the same shared late-resolving adapter as the CPU
-    /// ball, and that the binding is a bare static method reference (<c>Target == null</c>) rather
+    /// The production <c>GameLevelManager.PlayCriticalSuccessPresentation</c> adapter, resolved via
+    /// reflection (it is <c>private static</c>) and wrapped as a bare-static <see cref="Action"/> - the
+    /// same method group shape <c>GameLevelManager.Awake</c> hands the real constructor.
+    /// </summary>
+    private static Action ProductionCriticalSuccessAdapter()
+    {
+        MethodInfo method = typeof(GameLevelManager).GetMethod("PlayCriticalSuccessPresentation", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.IsNotNull(method, "GameLevelManager must declare a PlayCriticalSuccessPresentation adapter");
+        return (Action)Delegate.CreateDelegate(typeof(Action), method);
+    }
+
+    /// <summary>
+    /// AUD-012 Phase 2b Slice 56: <c>SpawnCoordinator</c> no longer implements or names this adapter -
+    /// it only forwards whatever critical-success callback it was constructed with. This supplies the
+    /// exact production adapter explicitly (mirroring production composition, see
+    /// <c>GameLevelManager.Awake</c>) and proves the coordinator hands the human ball that exact
+    /// callback, and that the binding is a bare static method reference (<c>Target == null</c>) rather
     /// than a closure - a closure would be the only way this callback could have captured a
     /// composition-time <c>BehaviorNpcCritical.instance</c> snapshot, which the required late-resolution
     /// behavior forbids.
@@ -420,7 +441,8 @@ public class Level5BasketBallCriticalSuccessPresentationTests
         ResolvedMatchRules rules = new ResolvedMatchRules(enemiesOnly: false);
         SpawnCoordinator coordinator = new SpawnCoordinator(
             new SpawnCoordinator.SpawnLocations(), registry, rules, new PlayerRoster(new PlayerSlot[0]),
-            GameModeId.None, new FakeGroundHeightProvider());
+            GameModeId.None, new FakeGroundHeightProvider(),
+            criticalSuccessPresentation: ProductionCriticalSuccessAdapter());
         GameObject humanPrefab = Resources.Load<GameObject>(Constants.PREFAB_PATH_BASKETBALL_human);
         Assert.IsNotNull(humanPrefab, "human basketball prefab failed to load");
 
@@ -432,8 +454,8 @@ public class Level5BasketBallCriticalSuccessPresentationTests
 
         BasketBall runtime = ball.GetComponent<BasketBall>();
         Delegate bound = GetBoundCriticalSuccessDelegate(runtime);
-        Assert.IsNotNull(bound, "GiveBall must bind a critical-success presentation callback to the human ball");
-        Assert.That(bound.Method.DeclaringType, Is.EqualTo(typeof(SpawnCoordinator)));
+        Assert.IsNotNull(bound, "GiveBall must bind the supplied critical-success presentation callback to the human ball");
+        Assert.That(bound.Method.DeclaringType, Is.EqualTo(typeof(GameLevelManager)));
         Assert.That(bound.Method.Name, Is.EqualTo("PlayCriticalSuccessPresentation"));
         Assert.IsNull(bound.Target,
             "the bound callback must be a static method reference, not a closure capable of capturing a composition-time BehaviorNpcCritical.instance value");
@@ -451,7 +473,8 @@ public class Level5BasketBallCriticalSuccessPresentationTests
         ResolvedMatchRules rules = new ResolvedMatchRules(enemiesOnly: false);
         SpawnCoordinator coordinator = new SpawnCoordinator(
             new SpawnCoordinator.SpawnLocations(), registry, rules, new PlayerRoster(new PlayerSlot[0]),
-            GameModeId.None, new FakeGroundHeightProvider());
+            GameModeId.None, new FakeGroundHeightProvider(),
+            criticalSuccessPresentation: ProductionCriticalSuccessAdapter());
         GameObject cpuPrefab = Resources.Load<GameObject>(Constants.PREFAB_PATH_BASKETBALL_cpu);
         Assert.IsNotNull(cpuPrefab, "CPU basketball prefab failed to load");
 
@@ -463,16 +486,83 @@ public class Level5BasketBallCriticalSuccessPresentationTests
 
         BasketBallAuto runtime = ball.GetComponent<BasketBallAuto>();
         Delegate bound = GetBoundCriticalSuccessDelegate(runtime);
-        Assert.IsNotNull(bound, "GiveBall must bind a critical-success presentation callback to the CPU ball");
-        Assert.That(bound.Method.DeclaringType, Is.EqualTo(typeof(SpawnCoordinator)));
+        Assert.IsNotNull(bound, "GiveBall must bind the supplied critical-success presentation callback to the CPU ball");
+        Assert.That(bound.Method.DeclaringType, Is.EqualTo(typeof(GameLevelManager)));
         Assert.That(bound.Method.Name, Is.EqualTo("PlayCriticalSuccessPresentation"));
         Assert.IsNull(bound.Target,
             "the bound callback must be a static method reference, not a closure capable of capturing a composition-time BehaviorNpcCritical.instance value");
     }
 
     /// <summary>
-    /// Direct coverage of the adapter itself: a swish reached before the cheerleader's own
-    /// <c>Start()</c> has assigned <see cref="BehaviorNpcCritical.instance"/> (the exact ordering
+    /// AUD-012 Phase 2b Slice 56: proves human and CPU balls given the same coordinator instance receive
+    /// the exact same supplied delegate - not two separately-created method groups that merely happen to
+    /// share a declaring type/method name.
+    /// </summary>
+    [Test]
+    public void HumanAndCpuBallsReceiveTheExactSameSuppliedCriticalSuccessCallback()
+    {
+        PlayerRegistry registry = new PlayerRegistry();
+        RegisterHumanParticipant(0, registry);
+        RegisterCpuParticipant(1, registry);
+        ResolvedMatchRules rules = new ResolvedMatchRules(enemiesOnly: false);
+        Action callback = () => { };
+        SpawnCoordinator coordinator = new SpawnCoordinator(
+            new SpawnCoordinator.SpawnLocations(), registry, rules, new PlayerRoster(new PlayerSlot[0]),
+            GameModeId.None, new FakeGroundHeightProvider(),
+            criticalSuccessPresentation: callback);
+        GameObject humanPrefab = Resources.Load<GameObject>(Constants.PREFAB_PATH_BASKETBALL_human);
+        GameObject cpuPrefab = Resources.Load<GameObject>(Constants.PREFAB_PATH_BASKETBALL_cpu);
+
+        GiveBallVia(coordinator, 0, humanPrefab, forCpu: false);
+        GiveBallVia(coordinator, 1, cpuPrefab, forCpu: true);
+
+        GameObject humanBall = registry.GetBySlot(0).basketball;
+        GameObject cpuBall = registry.GetBySlot(1).autoBasketball;
+        spawned.Add(humanBall);
+        spawned.Add(cpuBall);
+
+        Delegate humanBound = GetBoundCriticalSuccessDelegate(humanBall.GetComponent<BasketBall>());
+        Delegate cpuBound = GetBoundCriticalSuccessDelegate(cpuBall.GetComponent<BasketBallAuto>());
+        Assert.AreSame(callback, humanBound, "the human ball must receive the exact supplied delegate instance");
+        Assert.AreSame(callback, cpuBound, "the CPU ball must receive the exact same supplied delegate instance as the human ball");
+    }
+
+    /// <summary>
+    /// AUD-012 Phase 2b Slice 56: a coordinator built without a critical-success callback (every
+    /// existing direct/test construction site that omits the new optional parameter) must leave both
+    /// balls unbound rather than calling <c>BindCriticalSuccessPresentation(null)</c>, which both
+    /// concrete types reject as a composition error. No <see cref="LogAssert"/> expectation is set up:
+    /// an unexpected error log from a regressed null bind would already fail this test.
+    /// </summary>
+    [Test]
+    public void NoCriticalSuccessCallbackLeavesBothBallsUnboundWithoutError()
+    {
+        PlayerRegistry registry = new PlayerRegistry();
+        RegisterHumanParticipant(0, registry);
+        RegisterCpuParticipant(1, registry);
+        ResolvedMatchRules rules = new ResolvedMatchRules(enemiesOnly: false);
+        SpawnCoordinator coordinator = new SpawnCoordinator(
+            new SpawnCoordinator.SpawnLocations(), registry, rules, new PlayerRoster(new PlayerSlot[0]),
+            GameModeId.None, new FakeGroundHeightProvider());
+        GameObject humanPrefab = Resources.Load<GameObject>(Constants.PREFAB_PATH_BASKETBALL_human);
+        GameObject cpuPrefab = Resources.Load<GameObject>(Constants.PREFAB_PATH_BASKETBALL_cpu);
+
+        GiveBallVia(coordinator, 0, humanPrefab, forCpu: false);
+        GiveBallVia(coordinator, 1, cpuPrefab, forCpu: true);
+
+        GameObject humanBall = registry.GetBySlot(0).basketball;
+        GameObject cpuBall = registry.GetBySlot(1).autoBasketball;
+        spawned.Add(humanBall);
+        spawned.Add(cpuBall);
+
+        Assert.IsNull(GetBoundCriticalSuccessDelegate(humanBall.GetComponent<BasketBall>()), "the human ball must remain unbound");
+        Assert.IsNull(GetBoundCriticalSuccessDelegate(cpuBall.GetComponent<BasketBallAuto>()), "the CPU ball must remain unbound");
+    }
+
+    /// <summary>
+    /// Direct coverage of the adapter itself, now owned by <c>GameLevelManager</c>: a swish reached
+    /// before the cheerleader's own <c>Start()</c> has assigned
+    /// <see cref="BehaviorNpcCritical.instance"/> (the exact ordering
     /// <c>SpawnCoordinator.SpawnBasketballs</c> then <c>SpawnCheerleader</c> guarantees) must not throw
     /// or otherwise fail the shot.
     /// </summary>
@@ -480,9 +570,97 @@ public class Level5BasketBallCriticalSuccessPresentationTests
     public void PlayCriticalSuccessPresentationDoesNotThrowWhenBehaviorNpcCriticalInstanceIsAbsent()
     {
         BehaviorNpcCritical.instance = null;
-        MethodInfo method = typeof(SpawnCoordinator).GetMethod("PlayCriticalSuccessPresentation", BindingFlags.NonPublic | BindingFlags.Static);
-        Assert.IsNotNull(method, "SpawnCoordinator must declare a PlayCriticalSuccessPresentation adapter");
+        MethodInfo method = typeof(GameLevelManager).GetMethod("PlayCriticalSuccessPresentation", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.IsNotNull(method, "GameLevelManager must declare a PlayCriticalSuccessPresentation adapter");
 
         Assert.DoesNotThrow(() => method.Invoke(null, null));
+    }
+
+    /// <summary>
+    /// AUD-012 Phase 2b Slice 56: a <see cref="BehaviorNpcCritical"/> whose own <c>Start()</c> never ran
+    /// - as in an EditMode test, adding the component does not run Unity lifecycle methods - leaves its
+    /// private <c>anim</c> field at its default, unset value. This is deliberate, not an oversight: it
+    /// turns "was this instance actually reached" into a positive, checkable signal. A
+    /// <c>DoesNotThrow</c> assertion on a no-op path proves nothing about whether the call underneath it
+    /// happened at all (a completely gutted adapter body would also not throw); routing the call into an
+    /// instance whose <c>anim</c> is null makes reaching
+    /// <c>playAnimationCriticalSuccesful() -&gt; playCriticalSuccessfulAnim() -&gt; anim.Play(...)</c>
+    /// produce a specific, predictable <see cref="NullReferenceException"/> (wrapped in a
+    /// <see cref="TargetInvocationException"/> by the reflection <c>Invoke</c> below) - evidence the
+    /// call chain actually executed, not just evidence that nothing crashed.
+    /// </summary>
+    private BehaviorNpcCritical BuildUnstartedCheerleader(string name)
+    {
+        return Spawn(name).AddComponent<BehaviorNpcCritical>();
+    }
+
+    /// <summary>
+    /// AUD-012 Phase 2b: proves the relocated adapter still resolves <c>BehaviorNpcCritical.instance</c>
+    /// fresh at invocation time rather than at composition time - an instance assigned only after the
+    /// "no instance yet" case above is still reached by the same callback. This is the ownership move's
+    /// whole point: only where the lookup lives changed, not when it happens. Reachability is proven by
+    /// the <see cref="NullReferenceException"/> the late-assigned instance's own unset <c>anim</c> field
+    /// produces - see <see cref="BuildUnstartedCheerleader"/>.
+    /// </summary>
+    [Test]
+    public void PlayCriticalSuccessPresentationReachesAnInstanceAssignedAfterComposition()
+    {
+        BehaviorNpcCritical.instance = null;
+        MethodInfo method = typeof(GameLevelManager).GetMethod("PlayCriticalSuccessPresentation", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.IsNotNull(method, "GameLevelManager must declare a PlayCriticalSuccessPresentation adapter");
+
+        Assert.DoesNotThrow(() => method.Invoke(null, null), "no instance yet must still no-op safely");
+
+        BehaviorNpcCritical.instance = BuildUnstartedCheerleader("late-cheerleader");
+
+        TargetInvocationException thrown = Assert.Throws<TargetInvocationException>(() => method.Invoke(null, null),
+            "a late-assigned instance must actually be reached, proven by the NullReferenceException its own unset anim field produces");
+        Assert.That(thrown.InnerException, Is.InstanceOf<NullReferenceException>());
+    }
+
+    /// <summary>
+    /// Proves swapping <c>BehaviorNpcCritical.instance</c> for a second instance is observed rather than
+    /// erroring or silently continuing to reference the first - both instances are deliberately
+    /// unstarted (see <see cref="BuildUnstartedCheerleader"/>), so each invocation reaching a live,
+    /// currently-assigned instance is proven the same way: a <see cref="NullReferenceException"/> from
+    /// that instance's own unset <c>anim</c>, not a crash from touching a stale reference.
+    /// </summary>
+    [Test]
+    public void PlayCriticalSuccessPresentationReachesAReplacementInstance()
+    {
+        MethodInfo method = typeof(GameLevelManager).GetMethod("PlayCriticalSuccessPresentation", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.IsNotNull(method, "GameLevelManager must declare a PlayCriticalSuccessPresentation adapter");
+
+        BehaviorNpcCritical.instance = BuildUnstartedCheerleader("first-cheerleader");
+        TargetInvocationException first = Assert.Throws<TargetInvocationException>(() => method.Invoke(null, null),
+            "precondition: the original instance must be reached");
+        Assert.That(first.InnerException, Is.InstanceOf<NullReferenceException>());
+
+        BehaviorNpcCritical.instance = BuildUnstartedCheerleader("replacement-cheerleader");
+        TargetInvocationException replacement = Assert.Throws<TargetInvocationException>(() => method.Invoke(null, null),
+            "the replacement instance must be reached too, not silently skipped after the swap");
+        Assert.That(replacement.InnerException, Is.InstanceOf<NullReferenceException>());
+    }
+
+    /// <summary>
+    /// Proves clearing <c>BehaviorNpcCritical.instance</c> back to null returns the adapter to its
+    /// original no-op behavior, rather than continuing to reach for (and throw on) whatever it last
+    /// resolved - ruling out any cached "have I already found an instance" state.
+    /// </summary>
+    [Test]
+    public void PlayCriticalSuccessPresentationNoOpsAfterInstanceIsCleared()
+    {
+        MethodInfo method = typeof(GameLevelManager).GetMethod("PlayCriticalSuccessPresentation", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.IsNotNull(method, "GameLevelManager must declare a PlayCriticalSuccessPresentation adapter");
+
+        BehaviorNpcCritical.instance = BuildUnstartedCheerleader("cleared-cheerleader");
+        Assert.Throws<TargetInvocationException>(() => method.Invoke(null, null),
+            "precondition: the instance must be reached while assigned");
+
+        // Simulates BehaviorNpcCritical.OnDestroy clearing the static, without actually destroying the
+        // component - this fixture's own TearDown already does a real DestroyImmediate pass separately.
+        BehaviorNpcCritical.instance = null;
+
+        Assert.DoesNotThrow(() => method.Invoke(null, null), "clearing the instance must return to no-op behavior");
     }
 }

@@ -4774,6 +4774,205 @@ has-auto-player check still resolves the live `GameLevelManager.instance.AutoPla
 the same point `PlayerAnimationEvents.Start()` always read it, following the same static field rather
 than a snapshot; every other `SpawnCoordinator` responsibility is untouched.
 
+**Slice 56 (2026-09-14, audited against `dev` SHA `453c441d49e2970d649c461b07de3ce80a1c2b9b`, matching
+Slice 55/PR #149, Unity `6000.5.7f1 (017862109af0)`): `SpawnCoordinator`'s executable dependencies on
+`AnaylticsManager` and `BehaviorNpcCritical`, in its `GiveBall` basketball composition path, cut by
+inversion - a dependency-preparation slice, not an asmdef move.**
+
+**Old flow.**
+
+```text
+human shot telemetry
+    -> AnaylticsManager.PlayerShoot
+
+human + CPU critical-success presentation
+    -> SpawnCoordinator.PlayCriticalSuccessPresentation()
+        -> BehaviorNpcCritical.instance
+```
+
+**New flow.**
+
+```text
+Assembly-CSharp composition (GameLevelManager.Awake)
+        AnaylticsManager.PlayerShoot            (method group, passed directly)
+        GameLevelManager.PlayCriticalSuccessPresentation   (late BehaviorNpcCritical adapter)
+        │                                                       │
+        └──────────────────── both handed in ───────────────────┘
+                                    ▼
+                      SpawnCoordinator constructor
+                                    ▼
+                           SpawnCoordinator.GiveBall
+                ├── human-only shot telemetry (BasketBall only)
+                └── human + CPU critical-success presentation
+```
+
+**The seam.** `BasketBall.BindShotTelemetry(Action<float>)`,
+`BasketBall.BindCriticalSuccessPresentation(Action)` and
+`BasketBallAuto.BindCriticalSuccessPresentation(Action)` were already the intended dependency boundary
+from AUD-010 Phase 2b0 - none needed any change. `SpawnCoordinator` gained two optional constructor
+parameters, `humanShotTelemetry`/`criticalSuccessPresentation`, trailing after Slice 55's
+`projectileSpawner`/`hasAutoPlayerReader` (every existing direct-construction test site keeps compiling
+unchanged), stored as fields and forwarded directly in `GiveBall` - the former `private static` adapter
+method (`PlayCriticalSuccessPresentation`) was deleted outright rather than kept as a fallback, and the
+former direct `AnaylticsManager.PlayerShoot` call was replaced by forwarding the stored field. A
+coordinator built without either leaves the corresponding ball unbound: `humanShotTelemetry` is only
+consulted inside the existing `is BasketBall humanBall` branch (CPU shots still receive no telemetry
+binding at all - `BasketBallAuto` still declares no `BindShotTelemetry` method), and
+`criticalSuccessPresentation` is consulted in both the CPU and human branches, each guarded by its own
+null check so a coordinator built without one never calls either type's rejecting
+`BindCriticalSuccessPresentation(null)`/`BindShotTelemetry(null)`.
+
+**Production construction-site audit.** `GameLevelManager.Awake()` is the sole production
+`new SpawnCoordinator(...)` call site (repository-wide search for `new SpawnCoordinator(` before editing -
+every other hit is a test fixture, matching Slice 54/55's own audit). It now passes two more trailing
+arguments: the `AnaylticsManager.PlayerShoot` method group directly (not wrapped in a lambda, and not
+routed through a redundant `GameLevelManager` forwarding method) and the new
+`PlayCriticalSuccessPresentation` adapter. No other production site existed to update.
+
+**The adapter.** `GameLevelManager` gained one new `private static` method, adjacent to Slice 55's
+`SpawnProjectileForAnimationEvents`/`HasAutoPlayerForAnimationEvents`:
+`PlayCriticalSuccessPresentation()`, body byte-identical to the deleted `SpawnCoordinator` method it
+replaces (`if (BehaviorNpcCritical.instance != null) { BehaviorNpcCritical.instance.playAnimationCriticalSuccesful(); }`).
+Passed to the constructor as a bare method group, so the bound delegate stays targetless
+(`Target == null`) - required because basketballs are composed (`SpawnBasketballs`) before the
+cheerleader (whose `Start()` assigns the static) is necessarily spawned (`SpawnCheerleader`), so the
+callback must re-resolve the live singleton at invocation time, never a value captured at composition
+time. `AnaylticsManager.PlayerShoot` needed no adapter at all - it already matched `Action<float>`
+exactly and is passed as-is.
+
+**Human-vs-CPU telemetry result.** Unchanged from AUD-010 Phase 2b0: only the primary/secondary human
+ball (`is BasketBall humanBall`) is ever offered the telemetry callback; `BasketBallAuto` still declares
+no `BindShotTelemetry` surface, so CPU shots remain untelemetered by construction, not by a runtime
+branch that could regress. Proven directly by `BasketBallAutoDeclaresNoShotTelemetryBindingMethod`
+(unchanged) and the real-scene PlayMode composition test below.
+
+**Production telemetry callback identity.** `Level5BasketBallShotTelemetryCompositionPlayModeTests`
+(unchanged by this slice) drove a real gameplay-scene load end-to-end and confirmed every spawned human
+`BasketBall`'s bound `shotTelemetryCallback` still resolves to `DeclaringType.Name == "AnaylticsManager"`,
+`Method.Name == "PlayerShoot"` - proof that `GameLevelManager.Awake`'s new
+`AnaylticsManager.PlayerShoot` argument reaches the ball exactly as the former direct call did, with the
+new forwarding hop in between adding no wrapper. At the `SpawnCoordinator` level (which no longer knows
+what `AnaylticsManager` is), `Level5BasketBallShotTelemetryTests` was updated to supply
+`AnaylticsManager.PlayerShoot` explicitly to the constructor and assert the coordinator forwards it
+unchanged, plus a new test (`GiveBallForwardsTheSuppliedTelemetryDelegateInstanceUnchanged`) proving
+reference-equality forwarding of an arbitrary delegate, not just a declaring-type/method-name match.
+
+**Critical-presentation static/liveness result.** `GameLevelManager.PlayCriticalSuccessPresentation` is
+proven, via reflection, to be a bare static method reference (`Target == null`) once bound to a real
+ball, and to resolve `BehaviorNpcCritical.instance` fresh at each invocation rather than at composition
+time: absent (no throw, existing coverage retained under the new owner), late-assigned after the
+"absent" call already ran, replaced by a second instance, and cleared back to absent - all four states
+reached the adapter without throwing, in `Level5BasketBallCriticalSuccessPresentationTests`'s four
+`PlayCriticalSuccessPresentation*` tests. Human and CPU balls given the same coordinator were also
+proven to receive the exact same supplied delegate instance
+(`HumanAndCpuBallsReceiveTheExactSameSuppliedCriticalSuccessCallback`), and a coordinator built with
+neither callback leaves both balls unbound without an invalid null bind
+(`NoCriticalSuccessCallbackLeavesBothBallsUnboundWithoutError`,
+`NoTelemetryCallbackLeavesHumanBallUnboundWithoutError`).
+
+**Architecture guard.** Slice 55's guard test (reused rather than duplicated) now also asserts zero
+executable `AnaylticsManager` and `BehaviorNpcCritical` references in `SpawnCoordinator.cs`'s stripped
+source (comments *and* string literals removed), alongside the still-green
+`ProjectilePool`/`GameLevelManager` assertions from Slice 55 - and was renamed from
+`SpawnCoordinatorHasNoProjectilePoolOrGameLevelManagerReferences` to
+`SpawnCoordinatorHasNoAssemblyCSharpIntegrationReferences` (`Level5GameManagerEdgeTests`), since it now
+guards four types rather than two and the old name undersold its scope. The basketball-folder guards
+(`Level5BasketballAnaylticsManagerFolderGuardTests`, `Level5BasketballBehaviorNpcCriticalFolderGuardTests`)
+scan `Assets/Scripts/basketball` only, were never about `SpawnCoordinator`, and remain green unmodified.
+
+**Focused tests added/updated.** `Level5BasketBallShotTelemetryTests` (+2 new:
+`GiveBallForwardsTheSuppliedTelemetryDelegateInstanceUnchanged`,
+`NoTelemetryCallbackLeavesHumanBallUnboundWithoutError`; 2 existing composition tests updated to supply
+`AnaylticsManager.PlayerShoot` explicitly rather than relying on the coordinator to manufacture it).
+`Level5BasketBallCriticalSuccessPresentationTests` (+5 new:
+`HumanAndCpuBallsReceiveTheExactSameSuppliedCriticalSuccessCallback`,
+`NoCriticalSuccessCallbackLeavesBothBallsUnboundWithoutError`,
+`PlayCriticalSuccessPresentationReachesAnInstanceAssignedAfterComposition`,
+`PlayCriticalSuccessPresentationReachesAReplacementInstance`,
+`PlayCriticalSuccessPresentationNoOpsAfterInstanceIsCleared`; 2 existing composition tests updated to
+supply the production `GameLevelManager.PlayCriticalSuccessPresentation` adapter explicitly and assert
+the new `GameLevelManager` ownership; the existing absent-instance test retargeted to the new owner).
+`Level5GameManagerEdgeTests` (existing Slice 55 guard test extended, no new test method). 7 net new
+tests.
+
+**Validation.** Focused EditMode run (`Level5BasketBallShotTelemetryTests`,
+`Level5BasketBallCriticalSuccessPresentationTests`, `Level5GameManagerEdgeTests`,
+`Level5ProductionAssemblyBoundaryTests`, `Level5BasketballAnaylticsManagerFolderGuardTests`,
+`Level5BasketballBehaviorNpcCriticalFolderGuardTests`, `Level5SpawnCoordinatorAnimationEventsCompositionTests`,
+`Level5SpawnCoordinatorCampaignCpuPrefabResolverTests`, `Level5SpawnCoordinatorFallRespawnCompositionTests`,
+plus the other GiveBall-exercising composition fixtures unaffected by this slice
+(`Level5BasketballOwnershipBindingTests`, `Level5ShotMeterOwnershipTests`,
+`Level5BasketballGroundHeightProviderTests`, `Level5BasketBallMatchRulesTests`,
+`Level5BasketBallAutoMatchRulesTests`), 232 test-case results): green. Full EditMode: 1291 (up from 1284
+- the 7 new tests), all green. Full PlayMode: 17, unchanged, all green - including the real-scene
+`Level5BasketBallShotTelemetryCompositionPlayModeTests`, left unmodified because it still passes unchanged
+against the new production wiring. `scripts/validate-repository.ps1`: green.
+
+**Review pass 1 (correctness/lifecycle).** No findings. Verified directly against the diff: telemetry is
+never bound to `BasketBallAuto` - `humanShotTelemetry` is only read inside the `is BasketBall humanBall`
+branch; `AnaylticsManager.PlayerShoot` is passed as a bare method group at the one production call site,
+never wrapped in a lambda or a redundant forwarding method; the telemetry value itself is untouched -
+`GiveBall` never inspects or transforms the callback, only forwards it; no null callback is ever passed
+into either type's rejecting `BindShotTelemetry`/`BindCriticalSuccessPresentation`, both guarded by an
+`if (... != null)` check; `BehaviorNpcCritical.instance` is not captured early - the relocated adapter
+still reads the static fresh on every invocation, and is handed to the constructor as a method group, not
+a closure; the production critical callback's `Target` stays `null`, confirmed by reflection; human and
+CPU basketballs are proven to receive the exact same delegate instance, not merely the same declaring
+type; the sole production construction site was updated to supply both new dependencies before any
+behavior change; no existing late-resolution assertion was weakened - the absent-instance test kept its
+exact shape under the new owner, and three more states (late-assigned, replaced, cleared) were added; no
+unrelated `GiveBall` behavior (ownership binding, match-rules binding, ground-height binding, shot-meter
+runtime binding) was touched.
+
+**Review pass 2 (architecture/scope).** No findings. No analytics interface/service was introduced -
+`Action<float>` is the same delegate type `BasketBall.BindShotTelemetry` already declared; no
+presentation interface/service was introduced - `Action` is the same delegate type both concrete types
+already declared; no runtime-services/context/options container was added merely to group two
+callbacks - two more optional trailing constructor parameters, matching Slices 54/55's own shape; neither
+`BasketBall.cs` nor `BasketBallAuto.cs` was edited - both files are untouched by this diff; `AnaylticsManager`
+and `BehaviorNpcCritical` themselves were not migrated, refactored, or otherwise touched; no
+persistence/`GameRules` cleanup was pulled in; `CheerleaderProfile.NoneObjectName` was not touched;
+`SpawnCoordinator` was not moved; no asmdef changed; no other manager-root file was moved.
+
+**Remaining `SpawnCoordinator` executable dependencies (freshly measured, this SHA, classified by owning
+assembly for the next slice to pick from - not implemented here).**
+
+*Legal existing custom-assembly dependencies (already `Level5.*`, not counted as blockers):*
+`PlayerRegistry`, `ResolvedMatchRules`, `PlayerRoster`, `GameModeId`, `IGroundHeightProvider`,
+`MatchRuntime` (all pre-existing composition-boundary inputs, unaffected by this slice) plus
+`IShooterActor` (`Level5.Core`) - the one interface among the types `GiveBall`/the `Bind*` helpers reach
+for internally that already lives in a custom assembly.
+
+*True `Assembly-CSharp` blockers (still plain global-namespace types despite several living under a
+`Level5Player`-named folder - the folder name is organizational, not an asmdef boundary), 22 distinct
+types. Slice 55 reported 25 remaining types without separating out the one that already lives in a
+custom assembly (`IShooterActor`, `Level5.Core`); applying that same blocker-only definition to Slice
+55's own list would have read 24 - so the true reduction this slice makes is exactly the two integrations
+it targeted, `AnaylticsManager` and `BehaviorNpcCritical`, both now dropped off entirely:*
+`AutoPlayerCollisions`, `AutoPlayerController`, `AutoPlayerDefense`, `BasketBall`, `BasketBallAuto`,
+`BasketBallState`, `CallBallToPlayer`, `CharacterProfile`, `CheerleaderProfile`, `Constants`, `GameRules`
+(the `MarkKilledOnIdle` forward), `GameStats`, `IBasketballRuntime`, `LoadedData`, `PlayerAnimationEvents`,
+`PlayerAttackQueue`, `PlayerCollisions`, `PlayerController`, `PlayerHealth`, `PlayerIdentifier`,
+`RangeMeter`, `ShotMeter`.
+
+*Custom-assembly dependencies pointing an undesirable direction for a future `Level5.*` home:* none.
+Every type in the blocker list above is still plain `Assembly-CSharp`; none of them have yet been
+migrated into a `Level5.*` assembly at all, so there is nothing yet to flag as pointing the wrong way -
+that classification becomes relevant only once one of these 22 types (or `SpawnCoordinator` itself)
+actually moves.
+
+`SpawnCoordinator.cs` remains permanently asserted (via
+`Level5GameManagerEdgeTests.SpawnCoordinatorHasNoAssemblyCSharpIntegrationReferences`) to spell
+none of `ProjectilePool`, `GameLevelManager`, `AnaylticsManager`, or `BehaviorNpcCritical` in its
+executable source.
+
+**Production behavior impact:** none intended. Human shot telemetry still fires exactly once per human
+launch, after `actor.EndShootCycle()`, with the exact `ShotMeterSliderValue`, into the identical
+`AnaylticsManager.PlayerShoot` analytics call (same event name, fields, and `MatchRuntime`-based
+attribution); CPU shots remain untelemetered; human and CPU swishes still trigger the identical
+`BehaviorNpcCritical.instance.playAnimationCriticalSuccesful()` presentation, resolved live at the same
+point in `Launch()` as before; every other `SpawnCoordinator` responsibility is untouched.
+
 ### Phase 3 — Converge the human/CPU pairs
 
 Not "one type". The pairs carry real, intended differences: the human path has an analytics call and

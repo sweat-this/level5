@@ -198,9 +198,19 @@ public class Level5GameManagerEdgeTests
     /// own <c>Debug.LogError</c> messages spell "GameLevelManager" inside a string literal (e.g. "GameLevelManager
     /// missing required player or basketball spawn locations."), which a comment-only strip would still
     /// see as a false-positive hit.
+    ///
+    /// AUD-012 Phase 2b Slice 56 extends the same guard: <c>SpawnCoordinator</c> also no longer
+    /// implements the human shot-telemetry/critical-success-presentation callbacks it hands to
+    /// <c>GiveBall</c>'s spawned basketballs itself - it only distributes the
+    /// <c>humanShotTelemetry</c>/<c>criticalSuccessPresentation</c> delegates it was constructed with
+    /// (see <c>GameLevelManager.PlayCriticalSuccessPresentation</c> and the <c>AnaylticsManager.PlayerShoot</c>
+    /// method group <c>GameLevelManager.Awake</c> now passes directly). Renamed from
+    /// <c>SpawnCoordinatorHasNoProjectilePoolOrGameLevelManagerReferences</c> to
+    /// <c>SpawnCoordinatorHasNoAssemblyCSharpIntegrationReferences</c> at this slice, now that it guards
+    /// four types rather than two - the old name undersold what it actually checks.
     /// </summary>
     [Test]
-    public void SpawnCoordinatorHasNoProjectilePoolOrGameLevelManagerReferences()
+    public void SpawnCoordinatorHasNoAssemblyCSharpIntegrationReferences()
     {
         string file = EnumerateGameManagerScripts()
             .FirstOrDefault(path => Path.GetFileName(path).Equals("SpawnCoordinator.cs", StringComparison.OrdinalIgnoreCase));
@@ -216,6 +226,14 @@ public class Level5GameManagerEdgeTests
             "SpawnCoordinator must have zero executable GameLevelManager references - the "
             + "has-auto-player check must go through the bound hasAutoPlayerReader delegate forwarded "
             + "to PlayerAnimationEvents, supplied by GameLevelManager.HasAutoPlayerForAnimationEvents.");
+        Assert.That(text, Does.Not.Match(@"\bAnaylticsManager\b"),
+            "SpawnCoordinator must have zero executable AnaylticsManager references - human shot "
+            + "telemetry must go through the bound humanShotTelemetry delegate, supplied by "
+            + "GameLevelManager.Awake as the AnaylticsManager.PlayerShoot method group.");
+        Assert.That(text, Does.Not.Match(@"\bBehaviorNpcCritical\b"),
+            "SpawnCoordinator must have zero executable BehaviorNpcCritical references - "
+            + "critical-success presentation must go through the bound criticalSuccessPresentation "
+            + "delegate, supplied by GameLevelManager.PlayCriticalSuccessPresentation.");
     }
 
     [Test]
