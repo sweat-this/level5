@@ -5354,6 +5354,127 @@ dependencies of their own (pure `UnityEngine`/`UnityEngine.UI`/`System`).
 
 **Production behavior impact:** none. Both types are source-identical to their pre-move content.
 
+**Slice 60 (2026-09-14, same `dev` position as Slice 59): cuts `Timer`'s dependency on `GameRules` and
+`GameLevelManager` - its last two loose `Assembly-CSharp` integration points.**
+
+**Old flow.**
+
+```text
+Update() gate           -> GameRules.instance == null
+game-over check (x3)    -> GameRules.instance.GameOver
+match-end reporting     -> GameRules.instance.GameModeRequiresConsecutiveShots
+                        -> GameLevelManager.instance.Player1
+                        -> GameRules.instance.RequestEnd(reason)
+```
+
+**New flow.**
+
+```text
+GameLevelManager.ReadGameOverForTimer                          -> GameRules.instance.GameOver (or null)
+GameLevelManager.ReadGameModeRequiresConsecutiveShotsForTimer   -> GameRules.instance.GameModeRequiresConsecutiveShots
+GameLevelManager.ReadPrimaryPlayerForTimer                      -> GameLevelManager.instance.Player1
+GameLevelManager.RequestMatchEndForTimer                        -> GameRules.instance.RequestEnd(reason)
+        │                                                                       │
+        └────────────────────────── all four handed in ────────────────────────┘
+                                            ▼
+                              Timer.BindMatchEndContext (called from GameLevelManager.Start())
+                                            ▼
+                              Timer.Update() / Timer.ReportTimeExpired (forwards, unexamined)
+```
+
+**The seam.** `gameOverReader` (`Func<bool?>`) is the one delegate carrying both former
+`GameRules.instance` concerns: `null` means "no live `GameRules`" - the exact condition that used to
+idle the entire clock, not merely the game-over check - and a non-null value is the live `GameOver`
+answer, read once per `Update()` call instead of three separate live re-reads (safe: nothing mutates
+`GameRules.instance.GameOver` within the same synchronous `Update()` call). `gameModeRequiresConsecutiveShotsReader`
+and `requestMatchEnd` are plain `Func<bool>`/`Action<MatchEndReason>`, matching the shape established
+for `SpawnCoordinator` in Slices 54-57; `primaryPlayerReader` is `Func<PlayerIdentifier>`, mirroring
+`campaignCpuPrefabResolver`'s "optional dependency, live resolution" shape.
+
+**Binding placement.** `GameLevelManager.Start()`, not `Awake()`: Unity does not order `Awake()` across
+independent components, so `Timer.instance` (set in `Timer`'s own `Awake()`) is not guaranteed non-null
+during `GameLevelManager`'s own `Awake()` - but every component's `Awake()` is guaranteed to precede
+every component's `Start()`, and no component's `Update()` (the only place this binding is read) can run
+before every `Start()` in the scene has completed. This is a different race than `BindPlayerHealthBarContext`
+solves by using `Awake()` (a race with a *consumer's own* `Start()` reading the binding synchronously);
+here the risk is `Awake()`-vs-`Awake()` ordering, which only `Start()` placement closes.
+
+**Architecture guard caught a real mistake.** The first implementation bound with
+`Timer.instance?.BindMatchEndContext(...)`. `Level5SingletonLifetimeTests.NoNullConditionalOnASingletonInstance`
+(AUD-061) failed immediately: `?.` on a `UnityEngine.Object`-derived singleton does not go through
+Unity's overloaded destroyed-object `==` check. Fixed to `if (Timer.instance != null) { Timer.instance.BindMatchEndContext(...); }`
+before this slice's validation run.
+
+**Preserved failure modes.** `ReadGameModeRequiresConsecutiveShotsForTimer` and `RequestMatchEndForTimer`
+carry no null guard, matching the former unconditional dereferences exactly - `ReportTimeExpired` is only
+ever reached after `ReadGameOverForTimer` already found a live `GameRules` this frame, the same reasoning
+Slice 57's `MarkKilledOnIdle` used to justify its own unguarded write.
+
+**Focused tests added.** `Level5TimerMatchEndContextTests` (new, 11 tests): 4 composition-forwarding
+tests driving the real `Update()` method via reflection (mirroring
+`Level5SpawnCoordinatorKilledOnIdleCompositionTests`' shape - an unbound clock never counts, a
+null-returning `gameOverReader` never counts, a false-returning one reaches `ReportTimeExpired`'s player
+lookup, a null player still returns without reporting), 2 tests proving `ReportTimeExpired` forwards the
+exact match-end reason (plain `TimeExpired` and the consecutive-shots-streak variant, proving
+`gameModeRequiresConsecutiveShotsReader`'s result - not a hard-coded `false` - reaches
+`MatchEndConditions.TimeExpired`), 5 production-adapter tests against live `GameRules`/`GameLevelManager`
+singletons (including the preserved-NRE-on-absent-`GameRules` case). Does not re-prove
+`MatchEndConditions.TimeExpired`/`TimeExpiredReason`'s own arithmetic - already covered by
+`Level5MatchLifecycleTests` as a pure function.
+
+**Validation.** Full EditMode, headless Unity `6000.5.7f1`: 1321/1321 green (up from 1310 - the 11
+net-new tests). Full PlayMode: 17/17 green, unchanged. `scripts/validate-repository.ps1`: passed.
+
+**Review pass 1 (correctness/lifecycle/serialization).** No Awake/Start timing changed beyond the one
+new `Start()` binding call. No serialized field changed. The one real finding (the `?.` singleton
+violation) was caught by the architecture guard test, not missed - see above.
+
+**Review pass 2 (architecture/scope).** No new interface or service was introduced - four narrow
+delegates, matching the established `SpawnCoordinator` shape. `MatchEndConditions`/`MatchClock`
+themselves untouched. `Timer` was not moved this slice (see Slice 61 immediately below); no other
+manager-root file was touched.
+
+**Fresh dependency count: zero `Assembly-CSharp`.** Confirmed by manual identifier scan of the full
+file (every capitalized identifier resolved to `UnityEngine`, `System`, `Level5.Core.Match`, or
+`Level5.Player`).
+
+**Production behavior impact:** none. The clock still idles exactly when `GameRules` is absent, still
+reports match-end through the identical `MatchEndConditions` calls, and still throws on an absent
+`GameRules` at the same two call sites.
+
+**Slice 61 (2026-09-14, same `dev` position as Slice 60): migrates `Timer` into `Level5.Match`.**
+
+Moved `Timer.cs`/`.meta` into `Assets/Scripts/game manager/Level5Match/`, GUID
+`0cbb2e138afa4ae49ac2b8f677d09f1f` unchanged, global namespace and type name unchanged, every public API
+unchanged. No asmdef reference change needed - every remaining type `Timer.cs` uses
+(`PlayerIdentifier`, `MatchClock`, `MatchEndConditions`, `MatchEndReason`, `MatchRuntime`,
+`ResolvedMatchRules`) already resolves through `Level5.Match`'s existing `Level5.Core`/`Level5.Player`
+references.
+
+**Serialized-reference audit.** GUID search: same five files as `PauseUiObjects`/`messageLog`
+(`GameManager.prefab` plus the three scenes with their own inline `Pause`). No `m_EditorClassIdentifier`
+anomaly this time - every authored instance shows an empty identifier, consistent with having been added
+through the Editor's normal "Add Component" flow rather than a scripted `AddComponent<T>()` (contrast
+`PauseUiObjects`, Slice 59). `GameRules.setTimer` and `MatchHudPresenter`'s many `Timer.instance` reads
+stay in `Assembly-CSharp` and reach it through `autoReferenced`, unaffected.
+
+**Compiler-backed ownership.** Added `TimerCompilesIntoLevel5Match`, matching the identity-check pattern
+every prior 2b move uses.
+
+**Validation.** Full EditMode: 1322/1322 green (up from 1321 - the one net-new test), zero
+missing-script warnings in the batch log. Full PlayMode: 17/17 green, unchanged.
+
+**Review pass 1 (correctness/lifecycle/serialization).** Byte-identical move; no Awake/Start/Update
+timing, serialized field, or GUID changed.
+
+**Review pass 2 (architecture/scope).** No new assembly created; `Timer` joins the existing
+`Level5.Match` asmdef. No unrelated cleanup - content unchanged, only location and owning assembly.
+
+**Fresh dependency count:** zero `Assembly-CSharp`, zero custom-assembly executable dependencies beyond
+the already-legal `Level5.Core`/`Level5.Player` types listed above.
+
+**Production behavior impact:** none. Source-identical to its pre-move content.
+
 ### Phase 3 — Converge the human/CPU pairs
 
 Not "one type". The pairs carry real, intended differences: the human path has an analytics call and
