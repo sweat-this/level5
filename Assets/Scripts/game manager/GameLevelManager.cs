@@ -115,7 +115,7 @@ public class GameLevelManager : MonoBehaviour, IGroundHeightProvider, IPlayerMat
             joystick = GameObject.FindGameObjectWithTag("joystick").GetComponentInChildren<FloatingJoystick>();
         }
 
-        _spawnCoordinator = new SpawnCoordinator(_spawnLocations, registry, _rules, _roster, _modeId, this);
+        _spawnCoordinator = new SpawnCoordinator(_spawnLocations, registry, _rules, _roster, _modeId, this, TryResolveCampaignCpuPrefab);
 
         try
         {
@@ -243,6 +243,35 @@ public class GameLevelManager : MonoBehaviour, IGroundHeightProvider, IPlayerMat
         }
 
         shotMade.BindMatchContext(_rules, _modeId);
+    }
+
+    /// <summary>
+    /// AUD-012 Phase 2b Slice 54: the composition adapter <see cref="SpawnCoordinator"/> now calls
+    /// instead of reaching directly for legacy campaign selection itself. This class already reads
+    /// <c>GameOptions</c> (it is an allowlisted consumer) and already constructs the coordinator, so it
+    /// is the narrowest existing owner for this one lookup - not a new <c>GameOptions</c> consumer.
+    ///
+    /// Preserves the exact prior three-state semantics <c>SpawnCoordinator.ResolveParticipantPrefab</c>
+    /// used to implement inline: no list, a negative index, or an out-of-range index all report "no
+    /// campaign override available" (<c>false</c>) so the caller falls back to the normal Resources
+    /// lookup; a valid entry reports <c>true</c> with that entry's authored <c>CpuPlayer</c>, which may
+    /// itself legitimately be null - the caller must not treat that as "unavailable" and must not fall
+    /// back. A malformed list entry (<c>levels[index] == null</c>) is left to throw exactly as the
+    /// former inline read would have; no new guard is added for it here.
+    /// </summary>
+    private static bool TryResolveCampaignCpuPrefab(out GameObject prefab)
+    {
+        prefab = null;
+
+        List<LevelSelected> levels = GameOptions.levelsList;
+        int levelIndex = GameOptions.levelSelectedIndex;
+        if (levels == null || levelIndex < 0 || levelIndex >= levels.Count)
+        {
+            return false;
+        }
+
+        prefab = levels[levelIndex].CpuPlayer;
+        return true;
     }
 
     private float setTerrainHeight()

@@ -4515,6 +4515,130 @@ complete.
 composition, `LevelRuntimeContext`'s lifecycle/registry semantics, and `ArenaBootstrap`'s scene setup
 (including the preserved battle-royal/no-configuration goal-hiding oddity) are all unchanged.
 
+**Slice 54 (2026-09-14, audited against `dev` SHA `c19983350f9f696e3cac17ef4cb26fc396da68bb`, matching
+Slice 53/PR #147, Unity `6000.5.7f1 (017862109af0)`): `SpawnCoordinator`'s executable dependency on
+legacy campaign selection (`GameOptions.levelsList`/`levelSelectedIndex`, `LevelSelected.CpuPlayer`) cut
+by inversion, not migration - a dependency-preparation slice, not an asmdef move.**
+
+**Old flow.**
+
+```text
+SpawnCoordinator.ResolveParticipantPrefab
+        -> GameOptions.levelsList / levelSelectedIndex
+        -> LevelSelected.CpuPlayer
+```
+
+**New flow.**
+
+```text
+GameOptions.levelsList / levelSelectedIndex / LevelSelected.CpuPlayer
+        -> GameLevelManager.TryResolveCampaignCpuPrefab   (Assembly-CSharp composition adapter)
+        -> SpawnCoordinator.TryResolveCampaignCpuPrefab    (delegate seam, invoked from ResolveParticipantPrefab)
+```
+
+**The seam.** `SpawnCoordinator` gained one nested delegate, `public delegate bool
+TryResolveCampaignCpuPrefab(out GameObject prefab)`, and one new constructor parameter of that type
+(`campaignCpuPrefabResolver = null`, trailing after the existing optional `groundHeightProvider` -
+every existing direct-construction test site keeps compiling unchanged). `ResolveParticipantPrefab`
+calls it exactly once, only when `slot.IsCpu && modeId == GameModeId.BeatThaComputahs`, and only inside
+the short-circuited condition that also checks the resolver is non-null - so a coordinator built
+without one, or asked about any other participant, never touches legacy campaign state at all. A
+try-pattern rather than a plain nullable `GameObject` result was required: the coordinator has to
+distinguish "no campaign override available, fall back to Resources" (`false`) from "the campaign
+override is authoritatively null" (`true` + null `prefab`), which a mode-only null result cannot
+express.
+
+**Campaign parity matrix** (all four states preserved exactly against the pre-slice inline read):
+
+| Resolver outcome | Result |
+| --- | --- |
+| no resolver bound | Resources CPU fallback (same as "unavailable") |
+| `false` (levels null / index < 0 / index >= count) | Resources CPU fallback |
+| `true` + non-null prefab | that exact authored prefab |
+| `true` + null prefab | `null` - no Resources fallback |
+
+A malformed list entry (`levels[index] == null`) is left to throw exactly as the former inline read
+would have; no new guard was added for it, matching the instruction not to convert malformed authored
+data into a normal fallback in this slice.
+
+**Production construction-site audit.** `GameLevelManager.Awake()` is the sole production
+`new SpawnCoordinator(...)` call site (confirmed by a repository-wide search for `new SpawnCoordinator(`
+before editing - every other hit is a test fixture). It now passes
+`GameLevelManager.TryResolveCampaignCpuPrefab` as the trailing argument. No other production site
+existed to update.
+
+**The adapter.** `GameLevelManager` - already an allowlisted `GameOptions` consumer and already the
+coordinator's sole constructor - gained one new private static method,
+`TryResolveCampaignCpuPrefab(out GameObject prefab)`, implementing the same three-state read the inline
+code used to perform, unchanged. Composition timing is unchanged: the coordinator still resolves the
+campaign CPU lazily, at the participant-prefab decision point inside `SpawnPlayers()`, not eagerly in
+`Awake()` before the coordinator exists and not once for the whole scene - the adapter delegate is
+merely handed to the constructor; nothing invokes it until `ResolveParticipantPrefab` does.
+
+**GameOptions allowlist.** `SpawnCoordinator.cs` removed from
+`Level5MatchArchitectureTests.LegacyGameOptionsConsumers` (was one of the "gameplay consumers not yet
+migrated" entries). `GameLevelManager.cs` was already on that list and needed no addition - not a new
+`GameOptions` consumer, the narrowest existing owner taking on one more lookup it already had the
+allowlist standing to make. No entry was added to `Level5GameManagerEdgeTests`' allowlists - that guard
+measures a different edge (game-manager -> player/basketball types), and `SpawnCoordinator`'s
+legitimate presence there (spawning/registering participants) is unchanged by this slice.
+
+**Focused tests added.** `Level5SpawnCoordinatorCampaignCpuPrefabResolverTests` (12 tests,
+`Assets/Tests/Editor/`): the resolver contract driven through the real private
+`ResolveParticipantPrefab` via reflection - true+prefab returns that exact prefab, true+null returns
+null without a Resources fallback, false falls back to Resources, no resolver bound falls back to
+Resources identically, and the resolver is invoked exactly once for one decision (call-counting fake);
+a CPU in another mode and a human in Beat Tha Computahs both never invoke the resolver at all
+(call-counting fake, zero calls) and use their existing Resources paths unchanged; and the real
+production adapter (`GameLevelManager.TryResolveCampaignCpuPrefab`, via reflection) driven directly
+against `GameOptions.levelsList`/`levelSelectedIndex` for all five adapter states (null list, negative
+index, index >= count, valid selection with an authored prefab, valid selection with a null authored
+`CpuPlayer`) - saving and restoring both fields around the fixture so it cannot leak state into any
+other test in the same Editor session.
+
+**Validation.** Focused EditMode run (`Level5SpawnCoordinatorCampaignCpuPrefabResolverTests`,
+`Level5MatchArchitectureTests`, `Level5GameManagerEdgeTests`, `Level5ProductionAssemblyBoundaryTests`,
+plus every existing SpawnCoordinator-composition fixture named in this migration's own test-affected
+list - ownership/rules/ground-height/fall-respawn/CallBall/PlayerHealth/PlayerAttackQueue/RangeMeter/
+ShotMeter/CPU-baseline/character-profile/match-runtime/arena-context/touch-input/idle-sniper/basketball
+match-rules/telemetry/critical-success, 342 tests): green. Full EditMode: 1270 (up from 1258 - the 12
+new tests), all green. Full PlayMode: 17, unchanged, all green. `scripts/validate-repository.ps1`:
+green.
+
+**Review pass 1 (correctness/compatibility).** No findings. Verified directly against the diff: a
+`true`+null result is never mistaken for "unavailable" (the fallback branch is outside the
+short-circuited `if`, unreachable once the resolver returns `true`); the resolver cannot run twice for
+one decision (a single call inside one `&&` chain); no eager capture exists (the resolver field is
+stored, never invoked, in the constructor); the sole production construction site was found and updated
+before any behavior change; the Resources fallback path, prefix selection and object-name resolution
+are byte-identical to before; malformed-entry behavior is preserved by construction (same indexer
+expression, same missing null guard); no test constructor besides the two touched by this slice changed
+shape; no file was added to the `GameOptions` allowlist.
+
+**Review pass 2 (architecture/scope).** No findings. No campaign service/repository was introduced -
+`TryResolveCampaignCpuPrefab` is a two-line adapter around the same three-state read that existed
+inline; no generic prefab-provider abstraction was added - the delegate is named and shaped for this one
+lookup; `GameOptions`/`LevelSelected`/the levels list were never handed into `SpawnCoordinator`, only a
+resolved answer; no other `SpawnCoordinator` dependency was touched; `SpawnCoordinator` was not moved
+into an asmdef; no unrelated manager was edited.
+
+**Remaining `SpawnCoordinator` executable `Assembly-CSharp` dependencies (freshly measured, this SHA,
+for the next slice to pick from - not implemented here):** `AnaylticsManager`, `AutoPlayerCollisions`,
+`AutoPlayerController`, `AutoPlayerDefense`, `BasketBall`, `BasketBallAuto`, `BasketBallState`,
+`BehaviorNpcCritical`, `CallBallToPlayer`, `CharacterProfile`, `CheerleaderProfile`, `Constants`,
+`GameLevelManager` (the `HasAutoPlayer` reach-through), `GameRules` (the `MarkKilledOnIdle` forward),
+`GameStats`, `IBasketballRuntime`, `IShooterActor`, `LoadedData`, `PlayerAnimationEvents`,
+`PlayerAttackQueue`, `PlayerCollisions`, `PlayerController`, `PlayerHealth`, `PlayerIdentifier`,
+`ProjectilePool`, `RangeMeter`, `ShotMeter` - 27 distinct types, down from this same count plus
+`GameOptions`/`LevelSelected` before this slice. `SpawnCoordinator.cs` no longer appears in
+`Level5MatchArchitectureTests.LegacyGameOptionsConsumers` at all.
+
+**Production behavior impact:** none intended. The campaign CPU-prefab decision for
+`GameModeId.BeatThaComputahs` resolves through the identical three-state logic as before, at the
+identical point in `SpawnPlayers()`, reading the identical `GameOptions`/`LevelSelected` fields through
+one narrow adapter instead of inline; every other mode's CPU/human prefab resolution, and every other
+`SpawnCoordinator` responsibility, is untouched.
+
 ### Phase 3 — Converge the human/CPU pairs
 
 Not "one type". The pairs carry real, intended differences: the human path has an analytics call and

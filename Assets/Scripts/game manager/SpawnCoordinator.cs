@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using Level5.Core;
 using Level5.Core.Match;
 using UnityEngine;
@@ -14,12 +13,24 @@ using UnityEngine;
 /// </summary>
 public sealed class SpawnCoordinator
 {
+    /// <summary>
+    /// AUD-012 Phase 2b Slice 54: the one seam through which <see cref="ResolveParticipantPrefab"/>
+    /// reaches legacy campaign CPU-prefab selection, replacing this class's former direct
+    /// <c>GameOptions.levelsList</c>/<c>levelSelectedIndex</c> read. A try-pattern rather than a plain
+    /// nullable <c>GameObject</c> result: the coordinator needs to distinguish "no campaign override is
+    /// available, fall back to the normal Resources lookup" (<c>false</c>) from "the campaign override
+    /// is authoritatively null" (<c>true</c> + <c>null</c> <paramref name="prefab"/>), which a mode-only
+    /// null result cannot express.
+    /// </summary>
+    public delegate bool TryResolveCampaignCpuPrefab(out GameObject prefab);
+
     private readonly SpawnLocations locations;
     private readonly PlayerRegistry registry;
     private readonly ResolvedMatchRules rules;
     private readonly PlayerRoster roster;
     private readonly GameModeId modeId;
     private readonly IGroundHeightProvider groundHeightProvider;
+    private readonly TryResolveCampaignCpuPrefab campaignCpuPrefabResolver;
     private readonly bool hasActiveMatchConfiguration;
 
     /// <summary>
@@ -38,6 +49,13 @@ public sealed class SpawnCoordinator
     /// before any participant is spawned, so this capture point is equivalent to reading it at the top
     /// of <see cref="SpawnPlayers"/> - but it is now a structural fact instead of one relying on
     /// re-reads happening to agree.
+    ///
+    /// AUD-012 Phase 2b Slice 54: <paramref name="campaignCpuPrefabResolver"/> is optional for the same
+    /// reason <paramref name="groundHeightProvider"/> is - every existing direct-construction test site
+    /// keeps compiling unchanged. A coordinator built without one behaves exactly as if the resolver
+    /// reported "no campaign override available" (see <see cref="ResolveParticipantPrefab"/>), which is
+    /// also production's behavior for every mode other than <see cref="GameModeId.BeatThaComputahs"/>.
+    /// Production (<c>GameLevelManager</c>) always supplies one.
     /// </summary>
     public SpawnCoordinator(
         SpawnLocations locations,
@@ -45,7 +63,8 @@ public sealed class SpawnCoordinator
         ResolvedMatchRules rules,
         PlayerRoster roster,
         GameModeId modeId,
-        IGroundHeightProvider groundHeightProvider = null)
+        IGroundHeightProvider groundHeightProvider = null,
+        TryResolveCampaignCpuPrefab campaignCpuPrefabResolver = null)
     {
         this.locations = locations;
         this.registry = registry;
@@ -53,6 +72,7 @@ public sealed class SpawnCoordinator
         this.roster = roster;
         this.modeId = modeId;
         this.groundHeightProvider = groundHeightProvider;
+        this.campaignCpuPrefabResolver = campaignCpuPrefabResolver;
         this.hasActiveMatchConfiguration = MatchRuntime.HasConfiguration;
     }
 
@@ -509,18 +529,21 @@ public sealed class SpawnCoordinator
         BindPlayerAnimationEventsContext(cheerleader);
     }
 
+    /// <summary>
+    /// AUD-012 Phase 2b Slice 54: the campaign still picks its opponent from the level's authored CPU
+    /// character rather than from the roster - that is unchanged campaign data - but this class no
+    /// longer reaches for it itself. <see cref="campaignCpuPrefabResolver"/> is invoked at most once,
+    /// here, at the exact point the decision is made - never eagerly - so a coordinator built without
+    /// one, or asked about any other participant, never touches legacy campaign state at all.
+    /// </summary>
     private GameObject ResolveParticipantPrefab(PlayerSlot slot, int slotId)
     {
-        // The campaign picks its opponent from the level's authored CPU character rather than from
-        // the roster. That is campaign data and stays where it is until the campaign flow migrates.
-        if (slot.IsCpu && modeId == GameModeId.BeatThaComputahs)
+        if (slot.IsCpu
+            && modeId == GameModeId.BeatThaComputahs
+            && campaignCpuPrefabResolver != null
+            && campaignCpuPrefabResolver(out GameObject campaignPrefab))
         {
-            List<LevelSelected> levels = GameOptions.levelsList;
-            int levelIndex = GameOptions.levelSelectedIndex;
-            if (levels != null && levelIndex >= 0 && levelIndex < levels.Count)
-            {
-                return levels[levelIndex].CpuPlayer;
-            }
+            return campaignPrefab;
         }
 
         string prefix = slot.IsCpu
