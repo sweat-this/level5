@@ -28,9 +28,12 @@ public class Level5MatchArchitectureTests
     /// </summary>
     private static readonly HashSet<string> LegacyGameOptionsConsumers = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
     {
-        // the boundary itself: the bridge out, the fallback in, and the fields being retired
+        // the boundary itself: the bridge out and the fields being retired. MatchRuntime.cs left
+        // this list in AUD-012 Phase 2b Slice 52 - it moved into Level5.Match and now resolves its
+        // direct-scene fallback through GameOptions.CaptureMatchRuntimeSnapshot instead of reading
+        // GameOptions directly; that builder lives on GameOptions.cs itself, which is already exempt
+        // from this guard (see EnumerateGameScripts's caller skipping "GameOptions.cs" by name).
         "LegacyGameOptionsBridge.cs",
-        "MatchRuntime.cs",
         "StartMenuSelectionState.cs",
 
         // menu, navigation and start-screen widgets, migrating in a later slice

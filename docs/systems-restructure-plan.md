@@ -4277,6 +4277,143 @@ Overall AUD-012 Phase 2 is **not** complete: the `game manager` leg above remain
 method, serialized value, prefab, scene, or ScriptableObject was changed; `PlayerStats.Money` and
 `SelectedLoadout`'s fields keep identical names, types, and initialization semantics.
 
+**Slice 52 (2026-09-13, audited against `dev` SHA `d11e148e46f217b8524bdc991480facf2591a931`, matching
+Slice 51/PR #145, Unity `6000.5.7f1 (017862109af0)`): `MatchRuntime` moved into `Level5.Match` by
+replacing its direct `GameOptions`/`Modes` reads with a narrow, installable legacy-fallback seam.**
+
+Unlike every prior `game manager` blocker, `MatchRuntime` could not simply move source-identically:
+its direct-scene-entry fallback (no validated `ActiveMatch` configuration - the editor's play-from-scene
+workflow, or a direct scene reload) read `GameOptions.*` directly to reconstruct `ResolvedMatchRules`,
+`PlayerRoster`, mode/level identity, the primary character and the cheerleader, and compared
+`GameOptions.gameModeSelectedId` against `Modes.Lockdown` for the Lockdown implicit-defender rule - a
+second `Assembly-CSharp` edge (`Modes.cs`) this slice's own audit step found, not previously flagged by
+any earlier slice's remeasurement.
+
+**The seam.** A new sealed value type, `LegacyMatchRuntimeSnapshot`
+(`Assets/Scripts/game manager/Level5Match/LegacyMatchRuntimeSnapshot.cs`, `Level5.Match`, global
+namespace like its siblings `ActiveMatch`/`MatchSession`), holds exactly the resolved answers
+`MatchRuntime` needs for the fallback path: `Rules` (`ResolvedMatchRules`), `Roster` (`PlayerRoster`),
+`ModeId`/`RawModeId`/`ModeDisplayName`, level facts
+(`LevelDisplayName`/`LevelId`/`LevelRequiresTimeOfDay`/`LevelHasWeather`/`LevelHasSevenPointers`), the
+primary character's own legacy identity (`PrimaryCharacterDisplayName`/`PrimaryCharacterObjectName`/
+`PrimaryCharacterId` - read independently of `Roster`, because `MatchRuntime` consults these even when a
+configuration *is* active, see below), `Cheerleader`, and `GetHumanPlayerInputSlot(int)` for the one
+out-of-roster input-slot fallback. `MatchRuntime` holds a `private static Func<LegacyMatchRuntimeSnapshot>`
+(`InstallLegacyFallbackReader`/`ResetLegacyFallbackReader`) and calls it fresh from each fallback-dependent
+property getter rather than caching one snapshot - preserving the pre-existing "not cached for the whole
+scene" liveness semantic verbatim, just moved from a direct `GameOptions.*` read to a reader invocation.
+An unset reader throws `InvalidOperationException` from `MatchRuntime`'s private `LegacyFallback()`
+rather than fabricating default rules.
+
+**Where the reconstruction logic went.** Every private helper that used to live in `MatchRuntime.cs`
+(`RulesFromLegacyGlobals`, `RosterFromLegacyGlobals`, `LegacyClockMode`/`LegacyCombatMode`/
+`LegacyShotRule`/`LegacyShotMarkers`/`LegacySniperMode`, `CheerleaderFromLegacyGlobals`) moved
+byte-for-byte in logic (only the field access became unqualified, since they now live inside
+`GameOptions` itself) into `GameOptions.cs` as private static methods, culminating in a private
+`GameOptions.CaptureMatchRuntimeSnapshot()` that builds one `LegacyMatchRuntimeSnapshot`. This follows
+the plan's preferred shape exactly: `GameOptions` already owned every field being read, and
+`Level5MatchArchitectureTests`'s `NoNewFileReachesForGameOptions` guard already exempts `GameOptions.cs`
+by name - so moving the reconstruction there added no new file to that allowlist (see below) rather than
+trading one allowlisted consumer for a new one. The `Modes.Lockdown` comparison moved unchanged too
+(`gameModeSelectedId == Modes.Lockdown`) - legal because `GameOptions.cs` is already `Assembly-CSharp`,
+the same assembly `Modes.cs` compiles into; this is not a new cross-assembly edge, just the existing one
+relocated to a file for which it was never a boundary violation in the first place.
+
+`CaptureMatchRuntimeSnapshot` is deliberately **private**, not a new public `GameOptions` API: nothing
+in production needs to call it directly (`GameOptions`'s own `RuntimeInitializeOnLoadMethod` bootstrap,
+below, calls it as a method-group `Func`, entirely intra-file), and the crude regex behind
+`Level5MatchArchitectureTests.GameOptionsGrowsNoNewMatchFields`'s field-count ratchet counts any
+`public static` member whose return type isn't `void`/`bool` as if it were a field - a public builder
+here would have inflated that ratchet for a method, not a field. A test that needs the real production
+mapping (not a fake) reaches this private method through reflection
+(`Level5MatchRuntimeFallbackTestSupport.ProductionReader()`), the same pattern several existing fixtures
+already use for private fields/methods elsewhere in this codebase.
+
+**Deterministic pre-`Awake` installation.** `GameOptions` installs the reader via
+`[RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]`
+(`InstallMatchRuntimeLegacyFallback`), and `MatchRuntime.ResetLegacyFallbackReader` carries
+`[RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]` to clear stale state
+first. `SubsystemRegistration` and `BeforeSceneLoad` both run before any scene object's `Awake()`, and
+Unity re-invokes every `RuntimeInitializeOnLoadMethod` on each Play Mode entry even with domain reload
+disabled - exactly the ordering `GameLevelManager.Awake()` needs, since its first lines
+(`_rules = MatchRuntime.Rules; _roster = MatchRuntime.Roster; _modeId = MatchRuntime.ModeId;`) are the
+production call site that would otherwise race an uninstalled reader in a directly-entered scene.
+
+**EditMode tests don't get this for free.** `RuntimeInitializeOnLoadMethod` is a Player/Play-Mode load
+event; it does not fire for EditMode tests. A new assembly-wide `[SetUpFixture]`,
+`Level5MatchRuntimeFallbackTestBootstrap` (`Assets/Tests/Editor/`), installs the exact same production
+reader (via the reflection helper above) once before any EditMode test runs, and resets it once after -
+so every existing fixture that touches `MatchRuntime`'s fallback path either directly
+(`Level5MatchBridgeParityTests.TheRuntimeReadsBackTheSameRulesTheBridgeWrote`,
+`Level5AutonomousActorTests.HumanSlotWithoutACharacterFallsBackToThePrimaryId`) or through
+`LiveMatchRuntimeAdapter`/`FakeMatchRuntime` (`Level5PlayerMatchRuntimeCompositionTests`,
+`Level5PlayerControllerIdleSniperTests`, `Level5PlayerInputReaderCompositionTests`) kept working
+unmodified - none of them needed editing, because the reader is already installed for their entire run.
+PlayMode tests need no equivalent: entering Play Mode in the editor does fire
+`RuntimeInitializeOnLoadMethod`, so `Level5.PlayModeTests` gets the real bootstrap automatically.
+
+**An existing oddity, preserved rather than cleaned up.** `PrimaryCharacterDisplayName`/
+`PrimaryCharacterObjectName`/`PrimaryCharacterId` and `LocalInputSlotFor`'s out-of-roster branch consult
+the legacy fallback *unconditionally* - even when `ActiveMatch` has a validated configuration - whenever
+the roster's primary slot (or the requested slot) has nothing of its own to report. This was true before
+the move (they read `GameOptions.*` directly regardless of `Configuration`'s state) and is unchanged
+now (they read `LegacyFallback().*` regardless); a configured match with a well-formed roster never
+reaches this branch in practice, which is what makes "configured-path reads do not require the fallback
+reader" true as an operational guarantee without contradicting this structural fact. Documented, not
+fixed - a behavior change here is out of this slice's scope.
+
+**Focused tests added:** `Level5MatchRuntimeLegacyFallbackTests` (22 tests) covering configured-path
+precedence and its no-reader-required guarantee, the primary-character ungated-fallback oddity above
+(including its out-of-roster twin on `LocalInputSlotFor` when configured), full legacy-fallback
+reconstruction parity (roster CPU/human classification and local-input assignment, player-count
+clamping, mode/level identity, the Lockdown implicit defender without naming `Modes`, the cheerleader,
+the out-of-roster input-slot formula), fallback read liveness across two calls, reader lifecycle
+(missing-reader throws, reset is idempotent, reinstalling recovers the mapping, a null reader is
+rejected), and - added during independent code review, see below - that the fallback-dependent
+properties build the snapshot at most once per read. `Level5ProductionAssemblyBoundaryTests.MatchRuntimeCompilesIntoLevel5Match`
+is the assembly-identity check, the same pattern as every other Slice 2b type.
+`Level5MatchArchitectureTests.LegacyGameOptionsConsumers` lost `"MatchRuntime.cs"` - the allowlist
+shrank by one entry with no replacement added (`GameOptions.cs` was already exempt by name, so the
+reconstruction landing there did not need a new entry).
+
+**Independent code review pass, before merge.** A senior-engineer review of the diff (separate from the
+two review passes below, run against the already-tested implementation) found and this slice fixed:
+
+- `LegacyMatchRuntimeSnapshot.Rules`/`.Roster` were eagerly built, so every fallback read reconstructed
+  both even to answer one cheap field (e.g. `LevelDisplayName`), and `LocalInputSlotFor`/
+  `PrimaryCharacterDisplayName`/`ObjectName`/`Id` each built the snapshot twice per call. Fixed in two
+  steps: `Rules`/`Roster` became `Lazy<T>`-backed on the snapshot, and every `MatchRuntime` accessor was
+  restructured to build at most one snapshot per read, reusing it for both the roster lookup and the
+  character/input-slot fallback field.
+- The first fix toward "build once" introduced a value-tuple return (`ResolvePrimarySlot`) - the only
+  tuple-returning method anywhere in `Assets/Scripts` and a different shape than `LocalInputSlotFor`'s
+  own if/else solution to the identical problem in the same file. Replaced with the same explicit
+  if/else shape `LocalInputSlotFor` already used, so the file now has one idiom for this pattern, not two.
+- `LocalInputSlotFor`'s configured-but-out-of-roster branch, and the "build once" fix itself, had no
+  direct test - the full suite could not have caught either regression. Added
+  `LocalInputSlotForFallsBackToTheLegacyFormulaEvenWhenConfiguredButSlotIsOutsideTheRoster` and three
+  reader-invocation-count tests (`...BuildsTheFallbackSnapshotAtMostOnce[...]`) that install a counting
+  wrapper around the production reader and assert exactly one call.
+- `GameOptions.CaptureMatchRuntimeSnapshot`'s doc comment cited `Level5TestSourceText` (an unrelated,
+  cross-assembly, `internal` comment-stripping helper) as the precedent for reaching a private method
+  through reflection. Corrected to point at the actual precedent
+  (`Level5PlayerMatchRuntimeCompositionTests`'s `GetPrivateField`/`InvokePrivate`).
+
+All four fixes reverified: full EditMode (1249, up from 1245) and PlayMode (17) both green, repository
+validation green.
+
+**Production behavior impact:** none intended. Every fallback answer (rules, roster, mode/level
+identity, primary character, cheerleader, input-slot resolution) is reconstructed by the same logic as
+before, now reached through one indirection; the one existing oddity above is preserved, not changed;
+`ActiveMatch` remains the sole authoritative source when a configuration exists.
+
+**Freshly measured remaining `game manager` blockers (this SHA, `MatchRuntime.cs` now excluded as
+closed):** `ArenaBootstrap.cs`, `GameLevelManager.cs`, `GameRules.cs`, `LevelRuntimeContext.cs`,
+`MatchHudPresenter.cs`, `Pause.cs`, `PauseUiObjects.cs`, `SpawnCoordinator.cs`, `Timer.cs`,
+`messageLog.cs` - 10 loose production `.cs` files still compiling into `Assembly-CSharp` outside the
+`Level5Match` subfolder, one fewer than Slice 51's count of 11. `Assets/Scripts/basketball/` remains not
+a blocker (unchanged from Slice 51's finding). Overall AUD-012 Phase 2 is **not** complete.
+
 ### Phase 3 — Converge the human/CPU pairs
 
 Not "one type". The pairs carry real, intended differences: the human path has an analytics call and
