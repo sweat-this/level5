@@ -450,6 +450,23 @@ public class Level5CharacterProfileMatchContextTests
             localInputSlot: slotId);
     }
 
+    /// <summary>
+    /// AUD-012 Phase 2b Slice 57: <c>SpawnCoordinator</c> no longer implements the saved-profile lookup
+    /// itself - it only forwards whatever <c>loadedCharacterProfileResolver</c> it was constructed
+    /// with. This file's whole point is proving composition reaches the real <see cref="LoadedData"/>
+    /// singleton this fixture installs (<see cref="InstallLoadedData"/>), so <see cref="BuildCoordinator"/>
+    /// supplies the exact production adapter (<c>GameLevelManager.ResolveLoadedCharacterProfile</c>),
+    /// resolved via reflection (it is <c>private static</c>) - mirroring production composition
+    /// (<c>GameLevelManager.Awake</c>), not a fixture-local stand-in.
+    /// </summary>
+    private static Func<int, CharacterProfile> ProductionLoadedCharacterProfileResolver()
+    {
+        MethodInfo method = typeof(GameLevelManager).GetMethod(
+            "ResolveLoadedCharacterProfile", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.That(method, Is.Not.Null, "GameLevelManager.ResolveLoadedCharacterProfile not found by reflection");
+        return (Func<int, CharacterProfile>)Delegate.CreateDelegate(typeof(Func<int, CharacterProfile>), method);
+    }
+
     private static SpawnCoordinator BuildCoordinator(ResolvedMatchRules rules)
     {
         return new SpawnCoordinator(
@@ -457,7 +474,8 @@ public class Level5CharacterProfileMatchContextTests
             new PlayerRegistry(),
             rules,
             PlayerRoster.Build(new List<PlayerRosterEntry>()),
-            GameModeId.None);
+            GameModeId.None,
+            loadedCharacterProfileResolver: ProductionLoadedCharacterProfileResolver());
     }
 
     private static void InvokeInitializeHumanProfile(

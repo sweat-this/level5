@@ -126,7 +126,9 @@ public class GameLevelManager : MonoBehaviour, IGroundHeightProvider, IPlayerMat
             SpawnProjectileForAnimationEvents,
             HasAutoPlayerForAnimationEvents,
             AnaylticsManager.PlayerShoot,
-            PlayCriticalSuccessPresentation);
+            criticalSuccessPresentation: PlayCriticalSuccessPresentation,
+            loadedCharacterProfileResolver: ResolveLoadedCharacterProfile,
+            markKilledOnIdle: MarkKilledOnIdle);
 
         try
         {
@@ -332,6 +334,44 @@ public class GameLevelManager : MonoBehaviour, IGroundHeightProvider, IPlayerMat
         {
             BehaviorNpcCritical.instance.playAnimationCriticalSuccesful();
         }
+    }
+
+    /// <summary>
+    /// AUD-012 Phase 2b Slice 57: the composition adapter <see cref="SpawnCoordinator"/> now forwards to
+    /// a spawned human's <c>CharacterProfile.PrepareHumanMatchContext</c> instead of implementing the
+    /// <c>LoadedData.instance.getSelectedCharacterProfile</c> lookup itself. This class already sits in
+    /// the same assembly as <c>LoadedData</c> and already constructs the coordinator, so it is the
+    /// narrowest existing owner for this adapter - not a new <c>LoadedData</c> consumer.
+    ///
+    /// Resolves <see cref="LoadedData.instance"/> fresh on every call, exactly as the former direct
+    /// adapter this replaces did - deliberately not a captured reference, so a later call still observes
+    /// a replaced/cleared singleton. Preserves the exact prior null/reference semantics: no current
+    /// <c>LoadedData</c> resolves to <see langword="null"/>; a current <c>LoadedData</c> with no matching
+    /// profile also resolves to <see langword="null"/>; a matching profile resolves to that exact
+    /// reference, unmodified.
+    /// </summary>
+    private static CharacterProfile ResolveLoadedCharacterProfile(int characterId)
+    {
+        return LoadedData.instance != null
+            ? LoadedData.instance.getSelectedCharacterProfile(characterId)
+            : null;
+    }
+
+    /// <summary>
+    /// AUD-012 Phase 2b Slice 57: the composition adapter <see cref="SpawnCoordinator"/> now forwards to
+    /// a spawned human's <c>PlayerCollisions.BindKilledOnIdleCallback</c> instead of implementing the
+    /// <c>GameRules.instance.killedOnIdle</c> write itself. This class already sits in the same assembly
+    /// as <c>GameRules</c> and already constructs the coordinator, so it is the narrowest existing owner
+    /// for this adapter - not a new <c>GameRules</c> consumer.
+    ///
+    /// Deliberately keeps the exact preserved behaviour of the direct write it replaces: no null guard.
+    /// <c>GameRules</c> is expected to exist for the life of a gameplay scene, and an absent instance at
+    /// invocation time must still throw exactly as the former direct <c>GameRules.instance.killedOnIdle
+    /// = true</c> write did - this slice is not a resilience redesign.
+    /// </summary>
+    private static void MarkKilledOnIdle()
+    {
+        GameRules.instance.killedOnIdle = true;
     }
 
     private float setTerrainHeight()

@@ -4937,6 +4937,22 @@ persistence/`GameRules` cleanup was pulled in; `CheerleaderProfile.NoneObjectNam
 **Remaining `SpawnCoordinator` executable dependencies (freshly measured, this SHA, classified by owning
 assembly for the next slice to pick from - not implemented here).**
 
+**Correction (Slice 57 audit, 2026-09-14):** the "22 distinct types" blocker list below was wrong when
+it was written for this slice. Every type in it except `GameRules` and `LoadedData` was already resolved
+to its nearest `.asmdef` at this SHA - `AutoPlayerCollisions`, `AutoPlayerController`, `AutoPlayerDefense`,
+`CallBallToPlayer`, `CharacterProfile`, `PlayerAnimationEvents`, `PlayerAttackQueue`, `PlayerCollisions`,
+`PlayerController`, `PlayerHealth`, `PlayerIdentifier` are `Level5.Player` (all under
+`Assets/Scripts/player/Level5Player/`, closed by Slices 23-51); `BasketBall`, `BasketBallAuto`,
+`BasketBallState`, `GameStats`, `IBasketballRuntime`, `RangeMeter`, `ShotMeter` are `Level5.Basketball`
+(all under `Assets/Scripts/basketball/`); `Constants` is `Level5.Constants`; `CheerleaderProfile` is
+`Level5.MenuStart`. The list conflated "declared in the global C# namespace" (true of none of these -
+every one of them compiles into a named `Level5.*` assembly per
+`Level5ProductionAssemblyBoundaryTests`) with "not yet migrated," and undercounted the two clusters this
+slice's own body correctly measured file-by-file (Slices 28-38, 48-51 for the player cluster; the
+pre-existing `Level5.Basketball` asmdef for the basketball cluster). Left in place below, struck through
+in spirit rather than in text, so the record of what Slice 56 itself believed is not silently rewritten;
+see Slice 57 for the corrected table.
+
 *Legal existing custom-assembly dependencies (already `Level5.*`, not counted as blockers):*
 `PlayerRegistry`, `ResolvedMatchRules`, `PlayerRoster`, `GameModeId`, `IGroundHeightProvider`,
 `MatchRuntime` (all pre-existing composition-boundary inputs, unaffected by this slice) plus
@@ -4953,13 +4969,14 @@ it targeted, `AnaylticsManager` and `BehaviorNpcCritical`, both now dropped off 
 `BasketBallState`, `CallBallToPlayer`, `CharacterProfile`, `CheerleaderProfile`, `Constants`, `GameRules`
 (the `MarkKilledOnIdle` forward), `GameStats`, `IBasketballRuntime`, `LoadedData`, `PlayerAnimationEvents`,
 `PlayerAttackQueue`, `PlayerCollisions`, `PlayerController`, `PlayerHealth`, `PlayerIdentifier`,
-`RangeMeter`, `ShotMeter`.
+`RangeMeter`, `ShotMeter`. **This list is incorrect - see the correction note above and Slice 57's
+corrected table.**
 
 *Custom-assembly dependencies pointing an undesirable direction for a future `Level5.*` home:* none.
 Every type in the blocker list above is still plain `Assembly-CSharp`; none of them have yet been
 migrated into a `Level5.*` assembly at all, so there is nothing yet to flag as pointing the wrong way -
 that classification becomes relevant only once one of these 22 types (or `SpawnCoordinator` itself)
-actually moves.
+actually moves. **Also incorrect - see the correction note above.**
 
 `SpawnCoordinator.cs` remains permanently asserted (via
 `Level5GameManagerEdgeTests.SpawnCoordinatorHasNoAssemblyCSharpIntegrationReferences`) to spell
@@ -4972,6 +4989,224 @@ launch, after `actor.EndShootCycle()`, with the exact `ShotMeterSliderValue`, in
 attribution); CPU shots remain untelemetered; human and CPU swishes still trigger the identical
 `BehaviorNpcCritical.instance.playAnimationCriticalSuccesful()` presentation, resolved live at the same
 point in `Launch()` as before; every other `SpawnCoordinator` responsibility is untouched.
+
+**Slice 57 (2026-09-14, audited against `dev` SHA `8a109c9353a53b442d460431a422d27b913cd6bb`, matching
+Slice 56/PR #150, Unity `6000.5.7f1 (017862109af0)`): `SpawnCoordinator`'s executable dependencies on
+`LoadedData` and `GameRules`, its last two loose `Assembly-CSharp` integration adapters, cut by
+inversion - a dependency-closeout slice, not an asmdef move.**
+
+**Old flow.**
+
+```text
+saved human profile lookup
+    -> SpawnCoordinator.ResolveLoadedCharacterProfile(int)
+        -> LoadedData.instance.getSelectedCharacterProfile(characterId)
+
+killed-on-idle forwarding
+    -> SpawnCoordinator.MarkKilledOnIdle()
+        -> GameRules.instance.killedOnIdle = true
+```
+
+**New flow.**
+
+```text
+GameLevelManager.ResolveLoadedCharacterProfile   -> LoadedData.instance.getSelectedCharacterProfile
+GameLevelManager.MarkKilledOnIdle                -> GameRules.instance.killedOnIdle = true
+        │                                                       │
+        └──────────────────── both handed in ───────────────────┘
+                                    ▼
+                      SpawnCoordinator constructor
+                                    ▼
+                SpawnCoordinator.InitializeHumanProfile     -> CharacterProfile.PrepareHumanMatchContext
+                SpawnCoordinator.BindPlayerCollisionsContext -> PlayerCollisions.BindKilledOnIdleCallback
+                (forwards both, unexamined)
+```
+
+**The seam.** `CharacterProfile.PrepareHumanMatchContext(Func<int, CharacterProfile>, ...)` and
+`PlayerCollisions.BindKilledOnIdleCallback(Action)` were already the intended dependency boundary from
+Slice 27/Slice 50a - neither needed any change. `SpawnCoordinator` gained two optional constructor
+parameters, `loadedCharacterProfileResolver`/`markKilledOnIdle`, trailing after Slice 56's
+`humanShotTelemetry`/`criticalSuccessPresentation` (every existing direct-construction test site keeps
+compiling unchanged), stored as fields and forwarded directly - `InitializeHumanProfile` now passes the
+stored `loadedCharacterProfileResolver` field into `PrepareHumanMatchContext` instead of the former
+`private static ResolveLoadedCharacterProfile` adapter method (deleted outright), and
+`BindPlayerCollisionsContext` now passes the stored `markKilledOnIdle` field into
+`BindKilledOnIdleCallback` instead of the former `private static MarkKilledOnIdle` method (also deleted
+outright). A coordinator built without either behaves exactly as the former direct implementations did
+when their own singleton was absent/never reached: `CharacterProfile.intializeShooterStatsFromProfile`
+already fails closed on a null/absent resolver (Slice 27's own guard, unchanged), and
+`PlayerCollisions`' own `markKilledOnIdle?.Invoke()` already treats an unbound callback as a safe no-op
+(Slice 50a, unchanged).
+
+**Production construction-site audit.** `GameLevelManager.Awake()` remains the sole production `new
+SpawnCoordinator(...)` call site (repository-wide search for `new SpawnCoordinator(` before editing -
+every other hit is a test fixture, matching Slices 54-56's own audits). It now passes two more trailing
+arguments: the new `ResolveLoadedCharacterProfile` and `MarkKilledOnIdle` adapters. No other production
+site existed to update.
+
+**The adapters.** `GameLevelManager` gained two new `private static` methods, adjacent to Slice 56's
+`PlayCriticalSuccessPresentation`: `ResolveLoadedCharacterProfile(int)`, body byte-identical to the
+deleted `SpawnCoordinator` method it replaces (`LoadedData.instance != null ?
+LoadedData.instance.getSelectedCharacterProfile(characterId) : null`); `MarkKilledOnIdle()`, likewise
+byte-identical to the deleted `SpawnCoordinator` method it replaces (`GameRules.instance.killedOnIdle =
+true`, deliberately no null guard - preserving the exact prior direct-dereference failure mode rather
+than normalizing it into a silent no-op). Both resolve their respective singleton fresh on every call,
+never a value captured at composition or construction time - required for the same reason Slice 56's
+`PlayCriticalSuccessPresentation` needed live resolution: a human's saved-profile rebuild
+(`SpawnPlayers`) and a killed-on-idle write (mid-match, on a later attack) both happen well after
+`GameLevelManager.Awake` constructs the coordinator, and `LoadedData`/`GameRules` may not even exist yet,
+or may since have been replaced, by the time either fires.
+
+**Dependency-inventory correction.** Before this slice's edit, the prior "22 distinct types" blocker list
+recorded against Slice 56 (see the correction note attached to that slice's own remaining-dependency
+table above) was re-verified from current source rather than trusted: every named type's declaration was
+resolved to its nearest `.asmdef` by walking up from its file path. Confirmed already-migrated, not
+blockers: `AutoPlayerCollisions`, `AutoPlayerController`, `AutoPlayerDefense`, `CallBallToPlayer`,
+`CharacterProfile`, `PlayerAnimationEvents`, `PlayerAttackQueue`, `PlayerCollisions`, `PlayerController`,
+`PlayerHealth`, `PlayerIdentifier` (`Level5.Player`, `Assets/Scripts/player/Level5Player/`); `BasketBall`,
+`BasketBallAuto`, `BasketBallState`, `GameStats`, `IBasketballRuntime`, `RangeMeter`, `ShotMeter`
+(`Level5.Basketball`, `Assets/Scripts/basketball/`); `Constants` (`Level5.Constants`,
+`Assets/Scripts/constants/`). Confirmed a real, but direction-review-only, custom-assembly dependency:
+`CheerleaderProfile` (`Level5.MenuStart`, `Assets/Scripts/menu_start/Level5MenuStart/`) - see below.
+Confirmed the only two true `Assembly-CSharp` blockers, both targeted and removed by this slice:
+`GameRules` (`Assets/Scripts/game manager/GameRules.cs`, no covering `.asmdef`) and `LoadedData`
+(`Assets/Scripts/menu_loading/LoadedData.cs`, no covering `.asmdef`).
+
+**Saved-profile resolution parity/liveness result.** Proven directly against the real `RegisterHuman`
+composition path (`Level5SpawnCoordinatorLoadedCharacterProfileResolverTests`): a coordinator forwards
+the exact supplied `loadedCharacterProfileResolver` delegate instance into `CharacterProfile`'s
+`preparedProfileResolver` field, unexamined; the resolver is invoked with this human roster slot's own
+character id, not a hard-coded slot 0; the resolver's exact returned `CharacterProfile` reference is
+consumed to rebuild the participant; a resolver returning `null` reaches the identical pre-slice
+fail-closed `Debug.LogError` path (`CharacterProfile.intializeShooterStatsFromProfile`, unchanged) and
+leaves the participant untouched; a coordinator constructed with no `ActiveMatch` configured never
+invokes the resolver at all (the pre-existing `hasActiveMatchConfiguration` gate, unchanged - direct-scene
+entry still never consults saved profile data). Separately, `GameLevelManager.ResolveLoadedCharacterProfile`
+was proven, via reflection: no current `LoadedData.instance` resolves to `null`; a matching profile
+resolves to the exact stored reference; a non-matching profile resolves to `null`; and replacing
+`LoadedData.instance` between two calls makes the later call observe the replacement, not a stale first
+answer - the adapter reads the static fresh on every invocation rather than capturing it.
+
+**Killed-on-idle parity/liveness result.** Proven directly against the real `RegisterHuman`/`RegisterCpu`
+composition paths (`Level5SpawnCoordinatorKilledOnIdleCompositionTests`): a coordinator forwards the
+exact supplied `markKilledOnIdle` delegate instance into `PlayerCollisions`' own `markKilledOnIdle`
+field, unexamined; a coordinator built with no callback leaves `PlayerCollisions` unbound rather than
+inventing one; `AutoPlayerCollisions` (the CPU twin) declares no `BindKilledOnIdleCallback` method at
+all, confirming this remains human-only, unchanged from Slice 50a; `RegisterCpu` neither throws nor
+requires the callback. Separately, `GameLevelManager.MarkKilledOnIdle` was proven, via reflection: it
+sets the current `GameRules.instance.killedOnIdle` to `true`; an absent `GameRules.instance` still throws
+a `NullReferenceException` exactly as the former direct write did (no null guard was added - this is a
+deliberately preserved failure mode, not a regression); and replacing `GameRules.instance` between two
+calls makes the later call affect the replacement, not a stale first instance. The invocation site inside
+`PlayerCollisions.OnTriggerEnter` itself (`markKilledOnIdle?.Invoke()` on an `IsKilledOnIdle` attack) was
+not re-driven end-to-end through a full attack-box collision simulation - that call site is unchanged by
+this slice (only which delegate reaches it changed), and building the human-vs-enemy-attack rig it would
+require (state-machine-backed `PlayerController`, `PlayerHealth`, evade-roll determinism) was judged
+disproportionate to what this slice actually touches; the composition-forwarding and production-adapter
+proofs above are the load-bearing evidence for this change.
+
+**Architecture guard.** Slice 56's guard test (reused rather than duplicated) now also asserts zero
+executable `LoadedData` and `GameRules` references in `SpawnCoordinator.cs`'s stripped source (comments
+*and* string literals removed), alongside the still-green
+`ProjectilePool`/`GameLevelManager`/`AnaylticsManager`/`BehaviorNpcCritical` assertions from Slices 55-56
+(`Level5GameManagerEdgeTests.SpawnCoordinatorHasNoAssemblyCSharpIntegrationReferences` - not renamed
+again, it already described itself generically enough to cover six types instead of four).
+
+**Focused tests added.** `Level5SpawnCoordinatorLoadedCharacterProfileResolverTests` (new, 10 tests:
+5 composition-forwarding tests driving the real `RegisterHuman` path, 5 production-adapter tests against
+a live `LoadedData` singleton, matching the shape of
+`Level5SpawnCoordinatorCampaignCpuPrefabResolverTests`). `Level5SpawnCoordinatorKilledOnIdleCompositionTests`
+(new, 7 tests: 4 composition-forwarding tests driving the real `RegisterHuman`/`RegisterCpu` paths, 3
+production-adapter tests against a live `GameRules` singleton). `Level5GameManagerEdgeTests` (existing
+Slice 56 guard test extended, no new test method). `Level5CharacterProfileMatchContextTests` (2 existing
+composition tests' shared `BuildCoordinator` helper updated to supply the production
+`GameLevelManager.ResolveLoadedCharacterProfile` adapter explicitly, mirroring production composition -
+this fixture drives real `LoadedData` state through `SpawnCoordinator`, which no longer manufactures that
+resolver itself; no assertions changed). 17 net new tests.
+
+**Validation.** Full EditMode run, headless Unity `6000.5.7f1`: first pass surfaced 2 real failures -
+`Level5CharacterProfileMatchContextTests.ConfiguredHumanIsPreparedBeforeTheSavedProfileRebuildRuns` and
+`.ConfiguredHumansRebuildFromTheirOwnSlotCharacterAndTheMatchCheerleader`, both driving a coordinator
+built with no explicit resolver and expecting the former hard-coded `LoadedData`-backed behavior; fixed
+by updating that file's shared `BuildCoordinator` helper to supply the production
+`GameLevelManager.ResolveLoadedCharacterProfile` adapter explicitly (see focused tests above) - second
+pass: 1308/1308 green (up from 1291 pre-slice - the 17 net new tests). Full PlayMode: 17/17 green,
+unchanged. `scripts/validate-repository.ps1`: passed.
+
+**Review pass 1 (correctness/lifecycle).** One finding, caught by the full EditMode run rather than
+inline review: `Level5CharacterProfileMatchContextTests`' shared `BuildCoordinator` helper built every
+coordinator with no explicit `loadedCharacterProfileResolver`, which compiled (the parameter is optional)
+but silently changed behavior - two tests that install a real `LoadedData` singleton and expect
+composition to reach it (`ConfiguredHumanIsPreparedBeforeTheSavedProfileRebuildRuns`,
+`ConfiguredHumansRebuildFromTheirOwnSlotCharacterAndTheMatchCheerleader`) got an unbound resolver
+instead, and failed. Fixed by having that helper supply the production
+`GameLevelManager.ResolveLoadedCharacterProfile` adapter explicitly, resolved via reflection the same
+way this file's own production-facing fixtures already do elsewhere in the suite - not a fixture-local
+stand-in. No assertions changed; both tests pass unmodified otherwise. Rerun: full EditMode green (see
+Validation above). No other findings. Verified directly against the diff:
+`LoadedData.instance`/`GameRules.instance` are never captured early - both relocated adapters read the
+static fresh on every invocation, exactly as the deleted `SpawnCoordinator` methods did; the saved-profile
+rebuild is not requested by direct-scene entry - `hasActiveMatchConfiguration` (captured once, unchanged)
+still gates `intializeShooterStatsFromProfile`; the killed-on-idle callback is not bound to
+`AutoPlayerCollisions` - `BindAutoPlayerCollisionsContext` is untouched, and that type still declares no
+binding method for it; production (`GameLevelManager.Awake`) supplies both new dependencies at the one
+construction site; no null guard was added to `MarkKilledOnIdle` - the absent-`GameRules` failure mode is
+identical to the pre-slice direct write; every other test that does not exercise either seam keeps
+compiling and passing through the optional defaults, unmodified.
+
+**Review pass 2 (architecture/scope).** No findings. No persistence repository/service was introduced for
+the one saved-profile lookup - `Func<int, CharacterProfile>` is the same delegate shape
+`CharacterProfile.PrepareHumanMatchContext` already declared since Slice 27; no `GameRules`
+interface/service was introduced for the one write - `Action` is the same delegate shape
+`PlayerCollisions.BindKilledOnIdleCallback` already declared since Slice 50a; no dependency container was
+introduced to manage the now-13-parameter constructor - two more optional trailing parameters, matching
+Slices 54-56's own shape; `LoadedData.cs`/`GameRules.cs` themselves were not edited, migrated, or
+otherwise touched; `CheerleaderProfile.NoneObjectName`'s `Level5.MenuStart` dependency direction was left
+exactly as flagged, not fixed; `SpawnCoordinator` was not moved; no asmdef changed; no other manager-root
+file was moved.
+
+**Remaining custom-assembly direction issue.** `CheerleaderProfile.NoneObjectName`
+(`SpawnCoordinator.SpawnCheerleader`'s "none is the authored default, not a missing prefab" check) is a
+real dependency from whatever eventually owns `SpawnCoordinator` (a `Level5.Match`-shaped home, going by
+Slice 53's precedent) onto `Level5.MenuStart` - a menu-domain assembly. Not a loose `Assembly-CSharp`
+dependency, and not fixed here: no duplicated `"none"` string literal, no `Level5.Match -> Level5.MenuStart`
+reference added, `CheerleaderProfile`/`CheerleaderSelection.None` untouched. Recorded for the slice that
+actually decides `SpawnCoordinator`'s final assembly.
+
+**Corrected post-slice dependency table.**
+
+| Type | Declaration path | Owning assembly | Classification |
+| --- | --- | --- | --- |
+| `PlayerRegistry` | `Assets/Scripts/player/Level5Player/PlayerRegistry.cs` | `Level5.Player` | legal custom-assembly input |
+| `ResolvedMatchRules` | `Assets/Level5/Core/Match/ResolvedMatchRules.cs` | `Level5.Core` | legal custom-assembly input |
+| `PlayerRoster` | `Assets/Level5/Core/Match/PlayerRoster.cs` | `Level5.Core` | legal custom-assembly input |
+| `GameModeId` | `Assets/Level5/Core/Match/...` | `Level5.Core` | legal custom-assembly input |
+| `IGroundHeightProvider` | `Assets/Level5/Core/...` | `Level5.Core` | legal custom-assembly input |
+| `MatchRuntime` | `Assets/Scripts/game manager/Level5Match/MatchRuntime.cs` | `Level5.Match` | legal custom-assembly input |
+| `IShooterActor` | `Assets/Level5/Core/IShooterActor.cs` | `Level5.Core` | legal custom-assembly input |
+| `AutoPlayerCollisions`, `AutoPlayerController`, `AutoPlayerDefense`, `CallBallToPlayer`, `CharacterProfile`, `PlayerAnimationEvents`, `PlayerAttackQueue`, `PlayerCollisions`, `PlayerController`, `PlayerHealth`, `PlayerIdentifier` | `Assets/Scripts/player/Level5Player/*.cs` | `Level5.Player` | legal custom-assembly (participant composition, this class's own job) |
+| `BasketBall`, `BasketBallAuto`, `BasketBallState`, `GameStats`, `IBasketballRuntime`, `RangeMeter`, `ShotMeter` | `Assets/Scripts/basketball/*.cs` | `Level5.Basketball` | legal custom-assembly (basketball composition, this class's own job) |
+| `Constants` | `Assets/Scripts/constants/Constants.cs` | `Level5.Constants` | legal custom-assembly input |
+| `CheerleaderProfile` | `Assets/Scripts/menu_start/Level5MenuStart/CheerleaderProfile.cs` | `Level5.MenuStart` | custom-assembly, direction review (see above) |
+
+No row for `GameRules`/`LoadedData` remains: both are now zero executable references in
+`SpawnCoordinator.cs`, permanently asserted by
+`Level5GameManagerEdgeTests.SpawnCoordinatorHasNoAssemblyCSharpIntegrationReferences`.
+
+**True `Assembly-CSharp` dependencies: zero**, confirmed by the table above and the extended architecture
+guard. `SpawnCoordinator` is not thereby declared ready to move - its remaining dependencies span three
+different custom assemblies (`Level5.Player`, `Level5.Basketball`, `Level5.Core`/`Level5.Match`) plus one
+direction-review item (`Level5.MenuStart`), and which of those - or a new `Level5.Match`-adjacent home -
+this class should ultimately live in is exactly the "actual current ownership question" this slice was
+scoped not to solve.
+
+**Production behavior impact:** none intended. A human's saved-profile rebuild still resolves the exact
+same `LoadedData.instance.getSelectedCharacterProfile(characterId)` answer, live, at the same point in
+`RegisterHuman` as before; a killed-on-idle attack still sets the exact same `GameRules.instance.killedOnIdle`
+field, live, at the same point in `PlayerCollisions.OnTriggerEnter` as before, including the identical
+unguarded-dereference failure mode if `GameRules` is ever absent; direct-scene entry still never consults
+`LoadedData`; CPU collision handling is untouched; every other `SpawnCoordinator` responsibility is
+untouched.
 
 ### Phase 3 — Converge the human/CPU pairs
 
