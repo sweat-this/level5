@@ -31,6 +31,8 @@ public sealed class SpawnCoordinator
     private readonly GameModeId modeId;
     private readonly IGroundHeightProvider groundHeightProvider;
     private readonly TryResolveCampaignCpuPrefab campaignCpuPrefabResolver;
+    private readonly Func<GameObject, Vector3, Quaternion, GameObject> projectileSpawner;
+    private readonly Func<bool> hasAutoPlayerReader;
     private readonly bool hasActiveMatchConfiguration;
 
     /// <summary>
@@ -56,6 +58,14 @@ public sealed class SpawnCoordinator
     /// reported "no campaign override available" (see <see cref="ResolveParticipantPrefab"/>), which is
     /// also production's behavior for every mode other than <see cref="GameModeId.BeatThaComputahs"/>.
     /// Production (<c>GameLevelManager</c>) always supplies one.
+    ///
+    /// AUD-012 Phase 2b Slice 55: <paramref name="projectileSpawner"/> and <paramref
+    /// name="hasAutoPlayerReader"/> are optional for the same reason - every existing direct-
+    /// construction test site keeps compiling unchanged. They are forwarded, unexamined, to every
+    /// spawned <see cref="PlayerAnimationEvents"/> (see <see cref="BindPlayerAnimationEventsContext"/>);
+    /// a coordinator built without one binds that null, which <c>PlayerAnimationEvents</c> itself
+    /// already treats as "do nothing" for a projectile spawn / "no auto player" for the reader. Production
+    /// (<c>GameLevelManager</c>) always supplies both.
     /// </summary>
     public SpawnCoordinator(
         SpawnLocations locations,
@@ -64,7 +74,9 @@ public sealed class SpawnCoordinator
         PlayerRoster roster,
         GameModeId modeId,
         IGroundHeightProvider groundHeightProvider = null,
-        TryResolveCampaignCpuPrefab campaignCpuPrefabResolver = null)
+        TryResolveCampaignCpuPrefab campaignCpuPrefabResolver = null,
+        Func<GameObject, Vector3, Quaternion, GameObject> projectileSpawner = null,
+        Func<bool> hasAutoPlayerReader = null)
     {
         this.locations = locations;
         this.registry = registry;
@@ -73,6 +85,8 @@ public sealed class SpawnCoordinator
         this.modeId = modeId;
         this.groundHeightProvider = groundHeightProvider;
         this.campaignCpuPrefabResolver = campaignCpuPrefabResolver;
+        this.projectileSpawner = projectileSpawner;
+        this.hasAutoPlayerReader = hasAutoPlayerReader;
         this.hasActiveMatchConfiguration = MatchRuntime.HasConfiguration;
     }
 
@@ -865,32 +879,28 @@ public sealed class SpawnCoordinator
     /// <summary>
     /// AUD-012 Phase 2b: binds the spawned participant's <see cref="PlayerAnimationEvents"/> (present
     /// on human, CPU and cheerleader actors alike - see <see cref="SpawnCheerleader"/>) to a projectile
-    /// spawn delegate and a live "does this scene have an auto player" reader, replacing that
-    /// component's former direct <c>ProjectilePool.Spawn</c> call and
-    /// <c>GameLevelManager.instance.AutoPlayer</c> read. <c>ProjectilePool</c> lives in loose
-    /// <c>Assets/Scripts/projectile/</c> (<c>Assembly-CSharp</c>, not <c>Level5.Pooling</c>), so a
-    /// direct reference is not a legal leaf dependency for <c>Level5.Player</c> the way <c>SFXBB</c> is -
-    /// this is the "single outward action" delegate the architecture rules call for instead.
+    /// spawn delegate and a live "does this scene have an auto player" reader.
     /// <c>GetComponentsInChildren</c>, not <c>GetComponent</c>: this component sits under the actor's
     /// animator hierarchy, not the participant root.
+    ///
+    /// AUD-012 Phase 2b Slice 55: this coordinator no longer implements either callback itself - it only
+    /// distributes the <see cref="projectileSpawner"/>/<see cref="hasAutoPlayerReader"/> it was
+    /// constructed with, unexamined. <c>ProjectilePool.Spawn</c> (<c>ProjectilePool</c> lives in loose
+    /// <c>Assets/Scripts/projectile/</c>, <c>Assembly-CSharp</c>, not <c>Level5.Pooling</c>, so a direct
+    /// reference is not a legal leaf dependency the way <c>SFXBB</c> is) and the live
+    /// <c>GameLevelManager.instance.AutoPlayer</c> lookup now live on the Assembly-CSharp composition
+    /// side, in <c>GameLevelManager.SpawnProjectileForAnimationEvents</c>/
+    /// <c>HasAutoPlayerForAnimationEvents</c>, and are handed to this coordinator's constructor. This
+    /// keeps the coordinator's own executable source free of both <c>ProjectilePool</c> and
+    /// <c>GameLevelManager</c>.
     /// </summary>
     private void BindPlayerAnimationEventsContext(GameObject participant)
     {
         foreach (PlayerAnimationEvents animationEvents in participant.GetComponentsInChildren<PlayerAnimationEvents>(true))
         {
-            animationEvents.BindProjectileSpawner(SpawnProjectile);
-            animationEvents.BindHasAutoPlayerReader(HasAutoPlayer);
+            animationEvents.BindProjectileSpawner(projectileSpawner);
+            animationEvents.BindHasAutoPlayerReader(hasAutoPlayerReader);
         }
-    }
-
-    private static GameObject SpawnProjectile(GameObject prefab, Vector3 position, Quaternion rotation)
-    {
-        return ProjectilePool.Spawn(prefab, position, rotation);
-    }
-
-    private static bool HasAutoPlayer()
-    {
-        return GameLevelManager.instance != null && GameLevelManager.instance.AutoPlayer != null;
     }
 
     /// <summary>

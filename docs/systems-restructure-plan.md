@@ -4639,6 +4639,141 @@ identical point in `SpawnPlayers()`, reading the identical `GameOptions`/`LevelS
 one narrow adapter instead of inline; every other mode's CPU/human prefab resolution, and every other
 `SpawnCoordinator` responsibility, is untouched.
 
+**Slice 55 (2026-09-14, audited against `dev` SHA `f98bf27ddd172b37eaf6d32020fd3486b56fdbfb`, matching
+Slice 54/PR #148, Unity `6000.5.7f1 (017862109af0)`): `SpawnCoordinator`'s executable dependencies on
+`ProjectilePool` and `GameLevelManager`, in its `PlayerAnimationEvents` composition path, cut by
+inversion - a dependency-preparation slice, not an asmdef move.**
+
+**Old flow.**
+
+```text
+SpawnCoordinator.BindPlayerAnimationEventsContext
+        -> SpawnCoordinator.SpawnProjectile   -> ProjectilePool.Spawn
+        -> SpawnCoordinator.HasAutoPlayer     -> GameLevelManager.instance.AutoPlayer
+```
+
+**New flow.**
+
+```text
+GameLevelManager.SpawnProjectileForAnimationEvents   -> ProjectilePool.Spawn
+GameLevelManager.HasAutoPlayerForAnimationEvents     -> GameLevelManager.instance.AutoPlayer
+        │                                                       │
+        └──────────────────── both handed in ───────────────────┘
+                                    ▼
+                      SpawnCoordinator constructor
+                                    ▼
+                SpawnCoordinator.BindPlayerAnimationEventsContext
+                (forwards both, unexamined, to every PlayerAnimationEvents)
+```
+
+**The seam.** `PlayerAnimationEvents`' existing binding surface
+(`BindProjectileSpawner(Func<GameObject, Vector3, Quaternion, GameObject>)` /
+`BindHasAutoPlayerReader(Func<bool>)`) was already the intended dependency boundary from Slice 50 - it
+needed no change. `SpawnCoordinator` gained two optional constructor parameters,
+`projectileSpawner`/`hasAutoPlayerReader`, trailing after Slice 54's `campaignCpuPrefabResolver` (every
+existing direct-construction test site keeps compiling unchanged), stored as fields and forwarded
+directly in `BindPlayerAnimationEventsContext` - the two former `private static` adapter methods
+(`SpawnProjectile`, `HasAutoPlayer`) were deleted outright rather than kept as a fallback; a coordinator
+built without either binds `null`, which `PlayerAnimationEvents` already treats as "do nothing" for a
+projectile spawn and "no reader" for the auto-player check.
+
+**Production construction-site audit.** `GameLevelManager.Awake()` is the sole production
+`new SpawnCoordinator(...)` call site (repository-wide search for `new SpawnCoordinator(` before
+editing - every other hit is a test fixture, matching Slice 54's own audit). It now passes two more
+trailing arguments, `SpawnProjectileForAnimationEvents`/`HasAutoPlayerForAnimationEvents`. No other
+production site existed to update.
+
+**The adapters.** `GameLevelManager` gained two new `private static` methods, adjacent to Slice 54's
+`TryResolveCampaignCpuPrefab`: `SpawnProjectileForAnimationEvents(GameObject, Vector3, Quaternion)`
+returns `ProjectilePool.Spawn(prefab, position, rotation)` unchanged - same overload (no `configure`
+callback), same arguments, same pooled-instance return value, no pooling behavior touched.
+`HasAutoPlayerForAnimationEvents()` returns `instance != null && instance.AutoPlayer != null`, reading
+the static `instance` field live on every call - not `this.AutoPlayer`, and not a closure capturing a
+particular manager - so the check keeps observing whichever `GameLevelManager` is currently the live
+singleton, exactly as the former direct `GameLevelManager.instance.AutoPlayer` read (called from outside
+the class) did. Composition timing is unchanged: both adapters are handed to the constructor as method
+groups and only ever invoked later, from inside a spawned `PlayerAnimationEvents`, never from
+`GameLevelManager` itself.
+
+**Projectile parity.** `SpawnProjectileForAnimationEvents` was driven directly (via reflection) against
+a real prefab: the returned instance is a distinct pooled copy (not the prefab reference itself), with
+the exact position and rotation arguments applied, active, routed through the same
+`ProjectilePool.Spawn` call as before. A null prefab returns `null` without throwing, matching
+`ProjectilePool.Spawn`'s own existing null guard - the adapter adds none of its own.
+
+**Auto-player current-singleton/liveness result.** `HasAutoPlayerForAnimationEvents` was driven directly
+(via reflection) against a real `GameLevelManager` instance (constructed on an inactive GameObject so its
+own `Awake()` - which reaches for scene spawn points and `MatchRuntime` state this fixture never sets up
+- never runs) for all four required states: no `instance` -> `false`; current instance with a null
+`AutoPlayer` -> `false`; current instance with a non-null `AutoPlayer` -> `true`; and, the load-bearing
+case, replacing `GameLevelManager.instance` with a second manager after the first already reported
+`true` flips the answer to that replacement's own state - proving the callback follows the live static
+field rather than a manager reference captured when the coordinator (or anything else) first observed
+it.
+
+**Focused tests added.** `Level5SpawnCoordinatorAnimationEventsCompositionTests` (13 tests,
+`Assets/Tests/Editor/`): driving the real private `BindPlayerAnimationEventsContext` via reflection -
+both callbacks reach a single child `PlayerAnimationEvents` by reference equality, and reach every
+descendant including an inactive one (`GetComponentsInChildren(true)`); the real `PlayerAnimationEvents`
+projectile path (`instantiateProjectileLazer`/`instantiateProjectileBullet`, with `projectileSpawn`/the
+prefab field set directly via reflection to avoid depending on `Start()` running inside an EditMode
+test) reaches the supplied delegate exactly once with the exact prefab, spawn-point position and
+`Quaternion.identity` rotation preserved, and ignores whatever the delegate returns; a coordinator built
+with neither callback binds `null` for both, and invoking the projectile animation event in that state
+does not throw; the forwarded `hasAutoPlayerReader` re-evaluates its source live rather than snapshotting
+a bool at bind time (7 tests total for this seam). Plus the production-adapter tests described above (6 tests) for
+`HasAutoPlayerForAnimationEvents`/`SpawnProjectileForAnimationEvents`. Also one new architecture-guard
+test, `Level5GameManagerEdgeTests.SpawnCoordinatorHasNoProjectilePoolOrGameLevelManagerReferences`,
+scanning `SpawnCoordinator.cs`'s stripped source (comments *and* string literals removed, via
+`Level5TestSourceText.StripCommentsAndLiterals` - several of this file's own `Debug.LogError` messages
+spell "GameLevelManager" inside a string literal, which this file's own comment-only `StripComments`
+would still flag as a false positive) for either type name.
+
+**Validation.** Focused EditMode run
+(`Level5SpawnCoordinatorAnimationEventsCompositionTests`,
+`Level5SpawnCoordinatorCampaignCpuPrefabResolverTests`, `Level5GameManagerEdgeTests`,
+`Level5PlayerDomainDependencyGuardTests`, `Level5ProductionAssemblyBoundaryTests`, 75 tests): green.
+Full EditMode: 1284 (up from 1270 - the 13 new composition/adapter tests plus the 1 new guard test), all
+green. Full PlayMode: 17, unchanged, all green. `scripts/validate-repository.ps1`: green.
+
+**Review pass 1 (correctness/lifecycle).** No findings. Verified directly against the diff: both new
+adapters are `private static` method groups, not closures - no `GameLevelManager` instance or bool is
+captured; `SpawnCoordinator` never invokes either delegate itself, only forwards them, so no bool is
+cached; `GameLevelManager.Awake()`/`Start()` ordering is untouched - only the constructor's argument list
+and two new private static methods were added; the sole production construction site was found and
+updated to supply both callbacks explicitly before any behavior change; `ProjectilePool.Spawn`'s
+overload, argument order and pooled-return value are byte-identical to the deleted inline call; no
+`PlayerAnimationEvents` descendant is missed - the `GetComponentsInChildren<PlayerAnimationEvents>(true)`
+loop is unchanged; no test-only optional default leaked into a production call site.
+
+**Review pass 2 (architecture/scope).** No findings. No projectile service/interface was introduced -
+the two `Func` delegate signatures `PlayerAnimationEvents` already declared are unchanged; no
+runtime-services/context/options container was added merely to group two delegates - two more optional
+trailing constructor parameters, matching Slice 54's own shape; `ProjectilePool` itself was not touched,
+migrated, or refactored; `PlayerAnimationEvents`' public composition contract
+(`BindProjectileSpawner`/`BindHasAutoPlayerReader`) is unchanged - the file was not edited at all; no
+other `SpawnCoordinator` dependency (persistence/analytics/critical-success/campaign resolver/collision
+context) was touched; no asmdef changed; no other manager-root file was moved.
+
+**Remaining `SpawnCoordinator` executable `Assembly-CSharp` dependencies (freshly measured, this SHA,
+for the next slice to pick from - not implemented here):** `AnaylticsManager`, `AutoPlayerCollisions`,
+`AutoPlayerController`, `AutoPlayerDefense`, `BasketBall`, `BasketBallAuto`, `BasketBallState`,
+`BehaviorNpcCritical`, `CallBallToPlayer`, `CharacterProfile`, `CheerleaderProfile`, `Constants`,
+`GameRules` (the `MarkKilledOnIdle` forward), `GameStats`, `IBasketballRuntime`, `IShooterActor`,
+`LoadedData`, `PlayerAnimationEvents`, `PlayerAttackQueue`, `PlayerCollisions`, `PlayerController`,
+`PlayerHealth`, `PlayerIdentifier`, `RangeMeter`, `ShotMeter` - 25 distinct types, down from 27 before
+this slice (`GameLevelManager`'s `HasAutoPlayer` reach-through and `ProjectilePool` both dropped off the
+list; every other type is unchanged). `SpawnCoordinator.cs` still legitimately appears in
+`Level5GameManagerEdgeTests.SpelledTypeAllowlist`/`ReachThroughAllowlist` (spawning/registering
+participants is this class's whole job) and is now, additionally, permanently asserted to spell neither
+`ProjectilePool` nor `GameLevelManager`.
+
+**Production behavior impact:** none intended. Projectile spawning for every animation-event-driven
+attack still routes through the identical `ProjectilePool.Spawn` call with identical arguments; the
+has-auto-player check still resolves the live `GameLevelManager.instance.AutoPlayer`, re-evaluated at
+the same point `PlayerAnimationEvents.Start()` always read it, following the same static field rather
+than a snapshot; every other `SpawnCoordinator` responsibility is untouched.
+
 ### Phase 3 — Converge the human/CPU pairs
 
 Not "one type". The pairs carry real, intended differences: the human path has an analytics call and
