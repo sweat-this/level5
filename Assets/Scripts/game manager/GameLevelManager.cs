@@ -552,14 +552,12 @@ public class GameLevelManager : MonoBehaviour, IGroundHeightProvider, IPlayerMat
         GameRules.instance.setTimePlayed();
 
         // convert basketball stats to high score model
-        HighScoreModel dBHighScoreModel = new HighScoreModel();
-        HighScoreModel dBHighScoreModelTemp = new HighScoreModel();
-        dBHighScoreModelTemp = dBHighScoreModel.convertBasketBallStatsToModel(instance.players);
+        HighScoreModel dBHighScoreModel = new HighScoreModel().convertBasketBallStatsToModel(instance.players);
 
-        bool scoreSaved = DBConnector.instance.savePlayerGameStats(dBHighScoreModelTemp);
+        bool scoreSaved = DBConnector.instance.savePlayerGameStats(dBHighScoreModel);
         if (!scoreSaved)
         {
-            PendingMatchPersistenceStore.QueueScore(dBHighScoreModelTemp);
+            PendingMatchPersistenceStore.QueueScore(dBHighScoreModel);
         }
 
         // Reads through this manager's own roster rather than BasketBall.instance, which is a

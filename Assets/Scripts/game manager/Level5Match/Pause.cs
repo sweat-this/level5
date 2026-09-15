@@ -100,12 +100,26 @@ public class Pause : MonoBehaviour
         this.setJoystickEnabled = setJoystickEnabled;
     }
 
-    /// <summary>AUD-012 Phase 2b Slice 67 dependency-cut fields - see <see cref="BindPersistenceContext"/>.</summary>
-    private Func<bool> hasDatabaseReader;
-    private Func<bool> databaseLockedReader;
-    private Func<bool> hasPlayerDataReader;
-    private Action reloadPlayerData;
-    private Action<string> persistFreePlayStats;
+    /// <summary>
+    /// AUD-012 Phase 2b Slice 67 dependency-cut fields - see <see cref="BindPersistenceContext"/>.
+    ///
+    /// Default to safe no-ops rather than null, unlike every other delegate field on this class. The
+    /// former direct reads these replace (<c>DBConnector.instance != null</c>, etc.) were null-safe
+    /// checks against a global static, independent of any scene's <c>GameLevelManager</c> - so a scene
+    /// that authors its own inline <c>Pause</c> without a composed <c>GameLevelManager</c> (found in
+    /// <c>minigame_racing.unity</c>, which uses its own <c>RacingGameManager</c> instead) previously hit
+    /// these checks safely regardless. <see cref="BindPersistenceContext"/> is only ever called from
+    /// <c>GameLevelManager.Start()</c>, so without one in the scene these fields are never bound; an
+    /// unconditional dereference (the shape <see cref="BindGameLevelManagerContext"/>'s fields correctly
+    /// use, since their former direct reads - <c>GameLevelManager.instance.Controls...</c> - already threw
+    /// under the same condition) would turn a scene that used to work into a `NullReferenceException` on
+    /// the pause menu's Quit/reload/load-start-screen actions.
+    /// </summary>
+    private Func<bool> hasDatabaseReader = () => false;
+    private Func<bool> databaseLockedReader = () => false;
+    private Func<bool> hasPlayerDataReader = () => false;
+    private Action reloadPlayerData = () => { };
+    private Action<string> persistFreePlayStats = resultId => { };
 
     /// <summary>
     /// AUD-012 Phase 2b Slice 67: replaces this class's former direct <c>DBConnector</c>/<c>DBHelper</c>/
