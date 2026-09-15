@@ -843,12 +843,21 @@ public class GameRules : MonoBehaviour, IMoneyBallState, IShotMarkerSession
     }
 
     /// <summary>
-    /// AUD-012 Phase 2b Slice 62: the composition adapter <see cref="MatchHudPresenter"/> now calls
-    /// instead of reading <c>GameLevelManager.instance.getSortedGameStatsList()</c> itself.
+    /// AUD-012 Phase 2b Slice 62 (corrected in review): the composition adapter
+    /// <see cref="MatchHudPresenter"/> now calls instead of reading
+    /// <c>GameLevelManager.instance.getSortedGameStatsList()</c> itself. Guarded on
+    /// <c>GameLevelManager.instance</c>, matching the original guard <c>GetDisplayText</c>'s
+    /// <c>VersusCpu</c>/<c>BeatThaComputahs</c> branch had before this migration - the initial version
+    /// of this adapter dropped that guard (checking only whether the delegate itself was bound, which
+    /// in production is always true) and silently turned a null-safe "no live GameLevelManager -> show
+    /// 'Game over'" fallback into an unhandled <see cref="System.NullReferenceException"/>.
+    /// <see cref="MatchHudPresenter.updatePlayerScore"/>'s own unguarded call site is unaffected in
+    /// substance: it now fails on <c>players[0]</c> instead of on this chain, the same exception type
+    /// one line later, since that call site never guarded <c>GameLevelManager.instance</c> either.
     /// </summary>
     private static List<PlayerIdentifier> ReadSortedGameStatsListForHud()
     {
-        return GameLevelManager.instance.getSortedGameStatsList();
+        return GameLevelManager.instance != null ? GameLevelManager.instance.getSortedGameStatsList() : null;
     }
 
     /// <summary>

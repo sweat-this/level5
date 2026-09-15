@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Reflection;
 using NUnit.Framework;
@@ -42,7 +43,7 @@ public class Level5MatchHudPresenterCompositionTests
         {
             if (go != null)
             {
-                Object.DestroyImmediate(go);
+                UnityEngine.Object.DestroyImmediate(go);
             }
         }
 
@@ -177,6 +178,39 @@ public class Level5MatchHudPresenterCompositionTests
         Assert.That(result, Does.Contain("Champ wins!"));
     }
 
+    /// <summary>
+    /// Regression test for a defect caught in code review: the first version of
+    /// <c>ReadSortedGameStatsListForHud</c> guarded only "is the delegate bound" (always true in
+    /// production), not "is <c>GameLevelManager.instance</c> actually alive" - silently turning the
+    /// original <c>GetDisplayText</c> ternary's null-safe "no live GameLevelManager -&gt; 'Game over'"
+    /// fallback into an unhandled <see cref="NullReferenceException"/>. Binds the real production
+    /// adapter (not a hand-written stand-in) so a regression in the adapter itself, not just in this
+    /// fixture's understanding of it, would be caught here.
+    /// </summary>
+    [Test]
+    public void GetDisplayText_VersusCpuMode_BoundReaderButNoLiveGameLevelManager_ReportsGameOverWithoutThrowing()
+    {
+        MatchHudPresenter hud = MakePresenter();
+        SetPrivateField(hud, "gameModeId", Modes.VersusCpu);
+        SetPrivateField(hud, "gameStats1", Spawn("stats-holder").AddComponent<GameStats>());
+        GameLevelManager.instance = null;
+
+        MethodInfo adapter = typeof(GameRules).GetMethod("ReadSortedGameStatsListForHud", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.IsNotNull(adapter, "GameRules.ReadSortedGameStatsListForHud must exist");
+        Func<List<PlayerIdentifier>> realAdapter = () => (List<PlayerIdentifier>)adapter.Invoke(null, null);
+
+        hud.BindGameLevelManagerContext(
+            sortedGameStatsListReader: realAdapter,
+            primaryPlayerReader: () => null,
+            firstRegisteredPlayerReader: () => null,
+            scoreClockTextReader: () => null);
+
+        string result = null;
+        Assert.DoesNotThrow(() => result = InvokeGetDisplayText(hud, Modes.VersusCpu),
+            "a bound sortedGameStatsListReader whose underlying GameLevelManager.instance is null must not throw.");
+        Assert.That(result, Does.StartWith("Game over"));
+    }
+
     // ================ production adapters: GameRules' MatchHudPresenter composition ================
 
     private static MethodInfo GameRulesAdapterMethod(string name, BindingFlags extra = BindingFlags.Static)
@@ -184,6 +218,16 @@ public class Level5MatchHudPresenterCompositionTests
         MethodInfo method = typeof(GameRules).GetMethod(name, BindingFlags.NonPublic | extra);
         Assert.IsNotNull(method, $"GameRules.{name} must exist as a production MatchHudPresenter adapter");
         return method;
+    }
+
+    [Test]
+    public void ReadSortedGameStatsListForHud_NoLiveGameLevelManager_ReturnsNullRatherThanThrowing()
+    {
+        GameLevelManager.instance = null;
+
+        object result = GameRulesAdapterMethod("ReadSortedGameStatsListForHud").Invoke(null, null);
+
+        Assert.IsNull(result);
     }
 
     [Test]

@@ -759,8 +759,11 @@ public class Level5ProductionAssemblyBoundaryTests
     /// <c>SpawnCoordinator</c>. GUID unchanged (<c>0cbb2e138afa4ae49ac2b8f677d09f1f</c>); no authored
     /// <c>m_EditorClassIdentifier</c> anomaly (unlike <c>PauseUiObjects</c> - see Slice 59) since every
     /// authored instance was added through the Editor's normal "Add Component" flow. Its consumers -
-    /// <c>GameRules.setTimer</c> and <c>MatchHudPresenter</c>'s several <c>Timer.instance</c> reads -
-    /// stay in <c>Assembly-CSharp</c> and reach it through <c>autoReferenced</c>.
+    /// <c>GameRules.setTimer</c> and <c>GameLevelManager</c>'s <c>Timer.instance != null</c> binding
+    /// check - stay in <c>Assembly-CSharp</c> and reach it through <c>autoReferenced</c>.
+    /// (Corrected in review: this originally also named <c>MatchHudPresenter</c>'s <c>Timer.instance</c>
+    /// reads, which Slice 62 - the very next slice - removed via <c>scoreClockTextReader</c>; the
+    /// comment was stale from the moment that slice landed.)
     /// </summary>
     [Test]
     public void TimerCompilesIntoLevel5Match()

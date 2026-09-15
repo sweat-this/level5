@@ -318,13 +318,21 @@ public class Level5PauseCompositionTests
         GameRules rules = Spawn("game-rules").AddComponent<GameRules>();
         GameRules.instance = rules;
 
+        // setTimePlayed() writes Time.time - timePlayedStart into GetPrimaryGameStats()'s
+        // MatchStats.TimePlayed, which falls back to GameLevelManager.instance.Player1.gameStats when
+        // present - wired here so the assertion below proves the adapter actually reached
+        // setTimePlayed()'s real write, not merely that invoking it didn't throw.
+        GameLevelManager manager = SpawnManagerWithoutAwake("game-level-manager");
+        GameLevelManager.instance = manager;
+        PlayerIdentifier player = Spawn("primary-player").AddComponent<PlayerIdentifier>();
+        player.gameStats = Spawn("primary-player-stats").AddComponent<GameStats>();
+        player.gameStats.Stats.TimePlayed = -999f; // sentinel: setTimePlayed() must overwrite this
+        ((PlayerRegistry)GetPrivateField(manager, "registry")).Add(player);
+
         AdapterMethod("SetTimePlayedForPause").Invoke(null, null);
 
-        // setTimePlayed() computes Time.time - timePlayedStart and writes it into gameStats1's
-        // MatchStats.TimePlayed; a null gameStats1 in this fixture makes it a safe no-op internally
-        // (GameRules' own pre-existing guard, unrelated to this slice) - reaching that line at all
-        // without throwing is the forwarding proof.
-        Assert.Pass("SetTimePlayedForPause invoked GameRules.instance.setTimePlayed() without throwing.");
+        Assert.That(player.gameStats.Stats.TimePlayed, Is.Not.EqualTo(-999f),
+            "SetTimePlayedForPause must reach GameRules.instance.setTimePlayed(), which overwrites the primary player's MatchStats.TimePlayed.");
     }
 
     [Test]
