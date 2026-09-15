@@ -6103,6 +6103,207 @@ game manager/`. No new blocker was discovered.
 persistence/pause/menu/input flow reads/writes the exact same live values through the exact same
 underlying calls, in the exact same order.
 
+**Slice 69 (2026-09-15, same `dev` position as Slice 68, `233890f27eb109861df40bfafb4b4012c4c8cc52`): certifies the final Level5 runtime assembly boundary and closes Phase 2b.**
+
+An architecture-certification slice, not a migration slice: no production `.cs` file moved, no asmdef
+reference added or removed, no runtime behavior changed.
+
+**Baseline.** Current `dev` HEAD (`233890f27eb109861df40bfafb4b4012c4c8cc52`) is the exact commit this
+slice's expected baseline named. PRs #153 (Slice 64) and #154 (Slices 66-68) are both already merged.
+Unity `6000.5.7f1 (017862109af0)`, matching `ProjectSettings/ProjectVersion.txt`.
+
+**Direct-root inventory.** Exactly two production `.cs` files remain directly under
+`Assets/Scripts/game manager/`: `GameLevelManager.cs` and `GameRules.cs`. No third loose file exists.
+Now permanently enforced by a new exact-set guard,
+`Level5ProductionAssemblyBoundaryTests.OnlyIntentionalAssemblyCSharpGameManagerShellRemainsLoose`
+(top-directory-only, deliberately excluding the already-migrated `Level5Match/` subfolder, and
+asserting exact set equality rather than a bare count so a one-in-one-out substitution cannot pass
+silently), plus a compiler-backed identity test,
+`Level5ProductionAssemblyBoundaryTests.IntentionalGameManagerShellCompilesIntoAssemblyCSharp`, proving
+both types still actually compile into `Assembly-CSharp` rather than merely living at that path.
+
+**`GameLevelManager` dependency classification.** The gameplay scene's composition root/legacy-
+integration bridge. Named runtime-assembly dependencies: `Level5.Player` (`PlayerRegistry`,
+`PlayerController`, `PlayerHealth`, `PlayerAttackQueue`, `PlayerIdentifier`, `CharacterProfile`,
+`IPlayerIdleSniperRuntime`), `Level5.Match` (`SpawnCoordinator`, `MatchRuntime`, `MatchSession`,
+`LevelRuntimeContext`, `ArenaBootstrap`, `Timer`, `Pause`), `Level5.Basketball` (`BasketBall`,
+`BasketBallShotMade`, `GameStats`), `Level5.Core`/`Level5.Core.Match` (`IGroundHeightProvider`,
+`IPlayerMatchRuntime`, `ResolvedMatchRules`, `PlayerRoster`, `GameModeId`, `MatchEndReason`),
+`Level5.Input` (`PlayerControls`, `PlayerControlsProvider`), `Level5.Constants` (`Constants`). Legacy
+`Assembly-CSharp` integration it composes but does not own: `GameOptions`/`LevelSelected` (campaign
+selection), `DBConnector`/`DBHelper`/`PlayerData`/`HighScoreModel`/`PendingMatchPersistenceStore`/
+`ProgressionService` (the Free Play persistence workflow Slice 67 relocated here), `ProjectilePool`,
+`BehaviorNpcCritical`, `LoadedData`, `CameraManager`, `SniperManager`, `AnaylticsManager`,
+`FloatingJoystick`, `PlayerHealthBar` (scene-authored singletons/legacy managers with no named-assembly
+home yet), and the sibling shell type `GameRules`. Reason it remains at the outer boundary: it is
+*defined by* composing these still-loose legacy singletons and campaign/persistence integration points
+into the roster/spawn pipeline - inverting that would mean migrating each of those legacy managers
+first, which is out of this slice's scope and not required for the assembly-boundary invariant (the
+outward shell -> named-assembly direction is exactly what this class exercises).
+
+**`GameRules` dependency classification.** The top-level match/persistence/campaign orchestrator.
+Named runtime-assembly dependencies: `Level5.Match` (`MatchController`, `MatchHudPresenter`, `Timer`,
+`MatchSession`, `MatchRuntime`), `Level5.Basketball` (`GameStats`, `BasketBallShotMarker`, `BasketBall`,
+`BasketBallAuto`, `IMoneyBallState`, `IShotMarkerSession`), `Level5.Player` (`PlayerRegistry`,
+`PlayerIdentifier`, `CharacterProfile`), `Level5.Utility` (`SceneTransition`), `Level5.Versus`
+(`VersusMatchReporter.TryReport`, at match end), `Level5.Core.Match` (`ResolvedMatchRules`,
+`MatchEndReason`, `MatchEndConditions`, `GameModeIds`), `Level5.Constants` (`Constants`). Legacy
+`Assembly-CSharp` dependencies: `GameLevelManager` (roster/rim/terrain/player-1 reads throughout),
+`PlayerData`, `DBConnector`, `DBHelper`, `HighScoreModel`, `PendingMatchPersistenceStore`,
+`ProgressionService`, `APIHelper`, `GameOptions`, `EndRoundData`, `LevelSelected` - exactly the set this
+slice's brief named to re-measure, all confirmed still live. Reason it remains at the outer boundary:
+persistence/campaign/versus-reporting orchestration that spans a loose sibling type
+(`GameLevelManager`) and several not-yet-migrated legacy persistence managers.
+
+**`GameRules` migration-feasibility check (decision: retain).** Re-measuring against the five-condition
+decision rule:
+
+1. *Dependency-closed against loose `Assembly-CSharp` types* - **fails.** `GameRules` reads
+   `GameLevelManager.instance` (roster, `Player1`, `PlayerHealth`, `BasketballRimVector`,
+   `TerrainHeight`, `players`, `getSortedGameStatsList()`) throughout `Start()`, `Update()`,
+   `HandleMatchEnded()` and its Hud/persistence adapters - `GameLevelManager` itself stays loose per
+   this slice's own scope, so this dependency cannot close without also inverting or moving that
+   sibling type, which is explicitly out of scope.
+2. *No new abstractions/composition seams needed* - moot given (1)'s failure, but also not free:
+   closing the `GameLevelManager` edge alone would need a new bound-context seam of the same shape
+   Slices 60/62/63/64/67 already added for `Timer`/`MatchHudPresenter`/`Pause`, each a dedicated slice
+   of its own.
+3. *No asmdef cycle results* - **fails independently.** `GameRules.HandleMatchEnded()` calls
+   `VersusMatchReporter.TryReport(...)`, and `VersusMatchReporter` compiles into `Level5.Versus`.
+   `Level5.Versus.asmdef` already references `Level5.Match` (`"references": [..., "Level5.Match"]`).
+   Moving `GameRules` into `Level5.Match` would require a reverse `Level5.Match -> Level5.Versus`
+   reference for this one call, forming a two-assembly cycle with the existing
+   `Level5.Versus -> Level5.Match` edge. Confirmed by source scan: no file under
+   `Assets/Scripts/game manager/Level5Match/` currently names any `Level5.Versus` type, so this would
+   be a new edge, not a pre-existing one this slice merely documents.
+4. *Persistence/campaign authority does not change* - not reached; (1) and (3) already fail.
+5. *Narrow ownership change, not a responsibility refactor* - not reached.
+
+Two of five conditions fail outright (closure, cycle-freedom), so per the decision rule `GameRules`
+stays in `Assembly-CSharp` this slice. No delegate seam, service, interface, or persistence code was
+added or considered for landing - the check stopped at establishing that the narrow move is not
+currently available, exactly as the brief requires.
+
+**Versus-cycle finding.** `Level5.Versus -> Level5.Match` remains the only edge between those two
+assemblies; no `Level5.Match -> Level5.Versus` edge exists in either the asmdef or any source file. The
+would-be cycle identified by the `GameRules` feasibility check above was not created.
+
+**Production asmdef graph (18 runtime asmdefs, all `autoReferenced: true`, all acyclic).**
+
+    Level5.Core            -> (none)
+    Level5.Constants       -> (none)
+    Level5.Misc            -> (none)
+    Level5.Audio           -> (none)
+    Level5.Pooling         -> (none)
+    Level5.Combat          -> (none)
+    Level5.Models          -> (none)
+    Level5.PlayerRacing    -> (none)
+    Level5.Vehicle         -> (none)
+    Level5.MenuProgression -> (none)
+    Level5.Utility         -> Level5.Core
+    Level5.Enemy           -> Level5.Combat
+    Level5.Input           -> Unity.InputSystem (package)
+    Level5.MenuStart       -> Level5.Core, Unity.TextMeshPro (package)
+    Level5.Basketball      -> Level5.Core, Level5.Utility, Level5.Audio, Level5.Constants, Level5.Misc
+    Level5.Player          -> Level5.Core, Level5.Combat, Level5.Constants, Level5.Basketball,
+                               Level5.Utility, Level5.Input, Level5.Audio
+    Level5.Match           -> Level5.Core, Level5.Player, Level5.Basketball, Level5.Constants,
+                               Level5.Utility, Level5.Input
+    Level5.Versus          -> Level5.Core, Level5.Utility, Level5.Basketball, Level5.Match
+
+Every direct custom reference above is explicitly declared in its `.asmdef`'s `references` array (no
+implicit/transitive reference relied on); no runtime asmdef references `Analytics` or any other
+Editor-only package assembly (`NoProductionAssemblyReferencesAKnownEditorOnlyPackageAssembly`, still
+green, unchanged this slice).
+
+**Cycle-scan result.** None. A topological ordering exists (the list above is already one); no back-
+edge exists in either direction beyond the ones declared.
+
+**Named-assembly -> `Assembly-CSharp` invariant.** `NoMigratedProductionAssemblyReachesIntoAssemblyCSharp`
+re-verified green with no exclusion added for `GameLevelManager` or `GameRules` - the two shell types
+remain reachable *from* every named assembly only through the pre-existing outward direction (a named
+assembly's public API surface, not the reverse), never named *by* one.
+
+**Phase 1d allowlist review (`Level5GameManagerEdgeTests`).** `SpelledTypeAllowlist`'s four entries
+(`GameLevelManager.cs`, `GameRules.cs`, `MatchHudPresenter.cs`, `SpawnCoordinator.cs`) and
+`ReachThroughAllowlist`'s four entries (the same three plus `Timer.cs`) re-verified by hand against
+current source: every cited restricted-type reference and `PlayerIdentifier` reach-through chain is
+still live (`GameLevelManager.cs`'s `PlayerController`/`PlayerHealth`/`PlayerAttackQueue`/
+`CharacterProfile`/`GameStats`/`BasketBall`; `GameRules.cs`'s `BasketBall`/`BasketBallAuto`/
+`BasketBallShotMarker`/`GameStats`; both files' `.gameStats.` reach-throughs). No entry removed, none
+added - `TheSpelledTypeAllowlistHasNoStaleEntries`/`TheReachThroughAllowlistHasNoStaleEntries` confirm
+this automatically.
+
+**Documentation corrections.** `Level5ProductionAssemblyBoundaryTests`'s class summary previously
+described "the still-blocked basketball/game-manager legs" - stale since at least Slice 51, which
+already established that `Assets/Scripts/basketball/`'s folder-root asmdef placement closed that leg
+on source ownership with nothing left to migrate. Corrected in place to describe basketball as closed
+and game-manager as the certified two-file shell this slice records; no historical slice entry above
+was rewritten.
+
+**Validation.** Forced Unity recompilation (`6000.5.7f1`, headless): zero `error CS` lines. Focused
+`Level5ProductionAssemblyBoundaryTests`/`Level5GameManagerEdgeTests`/`Level5MatchArchitectureTests`:
+green. Full EditMode: green (see exact count in the PR/commit this slice lands in - historical Slice 68
+reference point was 1379/1379; this slice adds 2 new tests and 0 removed). Full PlayMode: green,
+unchanged from Slice 68's 17/17. `scripts/validate-repository.ps1`: passed.
+
+**Review pass 1 (correctness/certification quality).** No unexpected direct-root source found beyond
+the two intentional files. The new guard enumerates `SearchOption.TopDirectoryOnly`, so it cannot
+accidentally recurse into `Level5Match/`. It asserts `Is.EquivalentTo` (exact set), not `Count == 2`.
+No `.meta`/non-`.cs` file is included (`*.cs` glob only). No named assembly was found reaching into
+`Assembly-CSharp`; no asmdef cycle was found. No allowlist entry was stale, so none was removed; none
+needed adding. No historical documentation was rewritten. Phase 2b completion is claimed only because
+every certification gate in this slice's brief passed.
+
+**Review pass 2 (architecture/scope).** `GameRules` was not migrated - the feasibility check's own two
+independent failures (dependency closure, versus-cycle) stopped short of it, exactly as the decision
+rule requires. No new delegate seam, service, interface, or context abstraction was added. No
+persistence, campaign/end-round, or versus behavior changed. `GameLevelManager` was not migrated. No
+runtime behavior, scene, prefab, or serialized asset was edited. No claim is made that this slice
+resolves `GameRules`'/`GameLevelManager`'s broader manager-responsibility debt - see the explicit
+statement below.
+
+**Production behavior impact:** none. No production `.cs` file moved; no asmdef reference added,
+removed, or reordered; no serialized asset touched; the only changes are two new/one corrected test-
+only comment plus two new tests and this documentation entry.
+
+**Final architecture:**
+
+    Assembly-CSharp integration/orchestration shell
+    ├── GameLevelManager
+    └── GameRules
+
+    Named production runtime assemblies (18 asmdefs, all acyclic, none reaching back into
+    Assembly-CSharp)
+    └── every other production .cs file under Assets/Scripts and Assets/Level5
+
+**`GameLevelManager`** is retained as the concrete scene/composition and legacy-integration bridge: the
+one place that resolves `LevelRuntimeContext`/`SpawnCoordinator`, forwards bound contexts to
+`Timer`/`Pause`, and adapts the roster to still-loose legacy singletons
+(`ProjectilePool`/`BehaviorNpcCritical`/`LoadedData`/`CameraManager`/`SniperManager`/
+`AnaylticsManager`/campaign persistence) that have no named-assembly home yet.
+
+**`GameRules`** is retained as the current top-level match/persistence/campaign orchestrator because
+moving it would currently require broader responsibility/dependency-inversion work rather than a
+narrow assembly move - concretely, inverting its `GameLevelManager` reads (a sibling shell type staying
+in `Assembly-CSharp`) and resolving the `Level5.Match -> Level5.Versus` cycle its
+`VersusMatchReporter.TryReport` call would otherwise create.
+
+**AUD-012 Phase 2b assembly migration complete does not mean `GameRules` responsibility decomposition
+complete.** Its persistence/campaign/versus-reporting orchestration, and its coupling to
+`GameLevelManager`, are unchanged by this slice. Future decomposition of either type should be tracked
+as a separate architecture issue driven by ownership, correctness, or testability - not as leftover
+Phase 2b scope.
+
+**Phase 2 (`AUD-012`) status.** Phase 2a (canary) and Phase 2c/2d (workaround removal, permanent guard)
+were already closed before this slice. Phase 2b's last named blocker - the `game manager` leg - is
+certified complete by this slice under the expected two-file-shell design. No other open Phase 2
+sub-phase is recorded in this document, so this slice closes Phase 2 (`AUD-012`) as a whole, not only
+Phase 2b in isolation - stated here for completeness; the formal status line below still names Phase 2b
+specifically, per this slice's own reporting template.
+
+AUD-012 PHASE 2b COMPLETE
+
 ### Phase 3 — Converge the human/CPU pairs
 
 Not "one type". The pairs carry real, intended differences: the human path has an analytics call and

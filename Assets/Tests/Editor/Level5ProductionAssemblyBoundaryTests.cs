@@ -10,8 +10,10 @@ using UnityEngine;
 /// Phase 2d architecture guards (docs/systems-restructure-plan.md, "Phase 2 - Assembly split").
 ///
 /// Reads source as text rather than referencing it, the same trick <see cref="Level5GameManagerEdgeTests"/>
-/// uses: this file has no asmdef of its own, so it can see every folder - including the still-blocked
-/// basketball/game-manager legs (the player leg closed in Slice 51 - see
+/// uses: this file has no asmdef of its own, so it can see every folder - including the game-manager
+/// leg's intentional two-file <c>Assembly-CSharp</c> shell (certified complete in Slice 69 - see
+/// <see cref="OnlyIntentionalAssemblyCSharpGameManagerShellRemainsLoose"/>) and the basketball leg
+/// (closed early behind its own folder-root asmdef, the player leg closed in Slice 51 - see
 /// <see cref="NoProductionSourceExistsDirectlyUnderThePlayerRootOutsideLevel5Player"/>) - without
 /// becoming part of the dependency graph it checks.
 ///
@@ -875,6 +877,67 @@ public class Level5ProductionAssemblyBoundaryTests
     /// <c>Level5.PlayModeTests</c>). Reads the directory directly rather than caching whether it existed
     /// at discovery time, so the guard stays effective even if the folder is recreated later.
     /// </summary>
+    /// <summary>
+    /// AUD-012 Phase 2b Slice 69: the final game-manager-root invariant. The expected final design
+    /// intentionally leaves exactly <c>GameLevelManager.cs</c> and <c>GameRules.cs</c> loose directly
+    /// under <c>Assets/Scripts/game manager/</c> - the outer <c>Assembly-CSharp</c> composition/
+    /// orchestration shell every named runtime assembly depends outward on, never the reverse (see
+    /// <see cref="NoMigratedProductionAssemblyReachesIntoAssemblyCSharp"/>). Top-directory-only,
+    /// deliberately not recursive: <c>Assets/Scripts/game manager/Level5Match/</c> is a separate,
+    /// already-migrated <c>Level5.Match</c> asmdef folder, not part of this shell.
+    ///
+    /// Asserts exact set equality, not <c>Count == 2</c> - a new loose file that happens to keep the
+    /// count at two (one added while one is deleted) would otherwise pass silently.
+    ///
+    /// A new direct-root production file here is a new <c>Assembly-CSharp</c> architectural exception:
+    /// new runtime code should normally land in an existing named assembly instead. Deliberately
+    /// adding, removing, or migrating one of these two shell files requires an explicit, intentional
+    /// update to this test and its rationale - not an incidental green/red flip.
+    /// </summary>
+    [Test]
+    public void OnlyIntentionalAssemblyCSharpGameManagerShellRemainsLoose()
+    {
+        string gameManagerRoot = Path.Combine(ScriptsRoot, "game manager");
+        string[] expected = { "GameLevelManager.cs", "GameRules.cs" };
+
+        List<string> actual = Directory
+            .EnumerateFiles(gameManagerRoot, "*.cs", SearchOption.TopDirectoryOnly)
+            .Select(Path.GetFileName)
+            .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        Assert.That(
+            actual,
+            Is.EquivalentTo(expected),
+            "Assets/Scripts/game manager/ must contain exactly the intentional Assembly-CSharp "
+            + "composition/orchestration shell (GameLevelManager.cs, GameRules.cs) directly under its "
+            + "root - nothing more, nothing less. A new direct-root file here is a new Assembly-CSharp "
+            + "architectural exception; new runtime code should normally belong in an existing named "
+            + "assembly instead. If this shell is being deliberately grown, shrunk, or migrated, update "
+            + "this test and its rationale explicitly rather than letting it drift:\n"
+            + string.Join(", ", actual));
+    }
+
+    /// <summary>
+    /// AUD-012 Phase 2b Slice 69: documents the current intentional architecture - that
+    /// <see cref="GameLevelManager"/> and <see cref="GameRules"/> deliberately compile into
+    /// <c>Assembly-CSharp</c>, not a permanent ban on ever migrating them. A future deliberate
+    /// ownership change (see docs/systems-restructure-plan.md's Slice 69 closeout for the current
+    /// migration-feasibility rationale) should update or remove this test alongside that move, the
+    /// same way every other identity test in this fixture tracks its own type's current assembly.
+    /// </summary>
+    [Test]
+    public void IntentionalGameManagerShellCompilesIntoAssemblyCSharp()
+    {
+        Assert.That(
+            typeof(GameLevelManager).Assembly.GetName().Name,
+            Is.EqualTo("Assembly-CSharp"));
+
+        Assert.That(
+            typeof(GameRules).Assembly.GetName().Name,
+            Is.EqualTo("Assembly-CSharp"));
+    }
+
     [Test]
     public void NoSourceFileReturnsToTheAsmdefFreePlayModeGameplayWorkaround()
     {
