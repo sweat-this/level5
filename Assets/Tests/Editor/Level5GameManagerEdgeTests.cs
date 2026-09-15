@@ -251,6 +251,38 @@ public class Level5GameManagerEdgeTests
             + "GameLevelManager.MarkKilledOnIdle.");
     }
 
+    /// <summary>
+    /// AUD-012 Phase 2b Slice 64 permanent guard: <c>MatchHudPresenter</c> no longer reads
+    /// <c>PlayerData.instance</c> or writes through <c>DBHelper.instance</c> itself - it only consults
+    /// the <c>highScoreSnapshotReader</c>/<c>persistLongestShotMadeFreePlay</c> delegates bound by
+    /// <c>GameRules.BindPersistenceContext</c> (see <c>GameRules.ReadHighScoreSnapshotForHud</c>/
+    /// <c>PersistLongestShotMadeFreePlayForHud</c>) - the persistence-layer coupling Slice 62 explicitly
+    /// deferred. Uses <see cref="Level5TestSourceText.StripCommentsAndLiterals"/>, the same tool
+    /// <see cref="SpawnCoordinatorHasNoAssemblyCSharpIntegrationReferences"/> uses above, since this
+    /// file's own doc comments spell both names inside string-free prose that a comment-only strip
+    /// would still see. <see cref="EnumerateGameManagerScripts"/> finds the file under its new
+    /// <c>Level5Match/</c> subfolder exactly as it did at its former loose location - the enumeration
+    /// walks <see cref="GameManagerRoot"/> recursively.
+    /// </summary>
+    [Test]
+    public void MatchHudPresenterHasNoPlayerDataOrDBHelperReferences()
+    {
+        string file = EnumerateGameManagerScripts()
+            .FirstOrDefault(path => Path.GetFileName(path).Equals("MatchHudPresenter.cs", StringComparison.OrdinalIgnoreCase));
+        Assert.IsNotNull(file, "MatchHudPresenter.cs not found under " + GameManagerRoot);
+
+        string text = Level5TestSourceText.StripCommentsAndLiterals(File.ReadAllText(file));
+
+        Assert.That(text, Does.Not.Match(@"\bPlayerData\b"),
+            "MatchHudPresenter must have zero executable PlayerData references - persisted high-score "
+            + "reads must go through the bound highScoreSnapshotReader delegate, supplied by "
+            + "GameRules.ReadHighScoreSnapshotForHud.");
+        Assert.That(text, Does.Not.Match(@"\bDBHelper\b"),
+            "MatchHudPresenter must have zero executable DBHelper references - the longest-shot write "
+            + "must go through the bound persistLongestShotMadeFreePlay delegate, supplied by "
+            + "GameRules.PersistLongestShotMadeFreePlayForHud.");
+    }
+
     [Test]
     public void TheSpelledTypeAllowlistHasNoStaleEntries()
     {

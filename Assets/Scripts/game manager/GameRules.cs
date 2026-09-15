@@ -258,6 +258,14 @@ public class GameRules : MonoBehaviour, IMoneyBallState, IShotMarkerSession
             ReadFirstRegisteredPlayerForHud,
             ReadScoreClockTextForHud);
 
+        // AUD-012 Phase 2b Slice 64: replaces MatchHudPresenter's former direct PlayerData.instance/
+        // DBHelper.instance reads - the persistence-layer coupling Slice 62 explicitly deferred. A
+        // separate bind call from the one above: game-manager-cycle state and the persistence-layer
+        // ownership boundary are different concerns.
+        hud.BindPersistenceContext(
+            ReadHighScoreSnapshotForHud,
+            PersistLongestShotMadeFreePlayForHud);
+
         //updatePlayerScore();
 
         // rules, from the resolved configuration rather than a dozen separate globals
@@ -892,6 +900,62 @@ public class GameRules : MonoBehaviour, IMoneyBallState, IShotMarkerSession
     private Text ReadScoreClockTextForHud()
     {
         return timer.ScoreClockText;
+    }
+
+    /// <summary>
+    /// AUD-012 Phase 2b Slice 64: the concrete persistence-layer adapter <see cref="MatchHudPresenter"/>
+    /// now calls instead of reading <c>PlayerData.instance</c> itself. Resolves <c>PlayerData.instance</c>
+    /// fresh per invocation, matching every other adapter in this migration, and returns null when it is
+    /// absent - the exact prior "no live PlayerData -> no persistence-backed rendering" behavior, now
+    /// expressed as a null snapshot rather than the presenter's former inline null check. Copies every
+    /// executable HUD-consumed <c>PlayerData</c> value from the one resolved instance into a fresh
+    /// <see cref="MatchHudPresenter.HighScoreSnapshot"/> - no derived/recalculated values, no
+    /// <c>PlayerData</c> mutation.
+    /// </summary>
+    private static MatchHudPresenter.HighScoreSnapshot ReadHighScoreSnapshotForHud()
+    {
+        PlayerData current = PlayerData.instance;
+        if (current == null)
+        {
+            return null;
+        }
+
+        return new MatchHudPresenter.HighScoreSnapshot(
+            totalPoints: current.TotalPoints,
+            totalPointsLockDown: current.TotalPointsLockDown,
+            threePointerMade: current.ThreePointerMade,
+            fourPointerMade: current.FourPointerMade,
+            sevenPointerMade: current.SevenPointerMade,
+            totalDistance: current.TotalDistance,
+            makeThreePointersLowTime: current.MakeThreePointersLowTime,
+            makeFourPointersLowTime: current.MakeFourPointersLowTime,
+            makeSevenPointersLowTime: current.MakeSevenPointersLowTime,
+            makeAllPointersLowTime: current.MakeAllPointersLowTime,
+            mostConsecutiveShots: current.MostConsecutiveShots,
+            totalPointsBonus: current.TotalPointsBonus,
+            threePointContestScore: current.ThreePointContestScore,
+            fourPointContestScore: current.FourPointContestScore,
+            sevenPointContestScore: current.SevenPointContestScore,
+            allPointContestScore: current.AllPointContestScore,
+            totalPointsByDistance: current.TotalPointsByDistance,
+            enemiesKilled: current.EnemiesKilled,
+            enemiesKilledBattleRoyal: current.EnemiesKilledBattleRoyal,
+            enemiesKilledCageMatch: current.EnemiesKilledCageMatch,
+            longestShotMadeFreePlay: current.LongestShotMadeFreePlay);
+    }
+
+    /// <summary>
+    /// AUD-012 Phase 2b Slice 64: the concrete persistence-layer adapter <see cref="MatchHudPresenter"/>
+    /// now calls instead of writing <c>PlayerData.instance.LongestShotMadeFreePlay</c> and
+    /// <c>DBHelper.instance.updateFloatValueByTableAndField</c> itself. Preserves the exact prior order -
+    /// the in-memory <c>PlayerData</c> mutation happens first, the <c>DBHelper</c> write second - and the
+    /// exact prior value and table/field names. No new null guard, retry, or queue semantics.
+    /// </summary>
+    private static void PersistLongestShotMadeFreePlayForHud(float longestShotMadeFreePlay)
+    {
+        PlayerData.instance.LongestShotMadeFreePlay = longestShotMadeFreePlay;
+        DBHelper.instance.updateFloatValueByTableAndField(
+            "AllTimeStats", "longestShot", PlayerData.instance.LongestShotMadeFreePlay);
     }
 
     public int GameModeId
