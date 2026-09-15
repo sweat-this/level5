@@ -5475,6 +5475,113 @@ the already-legal `Level5.Core`/`Level5.Player` types listed above.
 
 **Production behavior impact:** none. Source-identical to its pre-move content.
 
+**Slice 62 (2026-09-14, same `dev` position as Slice 61): cuts `MatchHudPresenter`'s dependency on
+`GameLevelManager` and `Timer` - one of the two blockers identified by this session's Phase B audit of
+the four remaining loose game-manager files.**
+
+**Phase B audit (informal, grep-based).** With `SpawnCoordinator`/`messageLog`/`PauseUiObjects`/`Timer`
+gone, the four files still loose under `Assets/Scripts/game manager/` - `GameLevelManager.cs`,
+`GameRules.cs`, `MatchHudPresenter.cs`, `Pause.cs` - were cross-referenced against each other and
+scanned for key external types:
+
+| File | Lines | Cross-refs to the other three | Key external coupling |
+| --- | --- | --- | --- |
+| `GameLevelManager.cs` | 666 | `GameRules`, `Pause` | composition root |
+| `GameRules.cs` | 899 | `GameLevelManager`, `MatchHudPresenter`, `Pause` | `DBConnector`, `HighScoreModel`, `GameOptions` (18 refs), `VersusMatchReporter` |
+| `MatchHudPresenter.cs` | 969 | `GameLevelManager`, `GameRules` | `BasketBall`/`GameStats` (already legal), `PlayerData` (~25 reads, 1 write), `DBHelper` (1 write) |
+| `Pause.cs` | 631 | `GameLevelManager`, `GameRules` | `DBConnector`, `PlayerData`, `SceneManager` |
+
+A genuine mutual cycle, confirmed rather than assumed: all four cross-reference each other. Three
+(`GameRules`, `MatchHudPresenter`, `Pause`) touch persistence types (`DBConnector`, `HighScoreModel`,
+`PlayerData`, `DBHelper`) directly - real coupling this plan does not resolve casually, per
+`AGENTS.md`'s persistence rules. `Modes` (used by `MatchHudPresenter`) and `UtilityFunctions` (used by
+`MatchHudPresenter`'s `GetStatsTotals`) were checked and are already legal - `Modes.cs` sits directly in
+`Assets/Scripts/constants/`, the `Level5.Constants` asmdef's own folder; `UtilityFunctions.cs` sits in
+`Assets/Scripts/Utility/Level5Utility/`, the `Level5.Utility` asmdef's own folder.
+
+**Scoping decision.** Rather than attempt the full four-file cycle in one slice, this slice cuts only
+`MatchHudPresenter`'s edges to `GameLevelManager`/`Timer` - the same narrow, already-proven
+live-delegate shape used for `SpawnCoordinator`/`Timer` - and explicitly defers the `PlayerData`/
+`DBHelper` persistence coupling (both in `MatchHudPresenter`) and the full `GameRules`/`Pause` work to
+follow-up slices. This keeps the unit small and reviewable rather than smuggling persistence-layer
+scope into a game-manager-cycle cut.
+
+**Old flow.**
+
+```text
+updatePlayerScore()          -> GameLevelManager.instance.getSortedGameStatsList()
+                              -> Timer.instance.ScoreClockText
+SetScoreDisplayText() (many) -> Timer.instance.ScoreClockText
+  ConsecutiveShots/InThePocket -> GameLevelManager.instance.Player1 / .players[0]
+GetDisplayText() VersusCpu    -> GameLevelManager.instance.getSortedGameStatsList()
+```
+
+**New flow.**
+
+```text
+GameRules.ReadSortedGameStatsListForHud    -> GameLevelManager.instance.getSortedGameStatsList()
+GameRules.ReadPrimaryPlayerForHud          -> GameLevelManager.instance.Player1
+GameRules.ReadFirstRegisteredPlayerForHud  -> GameLevelManager.instance.players[0]
+GameRules.ReadScoreClockTextForHud         -> this GameRules instance's own `timer` field (already
+                                               resolved by SceneObjects.Find<Timer> in Start())
+        │                                                       │
+        └────────────────────────── all four handed in ─────────┘
+                                            ▼
+                    MatchHudPresenter.BindGameLevelManagerContext (called from GameRules.Start())
+                                            ▼
+              updatePlayerScore() / SetScoreDisplayText() / GetDisplayText() (forwards, unexamined)
+```
+
+**The seam.** `ReadScoreClockTextForHud` deliberately reads `GameRules`' own already-resolved `timer`
+field rather than reaching the `Timer.instance` static a second way - `GameRules.Start()` already
+resolves `timer = SceneObjects.Find<Timer>(timerObjectName, this)` immediately before this slice's new
+bind call, and in production the two are the same object (`Timer` is a scene singleton). The other three
+readers resolve `GameLevelManager.instance` fresh on every call, matching every other adapter in this
+migration. Preserved exactly: the pre-existing, easy-to-miss distinction between `Player1` (roster slot
+0) and `players[0]` (first registered participant) - the two can differ when registration order does
+not match roster slot order, and this slice does not examine or normalize that; `primaryPlayerReader`
+and `firstRegisteredPlayerReader` stay two separate delegates rather than being collapsed into one.
+
+**Binding placement.** `GameRules.Start()`, immediately after the existing `SceneObjects.Find<Timer>`
+call - not a new lifecycle method, and not `Awake()`: `timer` is not resolved until that line, so the
+bind must follow it.
+
+**Preserved failure modes.** None of the four adapters carry a null guard, matching every former
+unconditional dereference exactly (`updatePlayerScore`'s and the `VersusCpu` branch's own
+`GameLevelManager.instance` reads were never guarded; `SetScoreDisplayText`'s `Timer.instance.
+ScoreClockText` reads were guarded only against the `Text` itself being null in three call sites -
+preserved as `scoreClockTextReader() != null` guards in those same three places, not added elsewhere).
+
+**Focused tests added.** `Level5MatchHudPresenterCompositionTests` (new, 7 tests): 3 composition-
+forwarding tests for `updatePlayerScore` and `GetDisplayText`'s `VersusCpu` branch (both directly
+testable without a live `PlayerData`), 4 production-adapter tests against live `GameLevelManager`/
+`GameRules` singletons (including proving `ReadScoreClockTextForHud` reads `GameRules`' own `timer`
+field, not the `Timer.instance` static). Deliberately does not exercise `SetScoreDisplayText`'s ~30
+game-mode branches - every one is gated behind a live `PlayerData.instance`, this slice's explicitly
+deferred blocker.
+
+**Validation.** Full EditMode, headless Unity `6000.5.7f1`: 1329/1329 green (up from 1322 - the 7
+net-new tests). Full PlayMode: 17/17 green, unchanged. `scripts/validate-repository.ps1`: passed.
+
+**Review pass 1 (correctness/lifecycle/serialization).** No Awake/Start/Update timing changed beyond
+the one new `Start()` binding call, placed after its one true prerequisite (`timer` being resolved). No
+serialized field changed - `MatchHudPresenter`'s new delegate fields are plain (non-serialized) private
+fields, matching every other Phase 2b dependency-cut seam.
+
+**Review pass 2 (architecture/scope).** No new interface or service - four narrow delegates, matching
+the established shape. `PlayerData`/`DBHelper`/`Modes`/`UtilityFunctions` untouched;
+`MatchHudPresenter` was not moved this slice (still blocked); `GameRules`/`Pause` themselves untouched
+beyond the four new adapter methods and the one new `Start()` call.
+
+**Remaining blockers on `MatchHudPresenter`:** `PlayerData.instance` (~25 reads, 1 write) and
+`DBHelper.instance` (1 write, `updateFloatValueByTableAndField`) - genuine persistence-layer coupling
+requiring its own dedicated investigation, not a mechanical delegate swap. `Modes`/`UtilityFunctions`
+are not blockers (already legal, see the Phase B audit above).
+
+**Production behavior impact:** none. Every score display and end-of-match summary reads the exact
+same live values through the exact same calls, including the `Player1`/`players[0]` distinction and
+every unguarded-dereference failure mode.
+
 ### Phase 3 — Converge the human/CPU pairs
 
 Not "one type". The pairs carry real, intended differences: the human path has an analytics call and
