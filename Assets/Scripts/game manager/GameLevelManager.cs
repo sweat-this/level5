@@ -423,6 +423,94 @@ public class GameLevelManager : MonoBehaviour, IGroundHeightProvider, IPlayerMat
         GameRules.instance.RequestEnd(reason);
     }
 
+    /// <summary>
+    /// AUD-012 Phase 2b Slice 63: the composition adapter <see cref="Pause.PressCancelMenu"/> now calls
+    /// instead of reading <c>GameLevelManager.instance != null</c> itself.
+    /// </summary>
+    private static bool HasGameLevelManagerForPause()
+    {
+        return instance != null;
+    }
+
+    /// <summary>
+    /// AUD-012 Phase 2b Slice 63: the composition adapter <see cref="Pause.Update"/> now calls instead
+    /// of reading <c>GameLevelManager.instance.Controls.Player.cancel.triggered</c> itself. No null
+    /// guard, matching the former unconditional dereference.
+    /// </summary>
+    private static bool ReadCancelTriggeredForPause()
+    {
+        return instance.Controls.Player.cancel.triggered;
+    }
+
+    /// <summary>
+    /// AUD-012 Phase 2b Slice 63: the composition adapter <see cref="Pause.Update"/> now calls instead
+    /// of reading <c>GameLevelManager.instance.Controls.Player.submit.triggered</c> itself. No null
+    /// guard, matching the former unconditional dereference.
+    /// </summary>
+    private static bool ReadSubmitTriggeredForPause()
+    {
+        return instance.Controls.Player.submit.triggered;
+    }
+
+    /// <summary>
+    /// AUD-012 Phase 2b Slice 63: the composition adapter <see cref="Pause.Update"/> and
+    /// <see cref="Pause.PressCancelMenu"/> now call instead of reading
+    /// <c>GameLevelManager.instance.GameOver</c> themselves. No null guard, matching <c>Update</c>'s
+    /// former unconditional dereference; <c>PressCancelMenu</c>'s former
+    /// <c>GameLevelManager.instance != null &amp;&amp; GameLevelManager.instance.GameOver</c> short-circuit
+    /// is preserved by <see cref="Pause"/> itself calling <see cref="HasGameLevelManagerForPause"/>
+    /// first, not by a guard in this adapter.
+    /// </summary>
+    private static bool ReadGameOverForPause()
+    {
+        return instance.GameOver;
+    }
+
+    /// <summary>
+    /// AUD-012 Phase 2b Slice 63: the composition adapter <see cref="Pause.TogglePause"/> now calls
+    /// instead of reading/writing <c>GameLevelManager.instance.Joystick</c> itself. No guard on
+    /// <c>GameLevelManager.instance</c> itself, matching the former unconditional dereference; the
+    /// guard on the joystick being present is preserved here exactly as it was inline.
+    /// </summary>
+    private static void SetJoystickEnabledForPause(bool enabled)
+    {
+        if (instance.Joystick != null)
+        {
+            instance.Joystick.enabled = enabled;
+        }
+    }
+
+    /// <summary>
+    /// AUD-012 Phase 2b Slice 63: the composition adapter <see cref="Pause.updateFreePlayStats"/> now
+    /// calls instead of reading <c>GameLevelManager.instance.players</c> itself. No null guard, matching
+    /// the former unconditional dereference.
+    /// </summary>
+    private static List<PlayerIdentifier> ReadAllParticipantsForPause()
+    {
+        return instance.players;
+    }
+
+    /// <summary>
+    /// AUD-012 Phase 2b Slice 63: the composition adapter <see cref="Pause.updateFreePlayStats"/> now
+    /// calls instead of reading <c>GameLevelManager.instance.Player1</c> itself. No null guard, matching
+    /// the former unconditional dereference (distinct from <see cref="ReadPrimaryPlayerForTimer"/>,
+    /// which preserves a guard its own former call site already had).
+    /// </summary>
+    private static PlayerIdentifier ReadPrimaryPlayerForPause()
+    {
+        return instance.Player1;
+    }
+
+    /// <summary>
+    /// AUD-012 Phase 2b Slice 63: the composition adapter <see cref="Pause.updateFreePlayStats"/> now
+    /// calls instead of calling <c>GameRules.instance.setTimePlayed()</c> itself. No null guard,
+    /// matching the former unconditional dereference.
+    /// </summary>
+    private static void SetTimePlayedForPause()
+    {
+        GameRules.instance.setTimePlayed();
+    }
+
     private float setTerrainHeight()
     {
         switch (SceneManager.GetActiveScene().name)
@@ -503,6 +591,24 @@ public class GameLevelManager : MonoBehaviour, IGroundHeightProvider, IPlayerMat
                 ReadGameModeRequiresConsecutiveShotsForTimer,
                 ReadPrimaryPlayerForTimer,
                 RequestMatchEndForTimer);
+        }
+
+        // AUD-012 Phase 2b Slice 63: replaces Pause's former direct GameLevelManager.instance/
+        // GameRules.instance reads. Bound here for the same reason as Timer's binding just above -
+        // every component's Awake() (including Pause's own, which sets Pause.instance) precedes every
+        // component's Start(), and Pause's Update()/TogglePause()/etc. (where this binding is read)
+        // cannot run before every Start() in the scene has completed.
+        if (Pause.instance != null)
+        {
+            Pause.instance.BindGameLevelManagerContext(
+                HasGameLevelManagerForPause,
+                ReadCancelTriggeredForPause,
+                ReadSubmitTriggeredForPause,
+                ReadGameOverForPause,
+                SetJoystickEnabledForPause,
+                ReadAllParticipantsForPause,
+                ReadPrimaryPlayerForPause,
+                SetTimePlayedForPause);
         }
     }
 
