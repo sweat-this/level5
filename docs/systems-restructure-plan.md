@@ -5582,6 +5582,111 @@ are not blockers (already legal, see the Phase B audit above).
 same live values through the exact same calls, including the `Player1`/`players[0]` distinction and
 every unguarded-dereference failure mode.
 
+**Slice 63 (2026-09-14, same `dev` position as Slice 62): cuts `Pause`'s dependency on
+`GameLevelManager` and `GameRules` - closing the last of the four files this session's Phase B audit
+found in the game-manager cycle.**
+
+**Old flow.**
+
+```text
+Update()                     -> GameLevelManager.instance.Controls.Player.cancel/submit.triggered
+                              -> GameLevelManager.instance.GameOver
+PressCancelMenu()            -> GameLevelManager.instance != null && GameLevelManager.instance.GameOver
+TogglePause() (both branches) -> GameLevelManager.instance.Joystick
+updateFreePlayStats()        -> GameRules.instance.setTimePlayed()
+                              -> GameLevelManager.instance.players / .Player1
+```
+
+**New flow.**
+
+```text
+GameLevelManager.HasGameLevelManagerForPause          -> GameLevelManager.instance != null
+GameLevelManager.ReadCancelTriggeredForPause          -> GameLevelManager.instance.Controls.Player.cancel.triggered
+GameLevelManager.ReadSubmitTriggeredForPause          -> GameLevelManager.instance.Controls.Player.submit.triggered
+GameLevelManager.ReadGameOverForPause                 -> GameLevelManager.instance.GameOver
+GameLevelManager.SetJoystickEnabledForPause            -> GameLevelManager.instance.Joystick (guarded, unchanged)
+GameLevelManager.ReadAllParticipantsForPause          -> GameLevelManager.instance.players
+GameLevelManager.ReadPrimaryPlayerForPause             -> GameLevelManager.instance.Player1
+GameLevelManager.SetTimePlayedForPause                -> GameRules.instance.setTimePlayed()
+        │                                                                   │
+        └────────────────────── all eight handed in ───────────────────────┘
+                                            ▼
+                    Pause.BindGameLevelManagerContext (called from GameLevelManager.Start())
+                                            ▼
+        Update() / PressCancelMenu() / TogglePause() / updateFreePlayStats() (forward, unexamined)
+```
+
+**Two distinct preserved guard shapes.** `Update()`'s cancel/submit/`GameOver` reads were always
+unconditional (no `GameLevelManager.instance != null` check) - `cancelTriggeredReader()`/
+`submitTriggeredReader()`/`gameOverReader()` are called the same way, throwing if unbound exactly as the
+former direct reads threw on an absent singleton. `PressCancelMenu()`'s `GameOver` read was guarded
+(`GameLevelManager.instance != null && ...GameOver`) - preserved as `hasGameLevelManagerReader() &&
+gameOverReader()`, a separate existence-check delegate (matching the established `hasAutoPlayerReader`
+shape from Slice 55) rather than a nullable-bool reader, because the two call sites genuinely need
+different failure behavior and collapsing them into one nullable-bool convention (as Timer's
+`gameOverReader` does for its own single call site) would have changed `Update()`'s exception type.
+
+**The Joystick seam.** `FloatingJoystick` (`Assets/Joystick Pack/`, no `.asmdef` - a vendored
+third-party type, genuinely `Assembly-CSharp`) is never exposed through `Pause`'s new signature -
+`Action<bool> setJoystickEnabled` narrows the concern to "turn the joystick on or off," proactively
+avoiding a future blocker rather than passing the `FloatingJoystick` reference through (which would
+have worked for this slice, since `Pause` is not moving yet, but would have planted a new blocker for
+whenever it does).
+
+**Binding placement.** `GameLevelManager.Start()`, immediately after Timer's own binding - same
+execution-order reasoning: every component's `Awake()` (including `Pause`'s own, which sets
+`Pause.instance`) precedes every component's `Start()`, and `Pause`'s `Update()`/`TogglePause()`/etc.
+(where this binding is read) cannot run before every `Start()` in the scene has completed. Uses
+`if (Pause.instance != null)`, not `?.` - the AUD-061 guard this session's Slice 60 already tripped over
+once for `Timer`.
+
+**Focused tests added.** `Level5PauseCompositionTests` (new, 12 tests): composition-forwarding tests for
+`Update()`/`PressCancelMenu()`/`updateFreePlayStats()` against a `Pause` built without running its own
+`Awake()` (which needs a fully wired `PauseUiObjects` and an active `EventSystem` this fixture does not
+build - mirrors `Level5SpawnCoordinatorAnimationEventsCompositionTests`' `SpawnManagerWithoutAwake`), one
+of which proves the `PressCancelMenu` short-circuit never consults `gameOverReader` when
+`hasGameLevelManagerReader` is false, plus 6 production-adapter tests against live
+`GameLevelManager`/`GameRules` singletons. `updateFreePlayStats`'s forwarding test tolerates the method
+throwing once it reaches the untouched `DBConnector.instance` persistence call - the assertion is that
+this slice's own two delegates (`setTimePlayed`, `allParticipantsReader`) ran first. A real engine
+global (`Time.timeScale`) is pinned in `SetUp`/`TearDown` so the fixture is deterministic regardless of
+run order - caught during authoring, before any run, by tracing `TogglePause`'s actual branch selection
+rather than assuming a default.
+
+**Validation.** Full EditMode, headless Unity `6000.5.7f1`: 1341/1341 green (up from 1329 - the 12
+net-new tests). Full PlayMode: 17/17 green, unchanged. `scripts/validate-repository.ps1`: passed.
+
+**Review pass 1 (correctness/lifecycle/serialization).** No Awake/Start/Update timing changed beyond
+the one new `Start()` binding call. No serialized field changed - all eight new fields are plain,
+non-serialized delegates.
+
+**Review pass 2 (architecture/scope).** No new interface or generalized service - eight narrow
+delegates, following the same shape as every prior slice (SpawnCoordinator's own 13-parameter
+constructor is the explicit precedent for a growing list of narrow optional dependencies over a
+container). `DBConnector`/`PlayerData`/`DBHelper` untouched; `Pause` was not moved this slice (still
+blocked). `GameRules`/`GameLevelManager` themselves untouched beyond the eight new adapter methods and
+the one new `Start()` call.
+
+**Re-measured graph.** With Slices 62-63 both landed, `MatchHudPresenter` and `Pause` no longer reach
+`GameLevelManager`/`GameRules` executably at all - the remaining cross-references in both files are
+doc comments, dead pre-existing comments, or identifier names (`hasGameLevelManagerReader`, etc.)
+containing the substring. The four-file cycle this session's Phase B audit found is now correctly a
+two-file relationship: `GameLevelManager` (the acknowledged composition root, per Phase E's original
+priority order) supplying adapters to `Timer`/`MatchHudPresenter`/`Pause`, and `GameRules` reading
+`GameLevelManager` directly for its own match-orchestration job (`gameStats1 = GameLevelManager.instance.
+Player1.gameStats`, the `ObstaclesEnabled` arena-position read, `PlayerHealth.OnDied` subscription, and
+others) - none of that was in this session's scope and remains exactly as it was.
+
+**Remaining blockers:** `MatchHudPresenter` (`PlayerData`, `DBHelper`) and `Pause` (`DBConnector`,
+`PlayerData`) each carry their own separate, un-entangled persistence-layer coupling requiring dedicated
+investigation per `AGENTS.md`'s persistence rules - not touched by Slices 62-63 and not a mechanical
+delegate swap the way the game-manager-cycle edges were. `GameRules`/`GameLevelManager` retain their
+mutual, by-design relationship (composition root and match orchestrator) and were never targeted for
+full closure in this session.
+
+**Production behavior impact:** none. Every guard, short-circuit and unguarded-dereference failure mode
+reads the exact same live values through the exact same calls.
+
 ### Phase 3 — Converge the human/CPU pairs
 
 Not "one type". The pairs carry real, intended differences: the human path has an analytics call and
