@@ -249,6 +249,15 @@ public class GameRules : MonoBehaviour, IMoneyBallState, IShotMarkerSession
         hud.Initialize();
         timer = SceneObjects.Find<Timer>(timerObjectName, this);
 
+        // AUD-012 Phase 2b Slice 62: replaces MatchHudPresenter's former direct GameLevelManager.instance/
+        // Timer.instance reads. ReadScoreClockTextForHud reads this instance's own timer field (just
+        // resolved above), not the Timer.instance static a second way.
+        hud.BindGameLevelManagerContext(
+            ReadSortedGameStatsListForHud,
+            ReadPrimaryPlayerForHud,
+            ReadFirstRegisteredPlayerForHud,
+            ReadScoreClockTextForHud);
+
         //updatePlayerScore();
 
         // rules, from the resolved configuration rather than a dozen separate globals
@@ -831,6 +840,49 @@ public class GameRules : MonoBehaviour, IMoneyBallState, IShotMarkerSession
         }
 
         timer.TimeStart = seconds;
+    }
+
+    /// <summary>
+    /// AUD-012 Phase 2b Slice 62: the composition adapter <see cref="MatchHudPresenter"/> now calls
+    /// instead of reading <c>GameLevelManager.instance.getSortedGameStatsList()</c> itself.
+    /// </summary>
+    private static List<PlayerIdentifier> ReadSortedGameStatsListForHud()
+    {
+        return GameLevelManager.instance.getSortedGameStatsList();
+    }
+
+    /// <summary>
+    /// AUD-012 Phase 2b Slice 62: the composition adapter <see cref="MatchHudPresenter"/> now calls
+    /// instead of reading <c>GameLevelManager.instance.Player1</c> itself.
+    /// </summary>
+    private static PlayerIdentifier ReadPrimaryPlayerForHud()
+    {
+        return GameLevelManager.instance.Player1;
+    }
+
+    /// <summary>
+    /// AUD-012 Phase 2b Slice 62: the composition adapter <see cref="MatchHudPresenter"/> now calls
+    /// instead of reading <c>GameLevelManager.instance.players[0]</c> itself - the raw
+    /// registration-order list's first entry, deliberately distinct from
+    /// <see cref="ReadPrimaryPlayerForHud"/>'s roster-slot-0 <c>Player1</c>: the two can differ when
+    /// registration order does not match roster slot order. Not examined or normalized here -
+    /// preserving the pre-existing distinction exactly.
+    /// </summary>
+    private static PlayerIdentifier ReadFirstRegisteredPlayerForHud()
+    {
+        return GameLevelManager.instance.players[0];
+    }
+
+    /// <summary>
+    /// AUD-012 Phase 2b Slice 62: the composition adapter <see cref="MatchHudPresenter"/> now calls
+    /// instead of reading <c>Timer.instance.ScoreClockText</c> itself. Reads this instance's own
+    /// already-resolved <see cref="timer"/> field (<see cref="Start"/>'s
+    /// <c>SceneObjects.Find&lt;Timer&gt;</c>) rather than the <c>Timer.instance</c> static a second way -
+    /// in production the two are the same object, since <c>Timer</c> is a scene singleton.
+    /// </summary>
+    private Text ReadScoreClockTextForHud()
+    {
+        return timer.ScoreClockText;
     }
 
     public int GameModeId
