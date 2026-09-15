@@ -705,6 +705,74 @@ public class Level5ProductionAssemblyBoundaryTests
         Assert.That(typeof(ArenaBootstrap).Assembly.GetName().Name, Is.EqualTo(expected));
     }
 
+    /// <summary>
+    /// AUD-012 Phase 2b, Slice 58: proves <c>SpawnCoordinator</c> - dependency-closed on
+    /// <c>Assembly-CSharp</c> since Slice 57, its remaining <c>Level5.MenuStart</c> direction issue
+    /// resolved by reading the new neutral <c>CheerleaderSelection.LegacyNoneObjectName</c> constant
+    /// instead of <c>CheerleaderProfile.NoneObjectName</c> - actually compiles into <c>Level5.Match</c>,
+    /// the same identity check <see cref="SceneRuntimeBridgeTypesCompileIntoLevel5Match"/> does for
+    /// <c>LevelRuntimeContext</c>/<c>ArenaBootstrap</c>. Its one production construction site,
+    /// <c>GameLevelManager.Awake</c>, stays in <c>Assembly-CSharp</c> and reaches it through
+    /// <c>autoReferenced</c>.
+    /// </summary>
+    [Test]
+    public void SpawnCoordinatorCompilesIntoLevel5Match()
+    {
+        Assert.That(
+            typeof(SpawnCoordinator).Assembly.GetName().Name,
+            Is.EqualTo("Level5.Match"));
+    }
+
+    /// <summary>
+    /// AUD-012 Phase 2b, Slice 59: proves <c>messageLog</c> and <c>PauseUiObjects</c> - the two small,
+    /// dependency-clean serialized-UI leaves flagged for early re-audit alongside the Slice 58
+    /// <c>SpawnCoordinator</c> move (docs/systems-restructure-plan.md, Phase 2b Phase C's "known
+    /// examples") - actually compile into <c>Level5.Match</c>, the same identity check
+    /// <see cref="SpawnCoordinatorCompilesIntoLevel5Match"/> does for <c>SpawnCoordinator</c>. Both are
+    /// authored onto <c>Resources/Prefabs/critical/GameManager.prefab</c> (<c>PauseUiObjects</c> also
+    /// onto three scenes that author their own inline <c>Pause</c>); GUIDs unchanged
+    /// (<c>messageLog</c>: <c>3d10fa061130e9349807fe521f924bac</c>, <c>PauseUiObjects</c>:
+    /// <c>de200191bf884016880301428fa0a7fd</c>), so every authored reference still resolves by GUID
+    /// regardless of which assembly now compiles the type. <c>PauseUiObjects</c>' authored
+    /// <c>m_EditorClassIdentifier: Assembly-CSharp::PauseUiObjects</c> (written by
+    /// <c>MenuUiObjectsWiring</c>'s <c>AddComponent&lt;PauseUiObjects&gt;</c> calls, present on every
+    /// authored instance) is not touched by this move - it is a secondary editor-authored identifier,
+    /// not the primary GUID-based resolution path, and going stale after an assembly move is the same
+    /// already-tolerated condition the Volume/UniversalAdditionalCameraData built-in components in
+    /// these same authored files already demonstrate for their own (immutable, package-owned)
+    /// identifiers. Both types' one production consumer, <c>Pause.cs</c>, stays in
+    /// <c>Assembly-CSharp</c> and reaches them through <c>autoReferenced</c>.
+    /// </summary>
+    [Test]
+    public void SerializedManagerUiLeavesCompileIntoLevel5Match()
+    {
+        const string expected = "Level5.Match";
+
+        Assert.That(typeof(messageLog).Assembly.GetName().Name, Is.EqualTo(expected));
+        Assert.That(typeof(PauseUiObjects).Assembly.GetName().Name, Is.EqualTo(expected));
+    }
+
+    /// <summary>
+    /// AUD-012 Phase 2b, Slice 61: proves <c>Timer</c> - dependency-closed by Slice 60's
+    /// <c>GameRules</c>/<c>GameLevelManager</c> cut - actually compiles into <c>Level5.Match</c>, the
+    /// same identity check <see cref="SpawnCoordinatorCompilesIntoLevel5Match"/> does for
+    /// <c>SpawnCoordinator</c>. GUID unchanged (<c>0cbb2e138afa4ae49ac2b8f677d09f1f</c>); no authored
+    /// <c>m_EditorClassIdentifier</c> anomaly (unlike <c>PauseUiObjects</c> - see Slice 59) since every
+    /// authored instance was added through the Editor's normal "Add Component" flow. Its consumers -
+    /// <c>GameRules.setTimer</c> and <c>GameLevelManager</c>'s <c>Timer.instance != null</c> binding
+    /// check - stay in <c>Assembly-CSharp</c> and reach it through <c>autoReferenced</c>.
+    /// (Corrected in review: this originally also named <c>MatchHudPresenter</c>'s <c>Timer.instance</c>
+    /// reads, which Slice 62 - the very next slice - removed via <c>scoreClockTextReader</c>; the
+    /// comment was stale from the moment that slice landed.)
+    /// </summary>
+    [Test]
+    public void TimerCompilesIntoLevel5Match()
+    {
+        Assert.That(
+            typeof(Timer).Assembly.GetName().Name,
+            Is.EqualTo("Level5.Match"));
+    }
+
     [Test]
     public void NoProductionAssemblyReferencesAKnownEditorOnlyPackageAssembly()
     {

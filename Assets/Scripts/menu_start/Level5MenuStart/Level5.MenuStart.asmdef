@@ -2,6 +2,7 @@
     "name": "Level5.MenuStart",
     "rootNamespace": "",
     "references": [
+        "Level5.Core",
         "Unity.TextMeshPro"
     ],
     "includePlatforms": [],

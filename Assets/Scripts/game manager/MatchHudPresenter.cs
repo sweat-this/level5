@@ -79,6 +79,39 @@ public class MatchHudPresenter : MonoBehaviour
     private bool killedOnIdle;
     private bool progressionPersistenceFailed;
 
+    /// <summary>AUD-012 Phase 2b Slice 62 dependency-cut fields - see <see cref="BindGameLevelManagerContext"/>.</summary>
+    private Func<List<PlayerIdentifier>> sortedGameStatsListReader;
+    private Func<PlayerIdentifier> primaryPlayerReader;
+    private Func<PlayerIdentifier> firstRegisteredPlayerReader;
+    private Func<Text> scoreClockTextReader;
+
+    /// <summary>
+    /// AUD-012 Phase 2b Slice 62: replaces this class's former direct <c>GameLevelManager.instance</c>/
+    /// <c>Timer.instance</c> reads, its last two loose <c>Assembly-CSharp</c> integration points, so
+    /// <c>MatchHudPresenter</c> can move out of <c>Assembly-CSharp</c>. Called once from
+    /// <c>GameRules.Start()</c>, the same composition point that already resolves this scene's
+    /// <c>Timer</c> via <c>SceneObjects.Find&lt;Timer&gt;</c> - <paramref name="scoreClockTextReader"/>
+    /// reads that existing captured reference's <c>ScoreClockText</c> live rather than reaching the
+    /// <c>Timer.instance</c> static a second way. <paramref name="sortedGameStatsListReader"/>,
+    /// <paramref name="primaryPlayerReader"/> and <paramref name="firstRegisteredPlayerReader"/>
+    /// resolve <c>GameLevelManager.instance</c> fresh on every call, matching every other adapter in
+    /// this migration. A presenter built without this binding (any direct-construction test) fails
+    /// exactly as the former direct reads did when their singleton was absent - none of the four
+    /// delegates are null-guarded at their call sites below, preserving the former unconditional
+    /// dereferences.
+    /// </summary>
+    public void BindGameLevelManagerContext(
+        Func<List<PlayerIdentifier>> sortedGameStatsListReader,
+        Func<PlayerIdentifier> primaryPlayerReader,
+        Func<PlayerIdentifier> firstRegisteredPlayerReader,
+        Func<Text> scoreClockTextReader)
+    {
+        this.sortedGameStatsListReader = sortedGameStatsListReader;
+        this.primaryPlayerReader = primaryPlayerReader;
+        this.firstRegisteredPlayerReader = firstRegisteredPlayerReader;
+        this.scoreClockTextReader = scoreClockTextReader;
+    }
+
     /// <summary>
     /// True when every HUD object was found. The per-frame score display writes to all of them, so
     /// it is switched off rather than throwing once a frame on an incomplete HUD. Nothing outside
@@ -415,8 +448,8 @@ public class MatchHudPresenter : MonoBehaviour
 
     public void updatePlayerScore()
     {
-        List<PlayerIdentifier> players = GameLevelManager.instance.getSortedGameStatsList();
-        Timer.instance.ScoreClockText.text = players[0].gameStats.Stats.TotalPoints.ToString();
+        List<PlayerIdentifier> players = sortedGameStatsListReader();
+        scoreClockTextReader().text = players[0].gameStats.Stats.TotalPoints.ToString();
         string playerType;
         if (players.Count > 0 && players[0] != null)
         {
@@ -491,14 +524,14 @@ public class MatchHudPresenter : MonoBehaviour
             //    case Modes.TotalPoints:
             //        displayCurrentScoreText.text = "total points : " + gameStats.Stats.TotalPoints
             //        + "\ncurrent shot : " + BasketBall.instance.BasketBallState.CurrentShotType;
-            //        Timer.instance.ScoreClockText.text = gameStats.Stats.TotalPoints.ToString();
+            //        scoreClockTextReader().text = gameStats.Stats.TotalPoints.ToString();
             //        displayHighScoreText.text = "high score : " + PlayerData.instance.TotalPoints;
 
             //        break;
             //    case Modes.Total3Pointers:
             //        displayCurrentScoreText.text = "3s made : " + gameStats.Stats.ThreePointerMade
             //        + "\ncurrent shot : " + BasketBall.instance.BasketBallState.CurrentShotType;
-            //        Timer.instance.ScoreClockText.text = gameStats.Stats.ThreePointerMade.ToString();
+            //        scoreClockTextReader().text = gameStats.Stats.ThreePointerMade.ToString();
 
             //        displayHighScoreText.text = "high score : " + PlayerData.instance.ThreePointerMade;
             //        break;
@@ -522,7 +555,7 @@ public class MatchHudPresenter : MonoBehaviour
             {
                 displayCurrentScoreText.text = "total points : " + stats.TotalPoints
                     + "\ncurrent shot : " + BasketBall.instance.BasketBallState.CurrentShotType;
-                Timer.instance.ScoreClockText.text = stats.TotalPoints.ToString();
+                scoreClockTextReader().text = stats.TotalPoints.ToString();
 
                 displayHighScoreText.text = "high score : " + PlayerData.instance.TotalPoints;
                 return;
@@ -531,7 +564,7 @@ public class MatchHudPresenter : MonoBehaviour
             {
                 displayCurrentScoreText.text = "total points : " + stats.TotalPoints
                     + "\ncurrent shot : " + BasketBall.instance.BasketBallState.CurrentShotType;
-                Timer.instance.ScoreClockText.text = stats.TotalPoints.ToString();
+                scoreClockTextReader().text = stats.TotalPoints.ToString();
 
                 displayHighScoreText.text = "high score : " + PlayerData.instance.TotalPointsLockDown;
                 return;
@@ -540,7 +573,7 @@ public class MatchHudPresenter : MonoBehaviour
             {
                 displayCurrentScoreText.text = "3s made : " + stats.ThreePointerMade
                     + "\ncurrent shot : " + BasketBall.instance.BasketBallState.CurrentShotType;
-                Timer.instance.ScoreClockText.text = stats.ThreePointerMade.ToString();
+                scoreClockTextReader().text = stats.ThreePointerMade.ToString();
 
                 displayHighScoreText.text = "high score : " + PlayerData.instance.ThreePointerMade;
                 return;
@@ -549,7 +582,7 @@ public class MatchHudPresenter : MonoBehaviour
             {
                 displayCurrentScoreText.text = "4s made : " + stats.FourPointerMade
                     + "\ncurrent shot : " + BasketBall.instance.BasketBallState.CurrentShotType;
-                Timer.instance.ScoreClockText.text = stats.FourPointerMade.ToString();
+                scoreClockTextReader().text = stats.FourPointerMade.ToString();
 
                 displayHighScoreText.text = "high score : " + PlayerData.instance.FourPointerMade;
                 return;
@@ -558,7 +591,7 @@ public class MatchHudPresenter : MonoBehaviour
             {
                 displayCurrentScoreText.text = "7s made : " + stats.SevenPointerMade
                                                             + "\ncurrent shot : " + BasketBall.instance.BasketBallState.CurrentShotType;
-                Timer.instance.ScoreClockText.text = stats.SevenPointerMade.ToString();
+                scoreClockTextReader().text = stats.SevenPointerMade.ToString();
 
                 displayHighScoreText.text = "high score : " + PlayerData.instance.SevenPointerMade;
                 return;
@@ -573,7 +606,7 @@ public class MatchHudPresenter : MonoBehaviour
             {
                 displayCurrentScoreText.text = "total distance : " + (stats.TotalDistance).ToString("0.00")
                 + "\ncurrent distance : " + (BasketBall.instance.BasketBallState.PlayerDistanceFromRim * 6).ToString("0.00");
-                Timer.instance.ScoreClockText.text = (stats.TotalDistance).ToString("0.00");
+                scoreClockTextReader().text = (stats.TotalDistance).ToString("0.00");
 
                 displayHighScoreText.text = "high score : " + PlayerData.instance.TotalDistance.ToString("0.00");
                 return;
@@ -601,7 +634,7 @@ public class MatchHudPresenter : MonoBehaviour
                 //                                                 + "\ncurrent distance : " + (BasketBall.instance.BasketBallState.BallDistanceFromRim * 6).ToString("0.00");
                 //displayHighScoreText.text = "high score : " + PlayerData.instance.TotalDistance.ToString("0.00");
                 displayHighScoreText.text = "high score : " + PlayerData.instance.MakeSevenPointersLowTime;
-                Timer.instance.ScoreClockText.text = stats.TotalPoints.ToString();
+                scoreClockTextReader().text = stats.TotalPoints.ToString();
                 //displayMoneyText.text = "$" + PlayerStats.instance.Money;
             }
             if (gameModeId == Modes.SpotUpAll)
@@ -637,9 +670,9 @@ public class MatchHudPresenter : MonoBehaviour
             if (gameModeId == Modes.ConsecutiveShots)
             {
                 displayCurrentScoreText.text = "Consecutive Shots"
-                    + "\nCurrent : " + GameLevelManager.instance.Player1.gameStats.Stats.ConsecutiveShotsMade
+                    + "\nCurrent : " + primaryPlayerReader().gameStats.Stats.ConsecutiveShotsMade
                     + "\nHigh Shots : " + stats.MostConsecutiveShots;
-                Timer.instance.ScoreClockText.text = GameLevelManager.instance.Player1.gameStats.Stats.ConsecutiveShotsMade.ToString();
+                scoreClockTextReader().text = primaryPlayerReader().gameStats.Stats.ConsecutiveShotsMade.ToString();
 
                 displayHighScoreText.text = "high score : " + PlayerData.instance.MostConsecutiveShots;
                 //displayMoneyText.text = "$" + PlayerStats.instance.Money;
@@ -649,11 +682,11 @@ public class MatchHudPresenter : MonoBehaviour
             {
                 displayCurrentScoreText.text = "total points : " + stats.TotalPoints
                     + "\ncurrent shot : " + BasketBall.instance.BasketBallState.CurrentShotType
-                    + "\nCurrent Consecutive: " + GameLevelManager.instance.players[0].gameStats.Stats.ConsecutiveShotsMade;
-                Timer.instance.ScoreClockText.text = stats.TotalPoints.ToString();
+                    + "\nCurrent Consecutive: " + firstRegisteredPlayerReader().gameStats.Stats.ConsecutiveShotsMade;
+                scoreClockTextReader().text = stats.TotalPoints.ToString();
 
                 // in the pocket is active, display text notifier
-                if (GameLevelManager.instance.Player1.gameStats.Stats.ConsecutiveShotsMade >= inThePocketActivateValue)
+                if (primaryPlayerReader().gameStats.Stats.ConsecutiveShotsMade >= inThePocketActivateValue)
                 {
                     displayOtherMessageText.text = "In The Pocket";
                 }
@@ -668,19 +701,19 @@ public class MatchHudPresenter : MonoBehaviour
             if (gameModeId == Modes.ThreePointContest)
             {
                 displayHighScoreText.text = "high score : " + PlayerData.instance.ThreePointContestScore;
-                Timer.instance.ScoreClockText.text = stats.TotalPoints.ToString();
+                scoreClockTextReader().text = stats.TotalPoints.ToString();
                 return;
             }
             if (gameModeId == Modes.FourPointContest)
             {
                 displayHighScoreText.text = "high score : " + PlayerData.instance.FourPointContestScore;
-                Timer.instance.ScoreClockText.text = stats.TotalPoints.ToString();
+                scoreClockTextReader().text = stats.TotalPoints.ToString();
                 return;
             }
             if (gameModeId == Modes.AllPointContest)
             {
                 displayHighScoreText.text = "high score : " + PlayerData.instance.AllPointContestScore;
-                Timer.instance.ScoreClockText.text = stats.TotalPoints.ToString();
+                scoreClockTextReader().text = stats.TotalPoints.ToString();
                 return;
             }
             if (gameModeId == Modes.PointsByDistance)
@@ -692,7 +725,7 @@ public class MatchHudPresenter : MonoBehaviour
                     + "\nlast shot : " + Mathf.FloorToInt((BasketBall.instance.LastShotDistance * 6) / 10)
                     + "\ntotal points : " + stats.TotalPoints;
 
-                Timer.instance.ScoreClockText.text = stats.TotalPoints.ToString();
+                scoreClockTextReader().text = stats.TotalPoints.ToString();
                 return;
             }
             if (gameModeId == Modes.BashUpSomeNerds)
@@ -701,9 +734,9 @@ public class MatchHudPresenter : MonoBehaviour
 
                 displayCurrentScoreText.text =
                     "nerds bashed : " + (stats.EnemiesKilled);
-                if (Timer.instance.ScoreClockText != null)
+                if (scoreClockTextReader() != null)
                 {
-                    Timer.instance.ScoreClockText.text = (stats.EnemiesKilled).ToString();
+                    scoreClockTextReader().text = (stats.EnemiesKilled).ToString();
                 }
                 return;
             }
@@ -713,9 +746,9 @@ public class MatchHudPresenter : MonoBehaviour
 
                 displayCurrentScoreText.text =
                     "nerds bashed : " + (stats.EnemiesKilled);
-                if (Timer.instance.ScoreClockText != null)
+                if (scoreClockTextReader() != null)
                 {
-                    Timer.instance.ScoreClockText.text = (stats.EnemiesKilled).ToString();
+                    scoreClockTextReader().text = (stats.EnemiesKilled).ToString();
                 }
                 return;
             }
@@ -725,22 +758,22 @@ public class MatchHudPresenter : MonoBehaviour
 
                 displayCurrentScoreText.text =
                     "nerds bashed : " + (stats.EnemiesKilled);
-                if (Timer.instance.ScoreClockText != null)
+                if (scoreClockTextReader() != null)
                 {
-                    Timer.instance.ScoreClockText.text = (stats.EnemiesKilled).ToString();
+                    scoreClockTextReader().text = (stats.EnemiesKilled).ToString();
                 }
                 return;
             }
             if (gameModeId == Modes.VersusCpu || gameModeId == Modes.BeatThaComputahs)
             {
-                Timer.instance.ScoreClockText.text = stats.TotalPoints.ToString();
+                scoreClockTextReader().text = stats.TotalPoints.ToString();
                 updatePlayerScore();
                 return;
             }
             if (gameModeId == Modes.SevenPointContest)
             {
                 displayHighScoreText.text = "high score : " + PlayerData.instance.SevenPointContestScore;
-                Timer.instance.ScoreClockText.text = stats.TotalPoints.ToString();
+                scoreClockTextReader().text = stats.TotalPoints.ToString();
                 return;
             }
             //if (gameModeId == 21)
@@ -749,9 +782,9 @@ public class MatchHudPresenter : MonoBehaviour
 
             //    displayCurrentScoreText.text =
             //        "nerds bashed : " + (gameStats.Stats.EnemiesKilled);
-            //    if (Timer.instance.ScoreClockText != null)
+            //    if (scoreClockTextReader() != null)
             //    {
-            //        Timer.instance.ScoreClockText.text = (gameStats.Stats.EnemiesKilled).ToString();
+            //        scoreClockTextReader().text = (gameStats.Stats.EnemiesKilled).ToString();
             //    }
             //}
 
@@ -759,7 +792,7 @@ public class MatchHudPresenter : MonoBehaviour
             {
                 displayCurrentScoreText.text = "longest shot : " + (gameStats1.Stats.LongestShotMade).ToString("0.00")
                                                                  + "\ncurrent distance : " + (BasketBall.instance.BasketBallState.PlayerDistanceFromRim * 6).ToString("00.00");
-                Timer.instance.ScoreClockText.text = (gameStats1.Stats.LongestShotMade).ToString("0.00");
+                scoreClockTextReader().text = (gameStats1.Stats.LongestShotMade).ToString("0.00");
 
                 if (gameModeId == Modes.FreePlay)
                 {
@@ -865,8 +898,8 @@ public class MatchHudPresenter : MonoBehaviour
         }
         if (gameModeId == Modes.VersusCpu || gameModeId == Modes.BeatThaComputahs)
         {
-            List<PlayerIdentifier> players = GameLevelManager.instance != null
-                ? GameLevelManager.instance.getSortedGameStatsList()
+            List<PlayerIdentifier> players = sortedGameStatsListReader != null
+                ? sortedGameStatsListReader()
                 : null;
             if (players == null || players.Count == 0)
             {

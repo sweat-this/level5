@@ -1,4 +1,5 @@
-﻿using Level5.Core.Match;
+﻿using System;
+using Level5.Core.Match;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -29,6 +30,40 @@ public class Timer : MonoBehaviour
 
     bool timerTextLocked;
     public static Timer instance;
+
+    /// <summary>AUD-012 Phase 2b Slice 60 dependency-cut fields - see <see cref="BindMatchEndContext"/>.</summary>
+    private Func<bool?> gameOverReader;
+    private Func<bool> gameModeRequiresConsecutiveShotsReader;
+    private Func<PlayerIdentifier> primaryPlayerReader;
+    private Action<MatchEndReason> requestMatchEnd;
+
+    /// <summary>
+    /// AUD-012 Phase 2b Slice 60: replaces this class's former direct <c>GameRules.instance</c>/
+    /// <c>GameLevelManager.instance.Player1</c> reads, so <c>Timer</c> can move out of
+    /// <c>Assembly-CSharp</c> without losing the match-end reporting <see cref="ReportTimeExpired"/>
+    /// already did. <paramref name="gameOverReader"/> is the one seam that carries both former
+    /// concerns at once: <see langword="null"/> means "no live <c>GameRules</c> to ask" - the exact
+    /// condition the former <c>GameRules.instance == null</c> guard tested, which skipped the entire
+    /// clock (no counting, no display) rather than just the game-over check - and a non-null value is
+    /// the live <c>GameRules.instance.GameOver</c> answer. Called once from
+    /// <c>GameLevelManager.Start()</c>, after every component's <c>Awake()</c> (including this one's,
+    /// which sets <see cref="instance"/>) is guaranteed to have already run, and - critically - before
+    /// any component's first <c>Update()</c> runs, so this binding is always in place before
+    /// <see cref="Update"/> ever reads it. A <see cref="Timer"/> built without this binding (any scene
+    /// with no <c>GameLevelManager</c>, or a direct-construction test) behaves exactly as the former
+    /// direct read did when <c>GameRules.instance</c> was absent: the clock never counts.
+    /// </summary>
+    public void BindMatchEndContext(
+        Func<bool?> gameOverReader,
+        Func<bool> gameModeRequiresConsecutiveShotsReader,
+        Func<PlayerIdentifier> primaryPlayerReader,
+        Action<MatchEndReason> requestMatchEnd)
+    {
+        this.gameOverReader = gameOverReader;
+        this.gameModeRequiresConsecutiveShotsReader = gameModeRequiresConsecutiveShotsReader;
+        this.primaryPlayerReader = primaryPlayerReader;
+        this.requestMatchEnd = requestMatchEnd;
+    }
 
     /// <summary>
     /// Releases the static so it cannot outlive the object it points at.
@@ -106,7 +141,8 @@ public class Timer : MonoBehaviour
 
     void Update()
     {
-        if (GameRules.instance == null)
+        bool? gameOver = gameOverReader != null ? gameOverReader() : null;
+        if (gameOver == null)
         {
             return;
         }
@@ -128,7 +164,7 @@ public class Timer : MonoBehaviour
         }
 
         // gameover, disable timer display and set text to empty
-        if (GameRules.instance.GameOver || timeRemaining < 0)
+        if (gameOver.Value || timeRemaining < 0)
         {
             displayTimer = false;
             if (timerText != null)
@@ -143,7 +179,7 @@ public class Timer : MonoBehaviour
         // time's up. Whether that actually ends the match is MatchEndConditions' call - the clock
         // only reports that it reached zero.
         if (timeRemaining <= 0
-            && !GameRules.instance.GameOver
+            && !gameOver.Value
             && !modeRequiresCounter
             && timerEnabled)
         {
@@ -182,7 +218,7 @@ public class Timer : MonoBehaviour
         if (displayTimer
             && timerEnabled
             && modeRequiresCounter
-            && !GameRules.instance.GameOver)
+            && !gameOver.Value)
         {
             if (timerText != null)
             {
@@ -215,15 +251,14 @@ public class Timer : MonoBehaviour
     /// </summary>
     private void ReportTimeExpired()
     {
-        PlayerIdentifier player = GameLevelManager.instance != null
-            ? GameLevelManager.instance.Player1
-            : null;
+        PlayerIdentifier player = primaryPlayerReader != null ? primaryPlayerReader() : null;
         if (player == null)
         {
             return;
         }
 
-        bool requiresConsecutiveShots = GameRules.instance.GameModeRequiresConsecutiveShots;
+        bool requiresConsecutiveShots = gameModeRequiresConsecutiveShotsReader != null
+            && gameModeRequiresConsecutiveShotsReader();
         bool expired = MatchEndConditions.TimeExpired(
             requiresConsecutiveShots,
             player.basketBallState.Thrown,
@@ -232,7 +267,7 @@ public class Timer : MonoBehaviour
 
         if (expired)
         {
-            GameRules.instance.RequestEnd(MatchEndConditions.TimeExpiredReason(requiresConsecutiveShots));
+            requestMatchEnd?.Invoke(MatchEndConditions.TimeExpiredReason(requiresConsecutiveShots));
         }
     }
 

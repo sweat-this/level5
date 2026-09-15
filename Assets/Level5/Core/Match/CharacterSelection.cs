@@ -48,6 +48,21 @@ namespace Level5.Core.Match
     /// <summary>The cheerleader/friend selection and the shooting bonuses it contributes.</summary>
     public sealed class CheerleaderSelection
     {
+        /// <summary>
+        /// AUD-012 Phase 2b Slice 58: the authored <c>cheerleaderObjectName</c> sentinel for "no
+        /// cheerleader" - see <c>Resources/Prefabs/menu_start/cheerleader_default_objects/cheerleader_00_none.prefab</c>.
+        /// It is the default selection, so anything spawning a cheerleader by name has to recognise it
+        /// rather than look for a <c>cheerleader_none</c> prefab that deliberately does not exist. Lives
+        /// here, not on <c>CheerleaderId == 0</c>: legacy/direct-scene configuration can use id 0 with a
+        /// real non-none object name, so the sentinel is the authored string, unchanged. Named
+        /// "Legacy" because the sentinel itself - an authored object-name string rather than a typed
+        /// selection - is the legacy shape; <see cref="None"/> above remains the intended-value
+        /// sentinel and is unaffected by this constant.
+        /// <c>Level5.MenuStart</c>'s own <c>CheerleaderProfile.NoneObjectName</c> is a compatibility
+        /// alias to this constant, not a second declaration of it.
+        /// </summary>
+        public const string LegacyNoneObjectName = "none";
+
         public static readonly CheerleaderSelection None = new CheerleaderSelection(0, string.Empty, string.Empty);
 
         public CheerleaderSelection(

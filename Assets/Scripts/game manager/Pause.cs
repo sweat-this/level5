@@ -62,6 +62,48 @@ public class Pause : MonoBehaviour
 
     public static Pause instance;
 
+    /// <summary>AUD-012 Phase 2b Slice 63 dependency-cut fields - see <see cref="BindGameLevelManagerContext"/>.</summary>
+    private Func<bool> hasGameLevelManagerReader;
+    private Func<bool> cancelTriggeredReader;
+    private Func<bool> submitTriggeredReader;
+    private Func<bool> gameOverReader;
+    private Action<bool> setJoystickEnabled;
+    private Func<List<PlayerIdentifier>> allParticipantsReader;
+    private Func<PlayerIdentifier> primaryPlayerReader;
+    private Action setTimePlayed;
+
+    /// <summary>
+    /// AUD-012 Phase 2b Slice 63: replaces this class's former direct <c>GameLevelManager.instance</c>/
+    /// <c>GameRules.instance</c> reads, its last two loose <c>Assembly-CSharp</c> integration points
+    /// (`DBConnector`/`PlayerData`/`DBHelper` remain - a separate, deliberately deferred persistence
+    /// blocker). Called once from <c>GameLevelManager.Start()</c>, the same composition point that
+    /// already binds <see cref="Timer"/>'s equivalent context - every delegate here resolves
+    /// <c>GameLevelManager.instance</c>/<c>GameRules.instance</c> fresh on every call, matching every
+    /// other adapter in this migration. None of the eight are null-guarded at their call sites below,
+    /// preserving every former unconditional dereference exactly - a <see cref="Pause"/> built without
+    /// this binding (any direct-construction test) fails exactly as the former direct reads did when
+    /// their singleton was absent.
+    /// </summary>
+    public void BindGameLevelManagerContext(
+        Func<bool> hasGameLevelManagerReader,
+        Func<bool> cancelTriggeredReader,
+        Func<bool> submitTriggeredReader,
+        Func<bool> gameOverReader,
+        Action<bool> setJoystickEnabled,
+        Func<List<PlayerIdentifier>> allParticipantsReader,
+        Func<PlayerIdentifier> primaryPlayerReader,
+        Action setTimePlayed)
+    {
+        this.hasGameLevelManagerReader = hasGameLevelManagerReader;
+        this.cancelTriggeredReader = cancelTriggeredReader;
+        this.submitTriggeredReader = submitTriggeredReader;
+        this.gameOverReader = gameOverReader;
+        this.setJoystickEnabled = setJoystickEnabled;
+        this.allParticipantsReader = allParticipantsReader;
+        this.primaryPlayerReader = primaryPlayerReader;
+        this.setTimePlayed = setTimePlayed;
+    }
+
     /// <summary>
     /// Releases the static so it cannot outlive the object it points at.
     ///
@@ -217,15 +259,15 @@ public class Pause : MonoBehaviour
     {
         //pause ESC, submit, cancel
         if (//GameLevelManager.instance.Controls.UINavigation.Submit.triggered||
-             GameLevelManager.instance.Controls.Player.cancel.triggered
+             cancelTriggeredReader()
             //|| GameLevelManager.Instance.Controls.Player.esc.triggered
             && !startOnPause
-            && !GameLevelManager.instance.GameOver)
+            && !gameOverReader())
         {
             paused = TogglePause();
         }
-        if(startOnPause && GameLevelManager.instance.Controls.Player.submit.triggered)
-            //&& !MatchRuntime.Rules.IsBattleRoyal 
+        if(startOnPause && submitTriggeredReader())
+            //&& !MatchRuntime.Rules.IsBattleRoyal
             //&& !MatchRuntime.Rules.IsCageMatch)
         {
             StartGame();
@@ -305,7 +347,7 @@ public class Pause : MonoBehaviour
 
     private void PressCancelMenu()
     {
-        bool gameOver = GameLevelManager.instance != null && GameLevelManager.instance.GameOver;
+        bool gameOver = hasGameLevelManagerReader() && gameOverReader();
         if (!paused || startOnPause || gameOver)
         {
             return;
@@ -421,12 +463,12 @@ public class Pause : MonoBehaviour
     private void updateFreePlayStats()
     {
         //set time played to stopped
-        GameRules.instance.setTimePlayed();
+        setTimePlayed();
         // save free play stats
         // convert basketball stats to high score model
         HighScoreModel dBHighScoreModel = new HighScoreModel();
         HighScoreModel dBHighScoreModelTemp = new HighScoreModel();
-        dBHighScoreModelTemp = dBHighScoreModel.convertBasketBallStatsToModel(GameLevelManager.instance.players);
+        dBHighScoreModelTemp = dBHighScoreModel.convertBasketBallStatsToModel(allParticipantsReader());
 
         bool scoreSaved = DBConnector.instance.savePlayerGameStats(dBHighScoreModelTemp);
         if (!scoreSaved)
@@ -437,7 +479,7 @@ public class Pause : MonoBehaviour
         // Reads through GameLevelManager's roster rather than BasketBall.instance, which is a
         // reassignable shared reference (AUD-016) rather than this specific player's own stats.
         // Guarded the same way GameRules.GetPrimaryGameStats() guards this identical chain.
-        PlayerIdentifier primaryPlayer = GameLevelManager.instance.Player1;
+        PlayerIdentifier primaryPlayer = primaryPlayerReader();
         if (primaryPlayer == null || primaryPlayer.gameStats == null)
         {
             return;
@@ -517,10 +559,7 @@ public class Pause : MonoBehaviour
             DisablePauseMenuNavigation();
             resumeAllAudio();
 
-            if (GameLevelManager.instance.Joystick != null)
-            {
-                GameLevelManager.instance.Joystick.enabled = true;
-            }
+            setJoystickEnabled(true);
             return false;
         }
         else
@@ -533,10 +572,7 @@ public class Pause : MonoBehaviour
             setPauseScreen(true);
             EnablePauseMenuNavigation();
 
-            if (GameLevelManager.instance.Joystick != null)
-            {
-                GameLevelManager.instance.Joystick.enabled = false;
-            }
+            setJoystickEnabled(false);
             return true;
         }
     }

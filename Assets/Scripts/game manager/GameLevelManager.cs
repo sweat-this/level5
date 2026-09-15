@@ -374,6 +374,143 @@ public class GameLevelManager : MonoBehaviour, IGroundHeightProvider, IPlayerMat
         GameRules.instance.killedOnIdle = true;
     }
 
+    /// <summary>
+    /// AUD-012 Phase 2b Slice 60: the composition adapter <see cref="Timer"/> now calls instead of
+    /// reading <c>GameRules.instance.GameOver</c> itself. <see langword="null"/> means "no live
+    /// <c>GameRules</c>" - the same condition the former direct <c>GameRules.instance == null</c>
+    /// guard tested - so <see cref="Timer"/>'s clock keeps not counting at all until a <c>GameRules</c>
+    /// exists, exactly as before. Resolves the singleton fresh on every call, matching every other
+    /// adapter in this class.
+    /// </summary>
+    private static bool? ReadGameOverForTimer()
+    {
+        return GameRules.instance != null ? GameRules.instance.GameOver : (bool?)null;
+    }
+
+    /// <summary>
+    /// AUD-012 Phase 2b Slice 60: the composition adapter <see cref="Timer.ReportTimeExpired"/> (via
+    /// <see cref="Timer.BindMatchEndContext"/>) now calls instead of reading
+    /// <c>GameRules.instance.GameModeRequiresConsecutiveShots</c> itself. No null guard, matching the
+    /// former unconditional dereference: <c>ReportTimeExpired</c> is only ever reached after
+    /// <see cref="ReadGameOverForTimer"/> already found a live <c>GameRules</c> this frame, the same
+    /// reasoning that keeps <see cref="RequestMatchEndForTimer"/> below unguarded too.
+    /// </summary>
+    private static bool ReadGameModeRequiresConsecutiveShotsForTimer()
+    {
+        return GameRules.instance.GameModeRequiresConsecutiveShots;
+    }
+
+    /// <summary>
+    /// AUD-012 Phase 2b Slice 60: the composition adapter <see cref="Timer.ReportTimeExpired"/> now
+    /// calls instead of reading <c>GameLevelManager.instance.Player1</c> itself. Reads the static
+    /// <see cref="instance"/> field live on every call, mirroring
+    /// <see cref="HasAutoPlayerForAnimationEvents"/> just above.
+    /// </summary>
+    private static PlayerIdentifier ReadPrimaryPlayerForTimer()
+    {
+        return instance != null ? instance.Player1 : null;
+    }
+
+    /// <summary>
+    /// AUD-012 Phase 2b Slice 60: the composition adapter <see cref="Timer.ReportTimeExpired"/> now
+    /// calls instead of calling <c>GameRules.instance.RequestEnd</c> itself. Deliberately keeps the
+    /// exact preserved behaviour of the direct call it replaces: no null guard, and the returned
+    /// <c>bool</c> (true only for the request that ended the match) is discarded exactly as the former
+    /// direct call already discarded it.
+    /// </summary>
+    private static void RequestMatchEndForTimer(MatchEndReason reason)
+    {
+        GameRules.instance.RequestEnd(reason);
+    }
+
+    /// <summary>
+    /// AUD-012 Phase 2b Slice 63: the composition adapter <see cref="Pause.PressCancelMenu"/> now calls
+    /// instead of reading <c>GameLevelManager.instance != null</c> itself.
+    /// </summary>
+    private static bool HasGameLevelManagerForPause()
+    {
+        return instance != null;
+    }
+
+    /// <summary>
+    /// AUD-012 Phase 2b Slice 63: the composition adapter <see cref="Pause.Update"/> now calls instead
+    /// of reading <c>GameLevelManager.instance.Controls.Player.cancel.triggered</c> itself. No null
+    /// guard, matching the former unconditional dereference.
+    /// </summary>
+    private static bool ReadCancelTriggeredForPause()
+    {
+        return instance.Controls.Player.cancel.triggered;
+    }
+
+    /// <summary>
+    /// AUD-012 Phase 2b Slice 63: the composition adapter <see cref="Pause.Update"/> now calls instead
+    /// of reading <c>GameLevelManager.instance.Controls.Player.submit.triggered</c> itself. No null
+    /// guard, matching the former unconditional dereference.
+    /// </summary>
+    private static bool ReadSubmitTriggeredForPause()
+    {
+        return instance.Controls.Player.submit.triggered;
+    }
+
+    /// <summary>
+    /// AUD-012 Phase 2b Slice 63: the composition adapter <see cref="Pause.Update"/> and
+    /// <see cref="Pause.PressCancelMenu"/> now call instead of reading
+    /// <c>GameLevelManager.instance.GameOver</c> themselves. No null guard, matching <c>Update</c>'s
+    /// former unconditional dereference; <c>PressCancelMenu</c>'s former
+    /// <c>GameLevelManager.instance != null &amp;&amp; GameLevelManager.instance.GameOver</c> short-circuit
+    /// is preserved by <see cref="Pause"/> itself calling <see cref="HasGameLevelManagerForPause"/>
+    /// first, not by a guard in this adapter.
+    /// </summary>
+    private static bool ReadGameOverForPause()
+    {
+        return instance.GameOver;
+    }
+
+    /// <summary>
+    /// AUD-012 Phase 2b Slice 63: the composition adapter <see cref="Pause.TogglePause"/> now calls
+    /// instead of reading/writing <c>GameLevelManager.instance.Joystick</c> itself. No guard on
+    /// <c>GameLevelManager.instance</c> itself, matching the former unconditional dereference; the
+    /// guard on the joystick being present is preserved here exactly as it was inline.
+    /// </summary>
+    private static void SetJoystickEnabledForPause(bool enabled)
+    {
+        if (instance.Joystick != null)
+        {
+            instance.Joystick.enabled = enabled;
+        }
+    }
+
+    /// <summary>
+    /// AUD-012 Phase 2b Slice 63: the composition adapter <see cref="Pause.updateFreePlayStats"/> now
+    /// calls instead of reading <c>GameLevelManager.instance.players</c> itself. No null guard, matching
+    /// the former unconditional dereference.
+    /// </summary>
+    private static List<PlayerIdentifier> ReadAllParticipantsForPause()
+    {
+        return instance.players;
+    }
+
+    /// <summary>
+    /// AUD-012 Phase 2b Slice 63: the composition adapter <see cref="Pause.updateFreePlayStats"/> now
+    /// calls instead of reading <c>GameLevelManager.instance.Player1</c> itself. No null guard, matching
+    /// the former unconditional dereference (distinct from <see cref="ReadPrimaryPlayerForTimer"/>,
+    /// which preserves a guard its own former call site already had).
+    /// </summary>
+    private static PlayerIdentifier ReadPrimaryPlayerForPause()
+    {
+        return instance.Player1;
+    }
+
+    /// <summary>
+    /// AUD-012 Phase 2b Slice 63: the composition adapter <see cref="Pause.updateFreePlayStats"/> now
+    /// calls instead of calling <c>GameRules.instance.setTimePlayed()</c> itself. No null guard,
+    /// matching the former unconditional dereference.
+    /// </summary>
+    private static void SetTimePlayedForPause()
+    {
+        GameRules.instance.setTimePlayed();
+    }
+
     private float setTerrainHeight()
     {
         switch (SceneManager.GetActiveScene().name)
@@ -434,6 +571,45 @@ public class GameLevelManager : MonoBehaviour, IGroundHeightProvider, IPlayerMat
         // was built at all.
         _spawnCoordinator?.BindHumanArenaContext(_basketballRimVector, this);
         _spawnCoordinator?.BindCpuArenaContext(_basketballRimVector, this);
+
+        // AUD-012 Phase 2b Slice 60: replaces Timer's former direct GameRules.instance/
+        // GameLevelManager.instance.Player1 reads. Bound here, not Awake(): Unity does not order
+        // Awake() across independent components either, so Timer.instance (set in Timer's own Awake)
+        // is not guaranteed non-null yet during this manager's own Awake - but every component's
+        // Awake() is guaranteed to precede every component's Start(), and Timer's Update() (the only
+        // place this binding is read) cannot run before every Start() in the scene has completed. A
+        // scene with no Timer leaves this a no-op, exactly as a scene with no GameRules already left
+        // Timer's own clock permanently idle.
+        //
+        // `if (Timer.instance != null)`, not `Timer.instance?.` - AUD-061: `?.` does not go through
+        // Unity's overloaded destroyed-object `==` check (Level5SingletonLifetimeTests.
+        // NoNullConditionalOnASingletonInstance).
+        if (Timer.instance != null)
+        {
+            Timer.instance.BindMatchEndContext(
+                ReadGameOverForTimer,
+                ReadGameModeRequiresConsecutiveShotsForTimer,
+                ReadPrimaryPlayerForTimer,
+                RequestMatchEndForTimer);
+        }
+
+        // AUD-012 Phase 2b Slice 63: replaces Pause's former direct GameLevelManager.instance/
+        // GameRules.instance reads. Bound here for the same reason as Timer's binding just above -
+        // every component's Awake() (including Pause's own, which sets Pause.instance) precedes every
+        // component's Start(), and Pause's Update()/TogglePause()/etc. (where this binding is read)
+        // cannot run before every Start() in the scene has completed.
+        if (Pause.instance != null)
+        {
+            Pause.instance.BindGameLevelManagerContext(
+                HasGameLevelManagerForPause,
+                ReadCancelTriggeredForPause,
+                ReadSubmitTriggeredForPause,
+                ReadGameOverForPause,
+                SetJoystickEnabledForPause,
+                ReadAllParticipantsForPause,
+                ReadPrimaryPlayerForPause,
+                SetTimePlayedForPause);
+        }
     }
 
     /// <summary>
