@@ -791,6 +791,65 @@ public class Level5ProductionAssemblyBoundaryTests
             Is.EqualTo("Level5.Match"));
     }
 
+    /// <summary>
+    /// AUD-012 Phase 2b, Slice 66: proves <c>UiSelectionAdapter</c> - freshly re-proven dependency-clean
+    /// on engine UI/EventSystem/InputSystem types plus <c>PlayerControlsProvider</c> (already
+    /// <c>Level5.Input</c>) - actually compiles into that asmdef, the same identity check
+    /// <see cref="PlayerInputReaderCompilesIntoLevel5Input"/> does for <c>PlayerInputReader</c>. GUID
+    /// unchanged (<c>7bc92543a84e44949af655f798b2db7b</c>); no package reference changed - the existing
+    /// <c>Unity.InputSystem</c> reference already covers every type this file names. Its callers -
+    /// <c>Pause</c>, menu screens and other UI code - stay in <c>Assembly-CSharp</c> and reach it
+    /// through <c>autoReferenced</c>.
+    /// </summary>
+    [Test]
+    public void UiSelectionAdapterCompilesIntoLevel5Input()
+    {
+        Assert.That(
+            typeof(UiSelectionAdapter).Assembly.GetName().Name,
+            Is.EqualTo("Level5.Input"));
+    }
+
+    /// <summary>
+    /// AUD-012 Phase 2b, Slice 66: proves <c>SceneTransition</c> - freshly re-proven engine-only
+    /// (<c>UnityEngine</c>/<c>UnityEngine.SceneManagement</c> alone) - actually compiles into
+    /// <c>Level5.Utility</c>, the same identity check <see cref="AtomicFileCompilesIntoLevel5Utility"/>
+    /// does for <c>AtomicFile</c>. GUID unchanged (<c>0fe036e8fff74aa9b35c1f3b58483336</c>); namespace
+    /// (<c>Assets.Scripts.Utility</c>) unchanged; no new asmdef reference - <c>Level5.Utility</c> needed
+    /// none for this type. Its callers stay in <c>Assembly-CSharp</c> and reach it through
+    /// <c>autoReferenced</c>.
+    /// </summary>
+    [Test]
+    public void SceneTransitionCompilesIntoLevel5Utility()
+    {
+        Assert.That(
+            typeof(Assets.Scripts.Utility.SceneTransition).Assembly.GetName().Name,
+            Is.EqualTo("Level5.Utility"));
+    }
+
+    /// <summary>
+    /// AUD-012 Phase 2b, Slice 68: proves <c>Pause</c> - dependency-closed by inverting its remaining
+    /// <c>DBConnector</c>/<c>DBHelper</c>/<c>PlayerData</c>/<c>HighScoreModel</c>/
+    /// <c>PendingMatchPersistenceStore</c>/<c>ProgressionService</c> reads into the persistence
+    /// delegates <see cref="Pause.BindPersistenceContext"/> binds (Slice 67), on top of the
+    /// <c>GameLevelManager</c>/<c>GameRules</c> cut Slice 63 already made - actually compiles into
+    /// <c>Level5.Match</c>, the same identity check <see cref="MatchHudPresenterCompilesIntoLevel5Match"/>
+    /// does for <c>MatchHudPresenter</c>. GUID unchanged (<c>5ad1d8ac14ec39e4a86cf1ba35fb1649</c>);
+    /// needed one new <c>Level5.Match -&gt; Level5.Input</c> asmdef reference for
+    /// <c>UiSelectionAdapter</c>/<c>PlayerControlsProvider</c> (both already <c>Level5.Input</c> - the
+    /// former Slice 66, the latter since before this migration began); reuses the
+    /// <c>Level5.Match -&gt; Level5.Utility</c> edge Slice 65 already proved for <c>SceneTransition</c>
+    /// (moved into that assembly by Slice 66 too). <c>GameManager.prefab</c> and the three scenes that
+    /// author their own inline <c>Pause</c> resolve it by this unchanged GUID regardless of which
+    /// assembly now compiles the type.
+    /// </summary>
+    [Test]
+    public void PauseCompilesIntoLevel5Match()
+    {
+        Assert.That(
+            typeof(Pause).Assembly.GetName().Name,
+            Is.EqualTo("Level5.Match"));
+    }
+
     [Test]
     public void NoProductionAssemblyReferencesAKnownEditorOnlyPackageAssembly()
     {

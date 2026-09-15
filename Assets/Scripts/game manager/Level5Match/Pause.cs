@@ -1,5 +1,4 @@
 ﻿
-using Assets.Scripts.database;
 using Assets.Scripts.Utility;
 using System;
 using System.Collections;
@@ -57,7 +56,6 @@ public class Pause : MonoBehaviour
     private GameObject toggleUiStatsObject;
     private GameObject footer;
     private bool pauseMenuNavigationEnabled;
-    private ProgressionService progressionService;
     private string freePlayProgressionResultId;
 
     public static Pause instance;
@@ -68,40 +66,112 @@ public class Pause : MonoBehaviour
     private Func<bool> submitTriggeredReader;
     private Func<bool> gameOverReader;
     private Action<bool> setJoystickEnabled;
-    private Func<List<PlayerIdentifier>> allParticipantsReader;
-    private Func<PlayerIdentifier> primaryPlayerReader;
-    private Action setTimePlayed;
 
     /// <summary>
     /// AUD-012 Phase 2b Slice 63: replaces this class's former direct <c>GameLevelManager.instance</c>/
     /// <c>GameRules.instance</c> reads, its last two loose <c>Assembly-CSharp</c> integration points
-    /// (`DBConnector`/`PlayerData`/`DBHelper` remain - a separate, deliberately deferred persistence
-    /// blocker). Called once from <c>GameLevelManager.Start()</c>, the same composition point that
-    /// already binds <see cref="Timer"/>'s equivalent context - every delegate here resolves
+    /// (`DBConnector`/`PlayerData`/`DBHelper` remained at the time - a separate, deliberately deferred
+    /// persistence blocker Slice 67 has since cut, see <see cref="BindPersistenceContext"/>). Called once
+    /// from <c>GameLevelManager.Start()</c>, the same composition point that already binds
+    /// <see cref="Timer"/>'s equivalent context - every delegate here resolves
     /// <c>GameLevelManager.instance</c>/<c>GameRules.instance</c> fresh on every call, matching every
-    /// other adapter in this migration. None of the eight are null-guarded at their call sites below,
+    /// other adapter in this migration. None of the five are null-guarded at their call sites below,
     /// preserving every former unconditional dereference exactly - a <see cref="Pause"/> built without
     /// this binding (any direct-construction test) fails exactly as the former direct reads did when
     /// their singleton was absent.
+    ///
+    /// Slice 67 retired this call's original eighth/seventh/sixth parameters
+    /// (<c>allParticipantsReader</c>, <c>primaryPlayerReader</c>, <c>setTimePlayed</c>): the whole Free
+    /// Play persistence operation that consumed them moved wholesale into
+    /// <see cref="BindPersistenceContext"/>'s <c>persistFreePlayStats</c>, so nothing in this class reads
+    /// them anymore.
     /// </summary>
     public void BindGameLevelManagerContext(
         Func<bool> hasGameLevelManagerReader,
         Func<bool> cancelTriggeredReader,
         Func<bool> submitTriggeredReader,
         Func<bool> gameOverReader,
-        Action<bool> setJoystickEnabled,
-        Func<List<PlayerIdentifier>> allParticipantsReader,
-        Func<PlayerIdentifier> primaryPlayerReader,
-        Action setTimePlayed)
+        Action<bool> setJoystickEnabled)
     {
         this.hasGameLevelManagerReader = hasGameLevelManagerReader;
         this.cancelTriggeredReader = cancelTriggeredReader;
         this.submitTriggeredReader = submitTriggeredReader;
         this.gameOverReader = gameOverReader;
         this.setJoystickEnabled = setJoystickEnabled;
-        this.allParticipantsReader = allParticipantsReader;
-        this.primaryPlayerReader = primaryPlayerReader;
-        this.setTimePlayed = setTimePlayed;
+    }
+
+    /// <summary>
+    /// AUD-012 Phase 2b Slice 67 dependency-cut fields - see <see cref="BindPersistenceContext"/>.
+    ///
+    /// Default to safe no-ops rather than null, unlike every other delegate field on this class. The
+    /// former direct reads these replace (<c>DBConnector.instance != null</c>, etc.) were null-safe
+    /// checks against a global static, independent of any scene's <c>GameLevelManager</c> - so a scene
+    /// that authors its own inline <c>Pause</c> without a composed <c>GameLevelManager</c> (found in
+    /// <c>minigame_racing.unity</c>, which reads <c>Pause.instance.Paused</c> from its own
+    /// <c>RacingGameManager</c> but has never called either <c>Bind*Context</c> method, even before this
+    /// slice) previously hit these checks safely regardless. <see cref="BindPersistenceContext"/> is only
+    /// ever called from <c>GameLevelManager.Start()</c>, so without one in the scene these fields are
+    /// never bound; an unconditional dereference (the shape <see cref="BindGameLevelManagerContext"/>'s
+    /// fields correctly use, since their former direct reads - <c>GameLevelManager.instance.Controls...</c>
+    /// - already threw under the same condition) would turn a scene that used to work into a
+    /// `NullReferenceException` on the pause menu's Quit/reload/load-start-screen actions.
+    ///
+    /// Code review, 2026-09-15: this is not a perfect behavior restoration, and can't be - a default that
+    /// actually re-checked <c>DBConnector.instance</c>/etc. live would reintroduce the exact
+    /// <c>Assembly-CSharp</c> dependency this slice exists to remove, so <c>false</c>/no-op is a
+    /// conservative "treat as unavailable" rather than "genuinely resolve the singleton." In a scene with
+    /// a live <c>PlayerData</c>/<c>DBConnector</c> but no <c>GameLevelManager</c> (theoretically possible
+    /// if either persists as <c>DontDestroyOnLoad</c> from an earlier scene), <see cref="reloadScene"/>'s
+    /// second reload point - previously mode-independent - will now never run there, versus previously
+    /// running whenever <c>PlayerData.instance</c> happened to be live. Accepted: the one scene shape this
+    /// applies to (<c>minigame_racing.unity</c>'s <c>pause</c> GameObject) is inactive by default and
+    /// nothing in the project activates it, so this class's own binding gap - not this default - is what
+    /// would need fixing before it matters; see <c>RacingGameManager.cs</c> if that ever changes.
+    /// </summary>
+    private Func<bool> hasDatabaseReader = () => false;
+    private Func<bool> databaseLockedReader = () => false;
+    private Func<bool> hasPlayerDataReader = () => false;
+    private Action reloadPlayerData = () => { };
+    private Action<string> persistFreePlayStats = resultId => { };
+
+    /// <summary>
+    /// AUD-012 Phase 2b Slice 67: replaces this class's former direct <c>DBConnector</c>/<c>DBHelper</c>/
+    /// <c>PlayerData</c>/<c>HighScoreModel</c>/<c>PendingMatchPersistenceStore</c>/<c>ProgressionService</c>
+    /// reads - the persistence-layer blocker Slice 63 explicitly deferred, the same kind of cut Slice 64
+    /// made for <c>MatchHudPresenter</c> - so <see cref="Pause"/> can move out of <c>Assembly-CSharp</c>.
+    /// Called once from <c>GameLevelManager.Start()</c>, alongside but separate from
+    /// <see cref="BindGameLevelManagerContext"/>: that binds game-manager-cycle state, this binds the
+    /// persistence-layer ownership boundary - a different concern, so a different bind call, mirroring
+    /// <c>MatchHudPresenter.BindPersistenceContext</c>'s split.
+    ///
+    /// <paramref name="hasDatabaseReader"/> replaces every former <c>DBConnector.instance != null</c>
+    /// check. <paramref name="databaseLockedReader"/> replaces the former
+    /// <c>DBHelper.instance != null &amp;&amp; DBHelper.instance.DatabaseLocked</c> compound read as one
+    /// delegate - the "DBHelper exists" half lives inside the adapter now, not as a second guard here.
+    /// <paramref name="hasPlayerDataReader"/> replaces the former <c>PlayerData.instance != null</c>
+    /// check at <see cref="reloadScene"/>'s second, already-guarded reload. <paramref name="reloadPlayerData"/>
+    /// wraps the exact prior bare <c>PlayerData.instance.loadStatsFromDatabase()</c> dereference -
+    /// deliberately not null-guarded inside the delegate itself, so <see cref="reloadScene"/>'s first,
+    /// former-unguarded reload and its second, former-guarded reload keep their former distinct guarding
+    /// at their own call sites rather than being deduplicated. <paramref name="persistFreePlayStats"/>
+    /// wraps the entire former <see cref="updateFreePlayStats"/> operation - <c>GameRules.setTimePlayed</c>,
+    /// the <c>HighScoreModel</c> conversion, the <c>DBConnector</c> score/all-time saves and their
+    /// <c>PendingMatchPersistenceStore</c> queue fallbacks, and the <c>ProgressionService.ApplyMatchResult</c>
+    /// call - moved wholesale into one <c>GameLevelManager</c> production adapter, in the same order,
+    /// receiving this instance's own captured <see cref="freePlayProgressionResultId"/>.
+    /// </summary>
+    public void BindPersistenceContext(
+        Func<bool> hasDatabaseReader,
+        Func<bool> databaseLockedReader,
+        Func<bool> hasPlayerDataReader,
+        Action reloadPlayerData,
+        Action<string> persistFreePlayStats)
+    {
+        this.hasDatabaseReader = hasDatabaseReader;
+        this.databaseLockedReader = databaseLockedReader;
+        this.hasPlayerDataReader = hasPlayerDataReader;
+        this.reloadPlayerData = reloadPlayerData;
+        this.persistFreePlayStats = persistFreePlayStats;
     }
 
     /// <summary>
@@ -140,7 +210,6 @@ public class Pause : MonoBehaviour
     void Awake()
     {
         instance = this;
-        progressionService = new ProgressionService();
         freePlayProgressionResultId = MatchSession.EnsureCurrentMatch();
 #if !UNITY_ANDROID
         if (!MatchRuntime.Rules.IsBattleRoyal && !MatchRuntime.Rules.IsCageMatch)
@@ -398,7 +467,7 @@ public class Pause : MonoBehaviour
     public IEnumerator Quit()
     {
         // update all time stats
-        if (DBConnector.instance != null &&
+        if (hasDatabaseReader() &&
            (MatchRuntime.ModeDisplayName.ToLower().Contains("free") || MatchRuntime.RawModeId == 99))
         {
             updateFreePlayStats();
@@ -410,12 +479,12 @@ public class Pause : MonoBehaviour
     public IEnumerator loadstartScreen()
     {
         // update all time stats
-        if (DBConnector.instance != null &&
+        if (hasDatabaseReader() &&
            (MatchRuntime.ModeDisplayName.ToLower().Contains("free") || MatchRuntime.RawModeId == 99))
         {
             updateFreePlayStats();
         }
-        if (DBConnector.instance != null)
+        if (hasDatabaseReader())
         {
             yield return WaitForDatabaseUnlock();
             // load screen should be first scene in build
@@ -431,12 +500,12 @@ public class Pause : MonoBehaviour
     public void reloadScene()
     {
         // update all time stats
-        if (DBConnector.instance != null
+        if (hasDatabaseReader()
             && (MatchRuntime.ModeDisplayName.ToLower().Contains("free") || MatchRuntime.RawModeId == 99))
         {
             updateFreePlayStats();
             //make sure new high scores (if any) are loaded
-            PlayerData.instance.loadStatsFromDatabase();
+            reloadPlayerData();
         }
         // check if game still paused. on reload, game should be active
         if (paused)
@@ -444,11 +513,11 @@ public class Pause : MonoBehaviour
             TogglePause();
         }
         // load highscores before loading scene
-        if (PlayerData.instance != null)
+        if (hasPlayerDataReader())
         {
             try
             {
-                PlayerData.instance.loadStatsFromDatabase();
+                reloadPlayerData();
             }
             catch (Exception e)
             {
@@ -462,57 +531,18 @@ public class Pause : MonoBehaviour
 
     private void updateFreePlayStats()
     {
-        //set time played to stopped
-        setTimePlayed();
-        // save free play stats
-        // convert basketball stats to high score model
-        HighScoreModel dBHighScoreModel = new HighScoreModel();
-        HighScoreModel dBHighScoreModelTemp = new HighScoreModel();
-        dBHighScoreModelTemp = dBHighScoreModel.convertBasketBallStatsToModel(allParticipantsReader());
-
-        bool scoreSaved = DBConnector.instance.savePlayerGameStats(dBHighScoreModelTemp);
-        if (!scoreSaved)
-        {
-            PendingMatchPersistenceStore.QueueScore(dBHighScoreModelTemp);
-        }
-        // update all time stats
-        // Reads through GameLevelManager's roster rather than BasketBall.instance, which is a
-        // reassignable shared reference (AUD-016) rather than this specific player's own stats.
-        // Guarded the same way GameRules.GetPrimaryGameStats() guards this identical chain.
-        PlayerIdentifier primaryPlayer = primaryPlayerReader();
-        if (primaryPlayer == null || primaryPlayer.gameStats == null)
-        {
-            return;
-        }
-
-        GameStats primaryGameStats = primaryPlayer.gameStats;
-        bool allTimeSaved = DBConnector.instance.savePlayerAllTimeStats(primaryGameStats);
-        if (!allTimeSaved)
-        {
-            PendingMatchPersistenceStore.QueueAllTime(freePlayProgressionResultId, primaryGameStats);
-        }
-        if (progressionService == null)
-        {
-            progressionService = new ProgressionService();
-        }
-
-        progressionService.ApplyMatchResult(
-            freePlayProgressionResultId,
-            MatchRuntime.PrimaryCharacterId,
-            primaryGameStats.Stats.ExperienceGained);
+        persistFreePlayStats(freePlayProgressionResultId);
     }
 
     private IEnumerator WaitForDatabaseUnlock()
     {
         float deadline = Time.realtimeSinceStartup + DatabaseWaitTimeoutSeconds;
-        while (DBHelper.instance != null
-            && DBHelper.instance.DatabaseLocked
-            && Time.realtimeSinceStartup < deadline)
+        while (databaseLockedReader() && Time.realtimeSinceStartup < deadline)
         {
             yield return null;
         }
 
-        if (DBHelper.instance != null && DBHelper.instance.DatabaseLocked)
+        if (databaseLockedReader())
         {
             Debug.LogWarning("Pause timed out waiting for the local database; continuing navigation.");
         }

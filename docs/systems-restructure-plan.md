@@ -5854,6 +5854,255 @@ itself touched here. No new blocker was discovered.
 no-op, and the longest-shot persistence write reads/writes the exact same live values through the exact
 same underlying calls, in the exact same order.
 
+**Slice 66 (2026-09-15, same `dev` position as Slice 64): moves the two dependency-clean support
+helpers `UiSelectionAdapter` and `SceneTransition` into `Level5.Input`/`Level5.Utility`.**
+
+Freshly re-proven, not assumed from their prior audit: `UiSelectionAdapter` names only
+`UnityEngine`/`UnityEngine.EventSystems`/`UnityEngine.Events`/`UnityEngine.InputSystem`/
+`UnityEngine.InputSystem.UI`/`UnityEngine.UI` and `PlayerControlsProvider` (already `Level5.Input`
+since before this migration began); `SceneTransition` names only `UnityEngine`/
+`UnityEngine.SceneManagement`. Neither needed a new package/asmdef reference -
+`Level5.Input.asmdef`'s existing `Unity.InputSystem` reference already covers every type
+`UiSelectionAdapter` names, and `Level5.Utility.asmdef` needed nothing for `SceneTransition`.
+
+**Moves.** `Assets/Scripts/input/UiSelectionAdapter.cs`(`.meta`) -> `Assets/Scripts/input/
+Level5Input/UiSelectionAdapter.cs`(`.meta`); `Assets/Scripts/Utility/SceneTransition.cs`(`.meta`) ->
+`Assets/Scripts/Utility/Level5Utility/SceneTransition.cs`(`.meta`); both via `git mv`. GUIDs unchanged
+(`7bc92543a84e44949af655f798b2db7b`, `0fe036e8fff74aa9b35c1f3b58483336`); global namespace/`Assets.
+Scripts.Utility` namespace, all public members, and all behavior unchanged. No caller (`Pause`, menu
+screens, other UI code) needed a change - both are called by type name, not by path.
+
+**Compiler-backed ownership tests.** `Level5ProductionAssemblyBoundaryTests.
+UiSelectionAdapterCompilesIntoLevel5Input` and `.SceneTransitionCompilesIntoLevel5Utility` (both new),
+matching the identity-check shape every other Phase 2b slice added.
+
+**Production behavior impact:** none. Pure file moves; no source line changed.
+
+**Slice 67 (2026-09-15, same `dev` position as Slice 66): cuts `Pause`'s remaining executable
+dependencies on `DBConnector`, `DBHelper`, `PlayerData`, `HighScoreModel`,
+`PendingMatchPersistenceStore` and `ProgressionService` - the persistence-layer blocker Slice 63
+explicitly deferred - by relocating the whole Free Play persistence operation into one
+`GameLevelManager` production adapter.**
+
+**Old flow.**
+
+```text
+Quit()/loadstartScreen()/reloadScene() -> DBConnector.instance != null                    [gate, x3]
+WaitForDatabaseUnlock()                -> DBHelper.instance != null && .DatabaseLocked    [poll + warning]
+reloadScene()                          -> PlayerData.instance != null                     [2nd reload guard]
+                                        -> PlayerData.instance.loadStatsFromDatabase()     [x2: unguarded, then guarded]
+updateFreePlayStats()                  -> setTimePlayed() (via Slice 63's delegate)
+                                        -> HighScoreModel conversion, DBConnector save/queue,
+                                           primary-player lookup, all-time save/queue,
+                                           ProgressionService.ApplyMatchResult
+```
+
+**New flow.**
+
+```text
+GameLevelManager.HasDatabaseForPause          -> DBConnector.instance != null
+GameLevelManager.DatabaseLockedForPause       -> DBHelper.instance != null && .DatabaseLocked
+GameLevelManager.HasPlayerDataForPause        -> PlayerData.instance != null
+GameLevelManager.ReloadPlayerDataForPause     -> PlayerData.instance.loadStatsFromDatabase() (bare)
+GameLevelManager.PersistFreePlayStatsForPause -> GameRules.setTimePlayed() -> HighScoreModel
+                                                  conversion -> DBConnector save/queue -> primary-player
+                                                  lookup -> all-time save/queue -> ProgressionService.
+                                                  ApplyMatchResult   [one call, whole operation]
+        │                                                       │
+        └────────────────────── all five handed in ─────────────┘
+                                            ▼
+                    Pause.BindPersistenceContext (called from GameLevelManager.Start())
+                                            ▼
+      Quit()/loadstartScreen()/reloadScene()/WaitForDatabaseUnlock()/updateFreePlayStats() (forward)
+```
+
+**Result-id capture unchanged.** `Pause.Awake()` still calls `freePlayProgressionResultId =
+MatchSession.EnsureCurrentMatch()` once, as before; `updateFreePlayStats()` now reads only
+`persistFreePlayStats(freePlayProgressionResultId)` - the captured id, not a value re-resolved at
+scene-exit time.
+
+**Safe defaults, unlike Slice 63's fields (review finding, fixed before merge).** `minigame_racing.unity`
+authors its own inline `Pause` with no companion `GameLevelManager` (it uses its own
+`RacingGameManager`), so `BindPersistenceContext` is never called there. The former direct reads these
+five delegates replace (`DBConnector.instance != null`, etc.) were null-safe checks against a global
+static, independent of any scene's `GameLevelManager` - unlike Slice 63's `BindGameLevelManagerContext`
+fields, whose former direct reads (`GameLevelManager.instance.Controls...`) already threw under the
+identical condition, so leaving those unbound-null was a faithful preservation. Leaving Slice 67's five
+fields unbound-null instead would have turned a scene that previously degraded safely into a
+`NullReferenceException` on the pause menu's Quit/reload/load-start-screen actions. All five now default
+to safe no-ops (`() => false` / no-op actions) at declaration, restoring the former "no live database
+here" outcome for an unbound `Pause` - covered by
+`Quit_PersistenceContextNeverBound_DoesNotThrowAndTreatsDatabaseAsUnavailable`.
+
+**Two distinct reload guards, deliberately not deduplicated.** `reloadScene()`'s first
+`PlayerData.instance.loadStatsFromDatabase()` (inside the DB+FreePlay block) was always unguarded;
+its second (independently try/caught) was always guarded on `PlayerData.instance != null`. Both now
+call the same `reloadPlayerData` delegate, but each call site keeps its own former guard -
+`hasPlayerDataReader()` gates only the second - covered by
+`ReloadScene_DatabasePresentFreePlayModeButPlayerDataAbsent_ReloadsOnlyOnceFromTheUnguardedCall` and
+the full-forwarding `ReloadScene_DatabasePresentFreePlayModeAndPlayerDataPresent_PersistsThenReloadsTwice`.
+
+**DB-lock poll/warning unchanged.** `WaitForDatabaseUnlock()`'s 8-second real-time deadline, `yield
+return null` polling and post-timeout warning are structurally untouched - only the "is it locked"
+predicate's source changed from a direct compound read to `databaseLockedReader()`, called once per
+loop iteration and once more for the post-loop warning check (two independent calls, not a cached
+result) - covered by `WaitForDatabaseUnlock_LockedThenUnlocked_PollsThenCompletes` (a four-response
+sequence that exercises the timeout-warning code path without an actual 8-second wait) and
+`WaitForDatabaseUnlock_TimeoutConstant_IsUnchanged`.
+
+**GameLevelManager composition.** `GameLevelManager` keeps concrete persistence knowledge, the same
+shape `GameRules` kept for `MatchHudPresenter` in Slice 64: `HasDatabaseForPause`/
+`DatabaseLockedForPause`/`HasPlayerDataForPause`/`ReloadPlayerDataForPause` (thin existence/dereference
+forwards) and `PersistFreePlayStatsForPause` (the entire former `updateFreePlayStats()` body, moved
+verbatim - same `HighScoreModel` conversion call, same save/queue calls and order, same primary-player
+null-guard, same `ProgressionService.ApplyMatchResult` call). Bound from `GameLevelManager.Start()` via
+a second, separate `Pause.instance.BindPersistenceContext(...)` call immediately after the existing
+`BindGameLevelManagerContext(...)` call.
+
+**Retired Slice 63 seams.** `Pause`'s `allParticipantsReader`/`primaryPlayerReader`/`setTimePlayed`
+fields and `BindGameLevelManagerContext`'s corresponding three parameters are gone - the whole
+operation they fed moved into `persistFreePlayStats`. `GameLevelManager.ReadAllParticipantsForPause`/
+`ReadPrimaryPlayerForPause`/`SetTimePlayedForPause` are removed; nothing else called them. The other
+five Slice 63 delegates (`hasGameLevelManagerReader`, `cancelTriggeredReader`, `submitTriggeredReader`,
+`gameOverReader`, `setJoystickEnabled`) are unchanged.
+
+**Source guard.** `Level5GameManagerEdgeTests.PauseHasNoDatabaseOrPlayerDataOrProgressionReferences`
+(new), matching `MatchHudPresenterHasNoPlayerDataOrDBHelperReferences`'s shape exactly: asserts zero
+executable `DBConnector`/`DBHelper`/`PlayerData`/`HighScoreModel`/`PendingMatchPersistenceStore`/
+`ProgressionService` identifiers in `Pause.cs`.
+
+**Stale allowlist entry removed.** `Pause.cs`'s `Level5GameManagerEdgeTests.SpelledTypeAllowlist` entry
+(added for the `GameStats` reach-through `updateFreePlayStats()`'s former primary-player lookup made)
+is now stale - that lookup, and every other player/basketball-adjacent read `updateFreePlayStats()` did,
+moved into `GameLevelManager.PersistFreePlayStatsForPause`, and `Pause.cs` no longer spells any
+`RestrictedTypeNames` entry or reach-through chain. Caught immediately by the pre-existing
+`TheSpelledTypeAllowlistHasNoStaleEntries` guard, which fails loudly on exactly this condition - removed
+rather than deferred, since leaving a stale-but-harmless entry would misdescribe the file.
+
+**Focused tests added.** `Level5PauseCompositionTests` grew from 12 to 26: the five pre-existing
+`Update()`/`PressCancelMenu()` forwarding tests kept unchanged (their `Bind()` helper call sites did not
+change shape); `ReadAllParticipantsForPause`/`ReadPrimaryPlayerForPause`/`SetTimePlayedForPause`
+production-adapter tests and the old `updateFreePlayStats` forwarding test removed (their subjects no
+longer exist); new tests cover `updateFreePlayStats`'s captured-result-id forwarding, `Quit()`'s
+DB-presence/mode gate (driven one `MoveNext()` at a time, so neither `WaitForDatabaseUnlock()` nor
+`Application.Quit()` - unusable outside Play Mode - ever runs), `reloadScene()`'s reload-order/guard
+distinction (tolerating its unconditional, Play-Mode-only terminal `SceneTransition.LoadScene` call via
+`LogAssert.ignoreFailingMessages`, the same established pattern `Level5BasketballShotMarkerSessionTests`
+uses for an equivalent case), `WaitForDatabaseUnlock()`'s polling/timeout-warning/constant, and five new
+`GameLevelManager` production-adapter tests - including one that exercises
+`PersistFreePlayStatsForPause` end-to-end against a live-but-`dbHelper`-less `DBConnector` (the same
+"add the component to an inactive GameObject so `Awake()` never runs" trick used throughout this
+migration, applied here to leave `DBConnector`'s private `dbHelper` field null so its own existing
+`dbHelper != null` guards return false without touching SQLite) and confirms the failed all-time-stats
+save actually reaches `PendingMatchPersistenceStore.QueueAllTime` by reading the real (backed-up/
+restored) pending-persistence file. `Level5GameManagerEdgeTests` (+1) and
+`Level5ProductionAssemblyBoundaryTests` gained no test this slice (its Slice 68 identity test is
+recorded below).
+
+**Review pass 1 (correctness/lifecycle).** Result id still captured once in `Awake()`, not re-resolved
+at scene-exit time. Free Play predicate (`ModeDisplayName` contains "free" or `RawModeId == 99`)
+unchanged at all three call sites. Save/queue order and progression call unchanged. DB
+availability/lock-timeout semantics unchanged. Neither reload was deduplicated; the first stayed
+unguarded, the second stayed guarded. No singleton captured instead of read live -
+`HasDatabaseForPause_ReflectsCurrentInstance_IncludingAfterReplacement` proves a live re-read. No
+input/pause lifecycle or serialization changed. One finding, from a multi-angle background review after
+this slice's first draft: the five new `BindPersistenceContext` fields defaulted to null like every
+other delegate field on the class, which is safe for Slice 63's fields (their former direct reads
+already threw under the identical unbound condition) but not for these - their former direct reads were
+null-safe global checks, so a scene with an inline `Pause` and no `GameLevelManager`
+(`minigame_racing.unity`) would newly `NullReferenceException` on Quit/reload/load-start-screen where it
+previously degraded safely. Fixed by defaulting the five fields to safe no-ops (see "Safe defaults" above);
+covered by `Quit_PersistenceContextNeverBound_DoesNotThrowAndTreatsDatabaseAsUnavailable`. The same
+review also found the replacement `PersistFreePlayStatsForPause_LivePrimaryPlayerAndDatabase_...` test
+had silently dropped the retired `SetTimePlayedForPause_LiveGameRules_ForwardsToSetTimePlayed` test's
+sentinel proof that `setTimePlayed()` actually mutates `MatchStats.TimePlayed` (asserting only
+`DoesNotThrow`) and asserted the wrong queued field for its docstring's `QueueScore` claim (checking
+`AllTimeStatsSnapshot`'s `resultId`, not `HighScoreModel`'s `Scoreid`) - both restored in the renamed
+`..._MutatesTimePlayedAndQueuesBothFailedSaves`.
+
+**Review pass 2 (architecture/scope).** No generic persistence abstraction, no new interface, no
+manager/global state - one relocated method plus four thin existence/dereference forwards, the same
+delegate shape every prior slice used. `DBConnector`/`DBHelper`/`PlayerData`/`HighScoreModel`/
+`PendingMatchPersistenceStore`/`ProgressionService` themselves untouched. No Pause UI redesign, no
+scoring change, no `GameRules`/`GameLevelManager` closure pulled forward beyond this one adapter. One
+observation, not a finding requiring action: `GameLevelManager.cs` has now absorbed a second type's
+entire relocated persistence workflow in two consecutive slices (`MatchHudPresenter`'s Slice 64,
+`Pause`'s here), growing 772 -> 851 lines this slice alone, because both needed this manager's own live
+roster (`players`/`Player1`). A dedicated persistence-workflow type was considered and rejected: it would
+be exactly the kind of abstraction introduced ahead of a second *independent* implementation this plan's
+own rules reject (`PersistFreePlayStatsForPause` is not reusable from `GameRules`'s own save path - that
+path explicitly excludes Free Play by mode) - and would still need `GameLevelManager`'s roster passed in,
+turning an ownership question into a wiring question. **Named tripwire for a future slice:** if a third
+type ever needs to relocate a persistence workflow into `GameLevelManager` for the same reason, that is
+the trigger to extract a dedicated collaborator (e.g. a `FreePlayResultPersister` taking the roster/
+resultId as parameters) rather than repeating this pattern a third time - not before.
+
+**Production behavior impact:** none. Every database-presence check, lock-poll/timeout, reload, and the
+entire Free Play save/queue/progression sequence read/write the exact same live values through the
+exact same underlying calls, in the exact same order.
+
+**Slice 68 (2026-09-15, same `dev` position as Slice 67): migrates `Pause` into `Level5.Match`.**
+
+**Dependency-closure gate.** Every remaining project type `Pause` references after Slice 67's cut -
+`PauseUiObjects`/`MatchSession`/`MatchRuntime` (already `Level5.Match`, no new edge), `UiSelectionAdapter`/
+`PlayerControlsProvider` (`Level5.Input`, moved into that assembly by Slice 66), `SceneTransition`
+(`Level5.Utility`, likewise Slice 66), `Constants` (`Level5.Constants`, already referenced) - resolves
+inside `Level5.Match`'s existing reference set plus one new edge. `Level5.Input.asmdef` references only
+`Unity.InputSystem` (confirmed no path back to `Level5.Match`), so the new edge is direct and acyclic.
+
+**Asmdef change.** `Level5.Match.asmdef` gained a direct reference to `Level5.Input` (for
+`UiSelectionAdapter`/`PlayerControlsProvider` - previously reached only because `Pause` compiled into
+`Assembly-CSharp`, which auto-references every runtime asmdef). Reuses the existing `Level5.Match ->
+Level5.Utility` edge Slice 65 already proved.
+
+**Move.** `Assets/Scripts/game manager/Pause.cs`(`.meta`) -> `Assets/Scripts/game manager/
+Level5Match/Pause.cs`(`.meta`) via `git mv`. GUID unchanged (`5ad1d8ac14ec39e4a86cf1ba35fb1649`);
+global namespace, class name, all public members, static `instance` lifecycle, serialized field names/
+types (`paused`, `startOnPause`, `ui`), and every `Awake`/`Start`/`OnEnable`/`OnDisable`/`Update`
+behavior unchanged.
+
+**Serialization certification.** `GameManager.prefab`'s `Pause` component block serializes
+`m_Script: {fileID: 11500000, guid: 5ad1d8ac14ec39e4a86cf1ba35fb1649, type: 3}` with an empty
+`m_EditorClassIdentifier` - pure GUID-based resolution, unaffected by which assembly now compiles the
+type (no `PauseUiObjects`-style authored-identifier anomaly here). `paused: 0`, `startOnPause: 1` and
+`ui: {fileID: 1851875767040405044}` are unchanged in the prefab YAML; `git status` shows zero diff on
+`GameManager.prefab` or the three scenes (`level_17_rumble_pit`, `level_18_aveb2`,
+`minigame_racing`) that author their own inline `Pause` - no Missing Script, no unintended churn.
+
+**Compiler-backed ownership test.** `Level5ProductionAssemblyBoundaryTests.PauseCompilesIntoLevel5Match`
+(new), matching the identity-check shape every other Phase 2b slice added.
+
+**Validation.** Full EditMode, headless Unity `6000.5.7f1`: 1379/1379 green (up from 1361 after Slice
+64 - the 18 net-new tests across Slices 66-68: `Level5ProductionAssemblyBoundaryTests` +3,
+`Level5PauseCompositionTests` net +14, `Level5GameManagerEdgeTests` +1). Full PlayMode: 17/17 green,
+unchanged. `scripts/validate-repository.ps1`: passed. Forced Unity recompilation produced zero
+`error CS` lines.
+
+**Review pass 1 (correctness/lifecycle/serialization).** No Awake/Start/OnEnable/OnDisable/Update
+timing changed - pure file moves for Slices 66 and 68, one relocated method plus thin forwards for
+Slice 67. No serialized field renamed or retyped. `GameManager.prefab` and the three inline-`Pause`
+scenes resolve with no Missing Script.
+
+**Review pass 2 (architecture/scope).** No `IPersistenceService`/`IHighScoreRepository`/`PauseService`,
+no service locator, no event bus, no DI container, no generic context bag - narrow `Func`/`Action`
+delegates throughout, the same shape every prior Phase 2b dependency-cut slice used.
+`PlayerData`/`DBHelper`/`DBConnector`/`ProgressionService`/`GameRules`/`GameLevelManager` themselves
+untouched beyond the five new `GameLevelManager` adapter methods and the one new `Start()` bind call.
+No UI/input behavior changed while moving `UiSelectionAdapter`/`SceneTransition`. No basketball/scoring
+or mode-chain cleanup. No findings.
+
+**Freshly measured remaining loose `game manager/` files:** `GameLevelManager.cs` (851 lines - up from
+772 at this batch's starting `dev` position `e5b6f8eae`, from this batch's five new Pause persistence
+adapters; the "666" figure Slice 64's own entry cites for its starting point is a stale pre-existing
+number in this doc, not corrected here as out of scope) and `GameRules.cs` (1024 lines) remain outside
+any Level5 assembly, by design - both are the acknowledged composition root/match orchestrator and were
+not targeted for closure this session. No other loose `.cs` file remains directly under `Assets/Scripts/
+game manager/`. No new blocker was discovered.
+
+**Production behavior impact:** none. Every UI-selection/scene-transition call and the whole `Pause`
+persistence/pause/menu/input flow reads/writes the exact same live values through the exact same
+underlying calls, in the exact same order.
+
 ### Phase 3 — Converge the human/CPU pairs
 
 Not "one type". The pairs carry real, intended differences: the human path has an analytics call and
