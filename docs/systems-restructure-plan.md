@@ -6024,8 +6024,18 @@ sentinel proof that `setTimePlayed()` actually mutates `MatchStats.TimePlayed` (
 manager/global state - one relocated method plus four thin existence/dereference forwards, the same
 delegate shape every prior slice used. `DBConnector`/`DBHelper`/`PlayerData`/`HighScoreModel`/
 `PendingMatchPersistenceStore`/`ProgressionService` themselves untouched. No Pause UI redesign, no
-scoring change, no `GameRules`/`GameLevelManager` closure pulled forward beyond this one adapter. No
-findings.
+scoring change, no `GameRules`/`GameLevelManager` closure pulled forward beyond this one adapter. One
+observation, not a finding requiring action: `GameLevelManager.cs` has now absorbed a second type's
+entire relocated persistence workflow in two consecutive slices (`MatchHudPresenter`'s Slice 64,
+`Pause`'s here), growing 772 -> 851 lines this slice alone, because both needed this manager's own live
+roster (`players`/`Player1`). A dedicated persistence-workflow type was considered and rejected: it would
+be exactly the kind of abstraction introduced ahead of a second *independent* implementation this plan's
+own rules reject (`PersistFreePlayStatsForPause` is not reusable from `GameRules`'s own save path - that
+path explicitly excludes Free Play by mode) - and would still need `GameLevelManager`'s roster passed in,
+turning an ownership question into a wiring question. **Named tripwire for a future slice:** if a third
+type ever needs to relocate a persistence workflow into `GameLevelManager` for the same reason, that is
+the trigger to extract a dedicated collaborator (e.g. a `FreePlayResultPersister` taking the roster/
+resultId as parameters) rather than repeating this pattern a third time - not before.
 
 **Production behavior impact:** none. Every database-presence check, lock-poll/timeout, reload, and the
 entire Free Play save/queue/progression sequence read/write the exact same live values through the

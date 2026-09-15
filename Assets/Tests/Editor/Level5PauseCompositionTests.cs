@@ -546,6 +546,15 @@ public class Level5PauseCompositionTests
     /// last result. This exercises the exact warning-after-timeout code path without an actual 8-second
     /// real-time wait (<c>DatabaseWaitTimeoutSeconds</c> is unchanged production behavior this slice did
     /// not touch, verified separately by <see cref="WaitForDatabaseUnlock_TimeoutConstant_IsUnchanged"/>).
+    ///
+    /// Code review, 2026-09-15: in the real coroutine the loop's last (false) evaluation and the
+    /// post-loop check happen synchronously with no yield between them, so the two reads are provably
+    /// redundant there - this is preserved legacy behavior from the pre-Slice-67 compound check
+    /// (<c>DBHelper.instance != null &amp;&amp; DBHelper.instance.DatabaseLocked</c>, evaluated at both
+    /// call sites), not a bug this slice introduced or should "fix" mid-migration. This test's exact
+    /// <c>callIndex == 4</c> assertion is asserting today's call count, not a load-bearing contract - if a
+    /// future change collapses the loop's last read into the post-loop check (e.g. capturing it in a
+    /// local), update this test's expected count rather than treating it as a regression.
     /// </summary>
     [Test]
     public void WaitForDatabaseUnlock_LockedThenUnlocked_PollsThenCompletes()
