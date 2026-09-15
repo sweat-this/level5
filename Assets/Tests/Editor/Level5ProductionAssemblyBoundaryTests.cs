@@ -773,6 +773,24 @@ public class Level5ProductionAssemblyBoundaryTests
             Is.EqualTo("Level5.Match"));
     }
 
+    /// <summary>
+    /// AUD-012 Phase 2b, Slice 64: proves <c>MatchHudPresenter</c> - dependency-closed by inverting its
+    /// <c>PlayerData</c>/<c>DBHelper</c> reads into a bound <c>HighScoreSnapshot</c> reader and a bound
+    /// longest-shot persistence action (see <c>GameRules.BindPersistenceContext</c>) - actually compiles
+    /// into <c>Level5.Match</c>, the same identity check <see cref="TimerCompilesIntoLevel5Match"/> does
+    /// for <c>Timer</c>. GUID unchanged (<c>504e03fbf0df2c842b6e7048cbdb861d</c>); its remaining
+    /// player/basketball presentation coupling (<c>BasketBall</c>, <c>GameStats</c>) stays on
+    /// <see cref="Level5GameManagerEdgeTests"/>'s allowlists under its new <c>Level5Match/</c>
+    /// subfolder - a separate, still-accepted debt from the persistence-layer edge this slice closes.
+    /// </summary>
+    [Test]
+    public void MatchHudPresenterCompilesIntoLevel5Match()
+    {
+        Assert.That(
+            typeof(MatchHudPresenter).Assembly.GetName().Name,
+            Is.EqualTo("Level5.Match"));
+    }
+
     [Test]
     public void NoProductionAssemblyReferencesAKnownEditorOnlyPackageAssembly()
     {

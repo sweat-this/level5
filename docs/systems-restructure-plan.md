@@ -5706,6 +5706,154 @@ full closure in this session.
 **Production behavior impact:** none. Every guard, short-circuit and unguarded-dereference failure mode
 reads the exact same live values through the exact same calls.
 
+**Slice 64 (2026-09-15, same `dev` position as Slice 63 - audited SHA `857e9c0f50a6337434a06210a5cf0723f6e1572c`,
+Unity `6000.5.7f1`): cuts `MatchHudPresenter`'s remaining executable dependencies on `PlayerData` and
+`DBHelper` - Slice 62's explicitly deferred persistence-layer blocker - then moves the file into
+`Level5.Match`.**
+
+**Executable persistence dependencies before this slice:** ~25 `PlayerData.instance.<Property>` reads
+across `SetScoreDisplayText`'s ~30 game-mode branches (one property per branch, plus five separate
+reads inside the FreePlay/ArcadeMode/mode-0 branch alone: two display reads, one comparison, one
+in-memory write, one re-read for the DB call), and one `DBHelper.instance.updateFloatValueByTableAndField`
+write inside that same branch. Zero other executable references to either type - commented-out/dead
+branches (modes 10-12, 21, and the original `switch` sketch) named `PlayerData` but were never live and
+are unchanged by this slice.
+
+**New immutable projection - `MatchHudPresenter.HighScoreSnapshot`** (nested, nineteen `float`
+properties plus two `int`): `TotalPoints`, `TotalPointsLockDown`, `ThreePointerMade`, `FourPointerMade`,
+`SevenPointerMade`, `TotalDistance`, `MakeThreePointersLowTime`, `MakeFourPointersLowTime`,
+`MakeSevenPointersLowTime`, `MakeAllPointersLowTime`, `MostConsecutiveShots` (`int`), `TotalPointsBonus`,
+`ThreePointContestScore`, `FourPointContestScore`, `SevenPointContestScore`, `AllPointContestScore`,
+`TotalPointsByDistance`, `EnemiesKilled` (`int`), `EnemiesKilledBattleRoyal` (`int`),
+`EnemiesKilledCageMatch` (`int`), `LongestShotMadeFreePlay`. Exactly the set of `PlayerData` properties
+executable HUD code reads - no unused/commented-out field, no save/load method, no `PlayerData`/
+`DBHelper`/SQLite/JSON/account type.
+
+**Old flow.**
+
+```text
+SetScoreDisplayText() (per branch) -> PlayerData.instance.<Property>            [~25 reads]
+FreePlay/ArcadeMode/mode-0 branch  -> PlayerData.instance.LongestShotMadeFreePlay = ...  [1 write]
+                                    -> DBHelper.instance.updateFloatValueByTableAndField(...)  [1 write]
+```
+
+**New flow.**
+
+```text
+GameRules.ReadHighScoreSnapshotForHud            -> PlayerData.instance (fresh per call; null -> null)
+GameRules.PersistLongestShotMadeFreePlayForHud    -> PlayerData.instance.LongestShotMadeFreePlay = ...
+                                                    -> DBHelper.instance.updateFloatValueByTableAndField(...)
+        │                                                       │
+        └────────────────────── both handed in ─────────────────┘
+                                            ▼
+                    MatchHudPresenter.BindPersistenceContext (called from GameRules.Start())
+                                            ▼
+      SetScoreDisplayText() resolves one HighScoreSnapshot, then reads/compares against it (unexamined)
+```
+
+**Missing-PlayerData parity.** `ReadHighScoreSnapshotForHud` resolves `PlayerData.instance` fresh per
+call and returns `null` when it is absent - `SetScoreDisplayText` now opens with a `highScores == null`
+guard-clause `return` in place of the former `if (PlayerData.instance != null) { ... whole method ... }`
+wrapper. Behaviorally identical: nothing in the method runs either way. Covered by
+`SetScoreDisplayText_NoHighScoreSnapshot_RendersNothingWithoutThrowing`.
+
+**One-read/liveness.** Exactly one snapshot is resolved per `SetScoreDisplayText()` call (not once per
+branch, not cached across frames) - covered by `SetScoreDisplayText_OneInvocation_
+CallsHighScoreSnapshotReaderExactlyOnce`. A later call observes a replaced/refreshed instance - covered
+by `SetScoreDisplayText_SecondInvocation_ObservesReplacedSnapshot`.
+
+**Longest-shot predicate/order/failure parity.** The comparison (`stats.LongestShotMade >
+highScores.LongestShotMadeFreePlay`), the exact mode predicate (`gameModeId == 0 || gameModeId ==
+Modes.FreePlay || gameModeId == Modes.ArcadeMode`), and the exact forwarded value
+(`gameStats1.Stats.LongestShotMade`) are all unchanged. The in-memory `PlayerData` mutation still occurs
+before the `DBHelper` dereference inside `PersistLongestShotMadeFreePlayForHud` - proved by
+`PersistLongestShotMadeFreePlayForHud_MutatesPlayerDataBeforeReachingDBHelper`, which leaves
+`DBHelper.instance` null and shows the mutation is already visible on the real `PlayerData` instance
+before the (then-throwing) DB dereference is reached, rather than building a broader SQLite fixture for
+one call. Current-frame display ordering - the render uses the pre-write snapshot value, and the
+persistence action runs only afterward - is proved by
+`SetScoreDisplayText_LongestShotBeatsRecord_RendersPreWriteSnapshotValueBeforePersisting`. No null
+guard, retry, queue, or persistence-result handling was added.
+
+**GameRules composition.** `GameRules` keeps concrete persistence knowledge, matching Slice 62's
+`ReadSortedGameStatsListForHud`-style adapters: `ReadHighScoreSnapshotForHud` (resolves one `PlayerData`
+reference, copies every field once, never retains it) and `PersistLongestShotMadeFreePlayForHud` (the
+exact prior two-statement mutate-then-write, unchanged). Bound from `GameRules.Start()` via a second,
+separate `hud.BindPersistenceContext(...)` call immediately after the existing
+`hud.BindGameLevelManagerContext(...)` call - game-manager-cycle state and the persistence-layer
+ownership boundary are different concerns, so they get different bind calls.
+
+**Source guard.** `Level5GameManagerEdgeTests.MatchHudPresenterHasNoPlayerDataOrDBHelperReferences`
+(new), using `Level5TestSourceText.StripCommentsAndLiterals` exactly as
+`SpawnCoordinatorHasNoAssemblyCSharpIntegrationReferences` does, asserts zero executable `PlayerData`/
+`DBHelper` identifiers in `MatchHudPresenter.cs`, found via the existing `EnumerateGameManagerScripts()`
+recursive walk (which still finds the file under its new `Level5Match/` subfolder).
+
+**Dependency-closure gate.** Every remaining project type `MatchHudPresenter` references after the cut -
+`PlayerIdentifier`/`CharacterProfile` (`Level5.Player`), `GameStats`/`BasketBall` (`Level5.Basketball`),
+`MatchStats`/`ResolvedMatchRules` (`Level5.Core`), `Modes` (`Level5.Constants`), `UtilityFunctions`
+(`Level5.Utility`) - already sits inside `Level5.Match`'s existing or newly-added reference set (see
+asmdef change below); zero remaining `Assembly-CSharp` dependency. `Level5.Utility` references only
+`Level5.Core` (confirmed no path back to `Level5.Match`), so the new edge is direct and acyclic.
+
+**Asmdef change.** `Level5.Match.asmdef` gained a direct reference to `Level5.Utility` (for
+`UtilityFunctions`, used by `GetStatsTotals()` - previously reached only because `MatchHudPresenter`
+compiled into `Assembly-CSharp`, which auto-references every runtime asmdef).
+
+**Move.** `Assets/Scripts/game manager/MatchHudPresenter.cs`(`.meta`) -> `Assets/Scripts/game
+manager/Level5Match/MatchHudPresenter.cs`(`.meta`) via `git mv`. GUID unchanged
+(`504e03fbf0df2c842b6e7048cbdb861d`); global namespace, class name, all public members, serialized
+field names/types, `RequiredHudObjectNames`, `ProgressionPersistenceWarning`, and fallback-HUD creation
+behavior all unchanged. `GameRules` still creates the component dynamically
+(`GetComponent<MatchHudPresenter>() ?? gameObject.AddComponent<MatchHudPresenter>()`), so no authored
+scene/prefab depended on its former assembly identity.
+
+**Compiler-backed ownership test.** `Level5ProductionAssemblyBoundaryTests.
+MatchHudPresenterCompilesIntoLevel5Match` (new), matching the identity-check shape every other Phase 2b
+slice added. `MatchHudPresenter.cs` stays on `Level5GameManagerEdgeTests`' `SpelledTypeAllowlist`/
+`ReachThroughAllowlist` unchanged - its remaining `BasketBall`/`GameStats` player/basketball coupling is
+a separate, still-accepted debt (the deferred HUD-polling design pass), not something this slice's
+assembly move resolves.
+
+**Focused tests added.** `Level5MatchHudPresenterCompositionTests` (+16 tests): the snapshot-mapping
+test (every active field set to a distinct value), missing-PlayerData parity, reader liveness/one-read-
+per-render, six representative rendering-parity tests across distinct projection fields (`TotalPoints`,
+`ConsecutiveShots`, `SpotUp3s`, `ThreePointContest`, `BashUpSomeNerds`, `FreePlay`), the three-way
+longest-shot decision (smaller/equal/greater), the current-frame ordering test, and the production
+write-adapter ordering test. `Level5GameManagerEdgeTests` (+1) and
+`Level5ProductionAssemblyBoundaryTests` (+1) each gained their one guard test described above.
+
+**Validation.** Full EditMode, headless Unity `6000.5.7f1`: 1361/1361 green (up from 1343 - the 18
+net-new tests). Full PlayMode: 17/17 green, unchanged. `scripts/validate-repository.ps1`: passed.
+Forced Unity recompilation (`-executeMethod UnityEditor.SyncVS.SyncSolution`) produced zero `error CS`
+lines - only pre-existing warnings unrelated to this change.
+
+**Review pass 1 (correctness/persistence parity).** No zero/default snapshot substitutes for a missing
+`PlayerData`; no snapshot cached across frames or resolved more than once per render; every active field
+mapped with no type conversion; branch order, return behavior, display strings and numeric formatting
+all unchanged; the longest-shot predicate, mode predicate and current-frame display ordering are
+unchanged; the in-memory `PlayerData` mutation still precedes the `DBHelper` call; no null guard, retry
+or queue semantics were added; persistence authority remains SQLite via `DBHelper`. No findings.
+
+**Review pass 2 (architecture/scope).** No generic persistence repository/service, no interface
+introduced for one consumer, no service/context bag - two narrow delegates (`Func`/`Action`), the same
+shape every prior Phase 2b dependency-cut slice used. The projection stays nested on
+`MatchHudPresenter`, not moved into `Level5.Core`. `PlayerData`/`DBHelper` themselves are untouched;
+`Pause`/`GameLevelManager`/`GameRules` ownership is untouched beyond `GameRules`' two new adapter
+methods and one new `Start()` bind call; no basketball/scoring or mode-chain cleanup. No findings.
+
+**Freshly measured remaining loose `game manager/` files:** `GameLevelManager.cs` (666 lines) and
+`GameRules.cs` (now ~955 lines, mutually cross-referencing) remain outside any Level5 assembly, by
+design - `GameLevelManager` is the acknowledged composition root and `GameRules` is the match
+orchestrator that reads it directly; neither was targeted for closure this session. `Pause.cs` (631
+lines) still carries its own separate, un-entangled `DBConnector`/`PlayerData` persistence-layer
+coupling, structurally identical to the blocker this slice just closed for `MatchHudPresenter` but not
+itself touched here. No new blocker was discovered.
+
+**Production behavior impact:** none. Every score display, end-of-match summary, missing-PlayerData
+no-op, and the longest-shot persistence write reads/writes the exact same live values through the exact
+same underlying calls, in the exact same order.
+
 ### Phase 3 — Converge the human/CPU pairs
 
 Not "one type". The pairs carry real, intended differences: the human path has an analytics call and

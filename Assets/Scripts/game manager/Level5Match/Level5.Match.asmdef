@@ -5,7 +5,8 @@
         "Level5.Core",
         "Level5.Player",
         "Level5.Basketball",
-        "Level5.Constants"
+        "Level5.Constants",
+        "Level5.Utility"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

@@ -1,4 +1,3 @@
-using Assets.Scripts.database;
 using Assets.Scripts.Utility;
 using System;
 using System.Collections.Generic;
@@ -110,6 +109,109 @@ public class MatchHudPresenter : MonoBehaviour
         this.primaryPlayerReader = primaryPlayerReader;
         this.firstRegisteredPlayerReader = firstRegisteredPlayerReader;
         this.scoreClockTextReader = scoreClockTextReader;
+    }
+
+    /// <summary>
+    /// AUD-012 Phase 2b Slice 64: the immutable HUD-specific projection of the persisted high-score
+    /// values <see cref="SetScoreDisplayText"/> reads, in place of a direct <c>PlayerData.instance</c>
+    /// read. Contains exactly the properties executable HUD code consumes - no unused/commented-out
+    /// <c>PlayerData</c> field, no save/load behavior, no <c>PlayerData</c>/<c>DBHelper</c>/SQLite/JSON/
+    /// account type.
+    /// </summary>
+    public sealed class HighScoreSnapshot
+    {
+        public HighScoreSnapshot(
+            float totalPoints,
+            float totalPointsLockDown,
+            float threePointerMade,
+            float fourPointerMade,
+            float sevenPointerMade,
+            float totalDistance,
+            float makeThreePointersLowTime,
+            float makeFourPointersLowTime,
+            float makeSevenPointersLowTime,
+            float makeAllPointersLowTime,
+            int mostConsecutiveShots,
+            float totalPointsBonus,
+            float threePointContestScore,
+            float fourPointContestScore,
+            float sevenPointContestScore,
+            float allPointContestScore,
+            float totalPointsByDistance,
+            int enemiesKilled,
+            int enemiesKilledBattleRoyal,
+            int enemiesKilledCageMatch,
+            float longestShotMadeFreePlay)
+        {
+            TotalPoints = totalPoints;
+            TotalPointsLockDown = totalPointsLockDown;
+            ThreePointerMade = threePointerMade;
+            FourPointerMade = fourPointerMade;
+            SevenPointerMade = sevenPointerMade;
+            TotalDistance = totalDistance;
+            MakeThreePointersLowTime = makeThreePointersLowTime;
+            MakeFourPointersLowTime = makeFourPointersLowTime;
+            MakeSevenPointersLowTime = makeSevenPointersLowTime;
+            MakeAllPointersLowTime = makeAllPointersLowTime;
+            MostConsecutiveShots = mostConsecutiveShots;
+            TotalPointsBonus = totalPointsBonus;
+            ThreePointContestScore = threePointContestScore;
+            FourPointContestScore = fourPointContestScore;
+            SevenPointContestScore = sevenPointContestScore;
+            AllPointContestScore = allPointContestScore;
+            TotalPointsByDistance = totalPointsByDistance;
+            EnemiesKilled = enemiesKilled;
+            EnemiesKilledBattleRoyal = enemiesKilledBattleRoyal;
+            EnemiesKilledCageMatch = enemiesKilledCageMatch;
+            LongestShotMadeFreePlay = longestShotMadeFreePlay;
+        }
+
+        public float TotalPoints { get; }
+        public float TotalPointsLockDown { get; }
+        public float ThreePointerMade { get; }
+        public float FourPointerMade { get; }
+        public float SevenPointerMade { get; }
+        public float TotalDistance { get; }
+        public float MakeThreePointersLowTime { get; }
+        public float MakeFourPointersLowTime { get; }
+        public float MakeSevenPointersLowTime { get; }
+        public float MakeAllPointersLowTime { get; }
+        public int MostConsecutiveShots { get; }
+        public float TotalPointsBonus { get; }
+        public float ThreePointContestScore { get; }
+        public float FourPointContestScore { get; }
+        public float SevenPointContestScore { get; }
+        public float AllPointContestScore { get; }
+        public float TotalPointsByDistance { get; }
+        public int EnemiesKilled { get; }
+        public int EnemiesKilledBattleRoyal { get; }
+        public int EnemiesKilledCageMatch { get; }
+        public float LongestShotMadeFreePlay { get; }
+    }
+
+    // AUD-012 Phase 2b Slice 64 dependency-cut fields - see <see cref="BindPersistenceContext"/>.
+    private Func<HighScoreSnapshot> highScoreSnapshotReader;
+    private Action<float> persistLongestShotMadeFreePlay;
+
+    /// <summary>
+    /// AUD-012 Phase 2b Slice 64: replaces this class's former direct <c>PlayerData.instance</c> reads
+    /// (~25) and its one <c>DBHelper.instance.updateFloatValueByTableAndField</c> write - the
+    /// persistence-layer blocker Slice 62 explicitly deferred, so <c>MatchHudPresenter</c> can move out
+    /// of <c>Assembly-CSharp</c>. Called once from <c>GameRules.Start()</c>, alongside but separate from
+    /// <see cref="BindGameLevelManagerContext"/>: that binds game-manager-cycle state, this binds the
+    /// persistence-layer ownership boundary - a different concern, so a different bind call.
+    /// <paramref name="highScoreSnapshotReader"/> resolves <c>PlayerData.instance</c> fresh on every
+    /// call and returns null when it is absent - the exact prior "no live PlayerData -> no
+    /// persistence-backed rendering" behavior, now expressed as a null snapshot guard instead of an
+    /// inline null check. <paramref name="persistLongestShotMadeFreePlay"/> wraps the exact prior
+    /// PlayerData-mutation-then-DBHelper-write pair, unchanged in order and value.
+    /// </summary>
+    public void BindPersistenceContext(
+        Func<HighScoreSnapshot> highScoreSnapshotReader,
+        Action<float> persistLongestShotMadeFreePlay)
+    {
+        this.highScoreSnapshotReader = highScoreSnapshotReader;
+        this.persistLongestShotMadeFreePlay = persistLongestShotMadeFreePlay;
     }
 
     /// <summary>
@@ -517,302 +619,309 @@ public class MatchHudPresenter : MonoBehaviour
     public void SetScoreDisplayText()
     {
         MatchStats stats = gameStats1.Stats;
-        if (PlayerData.instance != null)
+        // AUD-012 Phase 2b Slice 64: resolved once per call and used for the entire invocation -
+        // matches the exact prior "no live PlayerData -> no persistence-backed rendering" behavior
+        // (see BindPersistenceContext), now as a null-snapshot guard clause instead of an inline
+        // PlayerData.instance != null wrapping the whole method body.
+        HighScoreSnapshot highScores = highScoreSnapshotReader();
+        if (highScores == null)
         {
-            //switch (gameModeId)
-            //{
-            //    case Modes.TotalPoints:
-            //        displayCurrentScoreText.text = "total points : " + gameStats.Stats.TotalPoints
-            //        + "\ncurrent shot : " + BasketBall.instance.BasketBallState.CurrentShotType;
-            //        scoreClockTextReader().text = gameStats.Stats.TotalPoints.ToString();
-            //        displayHighScoreText.text = "high score : " + PlayerData.instance.TotalPoints;
+            return;
+        }
 
-            //        break;
-            //    case Modes.Total3Pointers:
-            //        displayCurrentScoreText.text = "3s made : " + gameStats.Stats.ThreePointerMade
-            //        + "\ncurrent shot : " + BasketBall.instance.BasketBallState.CurrentShotType;
-            //        scoreClockTextReader().text = gameStats.Stats.ThreePointerMade.ToString();
+        //switch (gameModeId)
+        //{
+        //    case Modes.TotalPoints:
+        //        displayCurrentScoreText.text = "total points : " + gameStats.Stats.TotalPoints
+        //        + "\ncurrent shot : " + BasketBall.instance.BasketBallState.CurrentShotType;
+        //        scoreClockTextReader().text = gameStats.Stats.TotalPoints.ToString();
+        //        displayHighScoreText.text = "high score : " + PlayerData.instance.TotalPoints;
 
-            //        displayHighScoreText.text = "high score : " + PlayerData.instance.ThreePointerMade;
-            //        break;
-            //    case Modes.Total4Pointers:
-            //        break;
-            //    case Modes.Total7Pointers:
-            //        break;
-            //    case Modes.Total4Pointers:
-            //        break;
-            //    case Modes.Total4Pointers:
-            //        break;
-            //    case Modes.Total4Pointers:
-            //        break;
-            //    case Modes.Total4Pointers:
-            //        break;
-            //    case Modes.Total4Pointers:
-            //        break;
+        //        break;
+        //    case Modes.Total3Pointers:
+        //        displayCurrentScoreText.text = "3s made : " + gameStats.Stats.ThreePointerMade
+        //        + "\ncurrent shot : " + BasketBall.instance.BasketBallState.CurrentShotType;
+        //        scoreClockTextReader().text = gameStats.Stats.ThreePointerMade.ToString();
 
-            //}
-            if (gameModeId == Modes.TotalPoints)
-            {
-                displayCurrentScoreText.text = "total points : " + stats.TotalPoints
-                    + "\ncurrent shot : " + BasketBall.instance.BasketBallState.CurrentShotType;
-                scoreClockTextReader().text = stats.TotalPoints.ToString();
+        //        displayHighScoreText.text = "high score : " + PlayerData.instance.ThreePointerMade;
+        //        break;
+        //    case Modes.Total4Pointers:
+        //        break;
+        //    case Modes.Total7Pointers:
+        //        break;
+        //    case Modes.Total4Pointers:
+        //        break;
+        //    case Modes.Total4Pointers:
+        //        break;
+        //    case Modes.Total4Pointers:
+        //        break;
+        //    case Modes.Total4Pointers:
+        //        break;
+        //    case Modes.Total4Pointers:
+        //        break;
 
-                displayHighScoreText.text = "high score : " + PlayerData.instance.TotalPoints;
-                return;
-            }
-            if ( gameModeId == Modes.Lockdown)
-            {
-                displayCurrentScoreText.text = "total points : " + stats.TotalPoints
-                    + "\ncurrent shot : " + BasketBall.instance.BasketBallState.CurrentShotType;
-                scoreClockTextReader().text = stats.TotalPoints.ToString();
+        //}
+        if (gameModeId == Modes.TotalPoints)
+        {
+            displayCurrentScoreText.text = "total points : " + stats.TotalPoints
+                + "\ncurrent shot : " + BasketBall.instance.BasketBallState.CurrentShotType;
+            scoreClockTextReader().text = stats.TotalPoints.ToString();
 
-                displayHighScoreText.text = "high score : " + PlayerData.instance.TotalPointsLockDown;
-                return;
-            }
-            if (gameModeId == Modes.Total3Pointers)
-            {
-                displayCurrentScoreText.text = "3s made : " + stats.ThreePointerMade
-                    + "\ncurrent shot : " + BasketBall.instance.BasketBallState.CurrentShotType;
-                scoreClockTextReader().text = stats.ThreePointerMade.ToString();
+            displayHighScoreText.text = "high score : " + highScores.TotalPoints;
+            return;
+        }
+        if ( gameModeId == Modes.Lockdown)
+        {
+            displayCurrentScoreText.text = "total points : " + stats.TotalPoints
+                + "\ncurrent shot : " + BasketBall.instance.BasketBallState.CurrentShotType;
+            scoreClockTextReader().text = stats.TotalPoints.ToString();
 
-                displayHighScoreText.text = "high score : " + PlayerData.instance.ThreePointerMade;
-                return;
-            }
-            if (gameModeId == Modes.Total4Pointers)
-            {
-                displayCurrentScoreText.text = "4s made : " + stats.FourPointerMade
-                    + "\ncurrent shot : " + BasketBall.instance.BasketBallState.CurrentShotType;
-                scoreClockTextReader().text = stats.FourPointerMade.ToString();
+            displayHighScoreText.text = "high score : " + highScores.TotalPointsLockDown;
+            return;
+        }
+        if (gameModeId == Modes.Total3Pointers)
+        {
+            displayCurrentScoreText.text = "3s made : " + stats.ThreePointerMade
+                + "\ncurrent shot : " + BasketBall.instance.BasketBallState.CurrentShotType;
+            scoreClockTextReader().text = stats.ThreePointerMade.ToString();
 
-                displayHighScoreText.text = "high score : " + PlayerData.instance.FourPointerMade;
-                return;
-            }
-            if (gameModeId == Modes.Total7Pointers)
-            {
-                displayCurrentScoreText.text = "7s made : " + stats.SevenPointerMade
-                                                            + "\ncurrent shot : " + BasketBall.instance.BasketBallState.CurrentShotType;
-                scoreClockTextReader().text = stats.SevenPointerMade.ToString();
+            displayHighScoreText.text = "high score : " + highScores.ThreePointerMade;
+            return;
+        }
+        if (gameModeId == Modes.Total4Pointers)
+        {
+            displayCurrentScoreText.text = "4s made : " + stats.FourPointerMade
+                + "\ncurrent shot : " + BasketBall.instance.BasketBallState.CurrentShotType;
+            scoreClockTextReader().text = stats.FourPointerMade.ToString();
 
-                displayHighScoreText.text = "high score : " + PlayerData.instance.SevenPointerMade;
-                return;
-            }
-            //if (gameModeId == 5)
-            //{
-            //    displayCurrentScoreText.text = "longest shot : " + (BasketBall.instance.BasketBallStats.LongestShotMade).ToString("0.00")
-            //        + "\ncurrent distance : " + (BasketBall.instance.BasketBallState.PlayerDistanceFromRim).ToString("00.00");
-            //    displayHighScoreText.text = "high score : " + PlayerData.instance.LongestShotMade.ToString("0.00");
-            //}
-            if (gameModeId == Modes.TotalDistance)
-            {
-                displayCurrentScoreText.text = "total distance : " + (stats.TotalDistance).ToString("0.00")
-                + "\ncurrent distance : " + (BasketBall.instance.BasketBallState.PlayerDistanceFromRim * 6).ToString("0.00");
-                scoreClockTextReader().text = (stats.TotalDistance).ToString("0.00");
+            displayHighScoreText.text = "high score : " + highScores.FourPointerMade;
+            return;
+        }
+        if (gameModeId == Modes.Total7Pointers)
+        {
+            displayCurrentScoreText.text = "7s made : " + stats.SevenPointerMade
+                                                        + "\ncurrent shot : " + BasketBall.instance.BasketBallState.CurrentShotType;
+            scoreClockTextReader().text = stats.SevenPointerMade.ToString();
 
-                displayHighScoreText.text = "high score : " + PlayerData.instance.TotalDistance.ToString("0.00");
-                return;
-            }
-            if (gameModeId == Modes.SpotUp3s)
-            {
-                displayCurrentScoreText.text = "";
-                //                                                 + "\ncurrent distance : " + (BasketBall.instance.BasketBallState.BallDistanceFromRim * 6).ToString("0.00");
-                displayHighScoreText.text = "high score : " + PlayerData.instance.MakeThreePointersLowTime;
+            displayHighScoreText.text = "high score : " + highScores.SevenPointerMade;
+            return;
+        }
+        //if (gameModeId == 5)
+        //{
+        //    displayCurrentScoreText.text = "longest shot : " + (BasketBall.instance.BasketBallStats.LongestShotMade).ToString("0.00")
+        //        + "\ncurrent distance : " + (BasketBall.instance.BasketBallState.PlayerDistanceFromRim).ToString("00.00");
+        //    displayHighScoreText.text = "high score : " + PlayerData.instance.LongestShotMade.ToString("0.00");
+        //}
+        if (gameModeId == Modes.TotalDistance)
+        {
+            displayCurrentScoreText.text = "total distance : " + (stats.TotalDistance).ToString("0.00")
+            + "\ncurrent distance : " + (BasketBall.instance.BasketBallState.PlayerDistanceFromRim * 6).ToString("0.00");
+            scoreClockTextReader().text = (stats.TotalDistance).ToString("0.00");
 
-                //displayMoneyText.text = "$" + PlayerStats.instance.Money;
-                return;
-            }
-            if (gameModeId == Modes.SpotUp4s)
-            {
-                displayCurrentScoreText.text = "";
-                //                                                 + "\ncurrent distance : " + (BasketBall.instance.BasketBallState.BallDistanceFromRim * 6).ToString("0.00");
-                //displayHighScoreText.text = "high score : " + PlayerData.instance.TotalDistance.ToString("0.00");
-                displayHighScoreText.text = "high score : " + PlayerData.instance.MakeFourPointersLowTime;
-                //displayMoneyText.text = "$" + PlayerStats.instance.Money;
-            }
-            if (gameModeId == Modes.SpotUp7s)
-            {
-                displayCurrentScoreText.text = "";
-                //                                                 + "\ncurrent distance : " + (BasketBall.instance.BasketBallState.BallDistanceFromRim * 6).ToString("0.00");
-                //displayHighScoreText.text = "high score : " + PlayerData.instance.TotalDistance.ToString("0.00");
-                displayHighScoreText.text = "high score : " + PlayerData.instance.MakeSevenPointersLowTime;
-                scoreClockTextReader().text = stats.TotalPoints.ToString();
-                //displayMoneyText.text = "$" + PlayerStats.instance.Money;
-            }
-            if (gameModeId == Modes.SpotUpAll)
-            {
-                displayCurrentScoreText.text = "";
-                //                                                 + "\ncurrent distance : " + (BasketBall.instance.BasketBallState.BallDistanceFromRim * 6).ToString("0.00");
-                displayHighScoreText.text = "high score : " + PlayerData.instance.MakeAllPointersLowTime;
-                //displayMoneyText.text = "$" + PlayerStats.instance.Money;
-                return;
-            }
-            //if (gameModeId == 10)
-            //{
-            //    displayCurrentScoreText.text = "";
-            //    //                                                 + "\ncurrent distance : " + (BasketBall.instance.BasketBallState.BallDistanceFromRim * 6).ToString("0.00");
-            //    displayHighScoreText.text = "high score : " + PlayerData.instance.MakeThreePointersMoneyBallLowTime;
-            //    displayMoneyText.text = "$" + PlayerStats.instance.Money;
-            //}
-            //if (gameModeId == 11)
-            //{
-            //    displayCurrentScoreText.text = "";
-            //    //                                                 + "\ncurrent distance : " + (BasketBall.instance.BasketBallState.BallDistanceFromRim * 6).ToString("0.00");
-            //    //displayHighScoreText.text = "high score : " + PlayerData.instance.TotalDistance.ToString("0.00");
-            //    displayHighScoreText.text = "high score : " + PlayerData.instance.MakeFourPointersMoneyBallLowTime;
-            //    displayMoneyText.text = "$" + PlayerStats.instance.Money;
-            //}
-            //if (gameModeId == 12)
-            //{
-            //    displayCurrentScoreText.text = "";
-            //    //                                                 + "\ncurrent distance : " + (BasketBall.instance.BasketBallState.BallDistanceFromRim * 6).ToString("0.00");
-            //    displayHighScoreText.text = "high score : " + PlayerData.instance.MakeAllPointersMoneyBallLowTime;
-            //    displayMoneyText.text = "$" + PlayerStats.instance.Money;
-            //}
-            if (gameModeId == Modes.ConsecutiveShots)
-            {
-                displayCurrentScoreText.text = "Consecutive Shots"
-                    + "\nCurrent : " + primaryPlayerReader().gameStats.Stats.ConsecutiveShotsMade
-                    + "\nHigh Shots : " + stats.MostConsecutiveShots;
-                scoreClockTextReader().text = primaryPlayerReader().gameStats.Stats.ConsecutiveShotsMade.ToString();
+            displayHighScoreText.text = "high score : " + highScores.TotalDistance.ToString("0.00");
+            return;
+        }
+        if (gameModeId == Modes.SpotUp3s)
+        {
+            displayCurrentScoreText.text = "";
+            //                                                 + "\ncurrent distance : " + (BasketBall.instance.BasketBallState.BallDistanceFromRim * 6).ToString("0.00");
+            displayHighScoreText.text = "high score : " + highScores.MakeThreePointersLowTime;
 
-                displayHighScoreText.text = "high score : " + PlayerData.instance.MostConsecutiveShots;
-                //displayMoneyText.text = "$" + PlayerStats.instance.Money;
-                return;
-            }
-            if (gameModeId == Modes.InThePocket)
-            {
-                displayCurrentScoreText.text = "total points : " + stats.TotalPoints
-                    + "\ncurrent shot : " + BasketBall.instance.BasketBallState.CurrentShotType
-                    + "\nCurrent Consecutive: " + firstRegisteredPlayerReader().gameStats.Stats.ConsecutiveShotsMade;
-                scoreClockTextReader().text = stats.TotalPoints.ToString();
+            //displayMoneyText.text = "$" + PlayerStats.instance.Money;
+            return;
+        }
+        if (gameModeId == Modes.SpotUp4s)
+        {
+            displayCurrentScoreText.text = "";
+            //                                                 + "\ncurrent distance : " + (BasketBall.instance.BasketBallState.BallDistanceFromRim * 6).ToString("0.00");
+            //displayHighScoreText.text = "high score : " + PlayerData.instance.TotalDistance.ToString("0.00");
+            displayHighScoreText.text = "high score : " + highScores.MakeFourPointersLowTime;
+            //displayMoneyText.text = "$" + PlayerStats.instance.Money;
+        }
+        if (gameModeId == Modes.SpotUp7s)
+        {
+            displayCurrentScoreText.text = "";
+            //                                                 + "\ncurrent distance : " + (BasketBall.instance.BasketBallState.BallDistanceFromRim * 6).ToString("0.00");
+            //displayHighScoreText.text = "high score : " + PlayerData.instance.TotalDistance.ToString("0.00");
+            displayHighScoreText.text = "high score : " + highScores.MakeSevenPointersLowTime;
+            scoreClockTextReader().text = stats.TotalPoints.ToString();
+            //displayMoneyText.text = "$" + PlayerStats.instance.Money;
+        }
+        if (gameModeId == Modes.SpotUpAll)
+        {
+            displayCurrentScoreText.text = "";
+            //                                                 + "\ncurrent distance : " + (BasketBall.instance.BasketBallState.BallDistanceFromRim * 6).ToString("0.00");
+            displayHighScoreText.text = "high score : " + highScores.MakeAllPointersLowTime;
+            //displayMoneyText.text = "$" + PlayerStats.instance.Money;
+            return;
+        }
+        //if (gameModeId == 10)
+        //{
+        //    displayCurrentScoreText.text = "";
+        //    //                                                 + "\ncurrent distance : " + (BasketBall.instance.BasketBallState.BallDistanceFromRim * 6).ToString("0.00");
+        //    displayHighScoreText.text = "high score : " + PlayerData.instance.MakeThreePointersMoneyBallLowTime;
+        //    displayMoneyText.text = "$" + PlayerStats.instance.Money;
+        //}
+        //if (gameModeId == 11)
+        //{
+        //    displayCurrentScoreText.text = "";
+        //    //                                                 + "\ncurrent distance : " + (BasketBall.instance.BasketBallState.BallDistanceFromRim * 6).ToString("0.00");
+        //    //displayHighScoreText.text = "high score : " + PlayerData.instance.TotalDistance.ToString("0.00");
+        //    displayHighScoreText.text = "high score : " + PlayerData.instance.MakeFourPointersMoneyBallLowTime;
+        //    displayMoneyText.text = "$" + PlayerStats.instance.Money;
+        //}
+        //if (gameModeId == 12)
+        //{
+        //    displayCurrentScoreText.text = "";
+        //    //                                                 + "\ncurrent distance : " + (BasketBall.instance.BasketBallState.BallDistanceFromRim * 6).ToString("0.00");
+        //    displayHighScoreText.text = "high score : " + PlayerData.instance.MakeAllPointersMoneyBallLowTime;
+        //    displayMoneyText.text = "$" + PlayerStats.instance.Money;
+        //}
+        if (gameModeId == Modes.ConsecutiveShots)
+        {
+            displayCurrentScoreText.text = "Consecutive Shots"
+                + "\nCurrent : " + primaryPlayerReader().gameStats.Stats.ConsecutiveShotsMade
+                + "\nHigh Shots : " + stats.MostConsecutiveShots;
+            scoreClockTextReader().text = primaryPlayerReader().gameStats.Stats.ConsecutiveShotsMade.ToString();
 
-                // in the pocket is active, display text notifier
-                if (primaryPlayerReader().gameStats.Stats.ConsecutiveShotsMade >= inThePocketActivateValue)
-                {
-                    displayOtherMessageText.text = "In The Pocket";
-                }
-                // in the pocket not active, no notifier
-                else
-                {
-                    displayOtherMessageText.text = "";
-                }
-                displayHighScoreText.text = "high score : " + PlayerData.instance.TotalPointsBonus;
-                return;
-            }
-            if (gameModeId == Modes.ThreePointContest)
-            {
-                displayHighScoreText.text = "high score : " + PlayerData.instance.ThreePointContestScore;
-                scoreClockTextReader().text = stats.TotalPoints.ToString();
-                return;
-            }
-            if (gameModeId == Modes.FourPointContest)
-            {
-                displayHighScoreText.text = "high score : " + PlayerData.instance.FourPointContestScore;
-                scoreClockTextReader().text = stats.TotalPoints.ToString();
-                return;
-            }
-            if (gameModeId == Modes.AllPointContest)
-            {
-                displayHighScoreText.text = "high score : " + PlayerData.instance.AllPointContestScore;
-                scoreClockTextReader().text = stats.TotalPoints.ToString();
-                return;
-            }
-            if (gameModeId == Modes.PointsByDistance)
-            {
-                displayHighScoreText.text = "high score : " + PlayerData.instance.TotalPointsByDistance;
+            displayHighScoreText.text = "high score : " + highScores.MostConsecutiveShots;
+            //displayMoneyText.text = "$" + PlayerStats.instance.Money;
+            return;
+        }
+        if (gameModeId == Modes.InThePocket)
+        {
+            displayCurrentScoreText.text = "total points : " + stats.TotalPoints
+                + "\ncurrent shot : " + BasketBall.instance.BasketBallState.CurrentShotType
+                + "\nCurrent Consecutive: " + firstRegisteredPlayerReader().gameStats.Stats.ConsecutiveShotsMade;
+            scoreClockTextReader().text = stats.TotalPoints.ToString();
 
-                displayCurrentScoreText.text =
-                    "current distance : " + (BasketBall.instance.BasketBallState.PlayerDistanceFromRim * 6).ToString("00.00")
-                    + "\nlast shot : " + Mathf.FloorToInt((BasketBall.instance.LastShotDistance * 6) / 10)
-                    + "\ntotal points : " + stats.TotalPoints;
-
-                scoreClockTextReader().text = stats.TotalPoints.ToString();
-                return;
-            }
-            if (gameModeId == Modes.BashUpSomeNerds)
+            // in the pocket is active, display text notifier
+            if (primaryPlayerReader().gameStats.Stats.ConsecutiveShotsMade >= inThePocketActivateValue)
             {
-                displayHighScoreText.text = "high score : " + PlayerData.instance.EnemiesKilled;
-
-                displayCurrentScoreText.text =
-                    "nerds bashed : " + (stats.EnemiesKilled);
-                if (scoreClockTextReader() != null)
-                {
-                    scoreClockTextReader().text = (stats.EnemiesKilled).ToString();
-                }
-                return;
+                displayOtherMessageText.text = "In The Pocket";
             }
-            if (gameModeId == Modes.BattleRoyal)
+            // in the pocket not active, no notifier
+            else
             {
-                displayHighScoreText.text = "high score : " + PlayerData.instance.EnemiesKilledBattleRoyal;
-
-                displayCurrentScoreText.text =
-                    "nerds bashed : " + (stats.EnemiesKilled);
-                if (scoreClockTextReader() != null)
-                {
-                    scoreClockTextReader().text = (stats.EnemiesKilled).ToString();
-                }
-                return;
+                displayOtherMessageText.text = "";
             }
-            if (gameModeId == Modes.CageMatch)
+            displayHighScoreText.text = "high score : " + highScores.TotalPointsBonus;
+            return;
+        }
+        if (gameModeId == Modes.ThreePointContest)
+        {
+            displayHighScoreText.text = "high score : " + highScores.ThreePointContestScore;
+            scoreClockTextReader().text = stats.TotalPoints.ToString();
+            return;
+        }
+        if (gameModeId == Modes.FourPointContest)
+        {
+            displayHighScoreText.text = "high score : " + highScores.FourPointContestScore;
+            scoreClockTextReader().text = stats.TotalPoints.ToString();
+            return;
+        }
+        if (gameModeId == Modes.AllPointContest)
+        {
+            displayHighScoreText.text = "high score : " + highScores.AllPointContestScore;
+            scoreClockTextReader().text = stats.TotalPoints.ToString();
+            return;
+        }
+        if (gameModeId == Modes.PointsByDistance)
+        {
+            displayHighScoreText.text = "high score : " + highScores.TotalPointsByDistance;
+
+            displayCurrentScoreText.text =
+                "current distance : " + (BasketBall.instance.BasketBallState.PlayerDistanceFromRim * 6).ToString("00.00")
+                + "\nlast shot : " + Mathf.FloorToInt((BasketBall.instance.LastShotDistance * 6) / 10)
+                + "\ntotal points : " + stats.TotalPoints;
+
+            scoreClockTextReader().text = stats.TotalPoints.ToString();
+            return;
+        }
+        if (gameModeId == Modes.BashUpSomeNerds)
+        {
+            displayHighScoreText.text = "high score : " + highScores.EnemiesKilled;
+
+            displayCurrentScoreText.text =
+                "nerds bashed : " + (stats.EnemiesKilled);
+            if (scoreClockTextReader() != null)
             {
-                displayHighScoreText.text = "high score : " + PlayerData.instance.EnemiesKilledCageMatch;
-
-                displayCurrentScoreText.text =
-                    "nerds bashed : " + (stats.EnemiesKilled);
-                if (scoreClockTextReader() != null)
-                {
-                    scoreClockTextReader().text = (stats.EnemiesKilled).ToString();
-                }
-                return;
+                scoreClockTextReader().text = (stats.EnemiesKilled).ToString();
             }
-            if (gameModeId == Modes.VersusCpu || gameModeId == Modes.BeatThaComputahs)
+            return;
+        }
+        if (gameModeId == Modes.BattleRoyal)
+        {
+            displayHighScoreText.text = "high score : " + highScores.EnemiesKilledBattleRoyal;
+
+            displayCurrentScoreText.text =
+                "nerds bashed : " + (stats.EnemiesKilled);
+            if (scoreClockTextReader() != null)
             {
-                scoreClockTextReader().text = stats.TotalPoints.ToString();
-                updatePlayerScore();
-                return;
+                scoreClockTextReader().text = (stats.EnemiesKilled).ToString();
             }
-            if (gameModeId == Modes.SevenPointContest)
+            return;
+        }
+        if (gameModeId == Modes.CageMatch)
+        {
+            displayHighScoreText.text = "high score : " + highScores.EnemiesKilledCageMatch;
+
+            displayCurrentScoreText.text =
+                "nerds bashed : " + (stats.EnemiesKilled);
+            if (scoreClockTextReader() != null)
             {
-                displayHighScoreText.text = "high score : " + PlayerData.instance.SevenPointContestScore;
-                scoreClockTextReader().text = stats.TotalPoints.ToString();
-                return;
+                scoreClockTextReader().text = (stats.EnemiesKilled).ToString();
             }
-            //if (gameModeId == 21)
-            //{
-            //    displayHighScoreText.text = "high score : " + PlayerData.instance.EnemiesKilled;
+            return;
+        }
+        if (gameModeId == Modes.VersusCpu || gameModeId == Modes.BeatThaComputahs)
+        {
+            scoreClockTextReader().text = stats.TotalPoints.ToString();
+            updatePlayerScore();
+            return;
+        }
+        if (gameModeId == Modes.SevenPointContest)
+        {
+            displayHighScoreText.text = "high score : " + highScores.SevenPointContestScore;
+            scoreClockTextReader().text = stats.TotalPoints.ToString();
+            return;
+        }
+        //if (gameModeId == 21)
+        //{
+        //    displayHighScoreText.text = "high score : " + PlayerData.instance.EnemiesKilled;
 
-            //    displayCurrentScoreText.text =
-            //        "nerds bashed : " + (gameStats.Stats.EnemiesKilled);
-            //    if (scoreClockTextReader() != null)
-            //    {
-            //        scoreClockTextReader().text = (gameStats.Stats.EnemiesKilled).ToString();
-            //    }
-            //}
+        //    displayCurrentScoreText.text =
+        //        "nerds bashed : " + (gameStats.Stats.EnemiesKilled);
+        //    if (scoreClockTextReader() != null)
+        //    {
+        //        scoreClockTextReader().text = (gameStats.Stats.EnemiesKilled).ToString();
+        //    }
+        //}
 
-            if (gameModeId == 0 || gameModeId == Modes.FreePlay || gameModeId == Modes.ArcadeMode)
+        if (gameModeId == 0 || gameModeId == Modes.FreePlay || gameModeId == Modes.ArcadeMode)
+        {
+            displayCurrentScoreText.text = "longest shot : " + (gameStats1.Stats.LongestShotMade).ToString("0.00")
+                                                             + "\ncurrent distance : " + (BasketBall.instance.BasketBallState.PlayerDistanceFromRim * 6).ToString("00.00");
+            scoreClockTextReader().text = (gameStats1.Stats.LongestShotMade).ToString("0.00");
+
+            if (gameModeId == Modes.FreePlay)
             {
-                displayCurrentScoreText.text = "longest shot : " + (gameStats1.Stats.LongestShotMade).ToString("0.00")
-                                                                 + "\ncurrent distance : " + (BasketBall.instance.BasketBallState.PlayerDistanceFromRim * 6).ToString("00.00");
-                scoreClockTextReader().text = (gameStats1.Stats.LongestShotMade).ToString("0.00");
-
-                if (gameModeId == Modes.FreePlay)
-                {
-                    displayHighScoreText.text = "high score : " + PlayerData.instance.LongestShotMadeFreePlay.ToString("0.00")
-                        + "\nexp gained : " + gameStats1.getExperienceGainedFromSession();
-                }
-                else
-                {
-                    displayHighScoreText.text = "high score : " + PlayerData.instance.LongestShotMadeFreePlay.ToString("0.00");
-                }
-                // if longest shot > saved longest shot
-                if ((stats.LongestShotMade) > PlayerData.instance.LongestShotMadeFreePlay)
-                {
-                    //PlayerData.instance.saveStats();
-                    PlayerData.instance.LongestShotMadeFreePlay = gameStats1.Stats.LongestShotMade;
-                    // save to db
-                    DBHelper.instance.updateFloatValueByTableAndField("AllTimeStats", "longestShot", PlayerData.instance.LongestShotMadeFreePlay);
-                }
-                return;
+                displayHighScoreText.text = "high score : " + highScores.LongestShotMadeFreePlay.ToString("0.00")
+                    + "\nexp gained : " + gameStats1.getExperienceGainedFromSession();
             }
+            else
+            {
+                displayHighScoreText.text = "high score : " + highScores.LongestShotMadeFreePlay.ToString("0.00");
+            }
+            // if longest shot > saved longest shot
+            if ((stats.LongestShotMade) > highScores.LongestShotMadeFreePlay)
+            {
+                // AUD-012 Phase 2b Slice 64: was PlayerData.instance.LongestShotMadeFreePlay = ...
+                // followed by DBHelper.instance.updateFloatValueByTableAndField(...) - both now live
+                // behind this one delegate (see BindPersistenceContext), same value, same order.
+                persistLongestShotMadeFreePlay(gameStats1.Stats.LongestShotMade);
+            }
+            return;
         }
     }
 
