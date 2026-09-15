@@ -1,3 +1,4 @@
+using Assets.Scripts.database;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -481,34 +482,105 @@ public class GameLevelManager : MonoBehaviour, IGroundHeightProvider, IPlayerMat
     }
 
     /// <summary>
-    /// AUD-012 Phase 2b Slice 63: the composition adapter <see cref="Pause.updateFreePlayStats"/> now
-    /// calls instead of reading <c>GameLevelManager.instance.players</c> itself. No null guard, matching
-    /// the former unconditional dereference.
+    /// AUD-012 Phase 2b Slice 67: the composition adapter <see cref="Pause.Quit"/>/
+    /// <see cref="Pause.loadstartScreen"/>/<see cref="Pause.reloadScene"/> now call instead of reading
+    /// <c>DBConnector.instance != null</c> themselves. No guard on <c>DBConnector</c> being reachable
+    /// beyond the null check itself - matching every former direct <c>DBConnector.instance != null</c>
+    /// check these three call sites had.
     /// </summary>
-    private static List<PlayerIdentifier> ReadAllParticipantsForPause()
+    private static bool HasDatabaseForPause()
     {
-        return instance.players;
+        return DBConnector.instance != null;
     }
 
     /// <summary>
-    /// AUD-012 Phase 2b Slice 63: the composition adapter <see cref="Pause.updateFreePlayStats"/> now
-    /// calls instead of reading <c>GameLevelManager.instance.Player1</c> itself. No null guard, matching
-    /// the former unconditional dereference (distinct from <see cref="ReadPrimaryPlayerForTimer"/>,
-    /// which preserves a guard its own former call site already had).
+    /// AUD-012 Phase 2b Slice 67: the composition adapter <see cref="Pause.WaitForDatabaseUnlock"/> now
+    /// calls instead of reading <c>DBHelper.instance != null &amp;&amp; DBHelper.instance.DatabaseLocked</c>
+    /// itself, at both of that method's former call sites (the poll loop condition and the post-loop
+    /// timeout-warning check). Folds the "DBHelper exists" half of the former compound check into this
+    /// one adapter rather than exposing it as a second delegate - <see cref="Pause"/> no longer needs to
+    /// know DBHelper exists as a concept, only whether the database is currently locked.
     /// </summary>
-    private static PlayerIdentifier ReadPrimaryPlayerForPause()
+    private static bool DatabaseLockedForPause()
     {
-        return instance.Player1;
+        return DBHelper.instance != null && DBHelper.instance.DatabaseLocked;
     }
 
     /// <summary>
-    /// AUD-012 Phase 2b Slice 63: the composition adapter <see cref="Pause.updateFreePlayStats"/> now
-    /// calls instead of calling <c>GameRules.instance.setTimePlayed()</c> itself. No null guard,
-    /// matching the former unconditional dereference.
+    /// AUD-012 Phase 2b Slice 67: the composition adapter <see cref="Pause.reloadScene"/> now calls
+    /// instead of reading <c>PlayerData.instance != null</c> itself, at that method's second,
+    /// already-guarded reload. No guard beyond the null check itself, matching the former direct check.
     /// </summary>
-    private static void SetTimePlayedForPause()
+    private static bool HasPlayerDataForPause()
+    {
+        return PlayerData.instance != null;
+    }
+
+    /// <summary>
+    /// AUD-012 Phase 2b Slice 67: the composition adapter <see cref="Pause.reloadScene"/> now calls
+    /// instead of calling <c>PlayerData.instance.loadStatsFromDatabase()</c> itself, at both of that
+    /// method's reload points. A bare, unguarded dereference - deliberately not null-checked here -
+    /// preserving the former bare dereference at <c>reloadScene</c>'s first, previously-unguarded call
+    /// site; the second, previously-guarded call site keeps its own guard by checking
+    /// <see cref="HasPlayerDataForPause"/> before calling this adapter, not by this adapter guarding
+    /// itself.
+    /// </summary>
+    private static void ReloadPlayerDataForPause()
+    {
+        PlayerData.instance.loadStatsFromDatabase();
+    }
+
+    /// <summary>
+    /// AUD-012 Phase 2b Slice 67: the concrete persistence-layer adapter <see cref="Pause.updateFreePlayStats"/>
+    /// now calls instead of performing the whole Free Play stats-save/progression operation itself - the
+    /// persistence-layer blocker Slice 63 explicitly deferred, the same kind of cut Slice 64 made for
+    /// <see cref="MatchHudPresenter"/>. Resolves every live singleton it needs
+    /// (<c>GameRules.instance</c>, this manager's own <see cref="players"/>/<see cref="Player1"/>) fresh
+    /// on every call, matching every other adapter in this migration, and preserves the exact prior
+    /// order: <c>GameRules.instance.setTimePlayed()</c> first, then the <c>HighScoreModel</c> conversion
+    /// from the current participants, then the <c>DBConnector</c> score save (queuing through
+    /// <c>PendingMatchPersistenceStore</c> on failure), then the primary player lookup (returning early
+    /// on a missing player or missing <c>gameStats</c>, matching the former early return), then the
+    /// all-time stats save (queuing with the supplied <paramref name="resultId"/> on failure), then
+    /// <c>ProgressionService.ApplyMatchResult</c>. No save/queue/progression policy changed - this is a
+    /// pure relocation. Supersedes the retired <c>ReadAllParticipantsForPause</c>/
+    /// <c>ReadPrimaryPlayerForPause</c>/<c>SetTimePlayedForPause</c> adapters, whose callers this method
+    /// now absorbs directly (see docs/systems-restructure-plan.md, Slice 67).
+    /// </summary>
+    private static void PersistFreePlayStatsForPause(string resultId)
     {
         GameRules.instance.setTimePlayed();
+
+        // convert basketball stats to high score model
+        HighScoreModel dBHighScoreModel = new HighScoreModel();
+        HighScoreModel dBHighScoreModelTemp = new HighScoreModel();
+        dBHighScoreModelTemp = dBHighScoreModel.convertBasketBallStatsToModel(instance.players);
+
+        bool scoreSaved = DBConnector.instance.savePlayerGameStats(dBHighScoreModelTemp);
+        if (!scoreSaved)
+        {
+            PendingMatchPersistenceStore.QueueScore(dBHighScoreModelTemp);
+        }
+
+        // Reads through this manager's own roster rather than BasketBall.instance, which is a
+        // reassignable shared reference (AUD-016) rather than this specific player's own stats.
+        PlayerIdentifier primaryPlayer = instance.Player1;
+        if (primaryPlayer == null || primaryPlayer.gameStats == null)
+        {
+            return;
+        }
+
+        GameStats primaryGameStats = primaryPlayer.gameStats;
+        bool allTimeSaved = DBConnector.instance.savePlayerAllTimeStats(primaryGameStats);
+        if (!allTimeSaved)
+        {
+            PendingMatchPersistenceStore.QueueAllTime(resultId, primaryGameStats);
+        }
+
+        new ProgressionService().ApplyMatchResult(
+            resultId,
+            MatchRuntime.PrimaryCharacterId,
+            primaryGameStats.Stats.ExperienceGained);
     }
 
     private float setTerrainHeight()
@@ -605,10 +677,17 @@ public class GameLevelManager : MonoBehaviour, IGroundHeightProvider, IPlayerMat
                 ReadCancelTriggeredForPause,
                 ReadSubmitTriggeredForPause,
                 ReadGameOverForPause,
-                SetJoystickEnabledForPause,
-                ReadAllParticipantsForPause,
-                ReadPrimaryPlayerForPause,
-                SetTimePlayedForPause);
+                SetJoystickEnabledForPause);
+
+            // AUD-012 Phase 2b Slice 67: the persistence-layer ownership boundary - a separate bind call
+            // from the one above, mirroring GameRules.Start()'s split BindGameLevelManagerContext/
+            // BindPersistenceContext calls for MatchHudPresenter (Slice 64).
+            Pause.instance.BindPersistenceContext(
+                HasDatabaseForPause,
+                DatabaseLockedForPause,
+                HasPlayerDataForPause,
+                ReloadPlayerDataForPause,
+                PersistFreePlayStatsForPause);
         }
     }
 

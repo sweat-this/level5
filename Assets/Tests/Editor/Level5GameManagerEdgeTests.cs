@@ -78,11 +78,6 @@ public class Level5GameManagerEdgeTests
 
         // Spawning/registering participants is this class's whole job.
         "SpawnCoordinator.cs",
-
-        // updateFreePlayStats()'s primaryGameStats feeds DBConnector.savePlayerAllTimeStats(GameStats) /
-        // PendingMatchPersistenceStore.QueueAllTime(string, GameStats) - the same persistence-layer
-        // boundary GameRules can't narrow past either.
-        "Pause.cs",
     };
 
     /// <summary>
@@ -281,6 +276,44 @@ public class Level5GameManagerEdgeTests
             "MatchHudPresenter must have zero executable DBHelper references - the longest-shot write "
             + "must go through the bound persistLongestShotMadeFreePlay delegate, supplied by "
             + "GameRules.PersistLongestShotMadeFreePlayForHud.");
+    }
+
+    /// <summary>
+    /// AUD-012 Phase 2b Slice 67: the same guard <see cref="MatchHudPresenterHasNoPlayerDataOrDBHelperReferences"/>
+    /// enforces for <c>MatchHudPresenter</c>'s persistence-layer cut, for <c>Pause</c>'s - every one of
+    /// its former direct <c>DBConnector</c>/<c>DBHelper</c>/<c>PlayerData</c>/<c>HighScoreModel</c>/
+    /// <c>PendingMatchPersistenceStore</c>/<c>ProgressionService</c> reads must go through the bound
+    /// persistence delegates supplied by <c>GameLevelManager</c>'s Pause persistence adapters.
+    /// </summary>
+    [Test]
+    public void PauseHasNoDatabaseOrPlayerDataOrProgressionReferences()
+    {
+        string file = EnumerateGameManagerScripts()
+            .FirstOrDefault(path => Path.GetFileName(path).Equals("Pause.cs", StringComparison.OrdinalIgnoreCase));
+        Assert.IsNotNull(file, "Pause.cs not found under " + GameManagerRoot);
+
+        string text = Level5TestSourceText.StripCommentsAndLiterals(File.ReadAllText(file));
+
+        Assert.That(text, Does.Not.Match(@"\bDBConnector\b"),
+            "Pause must have zero executable DBConnector references - database-presence checks must go "
+            + "through the bound hasDatabaseReader delegate, supplied by GameLevelManager.HasDatabaseForPause.");
+        Assert.That(text, Does.Not.Match(@"\bDBHelper\b"),
+            "Pause must have zero executable DBHelper references - the database-locked poll must go "
+            + "through the bound databaseLockedReader delegate, supplied by GameLevelManager.DatabaseLockedForPause.");
+        Assert.That(text, Does.Not.Match(@"\bPlayerData\b"),
+            "Pause must have zero executable PlayerData references - presence checks and reloads must go "
+            + "through the bound hasPlayerDataReader/reloadPlayerData delegates, supplied by "
+            + "GameLevelManager.HasPlayerDataForPause/ReloadPlayerDataForPause.");
+        Assert.That(text, Does.Not.Match(@"\bHighScoreModel\b"),
+            "Pause must have zero executable HighScoreModel references - the whole Free Play "
+            + "stats-save operation must go through the bound persistFreePlayStats delegate, supplied by "
+            + "GameLevelManager.PersistFreePlayStatsForPause.");
+        Assert.That(text, Does.Not.Match(@"\bPendingMatchPersistenceStore\b"),
+            "Pause must have zero executable PendingMatchPersistenceStore references - queuing on a "
+            + "failed save must go through the bound persistFreePlayStats delegate.");
+        Assert.That(text, Does.Not.Match(@"\bProgressionService\b"),
+            "Pause must have zero executable ProgressionService references - applying the match result "
+            + "must go through the bound persistFreePlayStats delegate.");
     }
 
     [Test]

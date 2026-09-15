@@ -1,45 +1,62 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
+using System.IO;
 using System.Reflection;
+using Level5.Core.Match;
 using NUnit.Framework;
 using UnityEngine;
+using UnityEngine.TestTools;
 using UnityEngine.UI;
 
 /// <summary>
-/// AUD-012 Phase 2b Slice 63: <see cref="Pause"/> no longer reads <c>GameLevelManager.instance</c>/
-/// <c>GameRules.instance</c> itself - <see cref="Pause.Update"/>, <see cref="Pause.PressCancelMenu"/>,
-/// <see cref="Pause.TogglePause"/> and the private <c>updateFreePlayStats</c> only consult whatever
-/// delegates <see cref="Pause.BindGameLevelManagerContext"/> was called with. Mirrors the shape of
-/// <c>Level5TimerMatchEndContextTests</c>/<c>Level5MatchHudPresenterCompositionTests</c>:
-/// composition-forwarding tests driving the real methods (via reflection where private) against a
-/// <see cref="Pause"/> built without running its own heavy <c>Awake()</c> (which requires a fully wired
-/// <see cref="PauseUiObjects"/> and an active <c>EventSystem</c> neither this fixture sets up), then
-/// separate production-adapter tests against live <see cref="GameLevelManager"/>/<see cref="GameRules"/>
-/// singletons.
-///
-/// <c>updateFreePlayStats</c>'s forwarding test tolerates the method throwing once it reaches
-/// <c>DBConnector.instance.savePlayerGameStats</c> (a null <c>DBConnector.instance</c> in this fixture) -
-/// that persistence-layer coupling is this slice's explicitly deferred blocker, not touched here; the
-/// assertion is that <see cref="Pause"/>'s own two new delegates (<c>setTimePlayed</c>,
-/// <c>allParticipantsReader</c>) are called before that unrelated failure, proving the forwarding this
-/// slice actually changed.
+/// AUD-012 Phase 2b Slice 63/67: <see cref="Pause"/> no longer reads <c>GameLevelManager.instance</c>/
+/// <c>GameRules.instance</c> (Slice 63) or <c>DBConnector</c>/<c>DBHelper</c>/<c>PlayerData</c>/
+/// <c>HighScoreModel</c>/<c>PendingMatchPersistenceStore</c>/<c>ProgressionService</c> (Slice 67) itself -
+/// <see cref="Pause.Update"/>, <see cref="Pause.PressCancelMenu"/>, <see cref="Pause.TogglePause"/>,
+/// <see cref="Pause.Quit"/>, <see cref="Pause.loadstartScreen"/>, <see cref="Pause.reloadScene"/> and the
+/// private <c>updateFreePlayStats</c>/<c>WaitForDatabaseUnlock</c> only consult whatever delegates
+/// <see cref="Pause.BindGameLevelManagerContext"/>/<see cref="Pause.BindPersistenceContext"/> were called
+/// with. Mirrors the shape of <c>Level5MatchHudPresenterCompositionTests</c>: composition-forwarding
+/// tests driving the real methods (via reflection where private) against a <see cref="Pause"/> built
+/// without running its own heavy <c>Awake()</c> (which requires a fully wired <see cref="PauseUiObjects"/>
+/// and an active <c>EventSystem</c> neither this fixture sets up), then separate production-adapter tests
+/// against live <see cref="GameLevelManager"/>/<see cref="GameRules"/>/<see cref="DBConnector"/> singletons.
 /// </summary>
 public class Level5PauseCompositionTests
 {
     private readonly List<GameObject> spawned = new List<GameObject>();
     private GameLevelManager savedGameLevelManagerInstance;
     private GameRules savedGameRulesInstance;
+    private DBConnector savedDBConnectorInstance;
+    private DBHelper savedDBHelperInstance;
+    private PlayerData savedPlayerDataInstance;
+    private string pendingPersistencePath;
+    private bool pendingPersistenceFileExisted;
+    private string pendingPersistenceBackup;
 
     [SetUp]
     public void SetUp()
     {
         savedGameLevelManagerInstance = GameLevelManager.instance;
         savedGameRulesInstance = GameRules.instance;
+        savedDBConnectorInstance = DBConnector.instance;
+        savedDBHelperInstance = DBHelper.instance;
+        savedPlayerDataInstance = PlayerData.instance;
+        ActiveMatch.Clear();
 
         // TogglePause()/StartGame() read and write this real engine global - pinned here and restored
         // in TearDown so this fixture's tests are deterministic regardless of run order, and so this
         // fixture leaves no state behind for whatever else runs in the same batch.
         Time.timeScale = 1f;
+
+        // A couple of production-adapter tests below exercise PendingMatchPersistenceStore for real
+        // (it writes to Application.persistentDataPath, the same behavior it always had - this slice
+        // only relocated who calls it). Backed up and restored so this fixture never permanently
+        // changes whatever pending-persistence state another test run or a real session left behind.
+        pendingPersistencePath = Path.Combine(Application.persistentDataPath, "pending-match-persistence.json");
+        pendingPersistenceFileExisted = File.Exists(pendingPersistencePath);
+        pendingPersistenceBackup = pendingPersistenceFileExisted ? File.ReadAllText(pendingPersistencePath) : null;
     }
 
     [TearDown]
@@ -47,7 +64,21 @@ public class Level5PauseCompositionTests
     {
         GameLevelManager.instance = savedGameLevelManagerInstance;
         GameRules.instance = savedGameRulesInstance;
+        DBConnector.instance = savedDBConnectorInstance;
+        DBHelper.instance = savedDBHelperInstance;
+        PlayerData.instance = savedPlayerDataInstance;
+        ActiveMatch.Clear();
         Time.timeScale = 1f;
+        LogAssert.ignoreFailingMessages = false;
+
+        if (pendingPersistenceFileExisted)
+        {
+            File.WriteAllText(pendingPersistencePath, pendingPersistenceBackup);
+        }
+        else if (File.Exists(pendingPersistencePath))
+        {
+            File.Delete(pendingPersistencePath);
+        }
 
         foreach (GameObject go in spawned)
         {
@@ -84,6 +115,23 @@ public class Level5PauseCompositionTests
         go.SetActive(false);
         spawned.Add(go);
         return go.AddComponent<Pause>();
+    }
+
+    /// <summary>
+    /// A live <see cref="DBConnector"/> whose private <c>dbHelper</c> field is left null (the inactive-
+    /// GameObject trick defers <c>Awake()</c>'s <c>GetComponent&lt;DBHelper&gt;()</c> resolution
+    /// indefinitely, and no <see cref="DBHelper"/> component is ever added). Every
+    /// <c>DBConnector</c> save method already guards on <c>dbHelper != null</c> and returns false rather
+    /// than touching SQLite when it is absent, so this reaches the exact same "save failed, queue it"
+    /// branch <see cref="PersistFreePlayStatsForPause"/> production-adapter tests below need, with no
+    /// real database file involved.
+    /// </summary>
+    private DBConnector SpawnDatabaseConnectorWithoutDbHelper(string name)
+    {
+        GameObject go = new GameObject(name);
+        go.SetActive(false);
+        spawned.Add(go);
+        return go.AddComponent<DBConnector>();
     }
 
     private static void SetPrivateField(object target, string fieldName, object value)
@@ -136,20 +184,62 @@ public class Level5PauseCompositionTests
         Func<bool> cancelTriggeredReader = null,
         Func<bool> submitTriggeredReader = null,
         Func<bool> gameOverReader = null,
-        Action<bool> setJoystickEnabled = null,
-        Func<List<PlayerIdentifier>> allParticipantsReader = null,
-        Func<PlayerIdentifier> primaryPlayerReader = null,
-        Action setTimePlayed = null)
+        Action<bool> setJoystickEnabled = null)
     {
         pause.BindGameLevelManagerContext(
             hasGameLevelManagerReader ?? (() => true),
             cancelTriggeredReader ?? (() => false),
             submitTriggeredReader ?? (() => false),
             gameOverReader ?? (() => false),
-            setJoystickEnabled ?? (enabled => { }),
-            allParticipantsReader ?? (() => new List<PlayerIdentifier>()),
-            primaryPlayerReader ?? (() => null),
-            setTimePlayed ?? (() => { }));
+            setJoystickEnabled ?? (enabled => { }));
+    }
+
+    private void BindPersistence(
+        Pause pause,
+        Func<bool> hasDatabaseReader = null,
+        Func<bool> databaseLockedReader = null,
+        Func<bool> hasPlayerDataReader = null,
+        Action reloadPlayerData = null,
+        Action<string> persistFreePlayStats = null)
+    {
+        pause.BindPersistenceContext(
+            hasDatabaseReader ?? (() => true),
+            databaseLockedReader ?? (() => false),
+            hasPlayerDataReader ?? (() => true),
+            reloadPlayerData ?? (() => { }),
+            persistFreePlayStats ?? (resultId => { }));
+    }
+
+    /// <summary>Builds a validated FreePlay (<see cref="GameModeId.FreePlay"/> = 99) <see cref="MatchConfiguration"/>
+    /// and installs it through <see cref="ActiveMatch.Begin"/>, so <c>MatchRuntime.RawModeId == 99</c> -
+    /// the exact condition <see cref="Pause.Quit"/>/<see cref="Pause.loadstartScreen"/>/
+    /// <see cref="Pause.reloadScene"/>'s unchanged Free Play gate checks - without needing to fabricate
+    /// a display-name string match instead.</summary>
+    private static void BeginFreePlayMatch()
+    {
+        GameModeDefinition mode = TestDefinitions.Mode(GameModeId.FreePlay);
+        LevelDefinition level = TestDefinitions.Level(1, objectName: "level_free_play");
+        ActiveMatch.Begin(Configure(mode, level));
+    }
+
+    /// <summary>A non-FreePlay match, so the same gate's <c>RawModeId == 99</c>/"free" display-name check
+    /// is false - proves the gate actually discriminates rather than always passing.</summary>
+    private static void BeginNonFreePlayMatch()
+    {
+        GameModeDefinition mode = TestDefinitions.Mode(GameModeId.VersusCpu);
+        LevelDefinition level = TestDefinitions.Level(2, objectName: "level_versus");
+        ActiveMatch.Begin(Configure(mode, level));
+    }
+
+    private static MatchConfiguration Configure(GameModeDefinition mode, LevelDefinition level)
+    {
+        PlayerRoster roster = TestDefinitions.SoloRoster();
+        MatchConfigurationBuilder builder = new MatchConfigurationBuilder(
+            new GameModeCatalog(new[] { mode }),
+            new LevelDefinitionCatalog(new[] { level }));
+        MatchBuildResult result = builder.Build(new MatchRequest(mode.Id, level.LevelId, roster, MatchModifiers.Default));
+        Assert.That(result.Succeeded, Is.True, result.Validation.ToString());
+        return result.Configuration;
     }
 
     // ==================== Update() forwarding ====================
@@ -237,28 +327,239 @@ public class Level5PauseCompositionTests
         Assert.IsTrue(pause.Paused, "a live, game-over GameLevelManager must block the cancel-menu toggle.");
     }
 
-    // ==================== updateFreePlayStats() forwarding ====================
+    // ==================== AUD-012 Phase 2b Slice 67: updateFreePlayStats() forwarding ====================
 
     [Test]
-    public void UpdateFreePlayStats_ForwardsThroughSetTimePlayedAndAllParticipantsReaderBeforeThePersistenceCallItDoesNotTouch()
+    public void UpdateFreePlayStats_ForwardsToPersistFreePlayStatsWithTheCapturedResultId()
     {
         Pause pause = SpawnPauseWithoutAwake();
-        bool setTimePlayedCalled = false;
-        bool allParticipantsReaderCalled = false;
-        Bind(pause,
-            setTimePlayed: () => setTimePlayedCalled = true,
-            allParticipantsReader: () => { allParticipantsReaderCalled = true; return new List<PlayerIdentifier>(); });
+        SetPrivateField(pause, "freePlayProgressionResultId", "captured-result-id");
+        int callCount = 0;
+        string receivedResultId = null;
+        BindPersistence(pause, persistFreePlayStats: resultId => { callCount++; receivedResultId = resultId; });
 
-        // DBConnector.instance is null in this fixture - the untouched persistence coupling this slice
-        // defers - so the method is expected to throw once it reaches DBConnector.instance.
-        // savePlayerGameStats. The two delegates above run before that point.
-        Assert.Throws<TargetInvocationException>(() => InvokePrivate(pause, "updateFreePlayStats"));
+        InvokePrivate(pause, "updateFreePlayStats");
 
-        Assert.IsTrue(setTimePlayedCalled, "updateFreePlayStats must forward to the bound setTimePlayed delegate.");
-        Assert.IsTrue(allParticipantsReaderCalled, "updateFreePlayStats must forward to the bound allParticipantsReader delegate.");
+        Assert.That(callCount, Is.EqualTo(1));
+        Assert.That(receivedResultId, Is.EqualTo("captured-result-id"),
+            "updateFreePlayStats must forward the exact result id captured once in Awake() (MatchSession.EnsureCurrentMatch()), not resolve a replacement at call time.");
     }
 
-    // ================ production adapters: GameLevelManager's Pause composition ================
+    // ==================== AUD-012 Phase 2b Slice 67: Quit() database/mode gate forwarding ====================
+
+    /// <summary>
+    /// Drives the coroutine with exactly one <c>MoveNext()</c>: the free-play persistence call happens
+    /// synchronously before <c>Quit()</c>'s <c>yield return WaitForDatabaseUnlock()</c>, so this observes
+    /// it without ever running <see cref="Pause.WaitForDatabaseUnlock"/> or <c>QuitApplication</c>'s
+    /// <c>Application.Quit()</c> (both are covered separately, and neither is usable/meaningful outside
+    /// Play Mode).
+    /// </summary>
+    [Test]
+    public void Quit_DatabasePresentFreePlayMode_CallsPersistFreePlayStatsBeforeYielding()
+    {
+        BeginFreePlayMatch();
+        Pause pause = SpawnPauseWithoutAwake();
+        bool persistCalled = false;
+        BindPersistence(pause, hasDatabaseReader: () => true, persistFreePlayStats: resultId => persistCalled = true);
+
+        IEnumerator routine = pause.Quit();
+        routine.MoveNext();
+
+        Assert.IsTrue(persistCalled, "Quit() must call updateFreePlayStats() when the database is present and the mode is Free Play.");
+    }
+
+    [Test]
+    public void Quit_DatabaseAbsent_DoesNotCallPersistFreePlayStats()
+    {
+        BeginFreePlayMatch();
+        Pause pause = SpawnPauseWithoutAwake();
+        bool persistCalled = false;
+        BindPersistence(pause, hasDatabaseReader: () => false, persistFreePlayStats: resultId => persistCalled = true);
+
+        IEnumerator routine = pause.Quit();
+        routine.MoveNext();
+
+        Assert.IsFalse(persistCalled,
+            "hasDatabaseReader returning false must block the Free Play persistence call, matching the former DBConnector.instance != null guard.");
+    }
+
+    [Test]
+    public void Quit_DatabasePresentButNotFreePlayMode_DoesNotCallPersistFreePlayStats()
+    {
+        BeginNonFreePlayMatch();
+        Pause pause = SpawnPauseWithoutAwake();
+        bool persistCalled = false;
+        BindPersistence(pause, hasDatabaseReader: () => true, persistFreePlayStats: resultId => persistCalled = true);
+
+        IEnumerator routine = pause.Quit();
+        routine.MoveNext();
+
+        Assert.IsFalse(persistCalled,
+            "a non-Free-Play mode must not persist Free Play stats, even with the database present - the unchanged MatchRuntime.ModeDisplayName/RawModeId gate.");
+    }
+
+    // ==================== AUD-012 Phase 2b Slice 67: reloadScene() reload-order forwarding ====================
+
+    /// <summary>
+    /// <c>reloadScene()</c>'s final statement unconditionally calls
+    /// <c>SceneTransition.LoadScene(SceneManager.GetActiveScene().name)</c>, which is not usable outside
+    /// Play Mode. This fixture's reload-forwarding tests only care about the evidence gathered before
+    /// that point (the exact same scope the pre-existing <c>updateFreePlayStats</c> forwarding test used,
+    /// which likewise tolerated a downstream failure it wasn't testing) - so the call is tolerated with
+    /// <see cref="LogAssert.ignoreFailingMessages"/> plus a catch-all, the same pattern
+    /// <c>Level5BasketballShotMarkerSessionTests</c> uses for an equivalent Play-Mode-only Unity API.
+    /// </summary>
+    private static void InvokeReloadSceneTolerant(Pause pause)
+    {
+        LogAssert.ignoreFailingMessages = true;
+        try
+        {
+            pause.reloadScene();
+        }
+        catch (Exception)
+        {
+        }
+        finally
+        {
+            LogAssert.ignoreFailingMessages = false;
+        }
+    }
+
+    [Test]
+    public void ReloadScene_DatabasePresentFreePlayModeAndPlayerDataPresent_PersistsThenReloadsTwice()
+    {
+        BeginFreePlayMatch();
+        Pause pause = SpawnPauseWithoutAwake();
+        List<string> events = new List<string>();
+        BindPersistence(pause,
+            hasDatabaseReader: () => true,
+            hasPlayerDataReader: () => true,
+            reloadPlayerData: () => events.Add("reload"),
+            persistFreePlayStats: resultId => events.Add("persist"));
+
+        InvokeReloadSceneTolerant(pause);
+
+        Assert.That(events, Is.EqualTo(new[] { "persist", "reload", "reload" }),
+            "reloadScene() must persist once, then reload twice - the former unguarded reload inside "
+            + "the DB+FreePlay block, then the later independently-guarded reload - in that exact order.");
+    }
+
+    [Test]
+    public void ReloadScene_DatabasePresentFreePlayModeButPlayerDataAbsent_ReloadsOnlyOnceFromTheUnguardedCall()
+    {
+        BeginFreePlayMatch();
+        Pause pause = SpawnPauseWithoutAwake();
+        int reloadCallCount = 0;
+        BindPersistence(pause,
+            hasDatabaseReader: () => true,
+            hasPlayerDataReader: () => false,
+            reloadPlayerData: () => reloadCallCount++);
+
+        InvokeReloadSceneTolerant(pause);
+
+        Assert.That(reloadCallCount, Is.EqualTo(1),
+            "with hasPlayerDataReader false, only the first, former-unguarded reload (inside the DB+FreePlay "
+            + "block) must run - the second, former-guarded reload must be skipped, proving the two reload "
+            + "call sites keep their distinct former guarding rather than being deduplicated.");
+    }
+
+    [Test]
+    public void ReloadScene_DatabaseAbsent_NeitherPersistsNorRunsTheFirstReload()
+    {
+        BeginFreePlayMatch();
+        Pause pause = SpawnPauseWithoutAwake();
+        bool persistCalled = false;
+        int reloadCallCount = 0;
+        BindPersistence(pause,
+            hasDatabaseReader: () => false,
+            hasPlayerDataReader: () => false,
+            reloadPlayerData: () => reloadCallCount++,
+            persistFreePlayStats: resultId => persistCalled = true);
+
+        InvokeReloadSceneTolerant(pause);
+
+        Assert.IsFalse(persistCalled);
+        Assert.That(reloadCallCount, Is.EqualTo(0));
+    }
+
+    [Test]
+    public void ReloadScene_NotFreePlayModeButPlayerDataPresent_SkipsPersistenceButStillRunsTheSecondReload()
+    {
+        BeginNonFreePlayMatch();
+        Pause pause = SpawnPauseWithoutAwake();
+        bool persistCalled = false;
+        int reloadCallCount = 0;
+        BindPersistence(pause,
+            hasDatabaseReader: () => true,
+            hasPlayerDataReader: () => true,
+            reloadPlayerData: () => reloadCallCount++,
+            persistFreePlayStats: resultId => persistCalled = true);
+
+        InvokeReloadSceneTolerant(pause);
+
+        Assert.IsFalse(persistCalled, "a non-Free-Play mode must not persist Free Play stats.");
+        Assert.That(reloadCallCount, Is.EqualTo(1),
+            "the second reload is gated only on hasPlayerDataReader, independent of mode - it must still run.");
+    }
+
+    // ==================== AUD-012 Phase 2b Slice 67: WaitForDatabaseUnlock() polling ====================
+
+    [Test]
+    public void WaitForDatabaseUnlock_NotLocked_CompletesImmediatelyWithoutWarning()
+    {
+        Pause pause = SpawnPauseWithoutAwake();
+        BindPersistence(pause, databaseLockedReader: () => false);
+
+        IEnumerator routine = (IEnumerator)InvokePrivateReturningEnumerator(pause, "WaitForDatabaseUnlock");
+
+        Assert.That(routine.MoveNext(), Is.False,
+            "with the database never locked, the poll loop must never yield - the coroutine completes on the first MoveNext.");
+    }
+
+    /// <summary>
+    /// A four-call response sequence (true, true, false, true) models: two poll iterations that see the
+    /// database locked (each yields once), a third iteration that sees it unlocked (exits the while
+    /// loop), then the post-loop timeout-warning check independently seeing it locked again - proving
+    /// that check is its own, separate <c>databaseLockedReader()</c> call rather than reusing the loop's
+    /// last result. This exercises the exact warning-after-timeout code path without an actual 8-second
+    /// real-time wait (<c>DatabaseWaitTimeoutSeconds</c> is unchanged production behavior this slice did
+    /// not touch, verified separately by <see cref="WaitForDatabaseUnlock_TimeoutConstant_IsUnchanged"/>).
+    /// </summary>
+    [Test]
+    public void WaitForDatabaseUnlock_LockedThenUnlocked_PollsThenCompletes()
+    {
+        Pause pause = SpawnPauseWithoutAwake();
+        bool[] responses = { true, true, false, true };
+        int callIndex = 0;
+        BindPersistence(pause, databaseLockedReader: () => responses[callIndex++]);
+
+        IEnumerator routine = (IEnumerator)InvokePrivateReturningEnumerator(pause, "WaitForDatabaseUnlock");
+
+        Assert.That(routine.MoveNext(), Is.True, "iteration 1: locked, so the loop must yield.");
+        Assert.That(routine.MoveNext(), Is.True, "iteration 2: locked, so the loop must yield again.");
+        LogAssert.Expect(LogType.Warning, "Pause timed out waiting for the local database; continuing navigation.");
+        Assert.That(routine.MoveNext(), Is.False,
+            "iteration 3: unlocked, so the loop exits; the post-loop check (call 4) independently sees "
+            + "locked again and must log the timeout warning before completing.");
+        Assert.That(callIndex, Is.EqualTo(4), "databaseLockedReader must be called exactly once per loop check plus once for the post-loop warning check.");
+    }
+
+    [Test]
+    public void WaitForDatabaseUnlock_TimeoutConstant_IsUnchanged()
+    {
+        FieldInfo field = typeof(Pause).GetField("DatabaseWaitTimeoutSeconds", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.IsNotNull(field, "Pause must declare DatabaseWaitTimeoutSeconds");
+        Assert.That(field.GetValue(null), Is.EqualTo(8f));
+    }
+
+    private static object InvokePrivateReturningEnumerator(object target, string methodName)
+    {
+        MethodInfo method = target.GetType().GetMethod(methodName, BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.IsNotNull(method, $"{target.GetType().Name} must declare a method named '{methodName}'");
+        return method.Invoke(target, null);
+    }
+
+    // ================ production adapters: GameLevelManager's Pause composition (Slice 63) ================
 
     private static MethodInfo AdapterMethod(string name)
     {
@@ -288,61 +589,124 @@ public class Level5PauseCompositionTests
         Assert.IsTrue((bool)AdapterMethod("ReadGameOverForPause").Invoke(null, null));
     }
 
+    // ================ production adapters: GameLevelManager's Pause persistence composition (Slice 67) ================
+
     [Test]
-    public void ReadAllParticipantsForPause_LiveGameLevelManager_ForwardsPlayersList()
+    public void HasDatabaseForPause_ReflectsCurrentInstance_IncludingAfterReplacement()
     {
-        GameLevelManager manager = SpawnManagerWithoutAwake("game-level-manager");
-        GameLevelManager.instance = manager;
+        DBConnector.instance = null;
+        Assert.IsFalse((bool)AdapterMethod("HasDatabaseForPause").Invoke(null, null));
 
-        object result = AdapterMethod("ReadAllParticipantsForPause").Invoke(null, null);
+        DBConnector first = SpawnDatabaseConnectorWithoutDbHelper("db-connector-1");
+        DBConnector.instance = first;
+        Assert.IsTrue((bool)AdapterMethod("HasDatabaseForPause").Invoke(null, null));
 
-        Assert.AreSame(manager.players, result);
+        // "replacement singleton liveness": a later singleton swap must be observed immediately, proving
+        // this adapter resolves DBConnector.instance fresh on every call rather than capturing it once.
+        DBConnector.instance = null;
+        Assert.IsFalse((bool)AdapterMethod("HasDatabaseForPause").Invoke(null, null),
+            "the adapter must reflect a replaced (here: cleared) DBConnector.instance live, not a stale capture.");
     }
 
     [Test]
-    public void ReadPrimaryPlayerForPause_LiveGameLevelManager_ForwardsPlayer1()
+    public void DatabaseLockedForPause_NoDBHelper_ReturnsFalse()
     {
-        GameLevelManager manager = SpawnManagerWithoutAwake("game-level-manager");
-        GameLevelManager.instance = manager;
-        PlayerIdentifier player = Spawn("registered").AddComponent<PlayerIdentifier>();
-        ((PlayerRegistry)GetPrivateField(manager, "registry")).Add(player);
-
-        object result = AdapterMethod("ReadPrimaryPlayerForPause").Invoke(null, null);
-
-        Assert.AreSame(manager.Player1, result);
+        DBHelper.instance = null;
+        Assert.IsFalse((bool)AdapterMethod("DatabaseLockedForPause").Invoke(null, null));
     }
 
     [Test]
-    public void SetTimePlayedForPause_LiveGameRules_ForwardsToSetTimePlayed()
+    public void DatabaseLockedForPause_LiveDBHelper_ForwardsCurrentLockedValue()
     {
-        GameRules rules = Spawn("game-rules").AddComponent<GameRules>();
-        GameRules.instance = rules;
+        // DBHelper.Awake() destroys its own GameObject when DBHelper.instance is already non-null and
+        // is not this component - nulled first so AddComponent's real Awake() assigns instance = this
+        // instead of hitting that duplicate-instance guard (which also logs outside Play Mode).
+        DBHelper.instance = null;
+        DBHelper helper = Spawn("db-helper").AddComponent<DBHelper>();
+        DBHelper.instance = helper;
+        helper.DatabaseLocked = true;
 
-        // setTimePlayed() writes Time.time - timePlayedStart into GetPrimaryGameStats()'s
-        // MatchStats.TimePlayed, which falls back to GameLevelManager.instance.Player1.gameStats when
-        // present - wired here so the assertion below proves the adapter actually reached
-        // setTimePlayed()'s real write, not merely that invoking it didn't throw.
-        GameLevelManager manager = SpawnManagerWithoutAwake("game-level-manager");
-        GameLevelManager.instance = manager;
-        PlayerIdentifier player = Spawn("primary-player").AddComponent<PlayerIdentifier>();
-        player.gameStats = Spawn("primary-player-stats").AddComponent<GameStats>();
-        player.gameStats.Stats.TimePlayed = -999f; // sentinel: setTimePlayed() must overwrite this
-        ((PlayerRegistry)GetPrivateField(manager, "registry")).Add(player);
+        Assert.IsTrue((bool)AdapterMethod("DatabaseLockedForPause").Invoke(null, null));
 
-        AdapterMethod("SetTimePlayedForPause").Invoke(null, null);
-
-        Assert.That(player.gameStats.Stats.TimePlayed, Is.Not.EqualTo(-999f),
-            "SetTimePlayedForPause must reach GameRules.instance.setTimePlayed(), which overwrites the primary player's MatchStats.TimePlayed.");
+        helper.DatabaseLocked = false;
+        Assert.IsFalse((bool)AdapterMethod("DatabaseLockedForPause").Invoke(null, null));
     }
 
     [Test]
-    public void SetTimePlayedForPause_AbsentGameRulesInstance_PreservesExistingFailureSemantics()
+    public void HasPlayerDataForPause_ReflectsCurrentInstance()
+    {
+        PlayerData.instance = null;
+        Assert.IsFalse((bool)AdapterMethod("HasPlayerDataForPause").Invoke(null, null));
+    }
+
+    [Test]
+    public void ReloadPlayerDataForPause_NoLivePlayerData_ThrowsExactlyAsTheFormerBareDereferenceDid()
+    {
+        PlayerData.instance = null;
+
+        TargetInvocationException thrown = Assert.Throws<TargetInvocationException>(
+            () => AdapterMethod("ReloadPlayerDataForPause").Invoke(null, null));
+        Assert.That(thrown.InnerException, Is.InstanceOf<NullReferenceException>());
+    }
+
+    [Test]
+    public void PersistFreePlayStatsForPause_NoLiveGameRules_ThrowsAtSetTimePlayedBeforeAnythingElse()
     {
         GameRules.instance = null;
 
         TargetInvocationException thrown = Assert.Throws<TargetInvocationException>(
-            () => AdapterMethod("SetTimePlayedForPause").Invoke(null, null),
-            "an absent GameRules.instance must still throw exactly as the former direct call did.");
+            () => AdapterMethod("PersistFreePlayStatsForPause").Invoke(null, new object[] { "result-id" }),
+            "GameRules.setTimePlayed() must still be the first thing this adapter does - an absent "
+            + "GameRules.instance must throw exactly as the former direct call did.");
         Assert.That(thrown.InnerException, Is.InstanceOf<NullReferenceException>());
+    }
+
+    /// <summary>
+    /// With no participant registered, <c>GameLevelManager.Player1</c> is null - proving the "null
+    /// player/gameStats early return" is actually reached, this must complete without throwing even
+    /// though the score save ahead of it already ran (against a real, dbHelper-less DBConnector so that
+    /// save itself cannot throw either - see <see cref="SpawnDatabaseConnectorWithoutDbHelper"/>).
+    /// </summary>
+    [Test]
+    public void PersistFreePlayStatsForPause_NoPrimaryPlayer_ReturnsEarlyWithoutThrowing()
+    {
+        GameRules rules = Spawn("game-rules").AddComponent<GameRules>();
+        GameRules.instance = rules;
+        GameLevelManager manager = SpawnManagerWithoutAwake("game-level-manager");
+        GameLevelManager.instance = manager;
+        DBConnector.instance = SpawnDatabaseConnectorWithoutDbHelper("db-connector");
+
+        Assert.DoesNotThrow(() => AdapterMethod("PersistFreePlayStatsForPause").Invoke(null, new object[] { "result-id" }));
+    }
+
+    /// <summary>
+    /// The primary end-to-end proof: a live primary player with <c>gameStats</c>, a real (but
+    /// dbHelper-less) <see cref="DBConnector"/>, and no exception anywhere along
+    /// setTimePlayed -&gt; HighScoreModel conversion -&gt; score save/queue -&gt; primary player lookup -&gt;
+    /// all-time save/queue -&gt; ProgressionService.ApplyMatchResult. Also proves the score save actually
+    /// reached <c>PendingMatchPersistenceStore.QueueScore</c> on failure (the queued <c>Scoreid</c>
+    /// appears in the real pending-persistence file, backed up/restored by this fixture's SetUp/TearDown)
+    /// - the concrete "persistence adapter save/queue behavior" this slice relocated, not merely that
+    /// nothing threw.
+    /// </summary>
+    [Test]
+    public void PersistFreePlayStatsForPause_LivePrimaryPlayerAndDatabase_CompletesAndQueuesTheFailedScoreSave()
+    {
+        GameRules rules = Spawn("game-rules").AddComponent<GameRules>();
+        GameRules.instance = rules;
+        GameLevelManager manager = SpawnManagerWithoutAwake("game-level-manager");
+        GameLevelManager.instance = manager;
+        PlayerIdentifier player = Spawn("primary-player").AddComponent<PlayerIdentifier>();
+        player.gameStats = Spawn("primary-player-stats").AddComponent<GameStats>();
+        ((PlayerRegistry)GetPrivateField(manager, "registry")).Add(player);
+        DBConnector.instance = SpawnDatabaseConnectorWithoutDbHelper("db-connector");
+
+        Assert.DoesNotThrow(() =>
+            AdapterMethod("PersistFreePlayStatsForPause").Invoke(null, new object[] { "queue-proof-result-id" }));
+
+        string queuedContent = File.Exists(pendingPersistencePath) ? File.ReadAllText(pendingPersistencePath) : string.Empty;
+        Assert.That(queuedContent, Does.Contain("\"resultId\": \"queue-proof-result-id\""),
+            "a failed all-time-stats save (no live dbHelper) must be queued through "
+            + "PendingMatchPersistenceStore.QueueAllTime with the exact supplied resultId.");
     }
 }
