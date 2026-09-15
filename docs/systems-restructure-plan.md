@@ -5582,6 +5582,25 @@ are not blockers (already legal, see the Phase B audit above).
 same live values through the exact same calls, including the `Player1`/`players[0]` distinction and
 every unguarded-dereference failure mode.
 
+**Correction (code review, 2026-09-15):** the claim immediately above was wrong for one call site.
+`ReadSortedGameStatsListForHud` originally guarded only "is the `sortedGameStatsListReader` delegate
+bound" (always true in production), not "is `GameLevelManager.instance` actually alive" - the condition
+`GetDisplayText`'s `VersusCpu`/`BeatThaComputahs` branch's original ternary tested. That silently turned
+the original null-safe "no live `GameLevelManager` -> `'Game over'`" fallback into an unhandled
+`NullReferenceException`, a real behavior change this record incorrectly said did not exist. Fixed by
+restoring the `GameLevelManager.instance != null` guard inside the adapter itself, matching the pattern
+every other dual-consumer adapter in this session already used correctly (`Timer`'s
+`ReadPrimaryPlayerForTimer`; `Pause`'s `hasGameLevelManagerReader`/`gameOverReader` split - see Slice
+63 below, written after this bug but not affected by it). `updatePlayerScore()`'s own unguarded call
+site is unaffected in substance: it still fails with a `NullReferenceException`, now one line later on
+`players[0]` instead of on the adapter's own chain. Two regression tests added
+(`Level5MatchHudPresenterCompositionTests`): one drives the real production adapter through
+`GetDisplayText` with `GameLevelManager.instance` null and asserts the `'Game over'` fallback, one
+asserts the adapter itself returns `null` rather than throwing. Full EditMode 1343/1343 green (up from
+1341); full PlayMode 17/17 unchanged; `scripts/validate-repository.ps1` passed. Not rewriting the Slice
+62 record above - this note is the correction, per this document's own policy of recording corrections
+explicitly rather than silently editing prior entries.
+
 **Slice 63 (2026-09-14, same `dev` position as Slice 62): cuts `Pause`'s dependency on
 `GameLevelManager` and `GameRules` - closing the last of the four files this session's Phase B audit
 found in the game-manager cycle.**
