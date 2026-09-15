@@ -1,10 +1,10 @@
-﻿
+
 using System;
 using System.Collections;
 using UnityEngine;
 using Level5.Core.Match;
 
-public class PlayerCollisions : MonoBehaviour
+public class PlayerCollisions : MonoBehaviour, IPlayerCollisionHitHost
 {
     [SerializeField]
     PlayerIdentifier playerIdentifier;
@@ -16,7 +16,18 @@ public class PlayerCollisions : MonoBehaviour
     PlayerHealth playerHealth;
     [SerializeField]
     bool playerCanBeKnockedDown;
-    bool locked = false;
+
+    // AUD-012 Phase 3 Slice 70: the shared combat-hit mechanics (damage/knockdown/rake/disintegrate
+    // resolution, health application, block handling) this wrapper used to carry as private methods
+    // byte-identical to AutoPlayerCollisions's own copies. See PlayerCollisionHitHandler and
+    // IPlayerCollisionHitHost. This wrapper still owns every role-specific decision: which hitbox tag
+    // is valid, human-only dunk handling, killed-on-idle forwarding, and fall-respawn.
+    private readonly PlayerCollisionHitHandler combatHitHandler;
+
+    public PlayerCollisions()
+    {
+        combatHitHandler = new PlayerCollisionHitHandler(this);
+    }
 
     // AUD-012 Phase 2b: match rules, the fall-respawn destination and the GameRules.killedOnIdle
     // forwarding callback, composed by SpawnCoordinator.BindPlayerCollisionsContext instead of this
@@ -81,9 +92,9 @@ public class PlayerCollisions : MonoBehaviour
         {
             playerController = playerIdentifier.player.GetComponent<PlayerController>();
         }
-        
+
         playerHealth = playerIdentifier.isCpu
-            ? playerIdentifier.autoPlayer.GetComponentInChildren<PlayerHealth>() 
+            ? playerIdentifier.autoPlayer.GetComponentInChildren<PlayerHealth>()
             : playerIdentifier.player.GetComponentInChildren<PlayerHealth>();
     }
 
@@ -130,123 +141,35 @@ public class PlayerCollisions : MonoBehaviour
         || matchRules.SniperEnabled
         || matchRules.Sniper == SniperMode.Bullet
         || matchRules.Sniper == SniperMode.Laser
-        || other.transform.root.name.Contains("projectile_bullet_instantkill_enemy"))
-        // roll for evade attack chance
-        && !rollForPlayerEvadeAttackChance(playerController.CharacterProfile.Luck)
-        && !locked)
+        || other.transform.root.name.Contains("projectile_bullet_instantkill_enemy")))
         {
-            locked = true;
-            IAttackBoxHitInfo enemyAttackBoxHit = null;
-            IAttackBoxHitInfo playerAttackBoxHit = null;
-            int damage = 0;
-            bool isKnockdown = false;
-            bool isRake = false;
-            bool isDisintegrate = false;
-            // get attack box player/enemy
-            if (other.CompareTag("playerAttackBox"))
-            {
-                playerAttackBoxHit = other.GetComponent<IAttackBoxHitInfo>();
-            }
-            if (other.CompareTag("enemyAttackBox") || other.CompareTag("obstacleAttackBox"))
-            {
-                enemyAttackBoxHit = other.GetComponent<IAttackBoxHitInfo>();
-            }
-            // check if player attack
-            if (enemyAttackBoxHit != null)
-            {
-                isRake = enemyAttackBoxHit.IsRake;
-                damage = enemyAttackBoxHit.AttackDamage;
-                isKnockdown = enemyAttackBoxHit.KnockDownAttack;
-                isDisintegrate = enemyAttackBoxHit.DisintegrateAttack;
-                if (enemyAttackBoxHit.IsKilledOnIdle)
-                {
-                    markKilledOnIdle?.Invoke();
-                }
-                if (isDisintegrate)
-                {
-                    locked = true;
-                    playerDisintegrated();
-                }
-
-            }
-            //check if enemy attack
-            if (playerAttackBoxHit != null)
-            {
-                damage = playerAttackBoxHit.AttackDamage;
-                isKnockdown = playerAttackBoxHit.KnockDownAttack;
-                isDisintegrate = playerAttackBoxHit.DisintegrateAttack;
-                if (isDisintegrate)
-                {
-                    locked = true;
-                    playerDisintegrated();
-                }
-            }
-
-            // player is not blocking
-            if (playerController.CurrentState != playerController.BlockState && !isDisintegrate)
-            {
-                locked = true;
-                playerHealth.TakeDamage(damage);
-                if (PlayerHealthBar.instance != null && PlayerHealthBar.instance.IsTracking(playerHealth))
-                {
-                    StartCoroutine(PlayerHealthBar.instance.DisplayDamageTakenValue(damage));
-                }
-
-                if (playerHealth.IsDead)
-                {
-                    locked = false;
-                    return;
-                }
-
-                // player can be knocked down and other
-                if (playerCanBeKnockedDown && isKnockdown)
-                {
-                    playerKnockedDown();
-                }
-                else
-                {
-                    playerTakeDamage();
-                    // if stepped on rake
-                    if (isRake)
-                    {
-                        Debug.Log("stepped on rake");
-                        playerStepOnRake(other);
-                    }
-                }
-            }
-            // player is blocking
-            if (playerController.CurrentState == playerController.BlockState)
-            {
-                // blocking play sound
-                // block meter goes down
-                SFXBB.instance.playSFX(SFXBB.instance.blocked);
-                if (enemyAttackBoxHit != null)
-                {
-                    playerHealth.SpendBlock(enemyAttackBoxHit.AttackDamage);
-                }
-                locked = false;
-            }
-            locked = false;
+            combatHitHandler.HandleAttackBoxHit(other);
         }
     }
 
-    // player has a chance to evade attack based on character profile's luck value
-    bool rollForPlayerEvadeAttackChance(float maxPercent)
+    // ==================== IPlayerCollisionHitHost ====================
+    // Explicit implementation: these exist only for PlayerCollisionHitHandler to reach this wrapper's
+    // resolved human actor state, so they stay off the ordinary public surface.
+
+    bool IPlayerCollisionHitHost.CanBeKnockedDown => playerCanBeKnockedDown;
+
+    bool IPlayerCollisionHitHost.IsBlocking => playerController.CurrentState == playerController.BlockState;
+
+    float IPlayerCollisionHitHost.Luck => playerController.CharacterProfile.Luck;
+
+    PlayerHealth IPlayerCollisionHitHost.Health => playerHealth;
+
+    void IPlayerCollisionHitHost.RunCoroutine(IEnumerator routine) => StartCoroutine(routine);
+
+    void IPlayerCollisionHitHost.NotifyEnemyAttackBoxHit(IAttackBoxHitInfo hit)
     {
-        float percent = UnityEngine.Random.Range(0f, 100f);
-        if (percent < maxPercent)
+        if (hit.IsKilledOnIdle)
         {
-            if (PlayerHealthBar.instance != null)
-            {
-                StartCoroutine(PlayerHealthBar.instance.DisplayCustomMessageOnDamageDisplay("dodged"));
-            }
-            return true;
+            markKilledOnIdle?.Invoke();
         }
-
-        return false;
     }
 
-    void playerDisintegrated()
+    void IPlayerCollisionHitHost.ApplyDisintegrateReaction()
     {
         playerController.TakeDamage = false;
         playerController.KnockedDown = false;
@@ -255,14 +178,15 @@ public class PlayerCollisions : MonoBehaviour
         playerController.SetPlayerAnim("hasBasketball", false);
     }
 
-    void playerTakeDamage()
+    void IPlayerCollisionHitHost.ApplyDamageReaction()
     {
         playerController.TakeDamage = true;
         playerController.KnockedDown = false;
         playerController.hasBasketball = false;
         playerController.SetPlayerAnim("hasBasketball", false);
     }
-    void playerKnockedDown()
+
+    void IPlayerCollisionHitHost.ApplyKnockdownReaction()
     {
         playerController.TakeDamage = false;
         playerController.KnockedDown = true;
@@ -270,13 +194,13 @@ public class PlayerCollisions : MonoBehaviour
         playerController.SetPlayerAnim("hasBasketball", false);
     }
 
-    void playerStepOnRake(Collider other)
+    void IPlayerCollisionHitHost.ApplyRakeReaction(Collider rakeSource)
     {
-        other.transform.parent.GetComponentInChildren<Animator>().Play("attack");
+        rakeSource.transform.parent.GetComponentInChildren<Animator>().Play("attack");
         playerController.TakeDamage = true;
         playerController.KnockedDown = false;
         playerController.hasBasketball = false;
-        //StartCoroutine(playerState.PlayerFreezeForXSeconds(2f));             
+        //StartCoroutine(playerState.PlayerFreezeForXSeconds(2f));
         playerController.SetPlayerAnim("hasBasketball", false);
     }
 }

@@ -6314,6 +6314,111 @@ decisions and shot-meter wait behaviour.
 intentional differences, and a parity matrix covering human, CPU shooter, CPU defense and local
 multiplayer.
 
+**Slice 70 (2026-09-15, `dev` at `1ee458feb`): converges `PlayerCollisions`/`AutoPlayerCollisions` combat-hit mechanics; makes CPU-defender composition safe.**
+
+Continues numbering from Phase 2b's last slice (69) rather than restarting at 1 - this is the first
+Phase 3 slice.
+
+**What was shared.** `PlayerCollisions` and `AutoPlayerCollisions` carried byte-identical private
+methods for the sequence that runs once a collision is already known to be a combat hit: resolve the
+`IAttackBoxHitInfo` off the touched `enemyAttackBox`/`obstacleAttackBox`/`playerAttackBox`, roll the
+evade chance, apply health damage, short-circuit on death, choose knockdown vs. ordinary damage vs.
+rake vs. disintegrate, and spend block on a blocked hit. That sequence now lives once, in
+`PlayerCollisionHitHandler` (`Assets/Scripts/player/Level5Player/PlayerCollisionHitHandler.cs`), reached
+through a new narrow contract, `IPlayerCollisionHitHost`
+(`Assets/Scripts/player/Level5Player/IPlayerCollisionHitHost.cs`). Both wrappers implement the contract
+explicitly (off their ordinary public surface, the same shape `IPlayerDamageReactionHost` already
+uses) and hold one `PlayerCollisionHitHandler` instance each, constructed the same way
+`AutoPlayerController` already constructs its own `AutoPlayerDamageReactions` - a plain object, not a
+`MonoBehaviour`, holding the handler's own re-entrancy `locked` flag in place of the two wrappers'
+former identical `bool locked` fields. The extraction is a line-for-line transplant, including the
+evade-roll-before-locked-check ordering, the repeated `locked = true` assignments, the two independent
+non-`else` blocking/non-blocking branches, and the unconditional trailing `locked = false` - preserved
+exactly rather than tidied, since the goal was one copy of the existing sequence, not a different one.
+
+**What intentionally stays role-specific**, entirely in the two wrappers, untouched by this slice:
+
+- which hitbox tag is eligible (`playerHitbox` vs. `autoPlayerHitbox`);
+- the human path's extra sniper eligibility (`SniperMode.Bullet`/`Laser`, the
+  `projectile_bullet_instantkill_enemy` name check) - the CPU path has no equivalent;
+- human-only dunk triggering and in-air-dunk recovery;
+- human-only `GameRules.killedOnIdle` forwarding, via a new host hook,
+  `IPlayerCollisionHitHost.NotifyEnemyAttackBoxHit(IAttackBoxHitInfo)`. The shared handler always calls
+  it once an enemy/obstacle hit is resolved and never itself reads `IsKilledOnIdle` - `PlayerCollisions`
+  forwards to the bound `markKilledOnIdle` callback, `AutoPlayerCollisions` is a no-op, matching its
+  existing behaviour of never reading that field;
+- fall-respawn (both wrappers, unchanged, including `AutoPlayerCollisions`'s already-inert
+  `playerHitbox` tag check on its fall branch - a separate, pre-existing behaviour this slice does not
+  touch);
+- CPU attack-source eligibility (no `SniperMode.Bullet`/`Laser` check) and CPU fall-respawn's inert tag.
+
+**CPU-defender safety - the regression this slice fixes.** The lockdown defender
+(`Assets/Resources/Prefabs/characters/cpu_players_defense/cpu_player_defense_oldreal.prefab`) is a CPU
+participant (`PlayerIdentifier.isCpu`) whose actor carries `AutoPlayerDefense`, not
+`AutoPlayerController` - confirmed directly against the prefab (no `AutoPlayerController` script GUID
+anywhere in the file), unlike every `cpu_player_*.prefab` shooter, which carries both on the same
+`AutoPlayerCollisions` hitbox. Before this slice, `AutoPlayerCollisions.GetPlayerObjects()`
+unconditionally resolved `GetComponent<AutoPlayerController>()` for any CPU actor and left it null for
+this composition; `OnTriggerEnter`'s eligibility check then read
+`autoPlayerController.KnockedDown`/`.TakeDamage` unconditionally, so the first time this defender's
+hitbox touched an `enemyAttackBox`/`obstacleAttackBox`/`playerAttackBox` under a rule set that enables
+combat, it null-dereferenced.
+
+`GetPlayerObjects()` now records whether the resolved CPU actor actually has an `AutoPlayerController`
+(`hasShooterController`), logs once (not per-collision) when it does not, and `OnTriggerEnter`'s
+eligibility check short-circuits on that flag before ever reading `autoPlayerController`. No
+`AutoPlayerController` is added to the defender composition, no defender damage/blocking/disintegrate/
+possession/knockdown semantics were invented, and no prefab was touched - a defender-shaped CPU simply
+never enters the combat-hit branch, the same "do nothing" outcome the missing-controller composition
+already produced for every other participant read on that actor before this slice existed. **CPU-defender
+combat-hit semantics remain an open decision**, not resolved by this slice: if Lockdown's defender is
+ever meant to take health damage, block, or react to knockdown/disintegrate attacks, that requires its
+own intended-behaviour decision (and very likely `AutoPlayerDefense` gaining the state
+`IPlayerCollisionHitHost` would need - `KnockedDown`/`TakeDamage`/`CurrentState`/animator hooks - none of
+which exist on it today), not a mechanical reuse of the shooter's reactions.
+
+**Verified human / CPU shooter / CPU defender collision-role matrix:**
+
+| Behaviour | Human (`PlayerCollisions`) | CPU shooter (`AutoPlayerCollisions` + `AutoPlayerController`) | CPU defender (`AutoPlayerCollisions` + `AutoPlayerDefense`, no `AutoPlayerController`) |
+| --- | --- | --- | --- |
+| Combat-hit mechanics (damage/knockdown/rake/disintegrate/block) | `PlayerCollisionHitHandler` (shared) | `PlayerCollisionHitHandler` (shared) | never entered - `hasShooterController` guard |
+| Hitbox tag | `playerHitbox` | `autoPlayerHitbox` | `autoPlayerHitbox` (moot - guard trips first) |
+| Extra sniper (Bullet/Laser/instant-kill) eligibility | yes | no | no |
+| Dunk trigger / in-air-dunk recovery | yes | no | no |
+| `GameRules.killedOnIdle` forwarding | yes (`NotifyEnemyAttackBoxHit`) | no (no-op) | no (never reached) |
+| Fall-respawn | slot-aware destination, `playerHitbox` tag (live) | `Player1` destination, `playerHitbox` tag (inert - CPU hitboxes are tagged `autoPlayerHitbox`) | same as CPU shooter - unaffected by this slice |
+| Missing-controller composition safety | n/a (`playerController` always resolved for a human-registered participant) | n/a (`AutoPlayerController` always present) | logs once, never null-dereferences |
+
+**Deferred, unchanged by this slice:** CPU fall-respawn's inert tag condition (would need its own
+intended-behaviour decision plus the tag fix, per the existing `BindAutoPlayerCollisionsContext` doc
+comment); CPU sniper-source parity with the human path; `AutoPlayerDefense`'s own combat semantics
+(see above). None of these are "incomplete convergence" - they are intentional, pre-existing behavioural
+differences or genuinely open decisions, not regressions this slice introduced or was asked to resolve.
+
+**Validation.** Compiled clean via `Unity.exe -batchmode -quit` (0 `error CS` lines, `CompileScripts`
+phase completed). Added `Level5PlayerCollisionHitHandlerTests` (8 tests, fake-host unit coverage of the
+shared handler: knockdown/damage/rake/disintegrate/death-short-circuit/evade dispatch, and the
+`NotifyEnemyAttackBoxHit` hook firing for enemy/obstacle hits and never for player hits) and
+`Level5AutoPlayerCollisionsDefenderSafetyTests` (3 tests: the defender-shaped composition logs once and
+never throws, on both `Start()` and an actual attack-box collision; an ordinary CPU-shooter composition
+still reaches the shared handler, proving the safety guard is not a blanket CPU disable). Ran via
+`Unity.exe -batchmode -runTests -testPlatform EditMode -testFilter "Level5PlayerCollisionHitHandlerTests;Level5AutoPlayerCollisionsDefenderSafetyTests"`:
+11/11 passed. Existing `Level5SpawnCoordinatorFallRespawnCompositionTests` and
+`Level5SpawnCoordinatorKilledOnIdleCompositionTests` (fall-respawn and killed-on-idle composition,
+reflectively driving `PlayerCollisions.Start()`/`OnTriggerEnter()` and `SpawnCoordinator.RegisterHuman`/
+`RegisterCpu`) were not touched - neither the fields they reflect on (`fallRespawnDestination`,
+`markKilledOnIdle`) nor the binding methods they call changed, and they exercise the fall-respawner
+branch this slice did not modify. Manual Play Mode verification (human combat hit, CPU shooter combat
+hit, Lockdown defender collision) is recorded as **not run** in this pass - see the caveat below.
+
+**Caveat: manual Play Mode evidence not collected this slice.** Section 9's domain-required "targeted
+Play Mode check" (human hit, CPU shooter hit, Lockdown defender interaction) was not performed; this
+slice's evidence is source inspection, a clean batchmode compile, and the automated coverage above,
+which directly reconstructs the defender's real prefab composition (`PlayerIdentifier` +
+`AutoPlayerDefense`, no `AutoPlayerController`, `AutoPlayerCollisions` + `PlayerHealth` on an
+`autoPlayerHitbox`-tagged child) and drives the real `Start()`/`OnTriggerEnter()` methods rather than a
+stand-in. Treat the Play Mode pass as still owed before certifying this slice for release.
+
 ### Phase 4 — One locomotion motor
 
 Scoped to **actor locomotion**, not to velocity writes in general. Direct velocity stays correct for
