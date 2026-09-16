@@ -152,10 +152,19 @@ public class AutoPlayerDefense : MonoBehaviour
         // checks its counterparts carry were absent - currently masked, because PlayerKnockedDown
         // freezes the X and Z constraints so the MovePosition below has no visible effect, but the
         // guard was missing rather than unnecessary, and DEF-1 changed how that step is computed.
+        //
+        // AUD-012 Phase 4 Slice 73: that "no visible effect" masking no longer holds now that
+        // moveToPosition commands a persistent Rigidbody velocity instead of a one-shot MovePosition
+        // step - a velocity commanded on the tick just before this guard trips would otherwise sit on
+        // the Rigidbody, frozen out of position by the knockdown constraints but still present, and
+        // snap the defender sideways the instant those constraints lift. This gate now releases it
+        // explicitly on every suppressed tick, matching AutoPlayerController's own arrival-release
+        // requirement under the same velocity-driven motor.
         if (playerCrossover
             || currentState == knockedDownState
             || currentState == disintegratedState)
         {
+            ReleasePlanarVelocity();
             return;
         }
 
@@ -353,20 +362,59 @@ public class AutoPlayerDefense : MonoBehaviour
     /// it could neither close a gap nor hold one. It is now 10: clear of every authored player
     /// speed, and a match for the old close-out authority over the 1.5-3 unit band where a
     /// contest actually happens. Tuned by construction, not by feel - worth a Play Mode pass.
+    ///
+    /// AUD-012 Phase 4 Slice 73: the Rigidbody write moved from <c>rigidBody.MovePosition(rigidBody.
+    /// position + movement)</c> to <see cref="RigidbodyLocomotionMotor"/>, matching
+    /// <see cref="AutoPlayerController.moveToPosition"/>'s own migration. Two consequences of that
+    /// move, both matching the reasoning documented there:
+    ///
+    /// - The direction is flattened to the X/Z plane before normalizing, rather than normalizing the
+    ///   full 3D <c>(target - position)</c> and clamping the 3D distance. Under the old MovePosition
+    ///   path a 3D-normalized step was harmless - <c>target</c>'s Y component (LerpByDistance's blend
+    ///   between the guarded player's height and the rim's) was still physically written to Y along
+    ///   with X/Z every step. <see cref="RigidbodyLocomotionMotor"/> only ever writes X/Z, so that Y
+    ///   component is no longer driven by navigation at all - gravity and <see cref="AutoPlayerJump"/>
+    ///   own Y now, matching every other Phase 4 role. Flattening first keeps horizontal speed exactly
+    ///   <c>movementSpeed</c> regardless of the target's Y delta, rather than silently throttling it.
+    /// - This method is called every gated <see cref="FixedUpdate"/> tick, not just while some
+    ///   "haven't arrived yet" flag is unset (this defender has no such gate - it tracks continuously).
+    ///   A one-shot <c>MovePosition</c> step produced no further displacement the instant it stopped
+    ///   being called; a commanded Rigidbody velocity persists until overwritten. The near-zero-distance
+    ///   case below - previously a same-tick no-op - now has to explicitly release the previously
+    ///   commanded velocity, or the defender would keep sliding at its last speed while sitting on top
+    ///   of its target. <see cref="ReleasePlanarVelocity"/> is shared with <see cref="FixedUpdate"/>'s
+    ///   crossover/knockdown/disintegrate gate for the same reason.
     /// </summary>
     public void moveToPosition(Vector3 target)
     {
         Vector3 toTarget = target - transform.position;
-        float distanceRemaining = toTarget.magnitude;
+        Vector3 planarToTarget = new Vector3(toTarget.x, 0f, toTarget.z);
+        float distanceRemaining = planarToTarget.magnitude;
         if (distanceRemaining <= Mathf.Epsilon)
         {
-            movement = Vector3.zero;
+            ReleasePlanarVelocity();
             return;
         }
 
         float step = Mathf.Min(movementSpeed * Time.fixedDeltaTime, distanceRemaining);
-        movement = (toTarget / distanceRemaining) * step;
-        rigidBody.MovePosition(rigidBody.position + movement);
+        Vector3 direction = planarToTarget / distanceRemaining;
+        movement = direction * step;
+        Vector3 velocity = direction * (step / Time.fixedDeltaTime);
+        RigidbodyLocomotionMotor.SetPlanarVelocity(rigidBody, velocity.x, velocity.z);
+    }
+
+    /// <summary>
+    /// Releases any planar (X/Z) velocity <see cref="moveToPosition"/> last commanded, leaving
+    /// whatever Y velocity gravity or <see cref="AutoPlayerJump"/> already owns untouched. Shared by
+    /// <see cref="moveToPosition"/>'s own zero-distance case and <see cref="FixedUpdate"/>'s
+    /// crossover/knockdown/disintegrate gate - AUD-012 Phase 4 Slice 73, see
+    /// <see cref="moveToPosition"/>'s doc comment for why a persistent velocity command needs an
+    /// explicit release everywhere ordinary locomotion can stop.
+    /// </summary>
+    private void ReleasePlanarVelocity()
+    {
+        movement = Vector3.zero;
+        RigidbodyLocomotionMotor.SetPlanarVelocity(rigidBody, 0f, 0f);
     }
 
     private void getAnimatorStateHashes()
@@ -463,7 +511,13 @@ public class AutoPlayerDefense : MonoBehaviour
             playerCrossover = false;
         }
 
-        rigidBody.linearVelocity = Vector3.up * jumpForce;
+        // AUD-012 Phase 4 Slice 73: Y-only write (was a full-vector `linearVelocity = Vector3.up *
+        // jumpForce` overwrite) so the contest jump composes correctly with moveToPosition's planar
+        // velocity command regardless of which runs first in a given tick - matching the same fix
+        // AutoPlayerJump()/PlayerJump() already carry in AutoPlayerController/PlayerController.
+        Vector3 jumpVelocity = rigidBody.linearVelocity;
+        jumpVelocity.y = jumpForce;
+        rigidBody.linearVelocity = jumpVelocity;
         yield return WaitForGuardedPlayerToLand(player);
         isLocked = false;
     }
