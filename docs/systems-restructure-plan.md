@@ -6419,6 +6419,67 @@ which directly reconstructs the defender's real prefab composition (`PlayerIdent
 `autoPlayerHitbox`-tagged child) and drives the real `Start()`/`OnTriggerEnter()` methods rather than a
 stand-in. Treat the Play Mode pass as still owed before certifying this slice for release.
 
+**Slice 71 (2026-09-16, `dev` at `6dfeb044b`): converges basketball shot-attempt preparation and
+common launch-result application.**
+
+**What was shared.** `BasketBall.updateBasketBallStateShotTypeOnShoot` and
+`BasketBallAuto.updateBasketBallStateShotTypeOnShoot` were byte-identical: clear the previous attempt's
+snapshot (`BasketBallState.ResetShotAttemptSnapshot()`), then set the Two/Three/Four/Seven attempt
+flag and its matching `GameStats` counters. That sequence now lives once, in
+`BasketballShotPipeline.ApplyShotAttempt(IBasketballRuntime, bool, bool, bool, bool)` - the same
+`IBasketballRuntime`-shaped parameter `ApplyMarkerAndMoneyBallOnShoot` already uses. Both concrete
+`updateBasketBallStateShotTypeOnShoot` methods are now one-line forwards (`this` satisfies
+`IBasketballRuntime` on both types); `PlayerDunk.playerDunk()` keeps calling the same public
+`BasketBall.updateBasketBallStateShotTypeOnShoot` signature unchanged. The extraction preserves the
+original (non-mutually-exclusive) line-check conditions exactly, including the existing quirk that
+`three && four` both true sets neither attempt flag - characterized by
+`ApplyShotAttempt_ThreeAndFourBothTrue_SetsNeitherAttemptFlag`, not changed.
+
+`BasketBall.Launch` and `BasketBallAuto.Launch` were also byte-identical for the part that ran after
+`BasketballShotPipeline.ComputeLaunch`: display the shot-meter message, apply the computed velocity to
+the Rigidbody, clear `HasBasketball`, clear the `hasBasketball` anim bool, and call
+`actor.EndShootCycle()`. That sequence now lives once, in
+`BasketballShotPipeline.ApplyLaunchResult(IShooterActor, Rigidbody, LaunchComputation)` - taking the
+actor and Rigidbody explicitly rather than widening `IBasketballRuntime`/`IShooterActor`, since neither
+interface exposes a Rigidbody today and this is the only caller that needs one alongside the actor.
+
+**What intentionally stays role-specific**, entirely in the two `Launch()` methods, untouched by this
+slice:
+
+- the critical-success presentation gate - human requires `computation.IsSwish && !isCpu`, CPU requires
+  only `computation.IsSwish` - called immediately before `ApplyLaunchResult`, exactly where it ran
+  before;
+- human-only shot telemetry (`shotTelemetryCallback?.Invoke(actor.ShotMeterSliderValue)`) - still called
+  immediately after `ApplyLaunchResult`, after `actor.EndShootCycle()` has already run inside it, exactly
+  as before; `BasketBallAuto` still declares no telemetry binding surface at all;
+- each `LaunchBasketBall` coroutine's `ShotMeterEnded` wait predicate - human waits for `false`, CPU
+  waits for `true` - left untouched, per the pipeline's own file-header note that this difference is
+  confirmed intentional;
+- shot-meter readiness/coroutine control, marker/money-ball application
+  (`ApplyMarkerAndMoneyBallOnShoot`, already shared before this slice), shot-distance calculation, and
+  every other role-specific lifecycle/presentation behavior named in this issue's non-goals.
+
+**Validation.** Compiled clean via `Unity.exe -batchmode -quit` (0 `error CS` lines, `CompileScripts`
+phase completed). Ran the directly affected existing suites via `-runTests -testPlatform EditMode
+-testFilter "Level5BasketballShotPipelineTests;Level5BasketBallCriticalSuccessPresentationTests;
+Level5BasketBallShotTelemetryTests;Level5PlayerDunkSeamTests"`: 66/66 passed, unchanged behavior for the
+critical-success gate, telemetry ordering, and `PlayerDunk`'s call site. Added 7 focused
+`Level5BasketballShotPipelineTests` cases exercising `ApplyShotAttempt` (each line independently, the
+preserved three-and-four quirk, and the snapshot-reset-before-new-attempt ordering) and
+`ApplyLaunchResult` (velocity/message/HasBasketball/anim-bool/EndShootCycle application) directly against
+the new pipeline methods.
+
+Also added `Level5BasketballShotAttemptAndLaunchConvergencePlayModeTests` (2 tests) - the Section 9
+Play Mode requirement for this slice. Every EditMode fixture for this area drives `Start()`/`Launch()`
+by reflection with no running coroutine host, so `shootBasketBall`'s own
+`StartCoroutine(LaunchBasketBall())` never actually executes outside Play Mode; this file hand-composes
+a human `BasketBall` and a CPU `BasketBallAuto` (no full scene/start-menu load needed) and calls the
+real public `shootBasketBall()` entry point, letting Unity actually tick the coroutine to completion for
+both roles. Ran via `-runTests -testPlatform PlayMode -testFilter
+"Level5BasketballShotAttemptAndLaunchConvergencePlayModeTests"`: 2/2 passed, confirming
+`ApplyShotAttempt`'s counters and `ApplyLaunchResult`'s velocity/state application both actually run
+end-to-end through the real coroutine for a human shot and a CPU shot.
+
 ### Phase 4 — One locomotion motor
 
 Scoped to **actor locomotion**, not to velocity writes in general. Direct velocity stays correct for
