@@ -6490,6 +6490,162 @@ jumps, dunks, projectiles and ball launch. The defect is driving a dynamic body'
 explicit APIs. Movement tested separately for human, CPU shooter, CPU defense, enemy, bodyguard,
 racing vehicle and cinder block.
 
+**Slice 72 (2026-09-16, `dev` at `731f8c388`): establishes the shared planar locomotion motor and
+migrates the human and CPU-shooter roles.**
+
+**What was shared.** `PlayerController.ApplyHorizontalMovement()` already wrote horizontal velocity
+correctly (the fix `PlayerMovementPhysicsTests` guards). That exact write - "keep Y, overwrite X/Z" -
+now lives once, in `RigidbodyLocomotionMotor.SetPlanarVelocity(Rigidbody, float, float)`, a plain
+static helper in `Level5.Utility` matching `RigidbodyFreezeHelper`'s shape (unrelated controllers, no
+base class). `PlayerController` calls it with no other change to `ApplyHorizontalMovement()` -
+dunk/attack ownership, the airborne-no-steering early return, and the grounded-no-input zero write are
+all untouched.
+
+`AutoPlayerController.moveToPosition(Vector3)` moved from `rigidBody.MovePosition(transform.position +
+movement)` to the same motor, called with `direction * movementSpeed` (world units/second, not
+`direction * movementSpeed * Time.deltaTime`). The pre-existing `movement` field keeps its old
+per-step-displacement meaning unchanged - `FixedUpdate` still reads it into
+`movementHorizontal`/`movementVertical` for `IsWalking`'s animation blend - it simply stopped doubling
+as the Rigidbody command. `movementSpeed` selection is untouched.
+
+Target-direction calculation changed in one specific way, caught by a second code-review pass: the
+original `(target - transform.position).normalized` normalizes the full 3D direction, including any Y
+delta between the actor and its target. Under `MovePosition` this was harmless - the discarded Y portion
+of `movement` was still physically applied each step, so 3D closure speed was always exactly
+`movementSpeed`. Under velocity-only navigation only X/Z ever reaches the Rigidbody, so a 3D-normalized
+direction would silently throttle horizontal speed below `movementSpeed` whenever actor and target
+differ in Y (and could stall arrival entirely if that Y gap alone exceeded the 0.05 threshold, since Y is
+no longer driven by navigation at all). Fixed by flattening to the X/Z plane before normalizing, so
+horizontal speed is exactly `movementSpeed` regardless of Y delta - matching both this method's and
+`RigidbodyLocomotionMotor`'s documented contract. Covered by
+`MoveToPosition_TargetWithYDelta_StillCommandsFullMovementSpeedHorizontally`.
+
+**The intentional CPU physics-mechanism change.** Position-driven navigation stopped producing
+displacement the instant `FixedUpdate` stopped calling `moveToPosition` (arrival, a shot cycle, a
+knockdown). Velocity-driven navigation does not - the Rigidbody keeps whatever X/Z velocity the last
+call commanded. `Update()`'s existing arrival check (`!arrivedAtTarget && distanceToTarget <= 0.05f &&
+Grounded`) already zeroed the Rigidbody's velocity on arrival before this slice, but zeroed all three
+axes (`rigidBody.linearVelocity = Vector3.zero`), which happened to be harmless only because the CPU is
+grounded at that instant. That write is now `ApplyArrivalTransition()` - a small private method
+extracted from the inline `if` body so this exact transition is directly testable without composing
+this controller's full `Start()`/`Update()` dependency web - and goes through
+`RigidbodyLocomotionMotor.SetPlanarVelocity(rigidBody, 0f, 0f)`, clearing only X/Z. Arrival state
+(`arrivedAtTarget`, `stateWalk`, `stateIdle`) and the arrival threshold are unchanged.
+
+`FixedUpdate` turned out to carry a second, independent arrival check (`if (distanceToTarget <= 0.05f)
+{ arrivedAtTarget = true; }` inside its own navigation block) that `Update()`'s does not gate - `Grounded`
+is a plain settable property that can differ between the two calls in the same frame pair, so either can
+be the one that first observes the CPU within the threshold. Code review on this slice caught it: under
+the old `MovePosition` path a bare `arrivedAtTarget = true` here was harmless (no persistent velocity to
+leak), but under velocity-driven navigation it would leave the CPU sliding at its last commanded speed
+forever - `arrivedAtTarget` already true also blocks `Update()`'s own check from ever running to correct
+it. Fixed by routing this site through `ApplyArrivalTransition()` too, so both arrival sites release
+planar velocity identically. `Level5LocomotionRatchetTests` gained a permanent guard
+(`AutoPlayerControllerSetsArrivedAtTargetOnlyInsideTheSharedArrivalTransition`, asserting exactly one raw
+`arrivedAtTarget = true` in the file) and `Level5AutoPlayerControllerLocomotionTests` gained a test
+driving the real `FixedUpdate()` through this exact branch - both verified against a negative control
+(the bug briefly reintroduced, both tests failed, then reverted) before landing.
+
+`ApplyArrivalTransition()` also narrows `Update()`'s call site specifically: that site previously zeroed
+all three velocity axes unconditionally (`rigidBody.linearVelocity = Vector3.zero`), not just X/Z. A
+second review pass (removed-behavior audit) caught this as a real, callable-out narrowing rather than an
+oversight - it is intentional and matches this slice's own mandate (clear X/Z, preserve Y), and is
+harmless in practice since that site is reached only while `Grounded`, but it is now stated explicitly in
+`ApplyArrivalTransition()`'s own doc comment rather than only in this file. `FixedUpdate`'s call site never
+zeroed velocity at all before this slice (nothing to preserve under `MovePosition`), so X/Z-only is a
+strictly new guarantee there, not a narrowing.
+
+**Vertical and explicit-impulse ownership**, untouched by this slice: gravity, knockback/damage reactions.
+`AutoPlayerJump()` and `PlayerJump()` are touched, but narrowly: both used to overwrite the whole
+`linearVelocity` vector (`Vector3.up * jumpForce`), which is how a same-tick jump could have discarded a
+navigation command depending on `FixedUpdate` call order. Code review flagged this as the deeper fix this
+slice's first pass (a jump-before-navigation reorder) had only worked around positionally: both jumps now
+write `velocity.y = jumpForce` only, preserving whatever X/Z locomotion already commanded, matching
+`RigidbodyLocomotionMotor`'s own "preserve the axis you don't own" contract. The two writes now commute
+regardless of order - the reorder is kept (mirrors `PlayerController`'s pre-existing ordering) for
+readability, not because correctness depends on it anymore. Covered in isolation by
+`Level5AutoPlayerControllerLocomotionTests.AutoPlayerJump_PreservesExistingPlanarVelocity` and, combined
+with navigation in the same `FixedUpdate` tick, by
+`FixedUpdate_JumpAndNavigationInTheSameTick_BothSurviveInCorrectOrder` - both re-verified against a
+negative control. `AutoPlayerController` also carried a second, dead `PlayerJump()` method (identical
+full-vector write, zero callers anywhere in the repo) directly adjacent to `AutoPlayerJump()` - deleted
+rather than patched, since patching an unreferenced method protects nothing and a future accidental
+wire-up of the stale copy would have reintroduced exactly this bug.
+
+**Deferred, unchanged by this slice:** `AutoPlayerDefense`, `EnemyController`, `BodyGuardController`,
+`RacingVehicleController`, `RacingCinderBlock` - all still drive locomotion through `MovePosition` and
+require their own analysis (different arrival/acceleration/impulse policies). The CPU shoot-cycle itself
+(target selection via `getClosestPositionMarker`/`SelectShotKind`, jump trigger, shot meter, `Launch`) is
+untouched - this slice changed only how the Rigidbody is commanded and released, not when or why.
+
+**LATER, flagged by code review, not implemented in this slice:** `Update()`'s and `FixedUpdate()`'s
+arrival-detection *conditions* are two independently-maintained boolean expressions that already diverge
+(`Update()`'s has no `isDefensivePlayer`/`InAir`/knockdown/disintegrated exclusions that `FixedUpdate()`'s
+has) - pre-existing, not introduced by this slice. `ApplyArrivalTransition()` unifies the cleanup side
+effect both sites now share, not the detection logic itself, so the two conditions can still disagree
+about whether an actor has "arrived" under an excluded state. A future change to one guard's exclusion
+list would not propagate to the other. The more complete fix is one authoritative arrival determination
+consumed by both call sites, not two detection sites sharing only their cleanup - a larger restructure
+than this locomotion slice's mandate.
+
+**Validation.** Compiled clean via `Unity.exe -batchmode -quit` (0 `error CS` lines, `CompileScripts`
+phase completed). Added `Level5RigidbodyLocomotionMotorTests` (4 EditMode tests: X/Z applied, Y
+preserved, zero-planar preserves Y) directly against the new motor. Added
+`Level5AutoPlayerControllerLocomotionTests` (9 EditMode tests) driving the real public
+`moveToPosition()`, the real (extracted) `ApplyArrivalTransition()`, the real (private) `AutoPlayerJump()`,
+and the real `FixedUpdate()` through both its arrival branch and its jump/navigation composition, against
+a minimally-composed controller - `rigidBody`/`movementSpeed`/`anim`/`playerIdentifier`/`characterProfile`
+set by reflection or `AddComponent`, `Start()` never invoked in EditMode - covering: velocity scaled by
+`movementSpeed` alone (not double-scaled by `Time.deltaTime`), horizontal speed staying exactly
+`movementSpeed` regardless of a target's Y delta, Y preserved through `moveToPosition`, the
+`movement` field's displacement meaning preserved, arrival clearing X/Z while preserving Y and setting
+`arrivedAtTarget`/`stateWalk`/`stateIdle` from both `Update()`'s and `FixedUpdate()`'s independent arrival
+checks, the jump write preserving existing planar velocity in isolation, a same-tick jump and navigation
+both surviving together, and a subsequent `moveToPosition` call resuming non-zero velocity after arrival
+(the CPU is not permanently stopped). Added `Level5LocomotionRatchetTests` (3 EditMode tests, see below).
+Ran via `-runTests -testPlatform EditMode -testFilter "Level5RigidbodyLocomotionMotorTests;
+Level5AutoPlayerControllerLocomotionTests;Level5LocomotionRatchetTests"`: 16/16 passed.
+
+Added `AutoPlayerLocomotionPlayModeTests` (2 PlayMode tests) letting real Play Mode physics integrate
+those same calls over several fixed steps: navigate-then-arrive proves the commanded velocity actually
+moves the body toward its target and then stops drifting once `ApplyArrivalTransition` runs; a second test
+imposes a concurrent Y velocity (simulating a jump/knockback in flight) and proves an ordinary
+`moveToPosition` call does not flatten it. (Resuming navigation after arrival was trimmed from this file
+after review flagged it as redundant with the EditMode fixture's pure-state coverage of the same fact -
+kept there, where it is deterministic and faster.) Unlike EditMode, real Play Mode calls the newly-added
+component's `Start()` automatically; with no bound `IPlayerMatchRuntime` it fails its pre-existing early
+guard (one `Debug.LogError`, then `enabled = false`) before reaching the line that would otherwise
+overwrite this fixture's own `rigidBody` assignment - expected via `LogAssert.Expect`, not designed
+around. This file's reflection helpers were also folded into `RealScenePlayModeTestSupport` (`SetField`/
+`Invoke` added alongside its existing `GetField`) rather than hand-rolled locally, after review flagged
+that exact class as already extracted for this purpose. Ran via `-runTests -testPlatform PlayMode
+-testFilter "AutoPlayerLocomotionPlayModeTests;PlayerMovementPhysicsTests"`: 5/5 passed.
+`PlayerMovementPhysicsTests` (the human regression oracle, unmodified) passed unchanged (3/3), confirming
+neither the motor extraction nor the `PlayerJump()` write change altered human behaviour.
+
+`Level5LocomotionRatchetTests` (renamed from `Level5LocomotionMovePositionRatchetTests` - review flagged
+the old name/class as bundling an unrelated second guard; same file now documents and hosts both by
+design) asserts `PlayerController.cs` and `AutoPlayerController.cs` contain no executable `.MovePosition(`
+call (tolerant of the several explanatory comments both files now carry naming `MovePosition` for exactly
+this history; scoped to these two files only - the five deferred roles above still legitimately call
+`MovePosition`), plus the raw-`arrivedAtTarget`-assignment guard described above.
+
+**Caveat: no real-gameplay-mode Play Mode pass for the jump/navigation composition.** AGENTS.md's
+Basketball and Match Integrity section calls for a real-gameplay-mode Play Mode check when a change
+touches shooting/scoring/stats-adjacent code, and `AutoPlayerJump()` sets `Shotmeter.MeterStarted`/
+`MeterStartTime` immediately before/after this slice's edits. That value is unaffected by this slice
+regardless: `Time.time` does not change within a single `FixedUpdate` invocation, so `Shotmeter.
+MeterStartTime` receives the identical value whether the jump check runs before or after navigation in
+the same tick - nothing this slice changed can alter what gets stored there, only whether a concurrent
+navigation command's velocity survives. The actual regression risk was locomotion composition, not
+shot-timing, and is covered end to end (unit + real-physics integration, both negative-controlled) above.
+A full real-CPU-shooter Play Mode pass was not built for this slice: it would require substantially
+replicating `SpawnCoordinator`'s composition (`PlayerIdentifier`, `CharacterProfile`, `CallBallToPlayer`,
+bound match-runtime, game-mode selection) for evidence about a value this slice provably cannot change -
+disproportionate per this repo's own "do not add a manual Play Mode pass merely for reassurance" guidance,
+and explicitly out of this slice's "no full Phase 4 certification" mandate. Flagging this rather than
+silently treating it as covered.
+
 ### Phase 5 — Input ownership
 
 One owner per action map. Today a shared `PlayerControls` instance and per-player instances coexist,

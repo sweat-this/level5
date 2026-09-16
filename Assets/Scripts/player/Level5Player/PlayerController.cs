@@ -1057,15 +1057,19 @@ public class PlayerController : MonoBehaviour, IShooterActor, IPlayerDamageReact
 
         // Grounded with no input still writes zero, which is what stops a contact impulse from
         // surviving into the next step.
-        Vector3 velocity = rigidBody.linearVelocity;
-        velocity.x = movementHorizontal * movementSpeed;
-        velocity.z = movementVertical * movementSpeed;
-        rigidBody.linearVelocity = velocity;
+        RigidbodyLocomotionMotor.SetPlanarVelocity(
+            rigidBody, movementHorizontal * movementSpeed, movementVertical * movementSpeed);
     }
 
     public void PlayerJump()
     {
-        rigidBody.linearVelocity = Vector3.up * characterProfile.JumpForce; //+ (Vector3.forward * rigidBody.velocity.x))
+        // AUD-012 Phase 4 Slice 72: Y-only write (was a full-vector `linearVelocity = Vector3.up *
+        // jumpForce` overwrite) so this composes correctly with RigidbodyLocomotionMotor's planar write
+        // in ApplyHorizontalMovement() regardless of call order, matching the same fix applied to
+        // AutoPlayerController.AutoPlayerJump().
+        Vector3 velocity = rigidBody.linearVelocity;
+        velocity.y = characterProfile.JumpForce;
+        rigidBody.linearVelocity = velocity; //+ (Vector3.forward * rigidBody.velocity.x))
         //jumpStartTime = Time.time;
         // AUD-048: this was `!battleRoyal || !enemiesOnly`, which is only false when BOTH are on -
         // so the shot meter still started in a plain battle royal and in a plain enemies-only run,

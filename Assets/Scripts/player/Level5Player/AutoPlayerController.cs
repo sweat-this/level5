@@ -319,6 +319,17 @@ public class AutoPlayerController : MonoBehaviour, IShooterActor
     // not affected by framerate
     void FixedUpdate()
     {
+        // AUD-012 Phase 4 Slice 72: AutoPlayerJump()'s Y-only write and RigidbodyLocomotionMotor's
+        // X/Z-only write each preserve the axis the other owns, so this block's position relative to
+        // the navigation block below no longer affects correctness either way. Kept before navigation
+        // to mirror PlayerController's own FixedUpdate ordering (PlayerJump() before
+        // ApplyHorizontalMovement()), for readability rather than as a correctness requirement.
+        if (jumpTrigger)
+        {
+            jumpTrigger = false;
+            AutoPlayerJump();
+        }
+
         // AUD-050: this block used to re-derive movement from itself before moveToPosition had a
         // chance to set it - reading `movement.y` (the height component) as the depth component,
         // then writing it back as z and rescaling the whole vector by speed*dt a second time.
@@ -342,7 +353,14 @@ public class AutoPlayerController : MonoBehaviour, IShooterActor
             }
             if (distanceToTarget <= 0.05f)
             {
-                arrivedAtTarget = true;
+                // AUD-012 Phase 4 Slice 72: this arrival check is independent of Update()'s own
+                // (distanceToTarget/Grounded can change between the two, e.g. Grounded flips between
+                // an Update and the FixedUpdate that follows it), so it needs the same velocity
+                // release - moveToPosition above now commands a persistent Rigidbody velocity, not a
+                // one-shot MovePosition step, so reaching the target here without releasing it would
+                // leave the CPU sliding at its last commanded speed with arrivedAtTarget already true,
+                // which also blocks Update()'s own arrival check from ever running to correct it.
+                ApplyArrivalTransition();
             }
         }
 
@@ -357,11 +375,6 @@ public class AutoPlayerController : MonoBehaviour, IShooterActor
         if (currentState != specialState)
         {
             IsWalking(movementHorizontal, movementVertical);
-        }
-        if (jumpTrigger) 
-        {
-            jumpTrigger = false;
-            AutoPlayerJump();
         }
 
         // call ball
@@ -498,14 +511,12 @@ public class AutoPlayerController : MonoBehaviour, IShooterActor
             }
         }
         // -------------- states
+        // AUD-012 Phase 4 Slice 72: this call used to be a full-vector `rigidBody.linearVelocity =
+        // Vector3.zero` inline here - see ApplyArrivalTransition's doc comment for why only X/Z are
+        // cleared now.
         if (!arrivedAtTarget &&/*stateWalk && */distanceToTarget <= 0.05f /*&& !arrivedAtTarget*/ && Grounded)
         {
-            //Debug.Log("arrivedAtTarget");
-            arrivedAtTarget = true;
-            stateWalk = false;
-            stateIdle = true;
-            //positionMarkerCounter++;
-            rigidBody.linearVelocity = Vector3.zero;
+            ApplyArrivalTransition();
         }
         if (!stateWalk && distanceToTarget >= 0.05f && !arrivedAtTarget && Grounded)
         {
@@ -738,12 +749,58 @@ public class AutoPlayerController : MonoBehaviour, IShooterActor
     /// the marker) the field held a unit vector rather than a world position. FixedUpdate can run
     /// more than once per Update, and the second run then steered toward a point near the origin.
     /// The direction is a local now; the field is only written by getClosestPositionMarker.
+    ///
+    /// AUD-012 Phase 4 Slice 72: locomotion is now a velocity write through
+    /// <see cref="RigidbodyLocomotionMotor"/> instead of <c>rigidBody.MovePosition</c> - see that
+    /// type's doc comment for why a dynamic body should not be driven by position. `movement`
+    /// keeps its existing per-step displacement meaning: <see cref="FixedUpdate"/> still reads it into
+    /// `movementHorizontal`/`movementVertical` for <see cref="IsWalking(float, float)"/>'s animation
+    /// blend, so it is derived from the same velocity the Rigidbody gets (scaled by `Time.deltaTime`
+    /// for the per-step display it always was) rather than recomputed independently, so the two cannot
+    /// drift apart. The Rigidbody itself gets that velocity directly - world units per second, not
+    /// per-step - so it is not scaled by `Time.deltaTime` a second time on top of the physics step.
+    ///
+    /// Code review finding on this slice: the direction is flattened to the X/Z plane before scaling by
+    /// <c>movementSpeed</c>, rather than normalizing the full 3D direction (including any Y delta) and
+    /// then discarding Y. Under the old <c>MovePosition</c> path a 3D-normalized direction was harmless
+    /// - the discarded Y portion was still physically applied, so 3D closure speed was always exactly
+    /// <c>movementSpeed</c>. Under velocity-only navigation, only the X/Z portion ever reaches the
+    /// Rigidbody, so a 3D-normalized direction would silently throttle horizontal speed below
+    /// <c>movementSpeed</c> whenever the actor and target differ in Y (and could stall arrival entirely
+    /// if that Y gap alone exceeds the 0.05 threshold, since Y is no longer driven by navigation at all).
+    /// Flattening first keeps horizontal speed exactly <c>movementSpeed</c> regardless of Y delta,
+    /// matching both this method's and <see cref="RigidbodyLocomotionMotor"/>'s documented contract.
     /// </summary>
     public void moveToPosition(Vector3 target)
     {
-        Vector3 directionToTarget = (target - transform.position).normalized;
-        movement = directionToTarget * (movementSpeed * Time.deltaTime);
-        rigidBody.MovePosition(transform.position + movement);
+        Vector3 toTarget = target - transform.position;
+        Vector3 directionToTarget = new Vector3(toTarget.x, 0f, toTarget.z).normalized;
+        Vector3 velocity = directionToTarget * movementSpeed;
+        movement = velocity * Time.deltaTime;
+        RigidbodyLocomotionMotor.SetPlanarVelocity(rigidBody, velocity.x, velocity.z);
+    }
+
+    /// <summary>
+    /// AUD-012 Phase 4 Slice 72: position-driven navigation via <c>MovePosition</c> stopped producing
+    /// displacement the instant <see cref="moveToPosition"/> stopped being called. Velocity-driven
+    /// navigation does not - the Rigidbody keeps whatever X/Z velocity the last <see
+    /// cref="moveToPosition"/> call commanded until something overwrites it - so reaching the
+    /// navigation target now has to release that command explicitly. Extracted from the caller's
+    /// arrival check purely so this exact transition (own state only, no scene dependency) is directly
+    /// testable without composing this controller's full <see cref="Update"/> dependency web. Only
+    /// X/Z are cleared, through <see cref="RigidbodyLocomotionMotor"/>; whatever Y velocity gravity or
+    /// ground contact already owns is left alone - a deliberate narrowing at <see cref="Update"/>'s call
+    /// site, which used to zero all three axes unconditionally (harmless there only because it is
+    /// reached exclusively while <c>Grounded</c>). <see cref="FixedUpdate"/>'s call site never zeroed
+    /// velocity at all before this slice (under <c>MovePosition</c> there was nothing to release), so
+    /// X/Z-only is a strictly new, not narrowed, guarantee there.
+    /// </summary>
+    private void ApplyArrivalTransition()
+    {
+        arrivedAtTarget = true;
+        stateWalk = false;
+        stateIdle = true;
+        RigidbodyLocomotionMotor.SetPlanarVelocity(rigidBody, 0f, 0f);
     }
 
     //public void PlayerAttack()
@@ -814,21 +871,6 @@ public class AutoPlayerController : MonoBehaviour, IShooterActor
         {
             Flip();
         }
-    }
-
-    public void PlayerJump()
-    {
-        rigidBody.linearVelocity = Vector3.up * characterProfile.JumpForce; //+ (Vector3.forward * rigidBody.velocity.x)) 
-        //jumpStartTime = Time.time;
-
-        Shotmeter.MeterStarted = true;
-        Shotmeter.MeterStartTime = Time.time;
-        //// if not dunking, start shot meter
-        //if (currentState != inAirDunkState)
-        //{
-        //    Shotmeter.MeterStarted = true;
-        //    Shotmeter.MeterStartTime = Time.time;
-        //}
     }
 
     //-----------------------------------Walk function -----------------------------------------------------------------------
@@ -918,7 +960,14 @@ public class AutoPlayerController : MonoBehaviour, IShooterActor
     }
     void AutoPlayerJump()
     {
-        rigidBody.linearVelocity = Vector3.up * characterProfile.JumpForce; //+ (Vector3.forward * rigidBody.velocity.x)) 
+        // AUD-012 Phase 4 Slice 72: Y-only write (was a full-vector `linearVelocity = Vector3.up *
+        // jumpForce` overwrite) so this composes correctly with RigidbodyLocomotionMotor's planar write
+        // regardless of which one runs first in a given FixedUpdate, rather than depending on the
+        // jumpTrigger-before-navigation ordering below to avoid the jump erasing a same-tick navigation
+        // command (or vice versa).
+        Vector3 velocity = rigidBody.linearVelocity;
+        velocity.y = characterProfile.JumpForce;
+        rigidBody.linearVelocity = velocity; //+ (Vector3.forward * rigidBody.velocity.x))
         //jumpStartTime = Time.time;
         Shotmeter.MeterStarted = true;
         Shotmeter.MeterStartTime = Time.time;
