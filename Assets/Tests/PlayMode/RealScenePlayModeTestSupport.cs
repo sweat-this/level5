@@ -102,6 +102,22 @@ internal static class RealScenePlayModeTestSupport
         return GetField(target, name) as T;
     }
 
+    /// <summary>Writes a private/internal instance or static field by name via reflection.</summary>
+    internal static void SetField(object target, string name, object value)
+    {
+        FieldInfo field = GetFieldInfo(target, name);
+        Assert.That(field, Is.Not.Null, $"{target?.GetType().Name} must declare a field named '{name}'");
+        field.SetValue(target, value);
+    }
+
+    /// <summary>Invokes a private/internal instance or static method by name via reflection.</summary>
+    internal static object Invoke(object target, string name, params object[] args)
+    {
+        MethodInfo method = target?.GetType().GetMethod(name, PrivateInstanceFlags);
+        Assert.That(method, Is.Not.Null, $"{target?.GetType().Name} must declare a method named '{name}'");
+        return method.Invoke(target, args);
+    }
+
     /// <summary>
     /// Resolves the surviving runtime <c>GameRules</c> instance independently of any binding target's
     /// own field, so a fixture asserting that its bound field is the real live <c>GameRules</c> is not
