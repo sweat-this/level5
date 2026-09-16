@@ -6646,6 +6646,130 @@ disproportionate per this repo's own "do not add a manual Play Mode pass merely 
 and explicitly out of this slice's "no full Phase 4 certification" mandate. Flagging this rather than
 silently treating it as covered.
 
+**Slice 73 (2026-09-16, `dev` at `3e6555b68`): migrates the Lockdown/CPU-defender role
+(`AutoPlayerDefense`).**
+
+**What moved.** `AutoPlayerDefense.moveToPosition(Vector3)` moved from `rigidBody.MovePosition(rigidBody.
+position + movement)` to `RigidbodyLocomotionMotor.SetPlanarVelocity`, the same motor Slice 72
+established. Unlike `AutoPlayerController`, this defender has no arrival-state architecture - it
+continuously computes a guarding position (`moveCpuPlayer()` -> `LerpByDistance` between the guarded
+player and the rim) and calls `moveToPosition` every un-suppressed `FixedUpdate` tick, not once per
+discrete destination it then stops navigating toward. `speed`/`movementSpeed` semantics (world
+units/second), the DEF-1 near-target clamp (`Mathf.Min(movementSpeed * Time.fixedDeltaTime,
+distanceRemaining)`), and the `movement` field's per-step-displacement meaning are all unchanged.
+
+**The flatten fix, applied here too.** The old `MovePosition` write used the full 3D `(target -
+position)` direction, so `target`'s Y component - `LerpByDistance`'s blend between the guarded player's
+height and the rim's - was still physically written to Y every step. `RigidbodyLocomotionMotor` only
+ever writes X/Z, so `moveToPosition` now flattens to the X/Z plane before normalizing/clamping, matching
+`AutoPlayerController.moveToPosition`'s Slice 72 fix for the same reason: normalizing the full 3D
+direction and discarding Y afterward would silently throttle horizontal tracking speed below
+`movementSpeed` whenever the guard point sits above or below the defender. Gravity and `AutoPlayerJump`
+own Y exclusively during ordinary tracking now, matching every other migrated Phase 4 role. Covered by
+`MoveToPosition_TargetWithYDelta_StillCommandsFullMovementSpeedHorizontally`.
+
+**Stop semantics - the primary risk this slice audited.** Because this defender tracks continuously
+rather than gating on an arrival flag, its "stop calling moveToPosition" moments differ from
+`AutoPlayerController`'s. `FixedUpdate`'s existing three-condition guard (`playerCrossover`,
+`knockedDownState`, `disintegratedState` - DEF-5) used to be a harmless early return under
+`MovePosition`, since a one-shot position step produces no further displacement once nothing calls it.
+Under persistent velocity it is not harmless: a velocity commanded the tick before suppression trips
+would sit on the Rigidbody - invisible while `PlayerKnockedDown()`'s `FreezePositionX|FreezePositionZ`
+constraints are active - and snap the defender sideways the instant those constraints lift. All three
+gate branches, plus `moveToPosition`'s own pre-existing zero-distance case (reached when the guard point
+and the defender's position already coincide), now release planar velocity through a small shared
+private helper, `ReleasePlanarVelocity()` - X/Z only, leaving whatever Y gravity or `AutoPlayerJump` owns
+untouched. Covered by `FixedUpdate_CrossoverSuppressed_ReleasesResidualPlanarVelocityAndPreservesY`,
+its knockdown/disintegration twins, and `MoveToPosition_AtTarget_ReleasesPlanarVelocityAndPreservesY` -
+each verified against a negative control (the release call briefly removed, all four tests failed, then
+reverted).
+
+**Jump-axis independence.** `AutoPlayerJump()`'s contest jump used to overwrite the whole
+`linearVelocity` vector (`Vector3.up * jumpForce`). Unlike `AutoPlayerController`/`PlayerController`,
+this defender's `FixedUpdate` never gated on the jump the way it gates on crossover/knockdown/
+disintegration - tracking keeps running underneath the jump by design (the defender continues sliding
+horizontally toward its guard point while airborne, using `inAirSpeed` in place of `speed`) - so a
+same-tick full-vector jump write could silently discard that horizontal command depending on
+coroutine/`FixedUpdate` scheduling. Changed to a Y-only write, matching the same fix
+`AutoPlayerJump()`/`PlayerJump()` already carry in `AutoPlayerController`/`PlayerController`. Jump force,
+timing, contest duration and crossover probability are all unchanged. Covered by
+`AutoPlayerJump_PreservesExistingPlanarVelocity`, re-verified against a negative control (the full-vector
+overwrite briefly restored, the test failed, then reverted).
+
+**Deferred, unchanged by this slice:** `EnemyController`, `BodyGuardController`,
+`RacingVehicleController`, `RacingCinderBlock` - all still drive locomotion through `MovePosition` and
+require their own analysis (different arrival/acceleration/impulse policies).
+
+**Validation.** Compiled clean via `Unity.exe -batchmode -nographics -quit` (0 `error CS` lines,
+`CompileScripts` phase completed). Added `Level5AutoPlayerDefenseLocomotionTests` (10 EditMode tests)
+driving the real public `moveToPosition()` and the real private `FixedUpdate()`/`AutoPlayerJump()` via
+reflection against a minimally-composed defender (`rigidBody`/`movementSpeed` set directly, `Start()`
+never invoked) - covering: velocity scaled by `movementSpeed` alone, horizontal speed staying exactly
+`movementSpeed` regardless of a target's Y delta, Y preserved through `moveToPosition`, a
+closer-than-one-step target clamped without overshoot, the `movement` field's displacement meaning
+preserved, reaching the target releasing X/Z while preserving Y, all three `FixedUpdate` suppression
+gates (crossover/knockdown/disintegration) releasing X/Z while preserving Y, and the contest jump
+preserving existing planar velocity. `Level5LocomotionRatchetTests` gained a third guard,
+`AutoPlayerDefenseHasNoExecutableMovePositionCall`, scoped to this file alongside the two Slice 72 guards.
+Ran via `-runTests -testPlatform EditMode -testFilter "Level5AutoPlayerDefenseLocomotionTests;
+Level5LocomotionRatchetTests"`: 14/14 passed. Four negative controls confirmed the new tests actually
+detect their target defects: removing `ReleasePlanarVelocity()` from `FixedUpdate`'s suppression gate
+failed all three suppression tests plus the jump test's full-vector-overwrite twin (4 failures);
+restoring the jump's full-vector overwrite failed the jump test; removing the near-target clamp failed
+the clamp test; reintroducing an executable `MovePosition` call failed the ratchet guard - each reverted
+immediately after confirming the failure.
+
+**Code review finding on this slice: the three `FixedUpdate` suppression tests did not isolate the branch
+each claimed to test.** `currentState`/`knockedDownState`/`disintegratedState` all default to `0` with
+`Start()` never invoked, so the crossover test's `currentState == knockedDownState` clause (`0 == 0`) was
+coincidentally also `true`, and separately, all three suppression tests' fallback path -
+`FixedUpdate` falling through to `moveToPosition(moveCpuPlayer())` if a gate clause were broken - resolved
+to a target equal to the uncomposed actor's own position (every guarding-position input defaults to
+`(0,0,0)`), which hits `moveToPosition`'s own zero-distance release branch and zeroes velocity anyway.
+Both effects meant a test could pass even with its target gate clause deleted. Caught by negative control:
+removing the `playerCrossover` clause did not fail its test until fixed. Fixed by giving the three state
+fields mismatching sentinel values per test (isolating which clause is under test) and adding
+`ComposeNonTrivialGuardTarget` (sets `playerPosition`/`bballRimVector`/`playerGuardingDistance` so the
+fallback target is meaningfully non-zero), called by all three suppression tests. Re-verified: removing
+the `playerCrossover` clause now fails exactly the crossover test (1 failure), reverted after confirming.
+
+Added `AutoPlayerDefenseLocomotionPlayModeTests` (2 PlayMode tests) letting real Play Mode physics
+integrate those same calls over several fixed steps, mirroring `AutoPlayerLocomotionPlayModeTests`:
+continuous tracking toward a target, holding within the arrival threshold without overshoot/oscillation
+for several further ticks (proving the near-target clamp under real physics), then proving no residual
+drift once `moveToPosition` stops being called; a second test imposes a concurrent Y velocity (simulating
+a contest jump in flight) and proves an ordinary tracking tick does not flatten it. Unlike
+`AutoPlayerLocomotionPlayModeTests`' subject, `AutoPlayerDefense.Start()` does not return early after its
+own composition guard fires (`ResolveGuardedPlayerIfMissing` logs and disables the component, but
+execution falls through the rest of `Start()` regardless, unconditionally overwriting `rigidBody`/
+`movementSpeed`) - this fixture applies its own field values after `yield return null` lets that
+automatic `Start()` finish, rather than before it. Ran via `-runTests -testPlatform PlayMode -testFilter
+"AutoPlayerDefenseLocomotionPlayModeTests;AutoPlayerLocomotionPlayModeTests;PlayerMovementPhysicsTests"`:
+7/7 passed, confirming this slice did not regress the CPU-shooter or human locomotion paths it shares
+`RigidbodyLocomotionMotor` with.
+
+Ran the full suites for final certification: EditMode 1427/1427 passed, PlayMode 23/23 passed,
+`scripts/validate-repository.ps1` passed.
+
+**Manual Play Mode validation:** not performed - outstanding. The available environment for this slice
+was batchmode Unity only (no interactive editor/game window), so the Lockdown/CPU-defender feel checks
+this task calls for (tracking smoothness, close-range jitter, crossover/knockdown/disintegration
+recovery, contest jump/landing, absence of residual sliding) were not observed visually. Automated
+EditMode/PlayMode coverage above establishes the physics invariants (velocity magnitude, clamping,
+release, axis independence) directly; it cannot establish feel or animation-blend quality. Flagging this
+explicitly rather than treating automated coverage as a substitute.
+
+When this manual pass becomes available, prioritize the defender's Y position/height near the rim and
+away from it, on real court geometry, over a generic playthrough. The old `MovePosition` write used the
+full 3D `(target - position)` direction, so `target`'s Y component - `LerpByDistance`'s blend between the
+guarded player's height and the rim's - was physically written into the defender's Y position every step.
+This slice's flatten-to-X/Z fix (required to match `RigidbodyLocomotionMotor`'s X/Z-only contract) removes
+that Y participation entirely; Y is now driven solely by gravity, ground collision and `AutoPlayerJump`.
+`GroundCheckDefense` (checked during code review) only toggles `grounded`/`inAir` booleans via trigger
+events and never corrects Y position, so nothing else was silently relying on the old Y-nudge as far as
+static inspection can show - but this is a real physical-behavior change on an axis automated tests cannot
+visually verify, and is the single highest-value thing to check first in this outstanding manual pass.
+
 ### Phase 5 — Input ownership
 
 One owner per action map. Today a shared `PlayerControls` instance and per-player instances coexist,
