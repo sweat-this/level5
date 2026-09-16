@@ -84,11 +84,14 @@ public class Level5BasketballShotPipelineTests
         public int Clutch => 0;
         public float ShotMeterSliderValue => 0f;
         public bool ShotMeterEnded => true;
-        public void SetAnimBool(string name, bool value) { }
+        public string DisplayedShotMeterMessage { get; private set; }
+        public int EndShootCycleCallCount { get; private set; }
+        public readonly Dictionary<string, bool> AnimBoolsSet = new Dictionary<string, bool>();
+        public void SetAnimBool(string name, bool value) => AnimBoolsSet[name] = value;
         public void SetAnimTrigger(string name) { }
         public void LockCallBallToPlayer(bool locked) { }
-        public void DisplayShotMeterMessage(string message) { }
-        public void EndShootCycle() { }
+        public void DisplayShotMeterMessage(string message) => DisplayedShotMeterMessage = message;
+        public void EndShootCycle() => EndShootCycleCallCount++;
     }
 
     private sealed class FakeRuntime : IBasketballRuntime
@@ -587,5 +590,137 @@ public class Level5BasketballShotPipelineTests
         Assert.That(state.OnShootShotMarker, Is.Null);
         Assert.IsFalse(state.MoneyBallEnabledOnShoot);
         Assert.That(stats.Stats.MoneyBallAttempts, Is.EqualTo(0));
+    }
+
+    // ==================== AUD-012 Phase 3 Slice 71: ApplyShotAttempt ====================
+    //
+    // BasketBall.updateBasketBallStateShotTypeOnShoot and BasketBallAuto's own copy were
+    // byte-identical; both are now thin forwards to this method. These tests exercise it directly
+    // through the same FakeRuntime double the marker/money-ball tests above already use.
+
+    [Test]
+    public void ApplyShotAttempt_TwoOnly_SetsTwoAttemptAndIncrementsTwoPointerCounters()
+    {
+        BasketBallState state = MakeState(twoPoints: true);
+        GameStats stats = MakeStats();
+        FakeRuntime runtime = new FakeRuntime { State = state, Stats = stats };
+
+        BasketballShotPipeline.ApplyShotAttempt(runtime, two: true, three: false, four: false, seven: false);
+
+        Assert.IsTrue(state.TwoAttempt);
+        Assert.That(stats.Stats.TwoPointerAttempts, Is.EqualTo(1));
+        Assert.That(stats.Stats.ShotAttempt, Is.EqualTo(1));
+        Assert.IsFalse(state.ThreeAttempt);
+        Assert.IsFalse(state.FourAttempt);
+        Assert.IsFalse(state.SevenAttempt);
+    }
+
+    [Test]
+    public void ApplyShotAttempt_ThreeOnly_SetsThreeAttemptAndIncrementsThreePointerCounters()
+    {
+        BasketBallState state = MakeState(twoPoints: false);
+        GameStats stats = MakeStats();
+        FakeRuntime runtime = new FakeRuntime { State = state, Stats = stats };
+
+        BasketballShotPipeline.ApplyShotAttempt(runtime, two: false, three: true, four: false, seven: false);
+
+        Assert.IsTrue(state.ThreeAttempt);
+        Assert.That(stats.Stats.ThreePointerAttempts, Is.EqualTo(1));
+        Assert.That(stats.Stats.ShotAttempt, Is.EqualTo(1));
+    }
+
+    [Test]
+    public void ApplyShotAttempt_FourOnly_SetsFourAttemptAndIncrementsFourPointerCounters()
+    {
+        BasketBallState state = MakeState(twoPoints: false);
+        GameStats stats = MakeStats();
+        FakeRuntime runtime = new FakeRuntime { State = state, Stats = stats };
+
+        BasketballShotPipeline.ApplyShotAttempt(runtime, two: false, three: false, four: true, seven: false);
+
+        Assert.IsTrue(state.FourAttempt);
+        Assert.That(stats.Stats.FourPointerAttempts, Is.EqualTo(1));
+        Assert.That(stats.Stats.ShotAttempt, Is.EqualTo(1));
+    }
+
+    [Test]
+    public void ApplyShotAttempt_Seven_SetsSevenAttemptAndIncrementsSevenPointerCountersIndependentlyOfOtherFlags()
+    {
+        BasketBallState state = MakeState(twoPoints: false);
+        GameStats stats = MakeStats();
+        FakeRuntime runtime = new FakeRuntime { State = state, Stats = stats };
+
+        BasketballShotPipeline.ApplyShotAttempt(runtime, two: false, three: false, four: false, seven: true);
+
+        Assert.IsTrue(state.SevenAttempt);
+        Assert.That(stats.Stats.SevenPointerAttempts, Is.EqualTo(1));
+        Assert.That(stats.Stats.ShotAttempt, Is.EqualTo(1));
+    }
+
+    /// <summary>
+    /// Preserved original quirk: three and four true together fail both line checks
+    /// (<c>three &amp;&amp; !four</c> and <c>four &amp;&amp; !three</c> are both false), so neither
+    /// attempt flag is set and no counter moves - this is existing behavior being characterized, not a
+    /// new rule introduced by this extraction.
+    /// </summary>
+    [Test]
+    public void ApplyShotAttempt_ThreeAndFourBothTrue_SetsNeitherAttemptFlag()
+    {
+        BasketBallState state = MakeState(twoPoints: false);
+        GameStats stats = MakeStats();
+        FakeRuntime runtime = new FakeRuntime { State = state, Stats = stats };
+
+        BasketballShotPipeline.ApplyShotAttempt(runtime, two: false, three: true, four: true, seven: false);
+
+        Assert.IsFalse(state.ThreeAttempt);
+        Assert.IsFalse(state.FourAttempt);
+        Assert.That(stats.Stats.ShotAttempt, Is.EqualTo(0));
+    }
+
+    [Test]
+    public void ApplyShotAttempt_ClearsStalePreviousAttemptSnapshotBeforeSettingTheNewAttempt()
+    {
+        BasketBallShotMarker marker = MakeMarker("marker");
+        BasketBallState state = MakeState(twoPoints: true);
+        state.EnterShotMarker(marker);
+        state.CaptureShotMarkerForAttempt();
+        state.MoneyBallEnabledOnShoot = true;
+        GameStats stats = MakeStats();
+        FakeRuntime runtime = new FakeRuntime { State = state, Stats = stats };
+
+        BasketballShotPipeline.ApplyShotAttempt(runtime, two: false, three: true, four: false, seven: false);
+
+        Assert.IsFalse(state.MoneyBallEnabledOnShoot, "a previous attempt's money-ball snapshot must be cleared before the new attempt is set");
+        Assert.That(state.OnShootShotMarker, Is.Null, "a previous attempt's marker snapshot must be cleared before the new attempt is set");
+        Assert.IsTrue(state.ThreeAttempt, "the new attempt flag must still be set after the reset");
+    }
+
+    // ==================== AUD-012 Phase 3 Slice 71: ApplyLaunchResult ====================
+    //
+    // BasketBall.Launch and BasketBallAuto.Launch applied the computed LaunchComputation identically
+    // after ComputeLaunch, apart from the critical-success gate and human-only telemetry - both of
+    // which stay in the two concrete Launch() methods and are not exercised here.
+
+    [Test]
+    public void ApplyLaunchResult_AppliesVelocityMessageAndBasketballStateAndEndsShootCycle()
+    {
+        GameObject ballGo = Spawn("apply-launch-result-ball");
+        Rigidbody rigidbody = ballGo.AddComponent<Rigidbody>();
+        FakeShooterActor actor = new FakeShooterActor { HasBasketball = true };
+        BasketballShotPipeline.LaunchComputation computation = new BasketballShotPipeline.LaunchComputation
+        {
+            GlobalVelocity = new Vector3(1f, 2f, 3f),
+            IsSwish = false,
+            Critical = false,
+            ShotMeterMessage = "swish",
+        };
+
+        BasketballShotPipeline.ApplyLaunchResult(actor, rigidbody, computation);
+
+        Assert.That(rigidbody.linearVelocity, Is.EqualTo(new Vector3(1f, 2f, 3f)));
+        Assert.IsFalse(actor.HasBasketball);
+        Assert.IsTrue(actor.AnimBoolsSet.ContainsKey("hasBasketball") && actor.AnimBoolsSet["hasBasketball"] == false);
+        Assert.That(actor.DisplayedShotMeterMessage, Is.EqualTo("swish"));
+        Assert.That(actor.EndShootCycleCallCount, Is.EqualTo(1));
     }
 }

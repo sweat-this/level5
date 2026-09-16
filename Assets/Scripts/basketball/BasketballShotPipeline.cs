@@ -108,6 +108,53 @@ public static class BasketballShotPipeline
         }
     }
 
+    /// <summary>
+    /// AUD-012 Phase 3 Slice 71: <c>BasketBall.updateBasketBallStateShotTypeOnShoot</c> and
+    /// <c>BasketBallAuto.updateBasketBallStateShotTypeOnShoot</c> were byte-identical - both existing
+    /// public methods now forward here. Takes <see cref="IBasketballRuntime"/> rather than a bare
+    /// <c>BasketBallState</c>/<c>GameStats</c> pair, the same shape
+    /// <see cref="ApplyMarkerAndMoneyBallOnShoot"/> already uses.
+    ///
+    /// Preserves the exact original ordering: the previous attempt's snapshot is cleared
+    /// (<see cref="BasketBallState.ResetShotAttemptSnapshot"/>) before any new attempt flag is set, and
+    /// the four line checks keep their original (non-mutually-exclusive) conditions - callers that pass
+    /// more than one true flag get the same precedence as before.
+    /// </summary>
+    public static void ApplyShotAttempt(IBasketballRuntime runtime, bool two, bool three, bool four, bool seven)
+    {
+        BasketBallState basketBallState = runtime.State;
+        GameStats gameStats = runtime.Stats;
+
+        // Clear stale shot snapshot data from a previous miss before setting the new attempt.
+        basketBallState.ResetShotAttemptSnapshot();
+
+        // identify is in 2 or 3 point range for stat counters
+        if (two && !three)
+        {
+            basketBallState.TwoAttempt = true;
+            gameStats.Stats.TwoPointerAttempts++;
+            gameStats.Stats.ShotAttempt++;
+        }
+        if (three && !four)
+        {
+            basketBallState.ThreeAttempt = true;
+            gameStats.Stats.ThreePointerAttempts++;
+            gameStats.Stats.ShotAttempt++;
+        }
+        if (four && !three)
+        {
+            basketBallState.FourAttempt = true;
+            gameStats.Stats.FourPointerAttempts++;
+            gameStats.Stats.ShotAttempt++;
+        }
+        if (seven)
+        {
+            basketBallState.SevenAttempt = true;
+            gameStats.Stats.SevenPointerAttempts++;
+            gameStats.Stats.ShotAttempt++;
+        }
+    }
+
     public struct LaunchComputation
     {
         public Vector3 GlobalVelocity;
@@ -242,6 +289,30 @@ public static class BasketballShotPipeline
             IsSwish = isSwish,
             ShotMeterMessage = shotMeterMessage,
         };
+    }
+
+    /// <summary>
+    /// AUD-012 Phase 3 Slice 71: the part of the original <c>Launch()</c> that ran after
+    /// <see cref="ComputeLaunch"/> and was byte-identical between <see cref="BasketBall"/> and
+    /// <see cref="BasketBallAuto"/> - applying the computed message/velocity/state to the shooter and
+    /// ending the shoot cycle. Deliberately excludes the critical-success presentation decision (human
+    /// gates on <c>!isCpu</c>, CPU does not) and human-only shot telemetry - both stay in the two
+    /// concrete <c>Launch()</c> methods, called around this helper in the same relative order the
+    /// original code used.
+    ///
+    /// Takes <paramref name="actor"/>/<paramref name="rigidbody"/> explicitly rather than widening
+    /// <see cref="IBasketballRuntime"/>/<see cref="IShooterActor"/> - neither interface exposes a
+    /// Rigidbody today, and this is the only caller that needs one alongside the actor.
+    /// </summary>
+    public static void ApplyLaunchResult(IShooterActor actor, Rigidbody rigidbody, LaunchComputation computation)
+    {
+        actor.DisplayShotMeterMessage(computation.ShotMeterMessage);
+
+        // launch the object by setting its initial velocity and flipping its state
+        rigidbody.linearVelocity = computation.GlobalVelocity;
+        actor.HasBasketball = false;
+        actor.SetAnimBool("hasBasketball", false);
+        actor.EndShootCycle();
     }
 
     // ========================== shot accuracy functions ==========================================

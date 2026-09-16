@@ -410,42 +410,11 @@ public class BasketBallAuto : MonoBehaviour, IBasketballRuntime
         actor.LockCallBallToPlayer(false);
     }
 
+    // AUD-012 Phase 3 Slice 71: thin forward - see BasketballShotPipeline.ApplyShotAttempt for the
+    // shared implementation, now also called by BasketBall.
     public void updateBasketBallStateShotTypeOnShoot(bool two, bool three, bool four, bool seven)
     {
-        //Debug.Log("*********************************************** 2 : " + two);
-        //Debug.Log("*********************************************** 3 : " + three);
-        //Debug.Log("*********************************************** 4 : " + four);
-        //Debug.Log("*********************************************** 7 : " + seven);
-
-        // Clear stale shot snapshot data from a previous miss before setting the new attempt.
-        basketBallState.ResetShotAttemptSnapshot();
-
-        // identify is in 2 or 3 point range for stat counters
-        if (two && !three )
-        {
-            basketBallState.TwoAttempt = true;
-            gameStats.Stats.TwoPointerAttempts++;
-            gameStats.Stats.ShotAttempt++;
-        }
-        if (three && !four)
-        {
-            basketBallState.ThreeAttempt = true;
-            gameStats.Stats.ThreePointerAttempts++;
-            gameStats.Stats.ShotAttempt++;
-        }
-        if (four && !three)
-        {
-            basketBallState.FourAttempt = true;
-            gameStats.Stats.FourPointerAttempts++;
-            gameStats.Stats.ShotAttempt++;
-        }
-        if (seven)
-        {
-            basketBallState.SevenAttempt = true;
-            gameStats.Stats.SevenPointerAttempts++;
-            gameStats.Stats.ShotAttempt++;
-        }
-        //GameRules.instance.updatePlayerScore();
+        BasketballShotPipeline.ApplyShotAttempt(this, two, three, four, seven);
     }
 
     // =================================== Launch ball function =======================================
@@ -466,17 +435,10 @@ public class BasketBallAuto : MonoBehaviour, IBasketballRuntime
             criticalSuccessPresentationCallback?.Invoke();
         }
 
-        actor.DisplayShotMeterMessage(computation.ShotMeterMessage);
-
-        // launch the object by setting its initial velocity and flipping its state
-        rigidbody.linearVelocity = computation.GlobalVelocity;
-
-        actor.HasBasketball = false;
-        actor.SetAnimBool("hasBasketball", false);
-        // CPU-2: the ball reports that the shot is away - it is the only thing that knows - but
-        // the CPU owns the state transition. This used to write `shootTrigger` and `Locked`
-        // directly, which meant the CPU could not complete a shoot cycle unless this method ran.
-        actor.EndShootCycle();
+        // AUD-012 Phase 3 Slice 71: shared with BasketBall.Launch via
+        // BasketballShotPipeline.ApplyLaunchResult - see its doc comment for what stays role-specific
+        // (this critical-success gate above, which unlike BasketBall's has no !isCpu condition).
+        BasketballShotPipeline.ApplyLaunchResult(actor, rigidbody, computation);
     }
 
     // ============================ Functions and Properties ==========================================
