@@ -20,7 +20,7 @@ public class Level5DocumentationExporterTests
     [Test]
     public void SchemaVersionReflectsStableIdentityContract()
     {
-        Assert.That(Level5DocumentationExporter.SchemaVersion, Is.EqualTo(2));
+        Assert.That(Level5DocumentationExporter.SchemaVersion, Is.EqualTo(3));
     }
 
     [Test]

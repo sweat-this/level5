@@ -140,9 +140,10 @@ character profile, the pause menu, the enemy spawner and the NPC behaviours all 
 from `MatchRuntime` now. Every one was a pure read of a value the bridge had just written, so the
 substitution changes nothing about what they see, only where they look.
 
-Four files remain in that group, and none of them is a simple substitution: `GameLevelManager`,
-`GameRules` and `SpawnCoordinator` sit on the boundary themselves, and `RacingGameManager` belongs
-to a subsystem that is mostly commented out.
+Three files remain in that group, and none of them is a simple substitution: `GameLevelManager`,
+`GameRules` and `SpawnCoordinator` sit on the boundary themselves. (The racing minigame's
+`RacingGameManager`, formerly a fourth entry here, was retired and removed along with the rest of
+the racing subsystem rather than migrated.)
 
 `StartManager` is the exception worth noting - it went from 185 direct `GameOptions` uses to six,
 none of them match rules: the previous scene name, the application version and platform, the

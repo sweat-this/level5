@@ -14,7 +14,6 @@
   <Project Path="Level5.Input.csproj" />
   <Project Path="Level5.Basketball.csproj" />
   <Project Path="Level5.Constants.csproj" />
-  <Project Path="Level5.PlayerRacing.csproj" />
   <Project Path="Level5.Utility.csproj" />
   <Project Path="Level5.Pooling.csproj" />
   <Project Path="MobileDependencyResolverLP.Installer.Editor.csproj" />

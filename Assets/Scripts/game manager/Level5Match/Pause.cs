@@ -106,15 +106,16 @@ public class Pause : MonoBehaviour
     /// Default to safe no-ops rather than null, unlike every other delegate field on this class. The
     /// former direct reads these replace (<c>DBConnector.instance != null</c>, etc.) were null-safe
     /// checks against a global static, independent of any scene's <c>GameLevelManager</c> - so a scene
-    /// that authors its own inline <c>Pause</c> without a composed <c>GameLevelManager</c> (found in
-    /// <c>minigame_racing.unity</c>, which reads <c>Pause.instance.Paused</c> from its own
-    /// <c>RacingGameManager</c> but has never called either <c>Bind*Context</c> method, even before this
-    /// slice) previously hit these checks safely regardless. <see cref="BindPersistenceContext"/> is only
-    /// ever called from <c>GameLevelManager.Start()</c>, so without one in the scene these fields are
-    /// never bound; an unconditional dereference (the shape <see cref="BindGameLevelManagerContext"/>'s
-    /// fields correctly use, since their former direct reads - <c>GameLevelManager.instance.Controls...</c>
-    /// - already threw under the same condition) would turn a scene that used to work into a
-    /// `NullReferenceException` on the pause menu's Quit/reload/load-start-screen actions.
+    /// that authors its own inline <c>Pause</c> without a composed <c>GameLevelManager</c> (found, before
+    /// this slice, in the now-retired <c>minigame_racing.unity</c> scene, which read
+    /// <c>Pause.instance.Paused</c> from its own scene-local manager but never called either
+    /// <c>Bind*Context</c> method) previously hit these checks safely regardless.
+    /// <see cref="BindPersistenceContext"/> is only ever called from <c>GameLevelManager.Start()</c>, so
+    /// without one in the scene these fields are never bound; an unconditional dereference (the shape
+    /// <see cref="BindGameLevelManagerContext"/>'s fields correctly use, since their former direct reads -
+    /// <c>GameLevelManager.instance.Controls...</c> - already threw under the same condition) would turn a
+    /// scene that used to work into a `NullReferenceException` on the pause menu's Quit/reload/
+    /// load-start-screen actions.
     ///
     /// Code review, 2026-09-15: this is not a perfect behavior restoration, and can't be - a default that
     /// actually re-checked <c>DBConnector.instance</c>/etc. live would reintroduce the exact
@@ -123,10 +124,9 @@ public class Pause : MonoBehaviour
     /// a live <c>PlayerData</c>/<c>DBConnector</c> but no <c>GameLevelManager</c> (theoretically possible
     /// if either persists as <c>DontDestroyOnLoad</c> from an earlier scene), <see cref="reloadScene"/>'s
     /// second reload point - previously mode-independent - will now never run there, versus previously
-    /// running whenever <c>PlayerData.instance</c> happened to be live. Accepted: the one scene shape this
-    /// applies to (<c>minigame_racing.unity</c>'s <c>pause</c> GameObject) is inactive by default and
-    /// nothing in the project activates it, so this class's own binding gap - not this default - is what
-    /// would need fixing before it matters; see <c>RacingGameManager.cs</c> if that ever changes.
+    /// running whenever <c>PlayerData.instance</c> happened to be live. This remains a safe default for
+    /// any scene that authors its own inline <c>Pause</c> without composing <c>GameLevelManager</c>, not
+    /// just the now-deleted racing scene, so it is kept even though that original scene shape is gone.
     /// </summary>
     private Func<bool> hasDatabaseReader = () => false;
     private Func<bool> databaseLockedReader = () => false;

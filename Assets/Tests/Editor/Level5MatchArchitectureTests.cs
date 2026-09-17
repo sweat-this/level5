@@ -59,7 +59,6 @@ public class Level5MatchArchitectureTests
         // gameplay consumers not yet migrated
         "GameLevelManager.cs",
         "GameRules.cs",
-        "RacingGameManager.cs",
     };
 
     /// <summary>

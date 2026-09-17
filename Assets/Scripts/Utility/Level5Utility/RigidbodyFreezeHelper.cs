@@ -2,10 +2,10 @@ using UnityEngine;
 
 /// <summary>
 /// The exact freeze/unfreeze constraint pair was duplicated identically across
-/// <c>PlayerController</c>, <c>AutoPlayerController</c>, and <c>RacingVehicleController</c> - each
-/// with its own <c>FreezePlayerPosition</c>/<c>UnFreezePlayerPosition</c> pair of public methods
-/// calling this. Kept as a plain static helper taking the Rigidbody as a parameter rather than a
-/// shared base class, since these three controllers are otherwise unrelated and a base class would
+/// <c>PlayerController</c> and <c>AutoPlayerController</c> - each with its own
+/// <c>FreezePlayerPosition</c>/<c>UnFreezePlayerPosition</c> pair of public methods calling this.
+/// Kept as a plain static helper taking the Rigidbody as a parameter rather than a shared base
+/// class, since these two controllers are otherwise unrelated and a base class would
 /// be a much larger structural change than this duplication justifies.
 /// </summary>
 public static class RigidbodyFreezeHelper

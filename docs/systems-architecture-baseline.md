@@ -1,6 +1,8 @@
 # Systems and Architecture Baseline
 
-Last updated: 2026-08-11
+Last updated: 2026-09-17
+
+2026-09-17: the racing minigame subsystem (`RacingGameManager` and the rest of `player_racing`/`Level5.PlayerRacing`, `minigame_racing.unity`, and `RacingInputReader`) has been retired and removed, not migrated. It is no longer part of the systems inventory below.
 
 This baseline documents the current runtime systems in the Unity project and the architectural direction we should use when making future changes. It is intentionally practical: enough detail to orient engineers, avoid duplicate systems, and make refactors safer without turning the docs into stale ceremony.
 
@@ -45,14 +47,13 @@ Recent combat work improved safety around health/death, attack queue release, pr
 | Projectile/sniper | `PlayerProjectile`, `EnemyProjectile`, `ProjectilePool`, `PooledProjectile`, `SniperManager`, `SniperCameraController` | Fires, reuses, and releases projectile objects; coordinates sniper-specific camera/attack behavior. | Pooling exists for projectiles and should become the standard pattern for other high-churn objects. |
 | Basketball gameplay | `BasketBall`, `BasketBallAuto`, `BasketBallState`, `BasketBallShotMade`, `BasketBallShotMadeCollision`, `ShotMeter`, `RangeMeter`, `GameStats`, shot marker/test stat scripts | Owns ball state, shot attempt feedback, scoring collisions, shot meters, range meters, and game stats. | Basketball actions currently intersect with player controller, UI, and game state. Shot flow is now documented (see Basketball Shot and Scoring below); it surfaced a real scoring-integrity bug (AUD-015), a stats-display bug (AUD-016), and full human/CPU logic duplication (AUD-017). |
 | Character data/progression | `CharacterProfile`, `CharacterStats`, `RuntimeCharacterStats`, `CharacterPreset`, `CharacterPresetCatalog`, `CharacterRuntimeProvider`, `SelectedLoadout`, progression services/stores/migration scripts | Stores authored character definitions, runtime stat resolution, loadout selection, upgrade progress, and migration/parity helpers. | This is already moving toward service/data separation and should be the model for future gameplay data work. |
-| Input | `PlayerControls`, `PlayerControlsProvider`, `PlayerInputReader`, `PlayerTouchInputState`, `RacingInputReader`, `UiSelectionAdapter`, `TouchInputController`, screen-specific touch controllers, `PlatformCheck` | Provides generated input bindings, player/racing gameplay input intent, touch intent bridging, shared UI selection helpers, and screen-specific touch/menu input routing. | Player and racing gameplay now read through input readers. Touch gameplay queues player intents instead of directly calling player actions. Mobile movement prefers Input System movement with legacy joystick fallback. EndRound and Options are UI pilots using `Button.onClick`; remaining menu touch scripts still need migration. |
+| Input | `PlayerControls`, `PlayerControlsProvider`, `PlayerInputReader`, `PlayerTouchInputState`, `UiSelectionAdapter`, `TouchInputController`, screen-specific touch controllers, `PlatformCheck` | Provides generated input bindings, player gameplay input intent, touch intent bridging, shared UI selection helpers, and screen-specific touch/menu input routing. | Player gameplay now reads through an input reader. Touch gameplay queues player intents instead of directly calling player actions. Mobile movement prefers Input System movement with legacy joystick fallback. EndRound and Options are UI pilots using `Button.onClick`; remaining menu touch scripts still need migration. |
 | Camera/presentation | `CameraManager`, `cameraUpdater`, `cameraUpdaterOrthographic`, `SniperCameraController`, visual effect scripts | Owns camera mode/follow behavior and scene presentation helpers. | Camera transitions should be explicit runtime states, especially for sniper and mode-specific views. |
 | Menu/UI flow | Start menu, loading, options, credits, stats, progression, account, and end-round manager scripts | Owns screen state, user selections, menus, stats display, account UI, and round results. | UI should become a subscriber to gameplay/progression events instead of sharing ownership of state. |
 | Persistence/accounts/network | `DBHelper`, `DBConnector`, `LocalAccount`, `UserAccountManager`, `ServerMessagesManager`, REST API helpers/connectors, model classes | Handles local account identity, server messages, database/API calls, and serialized data models. | Needs documented failure/retry/offline behavior and clear boundaries between local and remote truth. |
 | Analytics/email | `AnaylticsManager`, `SendEmail`, report models | Sends analytics and email/report data. | Should be isolated behind service interfaces so gameplay can run when reporting fails. |
 | Audio | `SFXBB` | Plays basketball/game sound effects. | Audio should respond to gameplay events rather than being called from many gameplay scripts directly. |
 | Vehicles/traffic | `TrafficManager`, `VehicleController`, `VehicleMove`, `BehaviorVehicleLawnmower` | Spawns and moves traffic/vehicles and handles special vehicle behavior. | Candidate for pooling and state-based behavior similar to enemy spawning. Fixed 2026-08-02: `TrafficManager` no longer mutates shared prefab-sourced `VehicleController` state before `Instantiate()` (AUD-020) - still not pooled, just no longer racy. |
-| Racing mode | `RacingGameManager`, `RacingVehicleController`, `RacingVehicleCollisions`, `RacingGroundCheck`, `RacingAnimationEvents`, `RacingCinderBlock`, `RacingVehicleProfile` | Owns racing-specific player vehicle movement, collisions, hazards, animation events, and mode state. | Treat as a separate vertical mode with shared input/progression/presentation contracts where practical. |
 | NPC/special behaviors | `BehaviorPrimo`, `BehaviorNpcRob`, `BehaviorNpcCritical`, `BehaviorNpcAutonomous`, `TheyLiveManager`, `RandomEvents`, pickups/sunglasses/misc scripts | Implements special NPC logic, random events, pickups, and one-off character behaviors. | These scripts need ownership tags: core feature, mode-specific feature, or legacy/experimental. |
 | Utility/dev/test | `UtilityFunctions`, `DevFunctions`, `PlatformCheck`, FPS displays, test scripts, original/legacy managers | Provides helpers, diagnostics, platform checks, test scenes/scripts, and legacy references. | Separate production helpers from dev-only and legacy scripts to reduce accidental dependencies. |
 
@@ -150,7 +151,6 @@ Assets/Scripts/
     Basketball/
     Projectiles/
     Vehicles/
-    Racing/
   Data/
     Characters/
     Levels/

@@ -56,10 +56,8 @@ Schema version **2** includes:
 - bodyguard prefabs and health components;
 - NavMesh vehicle prefabs;
 - non-NavMesh special vehicle prefabs;
-- any prefab under `Assets/Resources/Prefabs` carrying a `RacingVehicleProfile`;
 - scene `EnemySpawner` serialized configuration;
-- scene `TrafficManager` serialized configuration;
-- scene `RacingVehicleProfile` configuration.
+- scene `TrafficManager` serialized configuration.
 
 Each exported component contains:
 

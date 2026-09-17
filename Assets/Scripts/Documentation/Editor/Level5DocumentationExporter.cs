@@ -18,7 +18,7 @@ using Object = UnityEngine.Object;
 /// </summary>
 public static class Level5DocumentationExporter
 {
-    public const int SchemaVersion = 2;
+    public const int SchemaVersion = 3;
     public const string OutputRelativePath = "docs/generated/level5-authored-game-data.json";
 
     private const string CharacterSelectionRoot =
@@ -146,7 +146,6 @@ public static class Level5DocumentationExporter
                 typeof(BodyGuardHealth)),
             navMeshVehicles = ExportPrefabs(NavMeshVehicleRoot, typeof(VehicleController)),
             nonNavMeshVehicles = ExportPrefabs(NonNavMeshVehicleRoot),
-            racingProfiles = ExportRacingProfilePrefabs(),
             scenes = ExportScenes()
         };
 
@@ -269,48 +268,6 @@ public static class Level5DocumentationExporter
         return records;
     }
 
-    private static List<AssetRecord> ExportRacingProfilePrefabs()
-    {
-        List<AssetRecord> records = new List<AssetRecord>();
-        foreach (string path in FindPrefabPaths(ResourcesPrefabRoot))
-        {
-            GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(path);
-            if (prefab == null)
-            {
-                continue;
-            }
-
-            RacingVehicleProfile[] profiles = prefab.GetComponentsInChildren<RacingVehicleProfile>(true);
-            if (profiles.Length == 0)
-            {
-                continue;
-            }
-
-            AssetRecord record = new AssetRecord
-            {
-                sourcePath = path,
-                assetName = prefab.name
-            };
-            foreach (RacingVehicleProfile profile in profiles)
-            {
-                record.components.Add(ExportComponent(profile));
-            }
-
-            foreach (RacingVehicleController controller
-                in prefab.GetComponentsInChildren<RacingVehicleController>(true))
-            {
-                record.components.Add(ExportComponent(controller));
-            }
-
-            record.components.Sort(CompareComponents);
-            records.Add(record);
-        }
-
-        records.Sort((left, right) =>
-            StringComparer.Ordinal.Compare(left.sourcePath, right.sourcePath));
-        return records;
-    }
-
     private static List<SceneRecord> ExportScenes()
     {
         List<SceneRecord> records = new List<SceneRecord>();
@@ -331,7 +288,6 @@ public static class Level5DocumentationExporter
                     Scene scene = EditorSceneManager.OpenScene(scenePath, OpenSceneMode.Single);
                     record.components.AddRange(ExportSceneComponents<EnemySpawner>());
                     record.components.AddRange(ExportSceneComponents<TrafficManager>());
-                    record.components.AddRange(ExportSceneComponents<RacingVehicleProfile>());
                     record.components.Sort(CompareSceneComponents);
 
                     if (!scene.IsValid())
@@ -827,7 +783,6 @@ public static class Level5DocumentationExporter
         public List<AssetRecord> bodyGuards = new List<AssetRecord>();
         public List<AssetRecord> navMeshVehicles = new List<AssetRecord>();
         public List<AssetRecord> nonNavMeshVehicles = new List<AssetRecord>();
-        public List<AssetRecord> racingProfiles = new List<AssetRecord>();
         public List<SceneRecord> scenes = new List<SceneRecord>();
         public List<string> findings = new List<string>();
     }
