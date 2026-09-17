@@ -78,6 +78,20 @@ Actual manual/device validation against the new checklist remains outstanding; `
 `OnScreenButton` migration (step 3 below) is still future work, and the touch scripts referenced by the
 checklist must not be deleted until their device checklist rows pass.
 
+2026-09-17 (AUD-012 Phase 5 Slice 80): fixed the gap Slice 79 surfaced.
+`GameLevelManager.Update`'s `toggle_run_keyboard`/`toggle_stats_keyboard` reads (and the
+`Controls.Other.change.enabled`/`_locked`/`PlayerController1.ToggleRun()`/
+`BasketBall.instance.toggleUiStats()` logic guarded by them) are now wrapped in
+`#if UNITY_EDITOR || DEVELOPMENT_BUILD`, the same gate already used by
+`PlayerInputReader.DebugChangeHeld`/`DebugLightningPressed`, `DevFunctions.cs`, and
+`CheerleaderSwapAnimation.cs`. Both toggles remain reachable in Editor/Development builds and are now
+compiled out of shipped release builds. No additional held-check was added, and `Other`'s shared
+lifecycle (`PlayerControlsProvider.EnableOther`/`DisableOther`, called unconditionally from
+`GameLevelManager.OnEnable`/`OnDisable`) is unchanged - that lifecycle governs whether the `Other` map is
+active at all, not whether these two release-build-only reads compile in. No action map, binding,
+generated wrapper, scene, or prefab changed. `Level5GameLevelManagerDebugToggleGatingTests` guards the
+gate by source inspection; the smoke-validation checklist's corresponding row is updated to `Passing`.
+
 This document tracks the player input modernization plan. The project already uses Unity's Input System through `PlayerControls.inputactions` and `PlayerControlsProvider`, but mobile/touch gameplay and menu input still contain legacy `Input.touchCount`, `Input.touches`, direct `Input.GetKeyDown`, third-party joystick reads, and per-screen touch controllers.
 
 ## Current Ownership

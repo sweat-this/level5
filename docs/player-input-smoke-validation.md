@@ -1,6 +1,6 @@
 # Player Input Smoke Validation
 
-Last updated: 2026-09-17 (AUD-012 Phase 5 Slice 79)
+Last updated: 2026-09-17 (AUD-012 Phase 5 Slice 80)
 
 This is the validation-gate checklist called out by
 [`player-input-architecture.md`](player-input-architecture.md)'s migration plan step 2. It exists so
@@ -58,7 +58,8 @@ Existing automated coverage this checklist relies on, so it is not re-described 
 | `Level5PlayerInputOtherMapOwnershipTests` (`PlayerRun_KeepsItsShiftKeyboardBinding`, `OtherChange_NoLongerBindsEitherShiftKey`, `OtherChangeAndPlayerRun_ShareNoKeyboardBinding`) | `Player/run` keeps `<Keyboard>/shift`; `Other/change` no longer shares a keyboard binding with it. |
 | `Level5PlayerInputReaderCompositionTests` | `PlayerInputReader`'s legacy-joystick composition and touch-distance scaling arithmetic (`ScaleByTouchDistance`), independent of live device input. |
 | `Level5ProductionAssemblyBoundaryTests` | Assembly/dependency boundaries the input reader relies on. |
-| `Level5PlayerInputSmokeValidationDocTests` (new, this slice) | This document exists and still contains every required section heading. |
+| `Level5PlayerInputSmokeValidationDocTests` | This document exists and still contains every required section heading. |
+| `Level5GameLevelManagerDebugToggleGatingTests` (new, Slice 80) | `GameLevelManager.Update`'s `toggle_run_keyboard`/`toggle_stats_keyboard` reads are wrapped in `#if UNITY_EDITOR \|\| DEVELOPMENT_BUILD`. |
 
 None of the tests above exercise a live keypress, a live gamepad, or live touch hardware end to end -
 they check ownership, structure, and pure arithmetic. The rows below call out, item by item, what
@@ -100,7 +101,7 @@ remains manual and why.
 | Holding `Other/change` (backquote) actually suppresses call-ball in an Editor/Development session | Manual desktop | Not run | The binding-collision fix is automated; the live behavioral effect is not. |
 | `DebugChangeHeld`/`DebugLightningPressed` return `false` outside Editor/Development builds | Automated (inspection) | Passing | Both are `#if UNITY_EDITOR \|\| DEVELOPMENT_BUILD`-gated in `PlayerInputReader.cs`, confirmed by source inspection this slice; no test currently asserts this at the compiled-behavior level (see "Outstanding" below), so a future edit to the guard could regress silently. |
 | Debug lightning (`Input.GetKeyDown(KeyCode.Alpha8)`, gated by `PlayerControlsProvider.DevChangeControlEnabled`) fires in an Editor/Development session | Manual desktop | Not run | |
-| `toggle_run_keyboard` / `toggle_stats_keyboard` (`Other` map) remain reachable outside Editor/Development builds | Automated (inspection) | **Failing** | `Controls.Other.change.enabled` reflects only whether the shared `Other` map is currently active (always true - `PlayerControlsProvider.EnableOther()` runs unconditionally in `GameLevelManager.OnEnable`), not whether `change` is held; that is the same coarse pattern `DevFunctions.cs` and `CheerleaderSwapAnimation.cs` use for their own `Other.change.enabled` reads. Both of those stay confined to internal builds because each is itself wrapped in `#if UNITY_EDITOR \|\| DEVELOPMENT_BUILD` (matching `PlayerInputReader.DebugChangeHeld`/`DebugLightningPressed`). `GameLevelManager.Update`'s `toggle_run_keyboard`/`toggle_stats_keyboard` reads are the one call site missing that `#if` - with `Other/change` now on a reachable keyboard key (backquote) and `toggle_run_keyboard`/`toggle_stats_keyboard` themselves bound to plain `1`/`2`, both toggles are live in shipped release builds. **Found while writing this checklist; not fixed here** - fixing it changes shipped runtime behavior and is out of scope for a validation-gate slice. The minimal fix is the same `#if UNITY_EDITOR \|\| DEVELOPMENT_BUILD` wrapper already used by every sibling debug read; no additional held-check is needed to be consistent with them. Reported as follow-up. |
+| `toggle_run_keyboard` / `toggle_stats_keyboard` (`Other` map) are unreachable outside Editor/Development builds | Automated (inspection) | Passing | Fixed in AUD-012 Phase 5 Slice 80: `GameLevelManager.Update` now wraps both reads (and the `Controls.Other.change.enabled`/`_locked`/`PlayerController1.ToggleRun()`/`BasketBall.instance.toggleUiStats()` logic around them) in `#if UNITY_EDITOR \|\| DEVELOPMENT_BUILD`, matching the same pattern already used by `PlayerInputReader.DebugChangeHeld`/`DebugLightningPressed`, `DevFunctions.cs`, and `CheerleaderSwapAnimation.cs`. Guarded by `Level5GameLevelManagerDebugToggleGatingTests`, which fails if either read moves outside that `#if`/`#endif` region. No held-check, action-map, or binding change was made - `Other/change` and `Player/run` are unchanged. |
 | `toggle_camera_keyboard` (`Other` map) | Automated (inspection) | Not applicable | Its only reader, in `CameraManager.cs`, is fully commented out - no live consumer exists today, so there is no reachable behavior to validate. |
 | `toggle_character_max_stats` (`Other` map) | Automated (inspection) | Not applicable | Its only reader, in `DevFunctions.cs`, is commented out - no live consumer exists today, so there is no reachable behavior to validate. |
 
@@ -151,9 +152,9 @@ remains manual and why.
 - No manual desktop, gamepad, or mobile/device pass has been performed for this slice. Every "Not run"
   and "Blocked" row above is exactly that - unverified, not passing.
 - The `toggle_run_keyboard`/`toggle_stats_keyboard` Editor/Development gating gap (Editor/Development
-  debug input section) is a real, pre-existing defect surfaced while writing this checklist. It is
-  reported as follow-up, not fixed, because fixing it changes live input-gating behavior in shipped
-  builds and this slice is validation-gate-only.
+  debug input section), surfaced by Slice 79, is fixed as of Slice 80: both reads are now
+  `#if UNITY_EDITOR || DEVELOPMENT_BUILD`-gated in `GameLevelManager.Update`, guarded by
+  `Level5GameLevelManagerDebugToggleGatingTests`.
 - No test currently asserts `DebugChangeHeld`/`DebugLightningPressed` return `false` outside
   Editor/Development builds at the C# level (today this is established by reading the `#if` guard, not
   by a test that compiles both configurations). Adding that assertion is future work, not required for
