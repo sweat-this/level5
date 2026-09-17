@@ -399,14 +399,13 @@ public class Level5PauseCompositionTests
     }
 
     /// <summary>
-    /// Regression coverage for a scenario code review found: <c>minigame_racing.unity</c> authors its own
-    /// inline <c>Pause</c> with no companion <c>GameLevelManager</c> (it uses its own
-    /// <c>RacingGameManager</c> instead), so <see cref="Pause.BindPersistenceContext"/> is never called
-    /// there. Before this slice, <c>Quit()</c>'s database gate was a direct, null-safe
-    /// <c>DBConnector.instance != null</c> check that worked in any scene. This proves the persistence
-    /// delegates' safe-default initializers preserve that: an entirely unbound <see cref="Pause"/> must
-    /// still run <c>Quit()</c> without throwing, treating the database as unavailable rather than
-    /// dereferencing a null delegate.
+    /// Regression coverage for a scenario code review found: the now-retired <c>minigame_racing.unity</c>
+    /// scene authored its own inline <c>Pause</c> with no companion <c>GameLevelManager</c>, so
+    /// <see cref="Pause.BindPersistenceContext"/> was never called there. Before this slice, <c>Quit()</c>'s
+    /// database gate was a direct, null-safe <c>DBConnector.instance != null</c> check that worked in any
+    /// scene. This proves the persistence delegates' safe-default initializers preserve that for any scene
+    /// with this composition shape: an entirely unbound <see cref="Pause"/> must still run <c>Quit()</c>
+    /// without throwing, treating the database as unavailable rather than dereferencing a null delegate.
     /// </summary>
     [Test]
     public void Quit_PersistenceContextNeverBound_DoesNotThrowAndTreatsDatabaseAsUnavailable()

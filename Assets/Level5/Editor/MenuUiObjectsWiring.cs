@@ -40,7 +40,6 @@ public static class MenuUiObjectsWiring
     {
         "Assets/Scenes/level_17_rumble_pit.unity",
         "Assets/Scenes/level_18_aveb2.unity",
-        "Assets/Scenes/minigame_racing.unity",
     };
 
     [MenuItem("Level5/Wire Menu UiObjects")]
