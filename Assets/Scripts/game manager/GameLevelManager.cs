@@ -744,6 +744,7 @@ public class GameLevelManager : MonoBehaviour, IGroundHeightProvider, IPlayerMat
             return;
         }
 
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
         //turn on : toggle run
         if (Controls.Other.change.enabled
             && Controls.Other.toggle_run_keyboard.triggered
@@ -771,6 +772,7 @@ public class GameLevelManager : MonoBehaviour, IGroundHeightProvider, IPlayerMat
             }
             _locked = false;
         }
+#endif
     }
 
     public List<PlayerIdentifier> getSortedGameStatsList()
