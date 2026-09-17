@@ -202,33 +202,54 @@ public class Level5PlayerInputOtherMapOwnershipTests
         Assert.That(text, Does.Contain("PlayerControlsProvider.DevChangeControlEnabled"));
     }
 
-    // ==================== keyboard binding collision (why DebugChangeHeld is dev-gated) ====================
+    // ==================== keyboard binding collision (resolved AUD-012 Phase 5 Slice 78) ====================
 
     /// <summary>
-    /// Code review, 2026-09-17: fixing <c>DebugChangeHeld</c>'s ownership bug made a pre-existing
-    /// <c>PlayerControls.inputactions</c> binding collision live for the first time. <c>&lt;Keyboard&gt;
-    /// /shift</c> (<c>Player/run</c>) is Unity's synthetic control for "either shift key", the identical
-    /// physical coverage as <c>&lt;Keyboard&gt;/leftShift</c> + <c>&lt;Keyboard&gt;/rightShift</c>
-    /// (<c>Other/change</c>). Every keyboard player holding Shift to run would therefore also read as
-    /// holding the debug/change modifier, suppressing call-ball via <c>PlayerController</c>'s
-    /// <c>!reader.DebugChangeHeld</c> guard. This is why <c>PlayerInputReader.DebugChangeHeld</c> stays
-    /// <c>UNITY_EDITOR || DEVELOPMENT_BUILD</c>-gated instead of being usable in release builds - see
-    /// <see cref="DebugChangeHeldAndDebugLightningPressed_AreBothEditorOrDevelopmentGated"/>.
-    ///
-    /// If this test ever fails because the overlap was removed from the asset, that is good news, but
-    /// re-check whether the gate above is still needed before removing it - do not let the two drift
-    /// apart silently.
+    /// AUD-012 Phase 5 Slice 78: fixing <c>DebugChangeHeld</c>'s ownership bug (Slice 77) made a
+    /// pre-existing <c>PlayerControls.inputactions</c> binding collision live for the first time -
+    /// <c>&lt;Keyboard&gt;/shift</c> (<c>Player/run</c>) is Unity's synthetic control for "either shift
+    /// key", the identical physical coverage as <c>&lt;Keyboard&gt;/leftShift</c> +
+    /// <c>&lt;Keyboard&gt;/rightShift</c> (<c>Other/change</c>, as of Slice 77). Every keyboard player
+    /// holding Shift to run also read as holding the debug/change modifier, suppressing call-ball via
+    /// <c>PlayerController</c>'s <c>!reader.DebugChangeHeld</c> guard. Slice 78 moves <c>Other/change</c>'s
+    /// keyboard binding off Shift entirely, onto <c>&lt;Keyboard&gt;/backquote</c> (verified unused
+    /// elsewhere in the asset before the move) - <c>Player/run</c> is untouched. These three tests replace
+    /// the Slice 77 canary that asserted the overlap existed; <c>DebugChangeHeld</c>/
+    /// <c>DebugLightningPressed</c> stay <c>UNITY_EDITOR || DEVELOPMENT_BUILD</c>-gated regardless (see
+    /// <see cref="DebugChangeHeldAndDebugLightningPressed_AreBothEditorOrDevelopmentGated"/>) - resolving
+    /// this collision does not by itself justify relaxing that gate.
     /// </summary>
     [Test]
-    public void OtherChangeAndPlayerRun_ShareTheKeyboardShiftKeys()
+    public void PlayerRun_KeepsItsShiftKeyboardBinding()
+    {
+        controls = new PlayerControls();
+
+        string[] runKeyboardPaths = KeyboardBindingPaths(controls.asset, "Player", "run");
+
+        Assert.That(runKeyboardPaths, Is.EquivalentTo(new[] { "<Keyboard>/shift" }));
+    }
+
+    [Test]
+    public void OtherChange_NoLongerBindsEitherShiftKey()
+    {
+        controls = new PlayerControls();
+
+        string[] changeKeyboardPaths = KeyboardBindingPaths(controls.asset, "Other", "change");
+
+        Assert.That(changeKeyboardPaths, Has.No.Member("<Keyboard>/leftShift"));
+        Assert.That(changeKeyboardPaths, Has.No.Member("<Keyboard>/rightShift"));
+        Assert.That(changeKeyboardPaths, Is.EquivalentTo(new[] { "<Keyboard>/backquote" }));
+    }
+
+    [Test]
+    public void OtherChangeAndPlayerRun_ShareNoKeyboardBinding()
     {
         controls = new PlayerControls();
 
         string[] changeKeyboardPaths = KeyboardBindingPaths(controls.asset, "Other", "change");
         string[] runKeyboardPaths = KeyboardBindingPaths(controls.asset, "Player", "run");
 
-        Assert.That(changeKeyboardPaths, Is.EquivalentTo(new[] { "<Keyboard>/leftShift", "<Keyboard>/rightShift" }));
-        Assert.That(runKeyboardPaths, Is.EquivalentTo(new[] { "<Keyboard>/shift" }));
+        Assert.That(changeKeyboardPaths.Intersect(runKeyboardPaths), Is.Empty);
     }
 
     [Test]
@@ -240,9 +261,9 @@ public class Level5PlayerInputOtherMapOwnershipTests
             Regex.Matches(text, @"#if UNITY_EDITOR \|\| DEVELOPMENT_BUILD").Count,
             Is.GreaterThanOrEqualTo(2),
             "PlayerInputReader must gate both DebugChangeHeld and DebugLightningPressed behind "
-            + "UNITY_EDITOR || DEVELOPMENT_BUILD - DebugChangeHeld's gate is what keeps the Other/change "
-            + "vs Player/run keyboard collision out of shipped release builds (see "
-            + "OtherChangeAndPlayerRun_ShareTheKeyboardShiftKeys).");
+            + "UNITY_EDITOR || DEVELOPMENT_BUILD. The release-build policy remains in place after "
+            + "Other/change moved from Shift to Backquote (see "
+            + "OtherChange_NoLongerBindsEitherShiftKey).");
     }
 
     // ==================== helpers ====================
