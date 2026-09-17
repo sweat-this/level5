@@ -6573,8 +6573,11 @@ rather than patched, since patching an unreferenced method protects nothing and 
 wire-up of the stale copy would have reintroduced exactly this bug.
 
 **Deferred, unchanged by this slice:** `AutoPlayerDefense`, `EnemyController`, `BodyGuardController`,
-`RacingVehicleController`, `RacingCinderBlock` - all still drive locomotion through `MovePosition` and
-require their own analysis (different arrival/acceleration/impulse policies). The CPU shoot-cycle itself
+`RacingCinderBlock` - all still drive locomotion through `MovePosition` and require their own analysis
+(different arrival/acceleration/impulse policies). `RacingVehicleController` drives its ordinary
+locomotion through `Transform.Translate`, not `MovePosition` (corrected classification, Slice 75 - the
+original wording here conflated it with the `MovePosition` roles); it is a separate, unresolved
+transform-driven/position-driven role requiring its own audit. The CPU shoot-cycle itself
 (target selection via `getClosestPositionMarker`/`SelectShotKind`, jump trigger, shot meter, `Launch`) is
 untouched - this slice changed only how the Rigidbody is commanded and released, not when or why.
 
@@ -6696,9 +6699,11 @@ timing, contest duration and crossover probability are all unchanged. Covered by
 `AutoPlayerJump_PreservesExistingPlanarVelocity`, re-verified against a negative control (the full-vector
 overwrite briefly restored, the test failed, then reverted).
 
-**Deferred, unchanged by this slice:** `EnemyController`, `BodyGuardController`,
-`RacingVehicleController`, `RacingCinderBlock` - all still drive locomotion through `MovePosition` and
-require their own analysis (different arrival/acceleration/impulse policies).
+**Deferred, unchanged by this slice:** `EnemyController`, `BodyGuardController`, `RacingCinderBlock` -
+all still drive locomotion through `MovePosition` and require their own analysis (different
+arrival/acceleration/impulse policies). `RacingVehicleController` drives its ordinary locomotion through
+`Transform.Translate`, not `MovePosition` (corrected classification, Slice 75); it is a separate,
+unresolved transform-driven/position-driven role requiring its own audit.
 
 **Validation.** Compiled clean via `Unity.exe -batchmode -nographics -quit` (0 `error CS` lines,
 `CompileScripts` phase completed). Added `Level5AutoPlayerDefenseLocomotionTests` (10 EditMode tests)
@@ -6838,9 +6843,11 @@ branch does not suppress legitimate ongoing movement. All six release-path tests
 negative control (each release call removed in turn; exactly the tests naming that call failed, no
 others; reverted immediately after confirming).
 
-**Deferred, unchanged by this slice:** `BodyGuardController`, `RacingVehicleController`,
-`RacingCinderBlock` - all still drive locomotion through `MovePosition` and require their own analysis
-(different arrival/acceleration/impulse policies).
+**Deferred, unchanged by this slice:** `BodyGuardController`, `RacingCinderBlock` - both still drive
+locomotion through `MovePosition` and require their own analysis (different arrival/acceleration/impulse
+policies). `RacingVehicleController` drives its ordinary locomotion through `Transform.Translate`, not
+`MovePosition` (corrected classification, Slice 75); it is a separate, unresolved
+transform-driven/position-driven role requiring its own audit.
 
 **Validation.** Compiled clean via `Unity.exe -batchmode -nographics -quit` (0 `error CS` lines,
 `CompileScripts` phase completed). Added `Level5EnemyControllerLocomotionTests` (15 EditMode tests)
@@ -6898,6 +6905,176 @@ were not observed visually. Automated EditMode coverage above establishes the ph
 quality, or serve as evidence for the real-physics integration a PlayMode fixture would normally add
 (see above). Flagging both gaps explicitly rather than treating automated coverage as a substitute for
 either.
+
+**Slice 75 (2026-09-16, `dev` at `4719b3a2d`): migrates `RacingCinderBlock`'s dynamic 3D chase, and
+formally classifies the two roles that were never actually a fit for `RigidbodyLocomotionMotor`'s planar
+contract.**
+
+**What moved.** `RacingCinderBlock.FixedUpdate()`'s chase write moved from `rigidbody.MovePosition
+(transform.position + movement)` to a full-vector Rigidbody velocity command, `rigidbody.linearVelocity =
+target * movementSpeed`. Unlike Slices 72-74, this does **not** route through
+`RigidbodyLocomotionMotor`: that motor is planar by design (it only ever touches X/Z), and this chase
+intentionally drives Y too - `pursuePlayer()`'s target carries a `+ 2` vertical offset toward the racing
+player's head height, physically applied every step under the old `MovePosition` write. Routing this
+chase through the planar motor would have silently dropped that vertical tracking, changing real chase
+behavior rather than only its mechanism - exactly what Phase 4's own guardrails caution against ("do not
+force incompatible movement roles through one abstraction"). `target`'s facing-dependent X offset,
+per-tick normalization, `movementSpeed`/`defaultMovementSpeed`/`maxSpeed`, and the existing acceleration
+rule (`movementSpeed += acceleration / 100` while below `maxSpeed`) are all unchanged. The `movement`
+field - `[SerializeField]`, inspector-visible, read by nothing else in this class - keeps its exact prior
+per-step-displacement meaning (`target * (movementSpeed * Time.fixedDeltaTime)`); only the Rigidbody
+command's own units changed, matching every prior slice's treatment of the equivalent field on its own
+controller.
+
+**Stop semantics under persistent velocity - the primary risk this slice audited.** `MovePosition`
+produced no further displacement the instant nothing called it; a commanded Rigidbody velocity does not
+stop on its own. Two independent places used to rely on that free stop:
+
+- **Player-knockdown suppression.** `FixedUpdate`'s existing `if (!KnockedDown) { ... }` guard used to
+  have no `else` - skipping the write was enough under `MovePosition`. Now the `else` branch calls a new
+  private `StopChaseVelocity()`, zeroing the **full** `linearVelocity` (X/Y/Z, not just X/Z as the planar
+  roles release) - this chase owns all three axes, so a partial release would leave residual Y sliding
+  once the knockdown lifts. Covered by
+  `FixedUpdate_PlayerKnockedDown_StopsFullChaseVelocityAndPreservesNoResidualAxis`, verified against a
+  negative control (the release call removed, the test failed, reverted).
+- **Transition into the impact phase.** `pursuePlayer()`'s own arrival check
+  (`newVector.x - transform.position.x < 1`) and `OnTriggerEnter`'s player-collision branch both used to
+  set `targetReached = true` directly - two independent sites, matching the same "arrival state is set at
+  more than one call site" shape Slice 72 found in `AutoPlayerController` and fixed the same way. Both
+  now route through a new private `TransitionToTargetReached()`: a no-op if `targetReached` is already
+  true, otherwise sets it and calls `StopChaseVelocity()` - so the chase-velocity clear runs exactly once
+  per cinder block regardless of which path reaches it first, and the pre-existing per-tick impact force
+  (`rigidbody.AddForce(new Vector3(10, -20, 0), ForceMode.VelocityChange)`, applied every `FixedUpdate`
+  while `!isLocked`) is never repeatedly clobbered by a redundant release once already in the impact
+  phase. Covered by `PursuePlayer_ArrivalCondition_TransitionsToTargetReachedAndStopsChaseVelocity`,
+  `OnTriggerEnter_PlayerCollisionOnObstacle_TransitionsToTargetReachedAndStopsChaseVelocity`, and
+  `FixedUpdate_AlreadyTargetReached_DoesNotRepeatedlyClearAccumulatedImpactVelocity` (a velocity set
+  between two consecutive `FixedUpdate` calls with `targetReached`/`isLocked` both already true must
+  survive) - each verified against its own negative control (the guard/release removed or an unconditional
+  clear reintroduced; exactly the naming test failed, no others; reverted immediately after confirming).
+
+**Untouched, per this slice's own boundary at the chase-to-impact transition:** the impact force vector,
+`ForceMode.VelocityChange`, its per-tick cadence, `isLocked`, the ground/`playerHitbox`/layer-11 collision
+conditions, next-cinder-block spawning (`RacingGameManager.instance.CinderBlockPrefab`), destruction
+timing, and obstacle tag/layer usage.
+
+**BodyGuardController classified as an intentional kinematic `MovePosition` exception, not migrated.**
+`BodyGuardController.pursuePlayer()`/`returnToPatrol()`/`MoveToward()` still call `rigidBody.MovePosition`
+- confirmed still true on this slice's `dev`, not assumed from Phase 4's original framing. Unlike the four
+already-migrated roles and unlike `RacingCinderBlock`, every authored bodyguard prefab's Rigidbody is
+**kinematic** (`bodyguard_ian.prefab`: `m_IsKinematic: 1`) - `MovePosition` is Unity's documented,
+correct way to move a kinematic body, so this is not the "dynamic body driven positionally" defect Phase
+4 targets. No runtime change was made to this controller. A new source/asset-scan guard,
+`Level5BodyGuardLocomotionExceptionTests`, asserts the authored prefab carries `BodyGuardController`,
+carries exactly one Rigidbody, and that Rigidbody is kinematic - so if prefab authoring ever makes it
+dynamic while `MovePosition` calls remain, the guard fails and forces a re-audit rather than letting that
+combination land silently. Verified against a negative control: the prefab's `m_IsKinematic` flipped to
+`0`, exactly `BodyGuardIanPrefabRigidbodyIsKinematic` failed, prefab restored byte-for-byte (`diff`
+confirmed identical to the pre-edit copy) immediately after.
+
+**Separate finding, not fixed here:** `BodyGuardAnimationEvents.applyForceToDirectionFacingXAndY(float)`
+still calls `enemyController.RigidBody.AddForce(force, force, 0, ForceMode.VelocityChange)` against this
+same kinematic bodyguard Rigidbody. `AddForce` has no effect on a kinematic Rigidbody regardless of
+`ForceMode` - Unity ignores forces on kinematic bodies by design - so this animation-event call is
+presently a no-op on every authored bodyguard. This is a pre-existing mismatch between an animation-driven
+force call and this controller's authored movement model, orthogonal to locomotion (it is a knockback/
+impulse call, not ordinary movement) and out of this slice's mandate per its own non-goals. Flagging it
+rather than fixing it or using it to justify converting the bodyguard to a dynamic body without an
+explicit behavior decision.
+
+**RacingVehicleController re-classified, not migrated.** Confirmed on this slice's `dev`:
+`RacingVehicleController.FixedUpdate()` drives ordinary locomotion via `transform.Translate(movement)`
+(with a `MovePosition` call directly above it, but commented out - `//rigidBody.MovePosition
+(transform.position + movement);` - not executable). The `Deferred, unchanged by this slice` notes on
+Slices 72-74 above described this role as "still driving locomotion through `MovePosition`", which was
+never accurate; corrected in place on all three (see the inline "corrected classification, Slice 75"
+notes) rather than left to compound. `RacingVehicleController` is not a `MovePosition` role at all - it is
+a separate, unresolved transform-driven/position-driven locomotion role, requiring its own audit before
+any migration decision (racing input/acceleration/jump policy is substantially different from every
+other Phase 4 role and was not analyzed here). `Level5LocomotionRatchetTests`' class doc comment and
+per-file assertion message were both updated to state this accurately alongside the corrected `Deferred`
+notes; no new automated guard was added for this file, since it carries no `MovePosition` call to guard
+against reintroducing and no runtime change is in scope this slice.
+
+**Corrected Phase 4 classification after this slice:**
+
+```text
+PlayerController        → dynamic planar motor (RigidbodyLocomotionMotor)
+AutoPlayerController    → dynamic planar motor (RigidbodyLocomotionMotor)
+AutoPlayerDefense       → dynamic planar motor (RigidbodyLocomotionMotor)
+EnemyController         → dynamic planar motor (RigidbodyLocomotionMotor)
+BodyGuardController     → kinematic MovePosition exception (intentional, guarded)
+RacingCinderBlock       → dynamic full-vector Rigidbody velocity (chase owns X/Y/Z)
+RacingVehicleController → unresolved Transform.Translate locomotion role (separate audit required)
+```
+
+**Tests added:** `Level5RacingCinderBlockLocomotionTests` (9 EditMode tests) - full-vector velocity equal
+to `target * movementSpeed` including a nonzero Y component, velocity magnitude equal to `movementSpeed`
+regardless of direction, the `movement` field's preserved per-step-displacement meaning, the existing
+acceleration rule unchanged, knockdown suppression releasing the full velocity, the arrival transition
+(via `pursuePlayer()`) and the player-collision transition (via `OnTriggerEnter`) each setting
+`targetReached` and clearing velocity exactly once, repeated `FixedUpdate` processing while already
+`targetReached` not re-clearing an externally-set velocity, and the authored `cinderblock.prefab`
+Rigidbody remaining dynamic (non-kinematic) - the migration's own precondition, guarded the same
+directional way as the bodyguard's kinematic precondition. `Level5BodyGuardLocomotionExceptionTests` (3
+EditMode tests, described above). `Level5LocomotionRatchetTests` gained a fifth `MovePosition` guard,
+`RacingCinderBlockHasNoExecutableMovePositionCall`, and its class/method doc comments were reworded to
+state the corrected five-role picture above rather than only "route through RigidbodyLocomotionMotor"
+(no longer accurate now that one migrated role uses an explicit full-vector command instead of that
+motor).
+
+Tests drive the real private `FixedUpdate()`/`OnTriggerEnter()` and the real public `pursuePlayer()`
+directly (the established reflection pattern `Level5EnemyControllerLocomotionTests` and
+`Level5AutoPlayerDefenseLocomotionTests` already use), against a minimally-composed actor
+(`rigidbody`/`movementSpeed`/`maxSpeed`/`acceleration` set by reflection, `Start()` never invoked).
+Because `pursuePlayer()` and therefore `FixedUpdate()` unconditionally dereference
+`RacingGameManager.instance.Player`/`.PlayerController` with no null guard, the fixture composes a bare
+`RacingGameManager`/`RacingVehicleController` pair for those tests - the manager `GameObject` is kept
+inactive throughout composition and `RacingGameManager.instance` is assigned directly, rather than
+letting its own `Awake()` run (which touches `PlayerControlsProvider.Controls`, unrelated input-system
+state this locomotion slice has no need to compose) - and clears the static `instance` in `TearDown` so
+no test pollutes another. The velocity-command tests set the private `target` field directly rather than
+relying on `pursuePlayer()`'s own computation in the same call: `FixedUpdate` writes the Rigidbody command
+from whichever `target` the *previous* tick's `pursuePlayer()` left behind, then calls `pursuePlayer()`
+again only afterward to recompute `target` for the *next* tick - a pre-existing one-tick lag this
+migration does not touch, isolated here rather than accidentally re-verified as a side effect.
+
+**No PlayMode integration test added, and why.** `RacingCinderBlock` depends on `RacingGameManager` (a
+scene-resolved singleton with `GameObject.FindWithTag("Player")`/control-map/joystick composition in its
+own `Start()`/`Awake()`) for every unconditional read in `pursuePlayer()`/`FixedUpdate()`. Building a real
+Play Mode fixture would mean substantially replicating that composition (a tagged "Player" GameObject, a
+`RacingVehicleController`, terrain-height/joystick state) for a role whose EditMode coverage above already
+exercises the real velocity command, the real release paths, and the real arrival/collision transitions
+as pure state - disproportionate per this repo's own "do not add a manual Play Mode pass merely for
+reassurance" guidance, and outside this slice's mandate. Flagging this gap explicitly rather than treating
+EditMode coverage as a full substitute, consistent with how Slice 74 flagged the same gap for
+`EnemyController`.
+
+**Validation.** Compiled clean via `Unity.exe -batchmode -nographics -quit` (0 `error CS` lines,
+`CompileScripts` phase completed). Ran via `-runTests -testPlatform EditMode -testFilter
+"Level5RacingCinderBlockLocomotionTests;Level5BodyGuardLocomotionExceptionTests;
+Level5LocomotionRatchetTests"`: 18/18 passed. Four negative controls confirmed the new/changed tests
+actually detect their target defects, each reverted immediately after confirming and diffed clean against
+the pre-edit copy where the change was to an asset rather than source: disabling the knockdown release
+failed exactly `FixedUpdate_PlayerKnockedDown_StopsFullChaseVelocityAndPreservesNoResidualAxis`;
+reintroducing an unconditional per-frame clear in the impact-phase branch failed exactly
+`FixedUpdate_AlreadyTargetReached_DoesNotRepeatedlyClearAccumulatedImpactVelocity`; reintroducing an
+executable `MovePosition` call failed exactly `RacingCinderBlockHasNoExecutableMovePositionCall`; flipping
+`bodyguard_ian.prefab`'s `m_IsKinematic` to `0` failed exactly `BodyGuardIanPrefabRigidbodyIsKinematic`.
+Ran the full suites for final certification: EditMode 1456/1456 passed (net +13 over Slice 74's 1443: 9
+new `Level5RacingCinderBlockLocomotionTests`, 3 new `Level5BodyGuardLocomotionExceptionTests`, 1 new
+`Level5LocomotionRatchetTests` guard), PlayMode 23/23 passed (unchanged from Slice 74's own count,
+confirming this slice added no PlayMode fixture and regressed none of the existing ones),
+`scripts/validate-repository.ps1` passed.
+
+**Manual Play Mode validation:** not performed - outstanding, for the same reason as Slices 73/74
+(batchmode-only environment, no interactive editor/game window). Cinder-block chase tracking (including
+its vertical component), acceleration feel, the knockdown-suppression/resume transition, and the
+chase-to-impact transition's visual behavior were not observed directly. Automated EditMode coverage
+above establishes the physics invariants (full-vector velocity, release, single-transition semantics)
+directly; it cannot establish feel, animation/sprite-facing correctness, or real-physics integration over
+several fixed steps the way a PlayMode fixture would. Flagging both gaps explicitly rather than treating
+automated coverage as a substitute for either.
 
 ### Phase 5 — Input ownership
 

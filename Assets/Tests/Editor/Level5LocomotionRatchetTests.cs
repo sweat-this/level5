@@ -3,19 +3,24 @@ using System.Text.RegularExpressions;
 using NUnit.Framework;
 
 /// <summary>
-/// AUD-012 Phase 4 Slices 72-74 permanent guards over <c>PlayerController</c>'s, <c>AutoPlayerController</c>'s,
-/// <c>AutoPlayerDefense</c>'s, and <c>EnemyController</c>'s locomotion, all source-text scans (no
-/// scene/composition needed) using <see cref="Level5TestSourceText.StripComments"/> (the shared stripper
-/// this repo's other architecture-guard tests already use) so historical explanatory comments documenting
-/// this migration do not trip either guard - only actual code does:
+/// AUD-012 Phase 4 Slices 72-75 permanent guards over locomotion movement roles, all source-text scans
+/// (no scene/composition needed) using <see cref="Level5TestSourceText.StripComments"/> (the shared
+/// stripper this repo's other architecture-guard tests already use) so historical explanatory comments
+/// documenting this migration do not trip either guard - only actual code does:
 ///
-/// - <b>No executable <c>MovePosition</c> call.</b> All four moved their ordinary locomotion
-///   from <c>Rigidbody.MovePosition</c> to <see cref="RigidbodyLocomotionMotor"/> - see that type's doc
-///   comment for why a dynamic, non-kinematic body should not be position-driven. Scoped to exactly
-///   these four files, not the whole repository: Phase 4's remaining roles (<c>BodyGuardController</c>,
-///   <c>RacingVehicleController</c>, <c>RacingCinderBlock</c>) still legitimately drive locomotion
-///   through <c>MovePosition</c> and are deferred to later slices - see the Phase 4 section of
-///   <c>docs/systems-restructure-plan.md</c>.
+/// - <b>No executable <c>MovePosition</c> call.</b> <c>PlayerController</c>, <c>AutoPlayerController</c>,
+///   <c>AutoPlayerDefense</c>, and <c>EnemyController</c> moved their ordinary planar locomotion to
+///   <see cref="RigidbodyLocomotionMotor"/>; <c>RacingCinderBlock</c> (Slice 75) moved its dynamic 3D
+///   chase to a full-vector Rigidbody velocity command (its target intentionally owns Y - see that
+///   class's own doc comments - so it does not route through the planar-only motor). See
+///   <see cref="RigidbodyLocomotionMotor"/>'s doc comment for why a dynamic, non-kinematic body should
+///   not be position-driven. Scoped to exactly these five files, not the whole repository:
+///   <c>BodyGuardController</c>'s authored Rigidbody remains kinematic, so its own continued use of
+///   <c>MovePosition</c> is an intentional Phase 4 exception guarded separately by
+///   <c>Level5BodyGuardLocomotionExceptionTests</c>, not a defect; <c>RacingVehicleController</c> drives
+///   ordinary locomotion through <c>Transform.Translate</c>, not <c>MovePosition</c>, and is an
+///   unresolved transform-driven/position-driven role requiring its own separate audit. See the Phase 4
+///   section of <c>docs/systems-restructure-plan.md</c>.
 /// - <b><c>AutoPlayerController</c> sets <c>arrivedAtTarget = true</c> in exactly one place.</b> Code
 ///   review finding on this slice: <c>AutoPlayerController</c> has two independent arrival-detection
 ///   sites (<c>Update</c> and <c>FixedUpdate</c> - <c>Grounded</c> can differ between the two, so either
@@ -38,6 +43,9 @@ public class Level5LocomotionRatchetTests
 
     private static readonly string EnemyControllerPath = Path.Combine(
         Directory.GetCurrentDirectory(), "Assets", "Scripts", "enemy", "EnemyController.cs");
+
+    private static readonly string RacingCinderBlockPath = Path.Combine(
+        Directory.GetCurrentDirectory(), "Assets", "Scripts", "player_racing", "RacingCinderBlock.cs");
 
     private static readonly Regex MovePositionCall = new Regex(@"\.\s*MovePosition\s*\(");
 
@@ -65,6 +73,12 @@ public class Level5LocomotionRatchetTests
         AssertNoExecutableMovePosition(EnemyControllerPath);
     }
 
+    [Test]
+    public void RacingCinderBlockHasNoExecutableMovePositionCall()
+    {
+        AssertNoExecutableMovePosition(RacingCinderBlockPath);
+    }
+
     private static void AssertNoExecutableMovePosition(string path)
     {
         string text = Level5TestSourceText.StripComments(File.ReadAllText(path));
@@ -73,8 +87,9 @@ public class Level5LocomotionRatchetTests
             MovePositionCall.IsMatch(text),
             Is.False,
             Level5TestSourceText.Relative(path)
-                + " must drive ordinary locomotion through RigidbodyLocomotionMotor, not "
-                + "Rigidbody.MovePosition - see AUD-012 Phase 4 Slices 72-74.");
+                + " must drive its dynamic-body locomotion through RigidbodyLocomotionMotor or an "
+                + "equivalent explicit velocity command, not Rigidbody.MovePosition - see AUD-012 "
+                + "Phase 4 Slices 72-75.");
     }
 
     [Test]
