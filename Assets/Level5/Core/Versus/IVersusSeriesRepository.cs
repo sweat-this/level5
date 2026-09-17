@@ -4,7 +4,8 @@ using System.Collections.Generic;
 namespace Level5.Core.Versus
 {
     /// <summary>
-    /// The one seam between the competitive domain and wherever series are kept.
+    /// The one seam between the competitive domain and <em>local</em> storage for series - the
+    /// file-backed and in-memory repositories behind local/offline play.
     ///
     /// There is deliberately no <c>CreateChallenge</c>, <c>AcceptChallenge</c> or
     /// <c>SubmitAttemptResult</c> here. A challenge is a series in <see cref="SeriesStatus.Invited"/>
@@ -12,9 +13,20 @@ namespace Level5.Core.Versus
     /// for those would put the rules in two places, and the copy in the storage layer is the one
     /// that would drift.
     ///
-    /// A remote implementation replaces this interface and nothing above it. That is the whole
-    /// point of it being this small: the coordinator, the series, the games and gameplay itself all
-    /// stay exactly as they are when a server starts owning the documents.
+    /// <para>
+    /// <b>This is not the remote-play seam.</b> An earlier version of this comment claimed a remote
+    /// implementation of this interface was how a backend becomes authoritative - that is wrong and
+    /// has been corrected (see the Competition Protocol V1 audit,
+    /// <c>Level5Backend/v2/docs/competition-protocol/README.md</c>, issue #8). Uploading a whole
+    /// <see cref="VersusSeries"/> via <c>Save</c>/<c>Load</c> would make the client authoritative for
+    /// state the server must own (frozen rules, accepted results, series resolution). Remote
+    /// correspondence instead goes through a separate typed client speaking narrow
+    /// command/query calls (CreateChallenge, AcceptChallenge, DeclineChallenge, CancelChallenge,
+    /// StartAttempt, CompleteAttempt, GetSeries, ListSeries) against the backend's HTTP API - never
+    /// this interface. <see cref="IVersusSeriesRepository"/> keeps serving local/offline play
+    /// exactly as it does today; remote play is additive, not a swapped-in implementation of this
+    /// seam.
+    /// </para>
     /// </summary>
     public interface IVersusSeriesRepository
     {
