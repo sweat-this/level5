@@ -7,7 +7,6 @@ public static class PlayerControlsProvider
     private static PlayerControls controls;
     private static readonly Dictionary<int, PlayerControls> gameplayControls = new Dictionary<int, PlayerControls>();
     private static int playerUsers;
-    private static int playerTouchUsers;
     private static int uiNavigationUsers;
     private static int otherUsers;
 
@@ -66,7 +65,6 @@ public static class PlayerControlsProvider
         gameplayControls.Clear();
 
         playerUsers = 0;
-        playerTouchUsers = 0;
         uiNavigationUsers = 0;
         otherUsers = 0;
     }
@@ -173,27 +171,6 @@ public static class PlayerControlsProvider
         if (--playerUsers == 0)
         {
             Controls.Player.Disable();
-        }
-    }
-
-    public static void EnablePlayerTouch()
-    {
-        if (playerTouchUsers++ == 0)
-        {
-            Controls.PlayerTouch.Enable();
-        }
-    }
-
-    public static void DisablePlayerTouch()
-    {
-        if (playerTouchUsers <= 0)
-        {
-            return;
-        }
-
-        if (--playerTouchUsers == 0)
-        {
-            Controls.PlayerTouch.Disable();
         }
     }
 

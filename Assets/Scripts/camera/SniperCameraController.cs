@@ -19,12 +19,10 @@ public class SniperCameraController : MonoBehaviour
     {
         controls = PlayerControlsProvider.Controls;
         PlayerControlsProvider.EnableGameplayMaps();
-        //controls.PlayerTouch.Enable();
     }
     private void OnDisable()
     {
         PlayerControlsProvider.DisableGameplayMaps();
-        //controls.PlayerTouch.Disable();
     }
 
     private void Awake()

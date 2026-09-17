@@ -6,14 +6,23 @@ Last updated: 2026-09-17
 racing input ownership below have been removed accordingly; this was a subsystem deletion, not an input
 redesign.
 
+2026-09-17 (AUD-012 Phase 5 Slice 76): the `PlayerTouch` action map in `PlayerControls.inputactions` has
+been retired - it had no live consumer (`PlayerTouchInputState`/`TouchInputController` never read it, and
+`PlayerControlsProvider.EnablePlayerTouch()`/`DisablePlayerTouch()` had no production caller). `Player`,
+`UINavigation`, and `Other` are unchanged. `PlayerTouchInputState` and `TouchInputController` remain live
+compatibility paths - gameplay touch still flows `TouchInputController -> PlayerTouchInputState ->
+PlayerInputReader`, unchanged by this slice. The legacy joystick fallback is unaffected.
+`activeInputHandler` remains `2` (Both); switching to Input System-only input is out of scope for this
+slice.
+
 This document tracks the player input modernization plan. The project already uses Unity's Input System through `PlayerControls.inputactions` and `PlayerControlsProvider`, but mobile/touch gameplay and menu input still contain legacy `Input.touchCount`, `Input.touches`, direct `Input.GetKeyDown`, third-party joystick reads, and per-screen touch controllers.
 
 ## Current Ownership
 
 | Area | Current Owner | Notes |
 | --- | --- | --- |
-| Input actions | `PlayerControls.inputactions`, generated `PlayerControls.cs` | Source for keyboard/gamepad gameplay, UI navigation, debug actions, and a partially-defined touch action map. |
-| Action lifecycle | `PlayerControlsProvider` | Reference-counted static provider for gameplay, menu, debug, and touch maps. Kept as the compatibility bridge. |
+| Input actions | `PlayerControls.inputactions`, generated `PlayerControls.cs` | Source for keyboard/gamepad gameplay, UI navigation, and debug actions (`Player`, `UINavigation`, `Other`). The unused `PlayerTouch` action map was retired in AUD-012 Phase 5 Slice 76. |
+| Action lifecycle | `PlayerControlsProvider` | Reference-counted static provider for gameplay, menu, and debug maps. Kept as the compatibility bridge. |
 | Player gameplay input | `PlayerInputReader`, `PlayerTouchInputState`, `PlayerController` | `PlayerInputReader` owns the player's movement/action reads and lives in the `Level5.Input` assembly (AUD-012 Phase 2b Slice 26). `TouchInputController` queues touch gameplay intents through `PlayerTouchInputState`, and `PlayerController` consumes them in the normal gameplay path. `TouchBlockHeld` reads `PlayerTouchInputState.BlockHeld` alone; it no longer also consults `TouchInputController.instance.HoldDetected`, which was written in lockstep with it. |
 | Mobile movement | `PlayerInputReader` with Input System movement first and legacy `FloatingJoystick` fallback | Unchanged in behaviour, but the fallback's axes now arrive by composition rather than by the reader reaching for `GameLevelManager.instance.Joystick` - see "Legacy Joystick Composition" below. Ready for Unity Input System `OnScreenStick` mapped to `Player/movement`; the old joystick remains as fallback until scenes/prefabs are migrated and playtested. |
 | Mobile gestures/actions | `TouchInputController`, `PlayerTouchInputState` | Gameplay gestures now queue input intents instead of directly calling player combat/basketball methods. Target is still `OnScreenButton` bindings where the UI/UX allows it. |
