@@ -15,6 +15,35 @@ PlayerInputReader`, unchanged by this slice. The legacy joystick fallback is una
 `activeInputHandler` remains `2` (Both); switching to Input System-only input is out of scope for this
 slice.
 
+2026-09-17 (AUD-012 Phase 5 Slice 77): corrected the first live-map ownership mismatch.
+`PlayerInputReader.DebugChangeHeld`/`DebugLightningPressed` used to read the per-player `PlayerControls`
+instance's `Other` map, but `PlayerController` builds that reader from
+`PlayerControlsProvider.AcquireGameplayControls(playerId)`, which enables only that instance's `Player`
+map - `Other` is never enabled on it. Both reads were therefore always reading a disabled action: the
+debug/change modifier could never suppress call-ball via that path, and debug lightning could never fire.
+`PlayerInputReader` now reads debug state through two new `PlayerControlsProvider` accessors,
+`DevChangeHeld` and (pre-existing) `DevChangeControlEnabled`, which read the one shared `Other` owner
+(`PlayerControlsProvider.Controls`, the same instance `GameLevelManager.OnEnable`/`OnDisable` ref-counts
+via `EnableOther()`/`DisableOther()`). `Other` remains a shared runtime/debug map, not per-player gameplay
+input - it is not enabled on every per-player controls instance. Normal gameplay input is unchanged and
+still comes from the per-player `Player` map. `activeInputHandler` remains `2` (Both); touch compatibility
+is unchanged. This modifier is one shared value across every local player, not scoped per player.
+
+Code review (2026-09-17) caught that this fix, as first written, made `DebugChangeHeld` reachable in
+every build, not just Editor/Development like its sibling `DebugLightningPressed`. `PlayerControls.inputactions`
+binds the `Other` map's `change` action to `<Keyboard>/leftShift` and `<Keyboard>/rightShift` - the same
+physical keys as the `Player` map's `run` action's `<Keyboard>/shift` binding (Unity's synthetic "either
+shift key" control). The ownership bug had been silently masking that pre-existing binding collision:
+with `DebugChangeHeld` fixed to read live shared state, every keyboard player holding Shift to run would
+also read as holding the debug/change modifier, suppressing call-ball via `PlayerController`'s
+`!reader.DebugChangeHeld` guard - in shipped release builds, not only Editor/Development. `DebugChangeHeld`
+is now gated `#if UNITY_EDITOR || DEVELOPMENT_BUILD` (returning `false` otherwise), the same as
+`DebugLightningPressed`, so the collision is confined to internal testing rather than reaching players.
+The keyboard binding overlap itself is unchanged and still present in `PlayerControls.inputactions` -
+resolving it (or confirming it is intentional) is follow-up work, not part of this slice; see
+`Level5PlayerInputOtherMapOwnershipTests.OtherChangeAndPlayerRun_ShareTheKeyboardShiftKeys` for a canary
+test that fails if the overlap is ever removed, prompting a re-check of this gating decision.
+
 This document tracks the player input modernization plan. The project already uses Unity's Input System through `PlayerControls.inputactions` and `PlayerControlsProvider`, but mobile/touch gameplay and menu input still contain legacy `Input.touchCount`, `Input.touches`, direct `Input.GetKeyDown`, third-party joystick reads, and per-screen touch controllers.
 
 ## Current Ownership
@@ -23,7 +52,7 @@ This document tracks the player input modernization plan. The project already us
 | --- | --- | --- |
 | Input actions | `PlayerControls.inputactions`, generated `PlayerControls.cs` | Source for keyboard/gamepad gameplay, UI navigation, and debug actions (`Player`, `UINavigation`, `Other`). The unused `PlayerTouch` action map was retired in AUD-012 Phase 5 Slice 76. |
 | Action lifecycle | `PlayerControlsProvider` | Reference-counted static provider for gameplay, menu, and debug maps. Kept as the compatibility bridge. |
-| Player gameplay input | `PlayerInputReader`, `PlayerTouchInputState`, `PlayerController` | `PlayerInputReader` owns the player's movement/action reads and lives in the `Level5.Input` assembly (AUD-012 Phase 2b Slice 26). `TouchInputController` queues touch gameplay intents through `PlayerTouchInputState`, and `PlayerController` consumes them in the normal gameplay path. `TouchBlockHeld` reads `PlayerTouchInputState.BlockHeld` alone; it no longer also consults `TouchInputController.instance.HoldDetected`, which was written in lockstep with it. |
+| Player gameplay input | `PlayerInputReader`, `PlayerTouchInputState`, `PlayerController` | `PlayerInputReader` owns the player's movement/action reads and lives in the `Level5.Input` assembly (AUD-012 Phase 2b Slice 26). `TouchInputController` queues touch gameplay intents through `PlayerTouchInputState`, and `PlayerController` consumes them in the normal gameplay path. `TouchBlockHeld` reads `PlayerTouchInputState.BlockHeld` alone; it no longer also consults `TouchInputController.instance.HoldDetected`, which was written in lockstep with it. Gameplay reads (`movement`, `run`, `jump`, `shoot`, `callball`, `attack`, `block`, `special`) come from the per-player `Player` map on the controls instance `PlayerController` was constructed with. `DebugChangeHeld`/`DebugLightningPressed` instead read the shared `Other` owner through `PlayerControlsProvider.DevChangeHeld`/`DevChangeControlEnabled` (AUD-012 Phase 5 Slice 77) - the per-player instance never has `Other` enabled. Both are Editor/Development-only (`#if UNITY_EDITOR \|\| DEVELOPMENT_BUILD`): `Other/change`'s keyboard bindings (`leftShift`/`rightShift`) collide with `Player/run`'s (`shift`), so gating keeps that collision out of shipped release builds. |
 | Mobile movement | `PlayerInputReader` with Input System movement first and legacy `FloatingJoystick` fallback | Unchanged in behaviour, but the fallback's axes now arrive by composition rather than by the reader reaching for `GameLevelManager.instance.Joystick` - see "Legacy Joystick Composition" below. Ready for Unity Input System `OnScreenStick` mapped to `Player/movement`; the old joystick remains as fallback until scenes/prefabs are migrated and playtested. |
 | Mobile gestures/actions | `TouchInputController`, `PlayerTouchInputState` | Gameplay gestures now queue input intents instead of directly calling player combat/basketball methods. Target is still `OnScreenButton` bindings where the UI/UX allows it. |
 | Menu touch input | `TouchInput*Controller` scripts, `UiSelectionAdapter` | Duplicated per-screen touch scripts still exist. `UiSelectionAdapter` is the shared bridge for screens as they move to standard Unity UI events. |

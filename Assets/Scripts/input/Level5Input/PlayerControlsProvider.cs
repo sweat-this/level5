@@ -46,6 +46,26 @@ public static class PlayerControlsProvider
         }
     }
 
+    /// <summary>
+    /// Whether the shared "Other" map's dev/editor change-toggle binding is currently held. AUD-012
+    /// Phase 5 Slice 77: gives <c>PlayerInputReader.DebugChangeHeld</c> a shared-owner read of the same
+    /// shape as <see cref="DevChangeControlEnabled"/>, so it stops reading a per-player controls
+    /// instance's <c>Other</c> map - <c>AcquireGameplayControls</c> never enables <c>Other</c> on that
+    /// instance, so that read was always false.
+    ///
+    /// This is one shared value for every local player, not a per-player read - holding the modifier
+    /// from any one device affects every <c>PlayerInputReader</c> at once, the same way
+    /// <c>GameLevelManager</c>'s own <c>Other</c>-gated debug toggles are global rather than scoped to
+    /// whichever player triggered them.
+    /// </summary>
+    public static bool DevChangeHeld
+    {
+        get
+        {
+            return Controls.Other.change.ReadValue<float>() == 1;
+        }
+    }
+
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
     private static void ResetState()
     {

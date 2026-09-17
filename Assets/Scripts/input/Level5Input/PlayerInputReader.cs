@@ -81,9 +81,38 @@ public class PlayerInputReader
         get { return controls.Player.special.triggered || PlayerTouchInputState.ConsumeSpecial(); }
     }
 
+    /// <summary>
+    /// AUD-012 Phase 5 Slice 77: reads the shared <c>PlayerControlsProvider</c> "Other" owner rather
+    /// than this reader's own per-player <see cref="controls"/>. <c>PlayerController</c> builds this
+    /// reader from <c>PlayerControlsProvider.AcquireGameplayControls(playerId)</c>, which enables only
+    /// that instance's <c>Player</c> map - its <c>Other</c> map is never enabled, so a
+    /// <c>controls.Other</c> read here was always reading a disabled action and always returning false.
+    /// The shared owner is the same one <c>GameLevelManager.OnEnable/OnDisable</c> already ref-counts
+    /// via <c>PlayerControlsProvider.EnableOther/DisableOther</c>.
+    ///
+    /// Gated the same as <see cref="DebugLightningPressed"/> (code review, 2026-09-17): the "Other"
+    /// map's <c>change</c> action binds <c>&lt;Keyboard&gt;/leftShift</c> and
+    /// <c>&lt;Keyboard&gt;/rightShift</c>, which is the same physical keys as the "Player" map's
+    /// <c>run</c> action's <c>&lt;Keyboard&gt;/shift</c> (Unity's synthetic control for "either shift
+    /// key"). Fixing this property's ownership bug made that pre-existing binding collision live for
+    /// the first time - every keyboard player holding Shift to run would also read as holding the
+    /// debug/change modifier, silently suppressing call-ball via <c>PlayerController</c>'s
+    /// <c>!reader.DebugChangeHeld</c> guard. Restricting this to Editor/Development builds keeps that
+    /// collision confined to internal testing instead of shipping it to players; it does not resolve
+    /// the underlying binding overlap, which is still present in <c>PlayerControls.inputactions</c>
+    /// (see <c>OtherChangeAndPlayerRun_ShareTheKeyboardShiftKeys</c> in
+    /// <c>Level5PlayerInputOtherMapOwnershipTests</c>).
+    /// </summary>
     public bool DebugChangeHeld
     {
-        get { return controls.Other.change.ReadValue<float>() == 1; }
+        get
+        {
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            return PlayerControlsProvider.DevChangeHeld;
+#else
+            return false;
+#endif
+        }
     }
 
     public bool DebugLightningPressed
@@ -91,7 +120,7 @@ public class PlayerInputReader
         get
         {
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
-            return controls.Other.change.enabled && Input.GetKeyDown(KeyCode.Alpha8);
+            return PlayerControlsProvider.DevChangeControlEnabled && Input.GetKeyDown(KeyCode.Alpha8);
 #else
             return false;
 #endif
