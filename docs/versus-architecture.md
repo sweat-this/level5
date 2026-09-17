@@ -35,10 +35,12 @@ SERIES                   VersusSeries, SeriesFormat, SeriesSnapshot, SeriesScore
    v
 SOCIAL                   RivalryRecord  (derived, never stored)
 
-                         everything above sits on one seam:
+                         everything above sits on one seam, for LOCAL storage:
                          IVersusSeriesRepository
                               |                     |
-                    FileVersusSeriesRepository   a remote store, later
+                    FileVersusSeriesRepository   InMemoryVersusSeriesRepository
+
+                         remote correspondence does not implement this seam - see §10.
 ```
 
 Dependencies only ever point downward. `Level5.Core.Versus` is plain C# - no `MonoBehaviour`, no
@@ -320,14 +322,26 @@ disagree with them, and the series are the record of what actually happened.
 
 ## 10. Where a backend plugs in
 
-Nothing about this design assumes the store is local.
+**Correction (2026-09, Competition Protocol V1 audit - see
+[`Level5Backend/v2/docs/competition-protocol/README.md`](https://github.com/sweat-this/Level5Backend/blob/dev/v2/docs/competition-protocol/README.md),
+issue #8):** this section previously said "nothing about this design assumes the store is local"
+and implied a remote backend plugs in by implementing `IVersusSeriesRepository` over the network.
+That is wrong and has been corrected below. `IVersusSeriesRepository` is the seam for **local**
+storage only (§1, §9) and stays exactly as it is. A remote backend does not implement it - handing
+a server `Save(VersusSeries)`/`Load(SeriesId)` would make the client authoritative for state the
+server must own. Remote correspondence instead goes through a **separate typed client** speaking
+narrow command/query calls (`CreateChallenge`, `AcceptChallenge`, `DeclineChallenge`,
+`CancelChallenge`, `StartAttempt`, `CompleteAttempt`, `GetSeries`, `ListSeries`) against the
+backend's HTTP API, translating between Unity's local types and the wire contract
+("Competition Protocol V1") at that one boundary. Nothing below the coordinator changes.
 
-| Eventually server-owned | Where it already lives |
+| Eventually server-owned over the remote protocol | Local equivalent it is modeled on |
 | --- | --- |
-| series identity, participants, ruleset version, series state | the series document, behind `IVersusSeriesRepository` |
+| series identity, participants, frozen rules, series state | the series document, behind `IVersusSeriesRepository` |
 | attempt issuance and lifecycle | `Attempt`, issued by `VersusGame` through `IVersusIdSource` |
 | accepted result, game winner, series winner, turn state | `VersusSeries.SubmitResult`, the single write path |
 | challenge lifecycle | `SeriesStatus.Invited` plus `Accept` / `Decline` |
+| opponent-result visibility (`SealedAttempt` / `OpenTarget`) | `VersusGame.ViewFor` |
 
 Client-owned, now and for the foreseeable future: the gameplay simulation itself. There is no
 server-side Unity simulation here and this design does not assume one arrives.

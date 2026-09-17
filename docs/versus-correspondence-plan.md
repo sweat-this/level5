@@ -115,9 +115,13 @@ SERIES                      VersusSeries, SeriesFormat, SeriesSnapshot, SeriesSc
 SOCIAL                      RivalryRecord (derived, never authoritative)
 
                             all of the above sit above
-                            IVersusSeriesRepository  <- the only persistence seam
+                            IVersusSeriesRepository  <- the LOCAL persistence seam
                                 |                    |
-                        file-backed local        future remote
+                        file-backed local      in-memory (tests)
+
+                            remote correspondence is a separate typed client against a
+                            backend HTTP API, not an implementation of this interface - see
+                            the "backend later become authoritative" row below.
 ```
 
 `Level5.Core` holds every domain type and the coordinator. `Assets/Scripts/versus` holds the Unity
@@ -319,7 +323,7 @@ Each question from section 52, answered against the revised plan.
 | Can two attempts be submitted hours apart? | Yes. Nothing about resolution depends on the two attempts being in the same session; only the series document is read |
 | Can opponent result visibility remain sealed? | Yes, structurally - `ViewFor` is the only read path. The one honest exception is documented in remaining risks: on a shared device, both players' own high-score rows land in the same local stats database |
 | Can a ruleset update occur while a series is active? | Yes. Resolution uses the snapshot. A version the build can no longer play is refused at issue time with a coded reason rather than silently mis-scored |
-| Can a backend later become authoritative without moving gameplay code? | Yes. Authority lives in whoever implements `IVersusSeriesRepository` plus the coordinator; both sit above gameplay and below nothing that gameplay reads |
+| Can a backend later become authoritative without moving gameplay code? | Yes, but not by implementing `IVersusSeriesRepository` remotely - **corrected 2026-09, see the Competition Protocol V1 audit** (`Level5Backend/v2/docs/competition-protocol/README.md`, issue #8): that would upload a whole `VersusSeries` and make the client authoritative for state the server must own. A remote backend becomes authoritative through a separate typed client speaking command/query calls (`CreateChallenge`, `StartAttempt`, `CompleteAttempt`, ...) against the backend's HTTP API; gameplay code is unaffected either way, since it only ever produces an `AttemptResult` and never talks to storage directly |
 | Can incomplete matches be loaded without scene state? | Yes. `Level5.Core.Versus` has no `MonoBehaviour`, no `GameObject`, no scene lookup; the whole domain is constructible in an edit-mode test |
 | Can invalid duplicate submissions be rejected? | Yes. Completing a completed attempt throws; submitting for a participant that holds no live attempt throws; a result whose ruleset id or version disagrees with the attempt throws |
 | Can best-of-seven stop at 4-0? | Yes, and no attempt is issued for games five to seven. Tested |
