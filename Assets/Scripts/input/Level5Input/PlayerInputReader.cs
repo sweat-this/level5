@@ -90,18 +90,18 @@ public class PlayerInputReader
     /// The shared owner is the same one <c>GameLevelManager.OnEnable/OnDisable</c> already ref-counts
     /// via <c>PlayerControlsProvider.EnableOther/DisableOther</c>.
     ///
-    /// Gated the same as <see cref="DebugLightningPressed"/> (code review, 2026-09-17): the "Other"
-    /// map's <c>change</c> action binds <c>&lt;Keyboard&gt;/leftShift</c> and
-    /// <c>&lt;Keyboard&gt;/rightShift</c>, which is the same physical keys as the "Player" map's
-    /// <c>run</c> action's <c>&lt;Keyboard&gt;/shift</c> (Unity's synthetic control for "either shift
-    /// key"). Fixing this property's ownership bug made that pre-existing binding collision live for
-    /// the first time - every keyboard player holding Shift to run would also read as holding the
-    /// debug/change modifier, silently suppressing call-ball via <c>PlayerController</c>'s
-    /// <c>!reader.DebugChangeHeld</c> guard. Restricting this to Editor/Development builds keeps that
-    /// collision confined to internal testing instead of shipping it to players; it does not resolve
-    /// the underlying binding overlap, which is still present in <c>PlayerControls.inputactions</c>
-    /// (see <c>OtherChangeAndPlayerRun_ShareTheKeyboardShiftKeys</c> in
-    /// <c>Level5PlayerInputOtherMapOwnershipTests</c>).
+    /// Gated the same as <see cref="DebugLightningPressed"/>: fixing this property's ownership bug
+    /// (AUD-012 Phase 5 Slice 77) made a pre-existing binding collision live for the first time - the
+    /// "Other" map's <c>change</c> action bound <c>&lt;Keyboard&gt;/leftShift</c> and
+    /// <c>&lt;Keyboard&gt;/rightShift</c>, the same physical keys as the "Player" map's <c>run</c>
+    /// action's <c>&lt;Keyboard&gt;/shift</c> (Unity's synthetic control for "either shift key"). Every
+    /// keyboard player holding Shift to run would also read as holding the debug/change modifier,
+    /// silently suppressing call-ball via <c>PlayerController</c>'s <c>!reader.DebugChangeHeld</c> guard.
+    /// AUD-012 Phase 5 Slice 78 resolved the collision itself by moving <c>Other/change</c>'s keyboard
+    /// binding off Shift onto <c>&lt;Keyboard&gt;/backquote</c> in <c>PlayerControls.inputactions</c> -
+    /// <c>Player/run</c> is unchanged. This property stays Editor/Development-gated regardless; resolving
+    /// the collision is not by itself a reason to ship this debug read in release builds (see
+    /// <c>Level5PlayerInputOtherMapOwnershipTests</c>' keyboard-binding-collision tests).
     /// </summary>
     public bool DebugChangeHeld
     {
