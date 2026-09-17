@@ -6770,6 +6770,135 @@ events and never corrects Y position, so nothing else was silently relying on th
 static inspection can show - but this is a real physical-behavior change on an axis automated tests cannot
 visually verify, and is the single highest-value thing to check first in this outstanding manual pass.
 
+**Slice 74 (2026-09-16, `dev` at `11336caa3`): migrates the enemy role (`EnemyController`)'s ordinary
+pursue/patrol locomotion.**
+
+**What moved.** `EnemyController.pursueTarget()`, `moveToTarget(List<GameObject>)` and
+`returnToPatrol()` all moved their Rigidbody write from `rigidBody.MovePosition(transform.position +
+movement)` to `RigidbodyLocomotionMotor.SetPlanarVelocity`, the same motor Slices 72/73 established.
+Target-selection policy (`RefreshBodyguardTarget`/`CombatTargetSelector`), attack-queue reservation
+(`EnemyDetection`/`PlayerAttackQueue`), pursuit/patrol decisions, `movementSpeed` selection, and
+attack/idle/knockdown behavior are all untouched - this slice changed only how the already-decided
+X/Z direction reaches the Rigidbody. `moveToTarget` has zero production callers (confirmed by repo-wide
+search) but was migrated anyway per its existing public contract, unused `waypoints` parameter and all -
+not an invitation to delete or redesign dead code outside this slice's mandate.
+
+**The flatten fix, applied a third time.** `targetPosition` previously held a full 3D normalized
+direction (`(target - transform.position).normalized`), and the old `MovePosition` write physically
+applied that Y component every step. `RigidbodyLocomotionMotor` only ever writes X/Z, so all three
+methods now flatten to the X/Z plane before normalizing (a small shared `FlattenToPlanarDirection`
+helper, since three call sites needed it rather than AutoPlayerDefense's two), matching Slices 72/73's
+identical fix for the identical reason: normalizing the full 3D delta and discarding Y afterward would
+silently throttle horizontal pursuit/patrol speed below `movementSpeed` whenever a bodyguard target or
+`OriginalPosition` differs in Y from this enemy. Gravity and knockback/damage-reaction impulses
+(`struckByLighning`/`knockedDown`/`takeDamage`, all untouched) own Y exclusively now. Covered by
+`PursueTarget_BodyguardTargetWithYDelta_StillCommandsFullMovementSpeedHorizontally`.
+
+**Stop semantics.** `pursueTarget()` has two internal early returns (no resolvable `TargetQueue`; no
+bodyguard target and no resolvable reserved attack-position transform) that previously just stopped
+issuing `MovePosition` calls, matching `FixedUpdate`'s own external state gates (`stateWalk`,
+`!Knockdown`, `!Disintegrated`, `enemyDetection.Attacking`) which do the same. Under persistent
+velocity, a stale commanded velocity would otherwise keep sliding the enemy once nothing calls
+`pursueTarget` further. Both internal early-return sites call a small shared `ReleasePlanarVelocity()`
+(X/Z only, matching Y untouched) before returning; `returnToPatrol()`'s own completion branch (distance
+to `OriginalPosition` within the existing 1-unit threshold) releases the same way immediately before
+clearing `statePatrol`.
+
+**Code review finding, fixed before merge: `FixedUpdate`'s own external gates needed the same release.**
+The first pass of this slice left `FixedUpdate`'s gate (`stateWalk && !Knockdown && !Disintegrated &&
+enemyDetection.Attacking`) unmodified, reasoning that `Update()`'s pre-existing `stateIdle` branch
+(`rigidBody.linearVelocity = Vector3.zero`, present before this slice for an unrelated reason) already
+runs immediately after every `FixedUpdate` in the same frame and zeroes velocity on most transitions out
+of pursuit. Review traced a concrete gap in that reasoning: `stateIdle`'s condition requires
+`currentState != AnimatorState_Attack`, so it stays `false` for the entire duration the animator reports
+being in the attack state - exactly the window `stateWalk` goes `false` (via the `!stateAttack` clause)
+and `FreezeEnemyPosition()` engages. For the `enemyUsesPhysics == false` branch, that freeze sets
+position constraints only, not velocity, so the only thing preventing a visible snap once the freeze
+lifts was a coincidental timing relationship between the animator's "attack" tag and its state hash, not
+a proven invariant. A second, independent gap: `EnemyDetection.CheckReturnToPatrolStatus` (a separate
+file, unmodified) writes `enemyController.statePatrol = false` directly on its own 3-second
+`InvokeRepeating` cadence, bypassing `returnToPatrol()`'s body - and therefore its release - entirely.
+
+Fixed by adding one `else if (!statePatrol) { ReleasePlanarVelocity(); }` alongside `FixedUpdate`'s
+existing pursuit gate (skipped whenever `statePatrol` is about to run its own command/release below),
+matching the same "release at every path that stops issuing movement" invariant Slice 73 already applied
+to `AutoPlayerDefense`'s own suppression gates - the two locomotion methods' own internal releases were
+necessary but not sufficient on their own. Covered by
+`PursueTarget_NoQueue_ReleasesPlanarVelocityAndPreservesY`,
+`PursueTarget_NoBodyguardAndNoAttackReservation_ReleasesPlanarVelocityAndPreservesY`,
+`PursueTarget_NoBodyguardAndOutOfRangeAttackPosition_ReleasesPlanarVelocityAndPreservesY` (review also
+found the original unresolvable-attack-position test only exercised the id-defaults-to-`-1` guard, not a
+genuinely out-of-range reserved id - split into two named tests to cover both), and
+`ReturnToPatrol_WithinThreshold_ReleasesPlanarVelocityPreservesYAndClearsStatePatrol` for the two
+locomotion-method-internal releases; `FixedUpdate_NeitherWalkingNorPatrolling_...` and
+`FixedUpdate_KnockedDownSuppressesPursuit_...` for the new external-gate release, plus
+`FixedUpdate_StillPursuing_DoesNotReleaseCommandedVelocity` and
+`FixedUpdate_StillPatrolling_DoesNotReleaseCommandedVelocity` as positive controls proving the new
+branch does not suppress legitimate ongoing movement. All six release-path tests verified against a
+negative control (each release call removed in turn; exactly the tests naming that call failed, no
+others; reverted immediately after confirming).
+
+**Deferred, unchanged by this slice:** `BodyGuardController`, `RacingVehicleController`,
+`RacingCinderBlock` - all still drive locomotion through `MovePosition` and require their own analysis
+(different arrival/acceleration/impulse policies).
+
+**Validation.** Compiled clean via `Unity.exe -batchmode -nographics -quit` (0 `error CS` lines,
+`CompileScripts` phase completed). Added `Level5EnemyControllerLocomotionTests` (15 EditMode tests)
+driving the real public `pursueTarget()`/`moveToTarget()`/`returnToPatrol()`, plus the real private
+`FixedUpdate()` for the tests covering its own release branch, against a minimally-composed enemy
+(`rigidBody`/`enemyDetection`/`movementSpeed`/`currentState` set by reflection rather than relying on
+lifecycle methods to land first - `Awake()` is not guaranteed to have completed by the time a synchronous
+EditMode `[Test]` continues past `AddComponent`, since no active player-loop tick drives it inline the
+way Play Mode does; confirmed empirically, not assumed. `OnEnable()`/`Awake()` still run automatically
+via `AddComponent` and are harmless) - covering: bodyguard-target pursuit at exactly `movementSpeed`,
+horizontal speed staying exactly `movementSpeed` regardless of a bodyguard's Y delta, Y preserved
+through pursuit, advancing on the reserved attack position when no bodyguard is selected, releasing
+X/Z while preserving Y when the target queue, a never-reserved attack position, or an out-of-range
+reserved attack position cannot be resolved, the `movement` field's displacement meaning preserved,
+`moveToTarget` commanding `movementSpeed` along the existing `targetPosition` direction, patrol
+commanding `movementSpeed` toward `OriginalPosition` outside the completion threshold, patrol completion
+releasing X/Z/preserving Y/still clearing `statePatrol`, `FixedUpdate` releasing X/Z/preserving Y when
+neither walking nor patrolling and when knocked down mid-pursuit, and `FixedUpdate` NOT releasing while
+legitimately still pursuing or still patrolling. `Level5LocomotionRatchetTests` gained a fourth guard,
+`EnemyControllerHasNoExecutableMovePositionCall`, and its class doc comment/`Deferred` list updated to
+move `EnemyController` out of the remaining-roles set. Ran via `-runTests -testPlatform EditMode
+-testFilter "Level5EnemyControllerLocomotionTests;Level5LocomotionRatchetTests"`: 20/20 passed. Three
+negative controls (queue-unresolvable release, patrol-completion release, and the new `FixedUpdate`
+external-gate release) confirmed the release-path tests actually detect their target defect - each
+removed in turn, exactly the tests naming that release failed and no others, reverted immediately after
+confirming.
+
+**No PlayMode integration test added, and why.** Slices 72/73 both added a PlayMode fixture letting real
+physics integrate the migrated calls over several fixed steps. `EnemyController` lives in the default
+`Assembly-CSharp` assembly (a deliberate, tracked architectural exception - see
+`Level5ProductionAssemblyBoundaryTests.IntentionalGameManagerShellCompilesIntoAssemblyCSharp` and its
+neighbors for the ongoing Phase 2b leaf-by-leaf migration this repository is running independently of
+Phase 4), which `Level5.PlayModeTests.asmdef` does not reference - only named `Level5.*` leaf assemblies
+(`Level5.Player`, on which `AutoPlayerDefenseLocomotionPlayModeTests` and its siblings depend, is
+already migrated; `EnemyController` is not). A PlayMode fixture referencing `EnemyController`/
+`ICombatAgent` failed to compile for exactly this reason (confirmed directly - not assumed) and was
+removed rather than worked around by widening `Level5.PlayModeTests.asmdef`'s reference list, which
+would be a Phase 2b assembly-boundary change unrelated to this Phase 4 locomotion slice's mandate. The
+EditMode fixture above proves the velocity command and every release path as pure state, the same
+category of evidence `Level5RigidbodyLocomotionMotorTests` already established for the shared motor
+itself; it does not prove real-physics integration (actual displacement over several fixed steps,
+overshoot behavior) the way a PlayMode fixture would. Flagging this gap explicitly rather than treating
+EditMode coverage as a full substitute - a future slice that migrates `EnemyController` into a named
+assembly (or extends `Level5.PlayModeTests`'s references) should add the PlayMode counterpart then.
+
+Ran the full suites for final certification: EditMode 1443/1443 passed, PlayMode 23/23 passed (unchanged
+from Slice 73's own count, confirming this slice added no PlayMode fixture and regressed none of the
+existing ones), `scripts/validate-repository.ps1` passed.
+
+**Manual Play Mode validation:** not performed - outstanding, for the same reason as Slice 73
+(batchmode-only environment, no interactive editor/game window). Enemy pursuit/patrol tracking
+smoothness, attack-range feel, and the absence of residual sliding around attack/knockdown transitions
+were not observed visually. Automated EditMode coverage above establishes the physics invariants
+(velocity magnitude, release, axis independence) directly; it cannot establish feel or animation-blend
+quality, or serve as evidence for the real-physics integration a PlayMode fixture would normally add
+(see above). Flagging both gaps explicitly rather than treating automated coverage as a substitute for
+either.
+
 ### Phase 5 — Input ownership
 
 One owner per action map. Today a shared `PlayerControls` instance and per-player instances coexist,

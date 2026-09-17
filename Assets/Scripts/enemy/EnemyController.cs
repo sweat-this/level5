@@ -221,12 +221,23 @@ public class EnemyController : MonoBehaviour, ICombatAgent, IPooledSpawnReset
 
     private void FixedUpdate()
     {
-        if (stateWalk 
-            && currentState != AnimatorState_Knockdown 
+        // AUD-012 Phase 4 Slice 74 code review: this gate can go from true to false for reasons
+        // pursueTarget() itself never sees (stateWalk/currentState flipping in Update(), or
+        // EnemyDetection.CheckReturnToPatrolStatus writing statePatrol directly) - a persisted
+        // Rigidbody velocity survives past the tick this stops calling pursueTarget, unlike the old
+        // one-shot MovePosition step, so the else branch releases explicitly rather than relying on
+        // Update()'s unrelated stateIdle branch to happen to zero it first. Skipped whenever statePatrol
+        // is about to run below, since that call already commands or releases its own velocity.
+        if (stateWalk
+            && currentState != AnimatorState_Knockdown
             && currentState != AnimatorState_Disintegrated
             && enemyDetection.Attacking)
         {
             pursueTarget();
+        }
+        else if (!statePatrol)
+        {
+            ReleasePlanarVelocity();
         }
         if (statePatrol)
         {
@@ -591,11 +602,34 @@ public class EnemyController : MonoBehaviour, ICombatAgent, IPooledSpawnReset
         stateKnockDown = false;
     }
 
+    // AUD-012 Phase 4 Slice 74: ordinary pursue/patrol locomotion moved from rigidBody.MovePosition to
+    // RigidbodyLocomotionMotor.SetPlanarVelocity, matching Slices 72/73. Direction is flattened to the
+    // X/Z plane before normalizing - the old MovePosition write applied targetPosition's full 3D
+    // normalized delta (including Y), but the motor only ever writes X/Z, so normalizing the full delta
+    // first would silently throttle horizontal speed whenever a target's Y differs from this enemy's.
+    // Y is left to gravity/knockback/other explicit impulses, matching every other migrated role.
+    //
+    // FixedUpdate only calls pursueTarget/returnToPatrol while their state gates (stateWalk/statePatrol)
+    // hold, and pursueTarget itself can resolve to no target mid-call. A one-shot MovePosition step
+    // produced no further displacement once a call stopped issuing it; a commanded Rigidbody velocity
+    // persists until overwritten, so every path below that stops issuing movement releases it explicitly.
+    private static Vector3 FlattenToPlanarDirection(Vector3 toTarget)
+    {
+        return new Vector3(toTarget.x, 0f, toTarget.z).normalized;
+    }
+
+    private void ReleasePlanarVelocity()
+    {
+        movement = Vector3.zero;
+        RigidbodyLocomotionMotor.SetPlanarVelocity(rigidBody, 0f, 0f);
+    }
+
     public void pursueTarget()
     {
         PlayerAttackQueue playerAttackQueue = TargetQueue;
         if (playerAttackQueue == null)
         {
+            ReleasePlanarVelocity();
             return;
         }
 
@@ -605,19 +639,20 @@ public class EnemyController : MonoBehaviour, ICombatAgent, IPooledSpawnReset
             Transform attackPosition = playerAttackQueue.GetAttackPositionTransform(enemyDetection.AttackPositionId);
             if (attackPosition == null)
             {
+                ReleasePlanarVelocity();
                 return;
             }
 
-            targetPosition = (attackPosition.position - transform.position).normalized;
+            targetPosition = FlattenToPlanarDirection(attackPosition.position - transform.position);
         }
         // otherwise engage the selected bodyguard (STEP 2/5 - selection happens in
         // RefreshBodyguardTarget, on the same cadence as UpdateDistanceFromPlayer)
         else
         {
-            targetPosition = (currentBodyguardTarget.CombatTransform.position - transform.position).normalized;
+            targetPosition = FlattenToPlanarDirection(currentBodyguardTarget.CombatTransform.position - transform.position);
         }
         movement = targetPosition * (movementSpeed * Time.fixedDeltaTime);
-        rigidBody.MovePosition(transform.position + movement);
+        RigidbodyLocomotionMotor.SetPlanarVelocity(rigidBody, targetPosition.x * movementSpeed, targetPosition.z * movementSpeed);
     }
 
     public void moveToTarget(List<GameObject> waypoints)
@@ -635,7 +670,7 @@ public class EnemyController : MonoBehaviour, ICombatAgent, IPooledSpawnReset
         //}
         movement = targetPosition * (movementSpeed * Time.fixedDeltaTime);
         //movement = targetPosition * (movementSpeed * Time.deltaTime);
-        rigidBody.MovePosition(transform.position + movement);
+        RigidbodyLocomotionMotor.SetPlanarVelocity(rigidBody, targetPosition.x * movementSpeed, targetPosition.z * movementSpeed);
         //transform.Translate(movement);
 
         //Debug.Log(gameObject.transform.root.name + " -- currentSpeed : " + currentSpeed);
@@ -646,13 +681,18 @@ public class EnemyController : MonoBehaviour, ICombatAgent, IPooledSpawnReset
         //Debug.Log(gameObject.name + "  is returning to Vector3  : " + originalPosition);
         if (Vector3.Distance(gameObject.transform.position, OriginalPosition) > 1)
         {
-            targetPosition = (originalPosition - transform.position).normalized;
+            targetPosition = FlattenToPlanarDirection(originalPosition - transform.position);
             movement = targetPosition * (movementSpeed * Time.deltaTime);
             //movement = targetPosition * (movementSpeed * Time.deltaTime);
-            rigidBody.MovePosition(transform.position + movement);
+            RigidbodyLocomotionMotor.SetPlanarVelocity(rigidBody, targetPosition.x * movementSpeed, targetPosition.z * movementSpeed);
         }
         else
         {
+            // AUD-012 Phase 4 Slice 74: release before clearing statePatrol - this defender/patroller
+            // has no separate arrival-transition method the way AutoPlayerController does, so the
+            // release has to happen at this same completion site or a commanded velocity from the
+            // last non-trivial tick would keep sliding the enemy past OriginalPosition.
+            ReleasePlanarVelocity();
             statePatrol = false;
         }
     }
