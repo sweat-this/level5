@@ -117,7 +117,7 @@ SOCIAL                      RivalryRecord (derived, never authoritative)
                             all of the above sit above
                             IVersusSeriesRepository  <- the LOCAL persistence seam
                                 |                    |
-                        file-backed local      in-memory (tests)
+                        file-backed local      in-memory (tests, dev console)
 
                             remote correspondence is a separate typed client against a
                             backend HTTP API, not an implementation of this interface - see
