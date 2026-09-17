@@ -3,19 +3,19 @@ using System.Text.RegularExpressions;
 using NUnit.Framework;
 
 /// <summary>
-/// AUD-012 Phase 4 Slices 72-73 permanent guards over <c>PlayerController</c>'s, <c>AutoPlayerController</c>'s
-/// and <c>AutoPlayerDefense</c>'s locomotion, all source-text scans (no scene/composition needed) using
-/// <see cref="Level5TestSourceText.StripComments"/> (the shared stripper this repo's other
-/// architecture-guard tests already use) so historical explanatory comments documenting this migration
-/// do not trip either guard - only actual code does:
+/// AUD-012 Phase 4 Slices 72-74 permanent guards over <c>PlayerController</c>'s, <c>AutoPlayerController</c>'s,
+/// <c>AutoPlayerDefense</c>'s, and <c>EnemyController</c>'s locomotion, all source-text scans (no
+/// scene/composition needed) using <see cref="Level5TestSourceText.StripComments"/> (the shared stripper
+/// this repo's other architecture-guard tests already use) so historical explanatory comments documenting
+/// this migration do not trip either guard - only actual code does:
 ///
-/// - <b>No executable <c>MovePosition</c> call.</b> All three moved their ordinary locomotion
+/// - <b>No executable <c>MovePosition</c> call.</b> All four moved their ordinary locomotion
 ///   from <c>Rigidbody.MovePosition</c> to <see cref="RigidbodyLocomotionMotor"/> - see that type's doc
 ///   comment for why a dynamic, non-kinematic body should not be position-driven. Scoped to exactly
-///   these three files, not the whole repository: Phase 4's remaining roles (<c>EnemyController</c>,
-///   <c>BodyGuardController</c>, <c>RacingVehicleController</c>, <c>RacingCinderBlock</c>) still
-///   legitimately drive locomotion through <c>MovePosition</c> and are deferred to later slices - see
-///   the Phase 4 section of <c>docs/systems-restructure-plan.md</c>.
+///   these four files, not the whole repository: Phase 4's remaining roles (<c>BodyGuardController</c>,
+///   <c>RacingVehicleController</c>, <c>RacingCinderBlock</c>) still legitimately drive locomotion
+///   through <c>MovePosition</c> and are deferred to later slices - see the Phase 4 section of
+///   <c>docs/systems-restructure-plan.md</c>.
 /// - <b><c>AutoPlayerController</c> sets <c>arrivedAtTarget = true</c> in exactly one place.</b> Code
 ///   review finding on this slice: <c>AutoPlayerController</c> has two independent arrival-detection
 ///   sites (<c>Update</c> and <c>FixedUpdate</c> - <c>Grounded</c> can differ between the two, so either
@@ -35,6 +35,9 @@ public class Level5LocomotionRatchetTests
 
     private static readonly string AutoPlayerDefensePath = Path.Combine(
         Directory.GetCurrentDirectory(), "Assets", "Scripts", "player", "Level5Player", "AutoPlayerDefense.cs");
+
+    private static readonly string EnemyControllerPath = Path.Combine(
+        Directory.GetCurrentDirectory(), "Assets", "Scripts", "enemy", "EnemyController.cs");
 
     private static readonly Regex MovePositionCall = new Regex(@"\.\s*MovePosition\s*\(");
 
@@ -56,6 +59,12 @@ public class Level5LocomotionRatchetTests
         AssertNoExecutableMovePosition(AutoPlayerDefensePath);
     }
 
+    [Test]
+    public void EnemyControllerHasNoExecutableMovePositionCall()
+    {
+        AssertNoExecutableMovePosition(EnemyControllerPath);
+    }
+
     private static void AssertNoExecutableMovePosition(string path)
     {
         string text = Level5TestSourceText.StripComments(File.ReadAllText(path));
@@ -65,7 +74,7 @@ public class Level5LocomotionRatchetTests
             Is.False,
             Level5TestSourceText.Relative(path)
                 + " must drive ordinary locomotion through RigidbodyLocomotionMotor, not "
-                + "Rigidbody.MovePosition - see AUD-012 Phase 4 Slices 72-73.");
+                + "Rigidbody.MovePosition - see AUD-012 Phase 4 Slices 72-74.");
     }
 
     [Test]
