@@ -61,11 +61,15 @@ public class Level5RacingCinderBlockLocomotionTests
     }
 
     /// <summary>
-    /// Composes a bare <c>RacingGameManager</c>/<c>RacingVehicleController</c> pair sufficient for
-    /// <c>pursuePlayer()</c>/<c>FixedUpdate()</c>'s unconditional
-    /// <c>RacingGameManager.instance.Player</c>/<c>.PlayerController</c> dereferences, without letting
-    /// either component's own <c>Awake()</c>/<c>Start()</c> run - the manager GameObject stays inactive
-    /// throughout, and <c>instance</c> is assigned directly rather than left for <c>Awake()</c> to set.
+    /// Composes a bare <c>RacingGameManager</c>/<c>RacingVehicleController</c>/<c>RacingVehicleProfile</c>
+    /// set sufficient for <c>pursuePlayer()</c>/<c>FixedUpdate()</c>'s unconditional
+    /// <c>RacingGameManager.instance.Player</c>/<c>.PlayerController</c> dereferences - and, since
+    /// <c>RacingCinderBlock.Start()</c> also unconditionally dereferences
+    /// <c>RacingGameManager.instance.CharacterProfile.MaxSpeed</c>, this composes a profile too so tests
+    /// that drive the real <c>Start()</c> do not need their own separate setup. Neither the manager's own
+    /// <c>Awake()</c>/<c>Start()</c> nor the profile's own <c>Start()</c> are allowed to run - the manager
+    /// GameObject stays inactive throughout composition, and <c>instance</c> is assigned directly rather
+    /// than left for <c>Awake()</c> to set.
     /// </summary>
     private RacingVehicleController ComposeRacingGameManager(out GameObject player)
     {
@@ -76,12 +80,41 @@ public class Level5RacingCinderBlockLocomotionTests
 
         player = Spawn("racing-player-test-actor");
         RacingVehicleController playerController = player.AddComponent<RacingVehicleController>();
+        RacingVehicleProfile profile = player.AddComponent<RacingVehicleProfile>();
 
         SetPrivateField(manager, "_player", player);
         SetPrivateField(manager, "_playerController", playerController);
+        SetPrivateField(manager, "_characterProfile", profile);
         RacingGameManager.instance = manager;
 
         return playerController;
+    }
+
+    /// <summary>
+    /// Code review finding: <c>Start()</c> used to assign the player's raw world position to
+    /// <c>target</c> directly, instead of the normalized direction every other write to this field
+    /// produces (see <c>pursuePlayer()</c>). That fed straight into this slice's new
+    /// <c>rigidbody.linearVelocity = target * movementSpeed</c> write, so for one physics step the
+    /// commanded velocity would be <c>worldPosition * movementSpeed</c> rather than
+    /// <c>direction * movementSpeed</c> - an arbitrarily large, effectively undefined one-tick velocity.
+    /// Fixed by having <c>Start()</c> call <c>pursuePlayer()</c> instead of assigning the raw position.
+    /// </summary>
+    [Test]
+    public void Start_InitializesTargetAsNormalizedDirectionTowardPlayer()
+    {
+        RacingCinderBlock cinderBlock = BuildCinderBlock(out Rigidbody rigidBody, movementSpeed: 10f);
+        RacingVehicleController playerController = ComposeRacingGameManager(out GameObject player);
+        playerController.FacingFront = true;
+        // Far enough from the origin that a regression back to the raw-position assignment would be
+        // unmistakable (a magnitude far from 1), not coincidentally close to it.
+        player.transform.position = new Vector3(30f, 10f, -5f);
+
+        InvokePrivate(cinderBlock, "Start");
+
+        Vector3 target = (Vector3)GetPrivateField(cinderBlock, "target");
+        Assert.That(target.magnitude, Is.EqualTo(1f).Within(0.0001f),
+            "Start() must seed target as a normalized direction toward the player, matching every other "
+            + "write to this field - not the player's raw world position.");
     }
 
     /// <summary>

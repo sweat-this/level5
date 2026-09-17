@@ -31,7 +31,15 @@ public class RacingCinderBlock : MonoBehaviour
     void Start()
     {
         rigidbody = GetComponent<Rigidbody>();
-        target = RacingGameManager.instance.Player.transform.position;
+        // AUD-012 Phase 4 code review finding: this used to assign the player's raw world position to
+        // `target` directly, instead of the normalized direction every other write to this field
+        // produces (see pursuePlayer()). Under the old MovePosition path this only ever mattered for
+        // one physics step (pursuePlayer(), called every FixedUpdate, immediately renormalized it) -
+        // but it is clearer, and no more expensive, to seed a well-defined direction up front than to
+        // rely on a one-tick self-correction. pursuePlayer() also depends on
+        // RacingGameManager.instance.Player/.PlayerController, exactly as the two lines below already
+        // do, so calling it here introduces no new dependency.
+        pursuePlayer();
         //Debug.Log("RacingGameManager.instance.CharacterProfile.MaxSpeed : " + RacingGameManager.instance.CharacterProfile.MaxSpeed);
         maxSpeed = RacingGameManager.instance.CharacterProfile.MaxSpeed * 1.6f;
         //acceleration = RacingGameManager.instance.CharacterProfile.Acceleration * 2f;

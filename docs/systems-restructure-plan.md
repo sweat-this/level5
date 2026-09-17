@@ -7008,15 +7008,17 @@ RacingCinderBlock       → dynamic full-vector Rigidbody velocity (chase owns X
 RacingVehicleController → unresolved Transform.Translate locomotion role (separate audit required)
 ```
 
-**Tests added:** `Level5RacingCinderBlockLocomotionTests` (9 EditMode tests) - full-vector velocity equal
+**Tests added:** `Level5RacingCinderBlockLocomotionTests` (10 EditMode tests) - full-vector velocity equal
 to `target * movementSpeed` including a nonzero Y component, velocity magnitude equal to `movementSpeed`
 regardless of direction, the `movement` field's preserved per-step-displacement meaning, the existing
 acceleration rule unchanged, knockdown suppression releasing the full velocity, the arrival transition
 (via `pursuePlayer()`) and the player-collision transition (via `OnTriggerEnter`) each setting
 `targetReached` and clearing velocity exactly once, repeated `FixedUpdate` processing while already
-`targetReached` not re-clearing an externally-set velocity, and the authored `cinderblock.prefab`
+`targetReached` not re-clearing an externally-set velocity, the authored `cinderblock.prefab`
 Rigidbody remaining dynamic (non-kinematic) - the migration's own precondition, guarded the same
-directional way as the bodyguard's kinematic precondition. `Level5BodyGuardLocomotionExceptionTests` (3
+directional way as the bodyguard's kinematic precondition - and (added by the post-commit review fix
+below) `Start()` seeding `target` as a normalized direction rather than a raw world position.
+`Level5BodyGuardLocomotionExceptionTests` (3
 EditMode tests, described above). `Level5LocomotionRatchetTests` gained a fifth `MovePosition` guard,
 `RacingCinderBlockHasNoExecutableMovePositionCall`, and its class/method doc comments were reworded to
 state the corrected five-role picture above rather than only "route through RigidbodyLocomotionMotor"
@@ -7039,6 +7041,26 @@ from whichever `target` the *previous* tick's `pursuePlayer()` left behind, then
 again only afterward to recompute `target` for the *next* tick - a pre-existing one-tick lag this
 migration does not touch, isolated here rather than accidentally re-verified as a side effect.
 
+**Post-commit senior review finding, fixed.** `Start()` used to assign the player's raw world position to
+`target` directly (`target = RacingGameManager.instance.Player.transform.position;`), instead of the
+normalized direction every other write to this field produces in `pursuePlayer()`. Under the old
+`MovePosition` path this only ever mattered for one physics step - `pursuePlayer()`, called at the end of
+every `FixedUpdate`, immediately renormalized it for the next tick - but review flagged that this
+diff's own new line (`rigidbody.linearVelocity = target * movementSpeed`) makes the same one-tick gap more
+visible and worth closing rather than leaving implicit: for that first tick, the commanded velocity would
+be `worldPosition * movementSpeed` rather than `direction * movementSpeed`, an arbitrarily large,
+effectively undefined one-tick velocity command (dimensionally equivalent in impact to the old
+`MovePosition` path's own one-tick offset, so not a regression this migration introduced, but worth fixing
+now that it was surfaced). Fixed by having `Start()` call `pursuePlayer()` in place of the raw assignment -
+`pursuePlayer()` already depends on the same `RacingGameManager.instance.Player`/`.PlayerController` state
+the two lines immediately below in `Start()` already dereference, so this introduces no new dependency.
+Covered by `Start_InitializesTargetAsNormalizedDirectionTowardPlayer`, which composes a
+`RacingVehicleProfile` onto the existing `ComposeRacingGameManager` test helper (`Start()` also
+dereferences `RacingGameManager.instance.CharacterProfile.MaxSpeed`, previously unneeded since no test
+drove the real `Start()`) and drives the real `Start()` via reflection - verified against a negative
+control (the raw-position assignment briefly restored, exactly this test failed, reverted immediately
+after confirming).
+
 **No PlayMode integration test added, and why.** `RacingCinderBlock` depends on `RacingGameManager` (a
 scene-resolved singleton with `GameObject.FindWithTag("Player")`/control-map/joystick composition in its
 own `Start()`/`Awake()`) for every unconditional read in `pursuePlayer()`/`FixedUpdate()`. Building a real
@@ -7053,19 +7075,22 @@ EditMode coverage as a full substitute, consistent with how Slice 74 flagged the
 **Validation.** Compiled clean via `Unity.exe -batchmode -nographics -quit` (0 `error CS` lines,
 `CompileScripts` phase completed). Ran via `-runTests -testPlatform EditMode -testFilter
 "Level5RacingCinderBlockLocomotionTests;Level5BodyGuardLocomotionExceptionTests;
-Level5LocomotionRatchetTests"`: 18/18 passed. Four negative controls confirmed the new/changed tests
-actually detect their target defects, each reverted immediately after confirming and diffed clean against
-the pre-edit copy where the change was to an asset rather than source: disabling the knockdown release
-failed exactly `FixedUpdate_PlayerKnockedDown_StopsFullChaseVelocityAndPreservesNoResidualAxis`;
-reintroducing an unconditional per-frame clear in the impact-phase branch failed exactly
+Level5LocomotionRatchetTests"`: 19/19 passed (18 from the initial implementation plus
+`Start_InitializesTargetAsNormalizedDirectionTowardPlayer` from the post-commit review fix above). Five
+negative controls confirmed the new/changed tests actually detect their target defects, each reverted
+immediately after confirming and diffed clean against the pre-edit copy where the change was to an asset
+rather than source: disabling the knockdown release failed exactly
+`FixedUpdate_PlayerKnockedDown_StopsFullChaseVelocityAndPreservesNoResidualAxis`; reintroducing an
+unconditional per-frame clear in the impact-phase branch failed exactly
 `FixedUpdate_AlreadyTargetReached_DoesNotRepeatedlyClearAccumulatedImpactVelocity`; reintroducing an
 executable `MovePosition` call failed exactly `RacingCinderBlockHasNoExecutableMovePositionCall`; flipping
-`bodyguard_ian.prefab`'s `m_IsKinematic` to `0` failed exactly `BodyGuardIanPrefabRigidbodyIsKinematic`.
-Ran the full suites for final certification: EditMode 1456/1456 passed (net +13 over Slice 74's 1443: 9
-new `Level5RacingCinderBlockLocomotionTests`, 3 new `Level5BodyGuardLocomotionExceptionTests`, 1 new
-`Level5LocomotionRatchetTests` guard), PlayMode 23/23 passed (unchanged from Slice 74's own count,
-confirming this slice added no PlayMode fixture and regressed none of the existing ones),
-`scripts/validate-repository.ps1` passed.
+`bodyguard_ian.prefab`'s `m_IsKinematic` to `0` failed exactly `BodyGuardIanPrefabRigidbodyIsKinematic`;
+restoring `Start()`'s raw-position assignment failed exactly
+`Start_InitializesTargetAsNormalizedDirectionTowardPlayer`. Ran the full suites for final certification:
+EditMode 1457/1457 passed (net +14 over Slice 74's 1443: 10 `Level5RacingCinderBlockLocomotionTests`, 3
+`Level5BodyGuardLocomotionExceptionTests`, 1 `Level5LocomotionRatchetTests` guard), PlayMode 23/23 passed
+(unchanged from Slice 74's own count, confirming this slice added no PlayMode fixture and regressed none
+of the existing ones), `scripts/validate-repository.ps1` passed.
 
 **Manual Play Mode validation:** not performed - outstanding, for the same reason as Slices 73/74
 (batchmode-only environment, no interactive editor/game window). Cinder-block chase tracking (including
