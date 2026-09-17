@@ -57,6 +57,27 @@ happened in this slice. The Slice 77 canary test that asserted the Shift overlap
 `OtherChange_NoLongerBindsEitherShiftKey`, and `OtherChangeAndPlayerRun_ShareNoKeyboardBinding` in
 `Level5PlayerInputOtherMapOwnershipTests`.
 
+2026-09-17 (AUD-012 Phase 5 Slice 79): added
+[`player-input-smoke-validation.md`](player-input-smoke-validation.md), the checklist migration plan
+step 2 below calls for - a per-behavior matrix covering keyboard, gamepad, and mobile touch controls,
+Editor/Development debug input, menu/pause, and the `activeInputHandler` gate, each row marked with a
+validation type (automated / manual desktop / manual gamepad / manual mobile-device / blocked) and a
+status (passing / failing / not run / blocked / not applicable). This is a validation-gate slice: no
+action map, binding, generated wrapper, scene, prefab, or runtime input behavior changed, and
+`activeInputHandler` remains `2` (Both). Writing the checklist surfaced one pre-existing defect, left
+unfixed here because fixing it changes shipped runtime behavior: `GameLevelManager.Update`'s
+`toggle_run_keyboard`/`toggle_stats_keyboard` reads (`Other` map) check only
+`Controls.Other.change.enabled` - which reflects whether the shared `Other` map is currently active
+(always true), not whether `change` is held, the same coarse pattern `DevFunctions.cs` and
+`CheerleaderSwapAnimation.cs` use for their own `Other.change.enabled` reads. Unlike those two, and
+unlike `PlayerInputReader.DebugChangeHeld`/`DebugLightningPressed`, this call site has no
+`#if UNITY_EDITOR || DEVELOPMENT_BUILD` wrapper at all, so both toggles are reachable in shipped
+release builds via plain `1`/`2` keypresses - see the checklist's "Editor/Development debug input"
+section for detail.
+Actual manual/device validation against the new checklist remains outstanding; `OnScreenStick`/
+`OnScreenButton` migration (step 3 below) is still future work, and the touch scripts referenced by the
+checklist must not be deleted until their device checklist rows pass.
+
 This document tracks the player input modernization plan. The project already uses Unity's Input System through `PlayerControls.inputactions` and `PlayerControlsProvider`, but mobile/touch gameplay and menu input still contain legacy `Input.touchCount`, `Input.touches`, direct `Input.GetKeyDown`, third-party joystick reads, and per-screen touch controllers.
 
 ## Current Ownership
@@ -134,7 +155,11 @@ distance scaling, the Input System-first movement priority and every action name
 ## Migration Plan
 
 1. Finish routing `PlayerController` input through `PlayerInputReader`. Done for the first gameplay reads.
-2. Add focused smoke tests/manual checklist for keyboard, gamepad, and mobile touch controls.
+2. Add focused smoke tests/manual checklist for keyboard, gamepad, and mobile touch controls. Done
+   (AUD-012 Phase 5 Slice 79): see
+   [`player-input-smoke-validation.md`](player-input-smoke-validation.md). The checklist exists;
+   running it against a real desktop/gamepad/device session is separate outstanding work, tracked in
+   that document's "Outstanding / not run" section.
 3. Add Input System `OnScreenStick` components in Unity scenes/prefabs and bind them to `Player/movement`; then remove the legacy joystick fallback after device playtesting.
 4. Replace touch combat quadrants with `OnScreenButton` bindings for jump, shoot, attack, block, special, and pause where the UI/UX allows it.
 5. Move retained gestures into one `GestureInputAdapter`.
