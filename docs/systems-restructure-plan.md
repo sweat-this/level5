@@ -7110,6 +7110,41 @@ has zero readers *and* zero enablers.
 **Exit:** dead maps deleted, `activeInputHandler` dropped to Input System only, and a test asserting
 every map a consumer reads is enabled by someone.
 
+**Slice 76 (first Phase 5 slice, Unity `6000.5.7f1 (017862109af0)`): retired the dead `PlayerTouch`
+action map.** Serialized-reference audit (map id `61e28353-1d80-48ea-ba40-90154c5fe40e`, its eight
+action ids) against every `.unity`/`.prefab` reference to the `PlayerControls.inputactions` asset guid
+found zero live consumers: `InputSystemUIInputModule`'s `m_SubmitAction`/`m_CancelAction`/`m_MoveAction`
+and `PlayerInput`'s `m_Actions` resolve only to `Player`/`UINavigation` actions (confirmed by dumping
+each embedded `InputActionReference`'s file id via a temporary batchmode editor script, since `submit`/
+`cancel` exist as same-named actions in more than one map and file ids are not obviously
+map-attributable from the serialized YAML alone). `PlayerControlsProvider.EnablePlayerTouch()`/
+`DisablePlayerTouch()` had no caller; `SniperCameraController`'s two `controls.PlayerTouch.Enable()`/
+`Disable()` lines were already commented out and are removed by this slice (post-implementation review
+finding). Removed the map from `PlayerControls.inputactions`
+(diff: pure 289-line deletion, `Player`/`UINavigation`/`Other` byte-identical) and
+`playerTouchUsers`/`EnablePlayerTouch()`/`DisablePlayerTouch()` from `PlayerControlsProvider`. Also
+corrected `PlayerControls.inputactions.meta`'s `wrapperCodePath`, which had drifted to the stale
+`Assets/Scripts/input/PlayerControls.cs` while the real generated wrapper lived at
+`Assets/Scripts/input/Level5Input/PlayerControls.cs` (where `Level5.Input`'s asmdef is) - fixed before
+reimporting so Unity did not create a second wrapper at the old path. Reimported/regenerated through the
+pinned editor; the wrapper diff is a pure 545-line deletion, no reformatting of surviving maps.
+`PlayerTouchInputState`, `TouchInputController`, the legacy joystick fallback, and
+`activeInputHandler: 2` (Both) are unchanged - this slice is a dead-map/dead-API removal, not the
+`OnScreenStick`/`OnScreenButton` or Input-System-only migration Phase 5's exit criteria still call for.
+Added `Level5PlayerTouchRetirementTests` (9 EditMode tests): the map is gone from a fresh
+`PlayerControls().asset`, `Player`/`UINavigation`/`Other` still resolve, `PlayerControls` still compiles
+into `Level5.Input`, no wrapper exists at the stale root path, exactly one `PlayerControls.cs` exists
+under `Assets/Scripts/input/`, the `.meta`'s `wrapperCodePath` still names the correct path, and
+`PlayerControlsProvider` source no longer names `EnablePlayerTouch`/`DisablePlayerTouch`/
+`playerTouchUsers`. **Validation.** Compiled clean via `Unity.exe -batchmode -nographics -projectPath .
+-quit` (0 `error CS` lines). Ran `Level5PlayerTouchRetirementTests` (9/9),
+`Level5ProductionAssemblyBoundaryTests` plus `Level5PlayerInputReaderCompositionTests` (63/63),
+`Level5PauseCompositionTests` (27/27). Full suites: EditMode 1458/1458 passed (the racing-subsystem
+retirement between Slice 75 and this slice moved the baseline from 1457 to 1449 - unrelated to this
+slice - before this slice's 9 new tests brought it to 1458), PlayMode 23/23 passed,
+`scripts/validate-repository.ps1` passed. Manual/device touch input validation not performed - out of
+scope, since no touch-consumed behavior changed.
+
 ### Phase 6 — Remove the scene searches
 
 Full removal of the 124 scene searches, on the contracts Phase 0 established.
