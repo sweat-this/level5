@@ -31,7 +31,15 @@ public class RacingCinderBlock : MonoBehaviour
     void Start()
     {
         rigidbody = GetComponent<Rigidbody>();
-        target = RacingGameManager.instance.Player.transform.position;
+        // AUD-012 Phase 4 code review finding: this used to assign the player's raw world position to
+        // `target` directly, instead of the normalized direction every other write to this field
+        // produces (see pursuePlayer()). Under the old MovePosition path this only ever mattered for
+        // one physics step (pursuePlayer(), called every FixedUpdate, immediately renormalized it) -
+        // but it is clearer, and no more expensive, to seed a well-defined direction up front than to
+        // rely on a one-tick self-correction. pursuePlayer() also depends on
+        // RacingGameManager.instance.Player/.PlayerController, exactly as the two lines below already
+        // do, so calling it here introduces no new dependency.
+        pursuePlayer();
         //Debug.Log("RacingGameManager.instance.CharacterProfile.MaxSpeed : " + RacingGameManager.instance.CharacterProfile.MaxSpeed);
         maxSpeed = RacingGameManager.instance.CharacterProfile.MaxSpeed * 1.6f;
         //acceleration = RacingGameManager.instance.CharacterProfile.Acceleration * 2f;
@@ -65,12 +73,19 @@ public class RacingCinderBlock : MonoBehaviour
             {
                 movement = target * (movementSpeed * Time.fixedDeltaTime);
                 //movement = targetPosition * (movementSpeed * Time.deltaTime);
-                rigidbody.MovePosition(transform.position + movement);
+                // AUD-012 Phase 4: this chase intentionally owns X/Y/Z (see pursuePlayer's vertical
+                // target offset), so it commands a full-vector Rigidbody velocity rather than routing
+                // through RigidbodyLocomotionMotor, which is planar-only by design.
+                rigidbody.linearVelocity = target * movementSpeed;
             }
-            //else
-            //{
-            //    movementSpeed = 0;
-            //}
+            else
+            {
+                // AUD-012 Phase 4: MovePosition produced no further displacement the instant this
+                // branch stopped being reached. A persistent Rigidbody velocity does not stop on its
+                // own, so the last commanded chase velocity must be released explicitly while the
+                // player is knocked down - full vector, since this chase owns X/Y/Z.
+                StopChaseVelocity();
+            }
             pursuePlayer();
         }
         if (targetReached)
@@ -85,6 +100,33 @@ public class RacingCinderBlock : MonoBehaviour
         {
             Destroy(gameObject);
         }
+    }
+
+    /// <summary>
+    /// AUD-012 Phase 4: the single authoritative transition from chase into the impact phase.
+    /// pursuePlayer()'s own arrival check and OnTriggerEnter's player-collision path can both reach
+    /// this during one cinder block's life - guarding on the current state makes the chase-velocity
+    /// clear below run exactly once, not every frame once already in the impact phase.
+    /// </summary>
+    private void TransitionToTargetReached()
+    {
+        if (targetReached)
+        {
+            return;
+        }
+
+        targetReached = true;
+        StopChaseVelocity();
+    }
+
+    /// <summary>
+    /// AUD-012 Phase 4: zeroes the full chase velocity - X/Y/Z, not only X/Z - because this chase
+    /// intentionally drives all three axes (see pursuePlayer's vertical target offset), unlike the
+    /// planar roles RigidbodyLocomotionMotor serves.
+    /// </summary>
+    private void StopChaseVelocity()
+    {
+        rigidbody.linearVelocity = Vector3.zero;
     }
 
     public void pursuePlayer()
@@ -107,7 +149,7 @@ public class RacingCinderBlock : MonoBehaviour
         target = (newVector - transform.position).normalized;
         if ((newVector.x - transform.position.x) < 1)
         {
-            targetReached = true;
+            TransitionToTargetReached();
         }
     }
 
@@ -115,7 +157,7 @@ public class RacingCinderBlock : MonoBehaviour
     {
         if (other.CompareTag("Player") && gameObject.CompareTag("obstacle") && !targetReached)
         {
-            targetReached = true;
+            TransitionToTargetReached();
             //isLocked = true;
             Debug.Log("target reached");
             //movementSpeed = defaultMovementSpeed;
