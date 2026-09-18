@@ -107,6 +107,9 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/Scenes/level_24_aveb_cemetary.unity
     guid: 130bccdd6f2a8b14a9c987670afd1403
+  - enabled: 1
+    path: Assets/Scenes/level_00_multiplayer.unity
+    guid: 06341e8b38c82064f9c4e9eef4182a0e
   m_configObjects:
     com.unity.adaptiveperformance.loader_settings: {fileID: 11400000, guid: 807e81753eb35b94b8452c51ec5e4c3b,
       type: 2}

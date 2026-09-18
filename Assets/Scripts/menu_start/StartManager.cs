@@ -60,6 +60,7 @@ public class StartManager : MonoBehaviour
     Button creditsMenuButton;
     Button updateMenuButton;
     Button accountMenuButton;
+    Button multiplayerMenuButton;
 
     // player select rendering/state - owned by playerSelectCoordinator, not this class.
     // cpuSlotButtonObjects is the one array CPU slot 0/1/2 map to: TouchInputStartScreenController
@@ -108,6 +109,7 @@ public class StartManager : MonoBehaviour
     public const string creditsMenuButtonName = "credits_menu";
     public const string updateMenuButtonName = "update_menu";
     public const string accountMenuButtonName = "account_menu";
+    public const string multiplayerMenuButtonName = "multiplayer_menu";
     public const string updatePointsAvailable = "update_points_available";
 
     /// <summary>Shared message line, owned by the loading scene's prefab rather than this scene.</summary>
@@ -403,6 +405,11 @@ public class StartManager : MonoBehaviour
             (footer.ProgressionButton, "progressionButton"),
             (footer.AccountButton, "accountButton"),
             (footer.QuitButton, "quitButton"));
+        // multiplayerButton is deliberately not required here: EnsureMultiplayerButton synthesizes
+        // one at runtime (cloned from accountButton) when the footer prefab has not been given its
+        // own yet, so #159 ships a working entry point without needing prefab-editing access. A
+        // later pass can author it into the footer prefab properly; ValidateMenuUi will keep
+        // passing either way since a synthesized button satisfies the same field.
         return missing.Count == 0;
     }
 
@@ -572,6 +579,83 @@ public class StartManager : MonoBehaviour
         creditsMenuButton = footer.CreditsButton;
         updateMenuButton = footer.ProgressionButton;
         accountMenuButton = footer.AccountButton;
+        multiplayerMenuButton = footer.MultiplayerButton;
+        EnsureMultiplayerButton();
+    }
+
+    /// <summary>
+    /// #159: the footer prefab has not been given its own authored Multiplayer button yet (that
+    /// needs Editor/prefab-authoring access this change did not have), so this clones one from the
+    /// account button the first time it is needed rather than shipping without an entry point at
+    /// all. Idempotent - a later call with a real prefab-authored button just skips this.
+    /// </summary>
+    private void EnsureMultiplayerButton()
+    {
+        if (multiplayerMenuButton != null || accountMenuButton == null)
+        {
+            return;
+        }
+
+        GameObject clone = Instantiate(accountMenuButton.gameObject, accountMenuButton.transform.parent);
+        clone.name = multiplayerMenuButtonName;
+
+        TMP_Text tmpLabel = clone.GetComponentInChildren<TMP_Text>();
+        if (tmpLabel != null)
+        {
+            tmpLabel.text = "Multiplayer";
+        }
+        else
+        {
+            Text label = clone.GetComponentInChildren<Text>();
+            if (label != null)
+            {
+                label.text = "Multiplayer";
+            }
+        }
+
+        multiplayerMenuButton = clone.GetComponent<Button>();
+        SpliceIntoExplicitNavigation(accountMenuButton, multiplayerMenuButton);
+    }
+
+    /// <summary>
+    /// Cloning accountMenuButton also clones its Navigation component verbatim, including any
+    /// Explicit-mode selectOn* links - left unpatched, those would still point past the new button
+    /// (e.g. account's old right-neighbor stays account's right-neighbor), leaving it unreachable by
+    /// keyboard/gamepad navigation even though it renders and takes clicks. This splices the clone in
+    /// immediately after accountMenuButton in the Explicit chain, and repoints whatever used to link
+    /// back to account so it links back to the clone instead. A no-op when account's navigation is
+    /// not Explicit (Automatic/other modes recompute spatially on their own).
+    /// </summary>
+    private static void SpliceIntoExplicitNavigation(Button after, Button inserted)
+    {
+        Navigation afterNav = after.navigation;
+        if (afterNav.mode != Navigation.Mode.Explicit)
+        {
+            return;
+        }
+
+        Selectable previousRight = afterNav.selectOnRight;
+
+        Navigation insertedNav = inserted.navigation;
+        insertedNav.mode = Navigation.Mode.Explicit;
+        insertedNav.selectOnLeft = after;
+        insertedNav.selectOnRight = previousRight;
+        insertedNav.selectOnUp = afterNav.selectOnUp;
+        insertedNav.selectOnDown = afterNav.selectOnDown;
+        inserted.navigation = insertedNav;
+
+        afterNav.selectOnRight = inserted;
+        after.navigation = afterNav;
+
+        if (previousRight != null)
+        {
+            Navigation previousRightNav = previousRight.navigation;
+            if (previousRightNav.mode == Navigation.Mode.Explicit && previousRightNav.selectOnLeft == (Selectable)after)
+            {
+                previousRightNav.selectOnLeft = inserted;
+                previousRight.navigation = previousRightNav;
+            }
+        }
     }
 
     private Button GetButton(GameObject buttonObject)
@@ -588,6 +672,7 @@ public class StartManager : MonoBehaviour
         UiSelectionAdapter.RegisterButton(optionsMenuButton, LoadOptionsMenu);
         UiSelectionAdapter.RegisterButton(creditsMenuButton, LoadCreditsMenu);
         UiSelectionAdapter.RegisterButton(accountMenuButton, LoadAccountMenu);
+        UiSelectionAdapter.RegisterButton(multiplayerMenuButton, LoadMultiplayerMenu);
         UiSelectionAdapter.RegisterButton(playerSelectButton, SelectNextPlayer);
         UiSelectionAdapter.RegisterButton(friendSelectButton, SelectNextFriend);
         UiSelectionAdapter.RegisterButton(levelSelectButton, SelectNextLevel);
@@ -612,6 +697,7 @@ public class StartManager : MonoBehaviour
         UiSelectionAdapter.UnregisterButton(optionsMenuButton, LoadOptionsMenu);
         UiSelectionAdapter.UnregisterButton(creditsMenuButton, LoadCreditsMenu);
         UiSelectionAdapter.UnregisterButton(accountMenuButton, LoadAccountMenu);
+        UiSelectionAdapter.UnregisterButton(multiplayerMenuButton, LoadMultiplayerMenu);
         UiSelectionAdapter.UnregisterButton(playerSelectButton, SelectNextPlayer);
         UiSelectionAdapter.UnregisterButton(friendSelectButton, SelectNextFriend);
         UiSelectionAdapter.UnregisterButton(levelSelectButton, SelectNextLevel);
@@ -820,6 +906,11 @@ public class StartManager : MonoBehaviour
     public void LoadAccountMenu()
     {
         RunCommand(() => loadMenu(Constants.SCENE_NAME_level_00_account));
+    }
+
+    public void LoadMultiplayerMenu()
+    {
+        RunCommand(() => loadMenu(Constants.SCENE_NAME_level_00_multiplayer));
     }
 
     public void QuitGame()

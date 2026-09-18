@@ -352,9 +352,17 @@ opponent is.
 
 **Implemented (2026-09, issue #158):** the typed client described above now exists at
 `Assets/Scripts/backendv2/Level5BackendV2/`. See
-[`docs/backend-v2-client.md`](backend-v2-client.md) for its architecture, the
-`AttemptDescriptorDto -> MatchConfiguration` mapping, and what remains for the UI/E2E flow
-(issue #159).
+[`docs/backend-v2-client.md`](backend-v2-client.md) for its architecture and the
+`AttemptDescriptorDto -> MatchConfiguration` mapping.
+
+**Implemented (2026-09, issue #159):** the UI/E2E flow itself - a Friends / Incoming / Outgoing /
+Your Turn / Active / Completed correspondence screen (`CorrespondenceScreenController`), the
+missing `StartAttempt -> mapper -> ActiveMatch/ActiveRemoteAttempt/LegacyGameOptionsBridge/
+SceneTransition` launch sequence (`RemoteAttemptLauncher`), and a retry path for a failed result
+submission (`PendingRemoteAttemptResult`, `RemoteAttemptResultSubmitter.TryRetryPending`). See
+[`docs/backend-v2-correspondence-ui.md`](backend-v2-correspondence-ui.md) for the UI flow and
+[`docs/backend-v2-correspondence-certification.md`](backend-v2-correspondence-certification.md)
+for end-to-end certification results.
 
 `IVersusClock` and `IVersusIdSource` are injected rather than read from `DateTime.UtcNow` and
 `Guid.NewGuid` - partly so a correspondence delay can be tested, and partly because id issuance is

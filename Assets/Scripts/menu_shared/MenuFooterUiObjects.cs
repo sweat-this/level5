@@ -3,8 +3,8 @@ using UnityEngine;
 using UnityEngine.UI;
 
 /// <summary>
-/// The seven footer command buttons shared by every menu screen (press_start, stats_menu,
-/// options_menu, credits_menu, update_menu, account_menu, quit_game).
+/// The footer command buttons shared by every menu screen (press_start, stats_menu, options_menu,
+/// credits_menu, update_menu, account_menu, multiplayer_menu, quit_game).
 ///
 /// This is a passive reference container, not a controller: it holds the buttons, nothing more.
 /// Each screen manager decides which of these buttons it actually requires and what each one does
@@ -22,6 +22,7 @@ public class MenuFooterUiObjects : MonoBehaviour
     [SerializeField] private Button creditsButton;
     [SerializeField] private Button progressionButton;
     [SerializeField] private Button accountButton;
+    [SerializeField] private Button multiplayerButton;
     [SerializeField] private Button quitButton;
 
     public Button StartOrPlayButton => startOrPlayButton;
@@ -30,6 +31,7 @@ public class MenuFooterUiObjects : MonoBehaviour
     public Button CreditsButton => creditsButton;
     public Button ProgressionButton => progressionButton;
     public Button AccountButton => accountButton;
+    public Button MultiplayerButton => multiplayerButton;
     public Button QuitButton => quitButton;
 
     /// <summary>

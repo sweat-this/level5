@@ -41,9 +41,16 @@ Three different things are easy to confuse. They are not interchangeable:
 
 A separate, parallel boundary exists for Backend V2 (issue #158): `BackendV2SessionStore.IsAuthenticated`
 is the equivalent "may we call an authenticated endpoint" test for `api/v2/*`, backed by an
-in-memory-only access/refresh token pair that never touches `GameOptions` or `UserModel`, for the
-same reason `APIHelper.bearerToken` doesn't. The two sessions are independent - a legacy session and
-a Backend V2 session are not the same login. See `docs/backend-v2-client.md`.
+access/refresh token pair that never touches `GameOptions` or `UserModel`, for the same reason
+`APIHelper.bearerToken` doesn't. The two sessions are independent - a legacy session and a Backend V2
+session are not the same login. See `docs/backend-v2-client.md`.
+
+The token pair itself is mirrored to its own disk location (issue #159,
+`BackendV2SessionPersistenceStore`, plaintext JSON via `AtomicFile` - the same convention every
+other local save in this project already uses) so a player is not signed out of correspondence on
+every app restart; it is a separate file from every account-scoped save above, keyed by nothing
+account-specific, since it holds exactly one Backend V2 session at a time. See
+`docs/backend-v2-correspondence-ui.md`.
 
 AUD-045 fixed the case where `userid != 0` was being used as the authentication test. Two paths set
 an identity without a session, and both are intentional:
