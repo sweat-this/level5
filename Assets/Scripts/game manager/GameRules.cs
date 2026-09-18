@@ -425,6 +425,15 @@ public class GameRules : MonoBehaviour, IMoneyBallState, IShotMarkerSession
                 MatchRuntime.ModeId,
                 timePlayedEnd - timePlayedStart);
 
+            // Backend V2 counterpart to the local versus report above. No-ops for every match that
+            // is not an active remote correspondence attempt. Submission is network I/O, so unlike
+            // the local report it runs on its own coroutine rather than joining this method's
+            // synchronous retry loop; it does not gate matchEndHandled below.
+            Level5.BackendV2.RemoteAttemptResultSubmitter.TrySubmit(
+                primaryGameStats,
+                MatchRuntime.ModeId,
+                timePlayedEnd - timePlayedStart);
+
             matchEndHandled = persistenceComplete && progressionComplete && transitionComplete && versusComplete;
             if (matchEndHandled)
             {

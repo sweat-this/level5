@@ -1,0 +1,21 @@
+{
+    "name": "Level5.BackendV2",
+    "rootNamespace": "",
+    "references": [
+        "Level5.Core",
+        "Level5.Utility",
+        "Level5.Match",
+        "Level5.Versus",
+        "Level5.Basketball",
+        "Newtonsoft.Json"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

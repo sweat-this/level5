@@ -39,6 +39,12 @@ Three different things are easy to confuse. They are not interchangeable:
 | `APIHelper.HasSession` | `!string.IsNullOrEmpty(bearerToken)` | **A real session.** A token was obtained from the server. This is the only valid test for "may we call an authenticated endpoint". |
 | `CharacterProgressAccountId.GetCurrent()` | derived | **A filesystem scope.** `userid` if > 0, else `userName`, else `"guest"`. Chooses which JSON file local progress goes in. |
 
+A separate, parallel boundary exists for Backend V2 (issue #158): `BackendV2SessionStore.IsAuthenticated`
+is the equivalent "may we call an authenticated endpoint" test for `api/v2/*`, backed by an
+in-memory-only access/refresh token pair that never touches `GameOptions` or `UserModel`, for the
+same reason `APIHelper.bearerToken` doesn't. The two sessions are independent - a legacy session and
+a Backend V2 session are not the same login. See `docs/backend-v2-client.md`.
+
 AUD-045 fixed the case where `userid != 0` was being used as the authentication test. Two paths set
 an identity without a session, and both are intentional:
 

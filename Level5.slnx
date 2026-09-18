@@ -3,6 +3,7 @@
   <Project Path="Level5.Core.csproj" />
   <Project Path="Assembly-CSharp.csproj" />
   <Project Path="Level5.Player.csproj" />
+  <Project Path="Level5.BackendV2.csproj" />
   <Project Path="Level5.Versus.csproj" />
   <Project Path="Assembly-CSharp-firstpass.csproj" />
   <Project Path="Level5.PlayModeTests.csproj" />
