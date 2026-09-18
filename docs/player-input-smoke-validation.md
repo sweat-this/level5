@@ -1,6 +1,6 @@
 # Player Input Smoke Validation
 
-Last updated: 2026-09-17 (AUD-012 Phase 5 Slice 81)
+Last updated: 2026-09-18 (AUD-012 Phase 5 Slice 82)
 
 This is the validation-gate checklist called out by
 [`player-input-architecture.md`](player-input-architecture.md)'s migration plan step 2. It exists so
@@ -8,10 +8,31 @@ that future Phase 5 work (`OnScreenStick`/`OnScreenButton` adoption, retained-ge
 menu touch migration, and any eventual `activeInputHandler` change) has a concrete, per-behavior
 checklist to run against, instead of relying on ad hoc manual passes.
 
-**This slice creates the checklist. It does not perform device or manual validation.** Every item
-below is marked with its current status; unless a status explicitly says otherwise, treat the
-underlying behavior as unverified by this document. No runtime input behavior, action map, binding,
-scene, or prefab changed to produce this checklist.
+**Slice 79 created the checklist; it did not perform device or manual validation.** Every item below
+is marked with its current status; unless a status explicitly says otherwise, treat the underlying
+behavior as unverified by this document. No runtime input behavior, action map, binding, scene, or
+prefab changed to produce this checklist.
+
+**Slice 82 attempted the live mobile/device validation pass gating removal of the legacy
+`FloatingJoystick` fallback (see "Mobile movement" below) and could not complete it: no Android/iOS
+device or device-build tooling was available to this session.** Test context for that attempt:
+
+| Field | Value |
+| --- | --- |
+| Commit SHA | `10bbc4cbe32e357f14b8127d69885a1cb671ef8e` (dev, clean) |
+| Unity version | 6000.5.7f1 (matches `ProjectVersion.txt`) |
+| Device model | None available |
+| OS version | N/A - no device |
+| Build target | N/A - no device build attempted |
+| Development or Release build | N/A |
+| Scene tested | N/A |
+| Input hardware used | None - no `adb` on `PATH`, no Android device connected, no macOS/Xcode toolchain for iOS |
+| Date/time | 2026-09-18, automated session |
+| Tester/environment notes | Windows 10 host running an automated Claude Code agent session, not a human with physical device access. Even where a device is attached, this session has no mechanism to perform a physical touch/drag gesture on hardware, so this gate is a human-only check regardless of tooling; it did not become newly blocked, it was never performable by this kind of session. |
+
+This did not change the status of any row below: every "Mobile movement" row was already `Blocked` as
+of Slice 81 for the same underlying reason (no device), and remains `Blocked`. See "Outstanding / not
+run" for the explicit Slice 82 entry.
 
 ## How to read this document
 
@@ -172,3 +193,14 @@ remains manual and why.
   `FloatingJoystick`. This is a structural pilot only - no manual/device pass was performed, so every
   "Mobile movement" row above stays `Blocked` except the new automated structural check. Removing the
   legacy joystick fallback (the second half of step 3) remains blocked on that device playtesting.
+- AUD-012 Phase 5 Slice 82 was scoped to run and record that live device-validation pass so the
+  `FloatingJoystick` removal and combat-button migration (step 3's second half, and step 4) could be
+  unblocked. It could not: this session had no Android/iOS device, no `adb` on `PATH`, and no
+  macOS/Xcode toolchain, and an automated agent session has no way to perform a physical touch/drag
+  gesture regardless of device availability. No "Mobile movement" row's status changed as a result -
+  every row was `Blocked` before this slice and remains `Blocked` after it (see the test-context table
+  near the top of this document for what was checked). This slice made no runtime, prefab, scene, or
+  action-map change; `FloatingJoystick` was not removed and `activeInputHandler` was not changed. The
+  device-validation gate is still open: a human tester with a real Android and/or iOS device must run
+  the "Mobile movement" and "Mobile gestures/actions" rows above and flip their status based on actual
+  results before `FloatingJoystick` removal or `OnScreenButton`/combat-gesture migration proceeds.
