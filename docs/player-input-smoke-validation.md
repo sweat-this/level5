@@ -1,6 +1,6 @@
 # Player Input Smoke Validation
 
-Last updated: 2026-09-17 (AUD-012 Phase 5 Slice 80)
+Last updated: 2026-09-17 (AUD-012 Phase 5 Slice 81)
 
 This is the validation-gate checklist called out by
 [`player-input-architecture.md`](player-input-architecture.md)'s migration plan step 2. It exists so
@@ -60,6 +60,7 @@ Existing automated coverage this checklist relies on, so it is not re-described 
 | `Level5ProductionAssemblyBoundaryTests` | Assembly/dependency boundaries the input reader relies on. |
 | `Level5PlayerInputSmokeValidationDocTests` | This document exists and still contains every required section heading. |
 | `Level5GameLevelManagerDebugToggleGatingTests` (new, Slice 80) | `GameLevelManager.Update`'s `toggle_run_keyboard`/`toggle_stats_keyboard` reads are wrapped in `#if UNITY_EDITOR \|\| DEVELOPMENT_BUILD`. |
+| `Level5OnScreenStickPilotTests` (new, Slice 81) | `touch_joystick.prefab` contains exactly one `OnScreenStick`, bound to `<Gamepad>/leftStick`; the legacy `FloatingJoystick` component and the `touch_joystick` root's `joystick` tag are both still present; `Player/movement` keeps a `<Gamepad>/leftStick`-compatible binding; `activeInputHandler` is still `2`. |
 
 None of the tests above exercise a live keypress, a live gamepad, or live touch hardware end to end -
 they check ownership, structure, and pure arithmetic. The rows below call out, item by item, what
@@ -109,8 +110,11 @@ remains manual and why.
 
 | Behavior | Validation type | Status | Notes |
 | --- | --- | --- | --- |
-| Input System movement path (`Player/movement`) drives movement when present | Manual mobile/device | Blocked | No device was available to this session. Requires a real touch/controller source feeding the Input System action on Android/iOS; the Editor does not reproduce this. |
-| Legacy joystick fallback (`FloatingJoystick`) drives movement when the Input System path reads zero | Manual mobile/device | Blocked | Gated to `(UNITY_ANDROID \|\| UNITY_IOS) && !UNITY_EDITOR` in `PlayerInputReader.ReadMove`; cannot be exercised in the Editor or on desktop. The scaling arithmetic it uses is covered separately (see automated table above). |
+| `touch_joystick.prefab` has exactly one `OnScreenStick`, bound to `<Gamepad>/leftStick` | Automated | Passing | `Level5OnScreenStickPilotTests` (AUD-012 Phase 5 Slice 81). Structural only - it does not exercise a live touch/drag. |
+| On-screen `OnScreenStick` drag actually moves the player | Manual mobile/device | Blocked | No device was available to this session. `OnScreenStick` simulates `<Gamepad>/leftStick`, which `Player/movement`'s gamepad composite already binds, but a live drag on hardware (or a real gamepad/touchscreen feeding the Input System) is what's unverified. |
+| Releasing the `OnScreenStick` stops movement | Manual mobile/device | Blocked | `OnScreenStick.EndInteraction` resets the simulated control to zero on pointer-up; not exercised live. |
+| Input System movement path (`Player/movement`) drives movement when present | Manual mobile/device | Blocked | No device was available to this session. Requires a real touch/controller source (now including the new `OnScreenStick` pilot) feeding the Input System action on Android/iOS; the Editor does not reproduce this. |
+| Legacy joystick fallback (`FloatingJoystick`) drives movement when the Input System path reads zero | Manual mobile/device | Blocked | Gated to `(UNITY_ANDROID \|\| UNITY_IOS) && !UNITY_EDITOR` in `PlayerInputReader.ReadMove`; cannot be exercised in the Editor or on desktop. The scaling arithmetic it uses is covered separately (see automated table above). Unaffected by the Slice 81 `OnScreenStick` pilot - `FloatingJoystick` was not touched. |
 | No movement occurs when neither an Input System stick nor a legacy touch is present | Manual mobile/device | Blocked | `Input.touchCount == 0` short-circuits to `Vector2.zero` in `ReadLegacyTouchMove`; real device idle-state confirmation is what's missing, not the code path. |
 
 ## Mobile gestures/actions
@@ -163,3 +167,8 @@ remains manual and why.
   `GestureInputAdapter`, and menu `TouchInput*Controller` retirement are unaffected and remain future
   work (migration plan steps 3-6). Do not delete any touch script until its device checklist rows above
   pass.
+- AUD-012 Phase 5 Slice 81 piloted the first half of step 3: one `OnScreenStick`, bound to
+  `<Gamepad>/leftStick`, was added to `touch_joystick.prefab` alongside the still-intact legacy
+  `FloatingJoystick`. This is a structural pilot only - no manual/device pass was performed, so every
+  "Mobile movement" row above stays `Blocked` except the new automated structural check. Removing the
+  legacy joystick fallback (the second half of step 3) remains blocked on that device playtesting.
