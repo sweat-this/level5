@@ -350,6 +350,12 @@ Turning a local participant remote is a `ParticipantKind` on the launch path. No
 coordinator reads it: `VersusSeries` knows only `ParticipantId`s, and gameplay never learns who the
 opponent is.
 
+**Implemented (2026-09, issue #158):** the typed client described above now exists at
+`Assets/Scripts/backendv2/Level5BackendV2/`. See
+[`docs/backend-v2-client.md`](backend-v2-client.md) for its architecture, the
+`AttemptDescriptorDto -> MatchConfiguration` mapping, and what remains for the UI/E2E flow
+(issue #159).
+
 `IVersusClock` and `IVersusIdSource` are injected rather than read from `DateTime.UtcNow` and
 `Guid.NewGuid` - partly so a correspondence delay can be tested, and partly because id issuance is
 the first thing a server takes over. `TheDomainDoesNotInventItsOwnClockOrIds` keeps it that way.
