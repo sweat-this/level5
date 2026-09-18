@@ -92,6 +92,23 @@ active at all, not whether these two release-build-only reads compile in. No act
 generated wrapper, scene, or prefab changed. `Level5GameLevelManagerDebugToggleGatingTests` guards the
 gate by source inspection; the smoke-validation checklist's corresponding row is updated to `Passing`.
 
+2026-09-17 (AUD-012 Phase 5 Slice 81): piloted - not completed - the first half of migration plan step 3
+below. Added one Unity Input System `OnScreenStick` (`touch_joystick.prefab` ->
+`Canvas/OnScreenStickMovement`) bound to `<Gamepad>/leftStick`, the same control path `Player/movement`'s
+existing gamepad composite already binds in `PlayerControls.inputactions` - no action map, action, or
+binding change was needed or made. The pilot was added as a new sibling of the existing "Floating
+Joystick" prefab instance inside the same Canvas, purely additive (only the Canvas's child list grew);
+nothing was removed, renamed, or reparented. The legacy `FloatingJoystick` fallback remains fully intact,
+and `PlayerInputReader.ReadMove`/`ReadLegacyTouchMove`/`ScaleByTouchDistance` and
+`GameLevelManager.ReadLegacyTouchMovement` are unchanged - `PlayerInputReader.ReadMove` still tries the
+Input System `movement` action first and only falls back to the legacy touch reader when that reads zero,
+so the new `OnScreenStick` and the legacy joystick both feed the same one action rather than competing
+paths. The `touch_joystick` root keeps its `joystick` tag, and `activeInputHandler` remains `2` (Both).
+Removing the legacy joystick fallback (the second half of step 3) remains blocked on device playtesting -
+no mobile device or Editor touch simulation was exercised this slice; see
+[`player-input-smoke-validation.md`](player-input-smoke-validation.md)'s "Mobile movement" section, which
+now also records the new pilot and its automated coverage.
+
 This document tracks the player input modernization plan. The project already uses Unity's Input System through `PlayerControls.inputactions` and `PlayerControlsProvider`, but mobile/touch gameplay and menu input still contain legacy `Input.touchCount`, `Input.touches`, direct `Input.GetKeyDown`, third-party joystick reads, and per-screen touch controllers.
 
 ## Current Ownership
@@ -101,7 +118,7 @@ This document tracks the player input modernization plan. The project already us
 | Input actions | `PlayerControls.inputactions`, generated `PlayerControls.cs` | Source for keyboard/gamepad gameplay, UI navigation, and debug actions (`Player`, `UINavigation`, `Other`). The unused `PlayerTouch` action map was retired in AUD-012 Phase 5 Slice 76. |
 | Action lifecycle | `PlayerControlsProvider` | Reference-counted static provider for gameplay, menu, and debug maps. Kept as the compatibility bridge. |
 | Player gameplay input | `PlayerInputReader`, `PlayerTouchInputState`, `PlayerController` | `PlayerInputReader` owns the player's movement/action reads and lives in the `Level5.Input` assembly (AUD-012 Phase 2b Slice 26). `TouchInputController` queues touch gameplay intents through `PlayerTouchInputState`, and `PlayerController` consumes them in the normal gameplay path. `TouchBlockHeld` reads `PlayerTouchInputState.BlockHeld` alone; it no longer also consults `TouchInputController.instance.HoldDetected`, which was written in lockstep with it. Gameplay reads (`movement`, `run`, `jump`, `shoot`, `callball`, `attack`, `block`, `special`) come from the per-player `Player` map on the controls instance `PlayerController` was constructed with. `DebugChangeHeld`/`DebugLightningPressed` instead read the shared `Other` owner through `PlayerControlsProvider.DevChangeHeld`/`DevChangeControlEnabled` (AUD-012 Phase 5 Slice 77) - the per-player instance never has `Other` enabled. Both remain Editor/Development-only (`#if UNITY_EDITOR \|\| DEVELOPMENT_BUILD`). `Other/change`'s keyboard binding previously collided with `Player/run`'s (`shift`) via `leftShift`/`rightShift`; Slice 78 moved it to `<Keyboard>/backquote`, so the two actions no longer share a keyboard binding, though the gate itself was left in place. |
-| Mobile movement | `PlayerInputReader` with Input System movement first and legacy `FloatingJoystick` fallback | Unchanged in behaviour, but the fallback's axes now arrive by composition rather than by the reader reaching for `GameLevelManager.instance.Joystick` - see "Legacy Joystick Composition" below. Ready for Unity Input System `OnScreenStick` mapped to `Player/movement`; the old joystick remains as fallback until scenes/prefabs are migrated and playtested. |
+| Mobile movement | `PlayerInputReader` with Input System movement first and legacy `FloatingJoystick` fallback | Unchanged in behaviour, but the fallback's axes now arrive by composition rather than by the reader reaching for `GameLevelManager.instance.Joystick` - see "Legacy Joystick Composition" below. AUD-012 Phase 5 Slice 81 added a pilot Unity Input System `OnScreenStick` (`touch_joystick.prefab` -> `Canvas/OnScreenStickMovement`, bound to `<Gamepad>/leftStick`) alongside the old joystick, which remains as fallback until it is playtested on device and removed. |
 | Mobile gestures/actions | `TouchInputController`, `PlayerTouchInputState` | Gameplay gestures now queue input intents instead of directly calling player combat/basketball methods. Target is still `OnScreenButton` bindings where the UI/UX allows it. |
 | Menu touch input | `TouchInput*Controller` scripts, `UiSelectionAdapter` | Duplicated per-screen touch scripts still exist. `UiSelectionAdapter` is the shared bridge for screens as they move to standard Unity UI events. |
 | UI input modules | `UiSelectionAdapter`, `PlatformCheck` | `UiSelectionAdapter` can bootstrap/configure `InputSystemUIInputModule` for migrated UI screens. `PlatformCheck` uses the same path when present. Scene assets still need a permanent EventSystem migration. |
@@ -154,8 +171,9 @@ The `FloatingJoystick` component itself is never handed across an assembly bound
 values - so `Level5.Input` gains no dependency on it or on the Joystick Pack.
 
 This is a dependency inversion, not an input redesign. The legacy mobile joystick fallback, the touch
-distance scaling, the Input System-first movement priority and every action name are unchanged, and the
-`OnScreenStick` migration in step 3 below is still outstanding.
+distance scaling, the Input System-first movement priority and every action name are unchanged. AUD-012
+Phase 5 Slice 81 added a pilot `OnScreenStick` alongside the fallback (see the Slice 81 note above); the
+second half of step 3 below - removing the fallback after device playtesting - is still outstanding.
 
 ## Target Direction
 
@@ -174,7 +192,7 @@ distance scaling, the Input System-first movement priority and every action name
    [`player-input-smoke-validation.md`](player-input-smoke-validation.md). The checklist exists;
    running it against a real desktop/gamepad/device session is separate outstanding work, tracked in
    that document's "Outstanding / not run" section.
-3. Add Input System `OnScreenStick` components in Unity scenes/prefabs and bind them to `Player/movement`; then remove the legacy joystick fallback after device playtesting.
+3. Add Input System `OnScreenStick` components in Unity scenes/prefabs and bind them to `Player/movement`; then remove the legacy joystick fallback after device playtesting. Piloted (AUD-012 Phase 5 Slice 81): one `OnScreenStick` was added to `touch_joystick.prefab`, bound to `<Gamepad>/leftStick`. The legacy `FloatingJoystick` fallback remains, and removing it is still blocked on device playtesting - not performed this slice.
 4. Replace touch combat quadrants with `OnScreenButton` bindings for jump, shoot, attack, block, special, and pause where the UI/UX allows it.
 5. Move retained gestures into one `GestureInputAdapter`.
 6. Replace menu-specific `TouchInput*Controller` scripts with `InputSystemUIInputModule` plus UI submit/cancel/pointer events.
