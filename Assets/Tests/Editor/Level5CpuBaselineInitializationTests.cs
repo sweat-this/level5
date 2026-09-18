@@ -177,11 +177,24 @@ public class Level5CpuBaselineInitializationTests
     [Test]
     public void MissingPreparedContextFallsBackToSafeBaselineWithoutThrowing()
     {
-        CharacterProfile cpu = MakeCpuProfile(45);
+        // A stale GameOptions.gameModeThreePointContest left over from elsewhere must not leak into
+        // this fallback: with no prepared rules there is nothing to read contest state from, so
+        // Luck/Clutch must come out as ordinary baseline values, not the match-only suppressed zero.
+        GameOptions.gameModeThreePointContest = true;
+        try
+        {
+            CharacterProfile cpu = MakeCpuProfile(45);
 
-        Assert.DoesNotThrow(() => cpu.ApplyPreparedCpuMatchInitialization());
+            Assert.DoesNotThrow(() => cpu.ApplyPreparedCpuMatchInitialization());
 
-        Assert.That(cpu.Level, Is.EqualTo(45), "no prepared context means no Hardcore bump and no invented primary level");
+            Assert.That(cpu.Level, Is.EqualTo(45), "no prepared context means no Hardcore bump and no invented primary level");
+            Assert.That(cpu.Luck, Is.Not.EqualTo(0), "no prepared rules means no contest suppression to apply");
+            Assert.That(cpu.Clutch, Is.Not.EqualTo(0), "no prepared rules means no contest suppression to apply");
+        }
+        finally
+        {
+            GameOptions.gameModeThreePointContest = false;
+        }
     }
 
     // ---- H: Arcade/easy precedence is preserved after CPU/contest initialization ----------------
