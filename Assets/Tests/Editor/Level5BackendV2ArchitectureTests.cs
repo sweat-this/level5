@@ -18,6 +18,23 @@ namespace Level5.BackendV2.Tests
         private static readonly string LegacyApiHelper = Path.Combine(
             Directory.GetCurrentDirectory(), "Assets", "Scripts", "RESTApi", "APIHelper.cs");
 
+        /// <summary>
+        /// The #159 UI/app-layer files that had to move out of <see cref="ClientRoot"/> into the
+        /// default assembly (they need <c>LegacyGameOptionsBridge</c>, which has no assembly
+        /// definition of its own - see the doc comment on <c>RemoteAttemptLauncher</c>). They are
+        /// exactly as bound by the "typed clients only" boundary as everything under
+        /// <see cref="ClientRoot"/>, so the raw-UnityWebRequest/legacy-APIHelper checks below cover
+        /// them too, explicitly - <see cref="ClientFiles"/> alone would miss them entirely.
+        /// </summary>
+        private static readonly string CorrespondenceUiRoot =
+            Path.Combine(Directory.GetCurrentDirectory(), "Assets", "Scripts", "menu_multiplayer");
+
+        private static readonly string[] CorrespondenceLauncherFiles =
+        {
+            Path.Combine(Directory.GetCurrentDirectory(), "Assets", "Scripts", "versus", "RemoteAttemptLauncher.cs"),
+            Path.Combine(Directory.GetCurrentDirectory(), "Assets", "Scripts", "versus", "RemoteAttemptLaunch.cs"),
+        };
+
         [Test]
         public void LegacyApiHelperHasNoBackendV2MethodsAddedToIt()
         {
@@ -69,6 +86,57 @@ namespace Level5.BackendV2.Tests
         }
 
         [Test]
+        public void NothingInTheClientOrUiLayerIssuesARawUnityWebRequest()
+        {
+            // UnityWebRequestTransport is the one sanctioned adapter that issues a request.
+            // Everything downstream of it - clients, the correspondence UI - must go through
+            // BackendV2Runtime's typed clients instead, per issue #159's UI/app-layer boundary. This
+            // targets request construction/sending specifically (new UnityWebRequest(...),
+            // UnityWebRequest.Get/Post/Put/..., .SendWebRequest()), not the whole type name: static
+            // helpers like UnityWebRequest.EscapeURL (used by PlayersApiClient to build a path
+            // segment) are ordinary string utilities, not a bypass of the transport.
+            List<string> offenders = new List<string>();
+            Regex forbidden = new Regex(
+                @"new\s+UnityWebRequest\s*\(|UnityWebRequest\.(Get|Post|Put|Delete|Head)\s*\(|\.SendWebRequest\s*\(");
+
+            foreach (string file in ClientAndCorrespondenceUiFiles())
+            {
+                if (Path.GetFileName(file) == "UnityWebRequestTransport.cs")
+                {
+                    continue;
+                }
+
+                string text = StripComments(File.ReadAllText(file));
+                foreach (Match match in forbidden.Matches(text))
+                {
+                    offenders.Add($"{Relative(file)}: {match.Value}");
+                }
+            }
+
+            Assert.That(offenders, Is.Empty, string.Join("\n", offenders));
+        }
+
+        [Test]
+        public void NothingInTheClientOrUiLayerCallsLegacyApiHelper()
+        {
+            List<string> offenders = new List<string>();
+
+            foreach (string file in ClientAndCorrespondenceUiFiles())
+            {
+                string text = StripComments(File.ReadAllText(file));
+                if (text.Contains("APIHelper"))
+                {
+                    offenders.Add(Relative(file));
+                }
+            }
+
+            Assert.That(
+                offenders,
+                Is.Empty,
+                "Backend V2 code must never call the legacy REST helper:\n" + string.Join("\n", offenders));
+        }
+
+        [Test]
         public void TheClientNeverUploadsAWholeVersusSeries()
         {
             List<string> offenders = new List<string>();
@@ -89,6 +157,24 @@ namespace Level5.BackendV2.Tests
         private static IEnumerable<string> ClientFiles()
         {
             return Directory.EnumerateFiles(ClientRoot, "*.cs", SearchOption.AllDirectories);
+        }
+
+        private static IEnumerable<string> ClientAndCorrespondenceUiFiles()
+        {
+            foreach (string file in ClientFiles())
+            {
+                yield return file;
+            }
+
+            foreach (string file in Directory.EnumerateFiles(CorrespondenceUiRoot, "*.cs", SearchOption.AllDirectories))
+            {
+                yield return file;
+            }
+
+            foreach (string file in CorrespondenceLauncherFiles)
+            {
+                yield return file;
+            }
         }
 
         private static string Relative(string path) => Level5TestSourceText.Relative(path);

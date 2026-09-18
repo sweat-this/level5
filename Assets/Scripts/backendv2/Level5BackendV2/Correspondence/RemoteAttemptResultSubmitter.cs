@@ -15,8 +15,9 @@ namespace Level5.BackendV2
     /// an active remote attempt. Unlike the local reporter, submission is network I/O and cannot
     /// join <c>GameRules</c>' own synchronous match-end retry loop without blocking it, so this
     /// fires the submission on its own coroutine and lets the match finish normally. A failure here
-    /// is logged and left for the (future, #159) UI adapter to retry - never silently discarded, and
-    /// never turned into a second, differently-shaped submission.
+    /// is logged and left pending in <see cref="PendingRemoteAttemptResult"/> for the correspondence
+    /// UI to retry via <see cref="TryRetryPending"/> - never silently discarded, and never turned
+    /// into a second, differently-shaped submission.
     ///
     /// Never sends a winner, score, current game, revision, frozen rules or the opponent's result -
     /// only the named metrics the descriptor required. Those decisions belong to Backend V2.
@@ -42,7 +43,46 @@ namespace Level5.BackendV2
                 return;
             }
 
-            BackendV2CoroutineHost.Instance.StartCoroutine(Submit(context, stats, modeId, completionTimeSeconds));
+            IReadOnlyDictionary<string, double> metrics;
+            try
+            {
+                AttemptResult result = GameStatsAttemptResults.Build(
+                    new RulesetId(context.RulesetId), context.RulesetVersion, modeId, stats, completionTimeSeconds);
+                metrics = RemoteAttemptResultBuilder.BuildMetrics(result, context.RequiredResultMetrics);
+            }
+            catch (Exception exception)
+            {
+                Debug.LogError(
+                    $"Building the remote attempt result for {context.AttemptId} failed: {exception}");
+                Release(context.AttemptId);
+                return;
+            }
+
+            PendingRemoteAttemptResult.Stash(context, metrics);
+            BackendV2CoroutineHost.Instance.StartCoroutine(Submit(context, metrics));
+        }
+
+        /// <summary>
+        /// Resends the exact metrics last built for the currently pending remote attempt result, if
+        /// any - never rebuilds a payload. For the correspondence UI's retry action after a failed
+        /// submission (network, server, validation or auth failure left it pending on purpose).
+        /// Returns false when there is nothing pending, or a submission for it is already in flight.
+        /// </summary>
+        public static bool TryRetryPending()
+        {
+            if (!PendingRemoteAttemptResult.HasPending)
+            {
+                return false;
+            }
+
+            RemoteAttemptContext context = PendingRemoteAttemptResult.Context;
+            if (!TryClaim(context.AttemptId))
+            {
+                return false;
+            }
+
+            BackendV2CoroutineHost.Instance.StartCoroutine(Submit(context, PendingRemoteAttemptResult.Metrics));
+            return true;
         }
 
         /// <summary>Claims the right to submit this attempt, refusing a second concurrent claim for
@@ -67,24 +107,8 @@ namespace Level5.BackendV2
             }
         }
 
-        private static IEnumerator Submit(
-            RemoteAttemptContext context, GameStats stats, GameModeId modeId, float completionTimeSeconds)
+        private static IEnumerator Submit(RemoteAttemptContext context, IReadOnlyDictionary<string, double> metrics)
         {
-            IReadOnlyDictionary<string, double> metrics;
-            try
-            {
-                AttemptResult result = GameStatsAttemptResults.Build(
-                    new RulesetId(context.RulesetId), context.RulesetVersion, modeId, stats, completionTimeSeconds);
-                metrics = RemoteAttemptResultBuilder.BuildMetrics(result, context.RequiredResultMetrics);
-            }
-            catch (Exception exception)
-            {
-                Debug.LogError(
-                    $"Building the remote attempt result for {context.AttemptId} failed: {exception}");
-                Release(context.AttemptId);
-                yield break;
-            }
-
             ApiResponse<SeriesResponseDto> response = null;
             yield return BackendV2Runtime.Correspondence.CompleteAttempt(
                 context.SeriesId, context.GameNumber, context.AttemptId, metrics, result => response = result);
@@ -97,6 +121,7 @@ namespace Level5.BackendV2
             if (response != null && response.Success)
             {
                 ActiveRemoteAttempt.Clear();
+                PendingRemoteAttemptResult.Clear();
                 yield break;
             }
 
@@ -107,12 +132,13 @@ namespace Level5.BackendV2
                     $"Remote attempt {context.AttemptId} result conflicted and will not be retried "
                     + $"({response.Problem?.Code}, correlation {response.CorrelationId}).");
                 ActiveRemoteAttempt.Clear();
+                PendingRemoteAttemptResult.Clear();
                 yield break;
             }
 
             // Network, server, validation or auth failure: left active on purpose. The turn is still
-            // outstanding server-side, and only the (future, #159) UI adapter should decide whether
-            // and how to retry it.
+            // outstanding server-side; PendingRemoteAttemptResult keeps the exact metrics so the
+            // correspondence UI can offer a retry without rebuilding them.
             Debug.LogError(
                 $"Submitting the remote attempt {context.AttemptId} result failed: "
                 + $"{response?.ErrorKind} ({response?.Problem?.Code}, correlation {response?.CorrelationId}).");

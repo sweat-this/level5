@@ -175,9 +175,16 @@ no-ops for every match that is not an active remote attempt. When one is active,
    never a winner, score, current game, revision, frozen rules or the opponent's result. Backend V2
    owns those decisions.
 4. On success or a conflict (the domain already decided this attempt), clears
-   `ActiveRemoteAttempt`. On a network/server/validation/auth failure, leaves it active and logs the
-   outcome - the turn is still outstanding server-side, and only the UI adapter (#159) should decide
-   whether and how to retry it.
+   `ActiveRemoteAttempt` and `PendingRemoteAttemptResult`. On a network/server/validation/auth
+   failure, leaves both active and logs the outcome - the turn is still outstanding server-side.
+
+Before the network call, the exact metrics dictionary built in step 2 is stashed in
+`PendingRemoteAttemptResult` (alongside its `RemoteAttemptContext`) so a failure's retry has
+something to resend - the coroutine-local dictionary would otherwise be lost the moment `Submit`
+returns, and by the time a player is looking at a "resend result" prompt the `GameStats` it came from
+may no longer exist. `RemoteAttemptResultSubmitter.TryRetryPending()` is the correspondence UI's
+retry entry point: it resends exactly what is pending, through the same `TryClaim`/`Release` guard,
+and never rebuilds a second, possibly different payload.
 
 Submission is network I/O and cannot join `GameRules`' own synchronous match-end retry loop without
 blocking it, so it runs on its own coroutine (`BackendV2CoroutineHost`, a small lazily-created
@@ -187,11 +194,44 @@ the same attempt while a previous submission's network round trip is still outst
 (`RemoteAttemptResultSubmitter.TryClaim`/`Release`) - without it, a slow connection combined with any
 other step needing a retry would fire duplicate concurrent `CompleteAttempt` calls for one attempt.
 
-## Known deferred work (issue #159)
+## Issue #159: the correspondence UI
 
-- The UI/E2E flow itself: challenge screens, friend list, incoming/outgoing/active/completed list
-  rendering, and driving `RemoteAttemptResultSubmitter`'s failure outcomes into a retry affordance.
-- A decision on refresh-token persistence across app restarts.
-- A retry/backoff policy for list polling screens.
-- Revalidating unlock state for a network-driven match launch - the existing open item noted in
-  `docs/persistence-boundaries.md` for `VersusLauncher`, which also applies to a remote launch.
+`CorrespondenceScreenController` (`Assets/Scripts/menu_multiplayer/`, scene
+`Assets/Scenes/level_00_multiplayer.unity`, reached from a `Multiplayer` footer button on
+`level_00_start`) is the UI/E2E flow deferred above. It is built entirely from plain-C#
+app-layer/coordinator types in `Level5.BackendV2` - `FriendsCoordinator`, `SeriesListCoordinator`,
+`ChallengeCoordinator`, `ChallengeFormState`, `ActiveSeriesTurnClassifier`, `SeriesRowClassifier`,
+`ListViewState<T>`, `RowCommandState` - each independently EditMode-testable against
+`FakeApiTransport`, wired to a runtime-constructed uGUI screen. See
+`docs/backend-v2-correspondence-ui.md` for the UI flow, retry behavior and known limitations, and
+`docs/backend-v2-correspondence-certification.md` for end-to-end certification results.
+
+`RemoteAttemptLauncher` (`Assets/Scripts/versus/`, next to `VersusLauncher` - it needs
+`LegacyGameOptionsBridge`, which has no assembly definition and so is unreachable from
+`Level5.BackendV2.asmdef`) is the `StartAttempt -> RemoteAttemptDescriptorMapper -> ActiveMatch /
+ActiveRemoteAttempt / LegacyGameOptionsBridge / SceneTransition` sequence that was previously
+missing - `RemoteAttemptDescriptorMapper` had no production caller before this.
+
+**Still deferred / known limitations**, not silently dropped:
+
+- Refresh-token persistence across app restarts is now implemented
+  (`BackendV2SessionPersistenceStore`, plaintext `AtomicFile` JSON - the same storage convention
+  every other local save in this project already uses, and the security tradeoff that implies).
+- No automatic retry/backoff policy for list polling: a list refreshes on tab open and on an
+  explicit action (refresh, load more, after a command), never on a timer. A player must reopen a
+  tab (or retry a failed action) to see server-side changes made elsewhere.
+- Revalidating unlock state for a network-driven match launch remains open - the existing gap noted
+  in `docs/persistence-boundaries.md` for `VersusLauncher` applies identically to
+  `RemoteAttemptLauncher`.
+- No level/character picker for a remote attempt yet: `RemoteAttemptLauncher` launches with a fixed
+  default level and no character customization. This mirrors local versus play, which also has no
+  production launch UI yet (`VersusLauncher.Launch` previously had only `VersusDevConsole`, a dev
+  tool, as a caller).
+- The correspondence screen is built at runtime from code rather than authored as a scene/prefab
+  (every other menu screen in this project is Editor-authored uGUI). This was the safe choice
+  without interactive Editor/prefab-authoring access during this change - see the doc comment on
+  `CorrespondenceScreenController` - and a production pass should move it to the normal
+  scene/prefab convention.
+- No gamepad-optimized input via `UiSelectionAdapter`/the Input System UI module - the screen uses a
+  plain `StandaloneInputModule` `EventSystem`, so mouse/keyboard and legacy-Input-Manager-driven
+  gamepad input work, but not the same first-class controller navigation other menu screens have.

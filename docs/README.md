@@ -14,6 +14,9 @@ Feature and system docs:
 
 - [Versus and Correspondence Multiplayer](versus-architecture.md) - competitive rulesets, attempt lifecycle, game resolution, best-of-N series, sealed attempts and open targets, ruleset versioning, persistence, the future networking boundary, and how to add a versus-compatible mode.
 - [Versus Dev Console Guide](versus-dev-console-guide.md) - how to create, resume and play a local-alternating or correspondence series before production versus menus exist.
+- [Backend V2 Client](backend-v2-client.md) - the typed API transport/clients for remote correspondence (issue #158): architecture, session handling, error mapping, the attempt-descriptor-to-match mapping, and result submission.
+- [Backend V2 Correspondence UI](backend-v2-correspondence-ui.md) - the Friends/Incoming/Outgoing/Your Turn/Active/Completed screen built on the client above (issue #159): UI flow, state ownership, retry behavior, refresh-token persistence, and known limitations.
+- [Backend V2 Correspondence Certification](backend-v2-correspondence-certification.md) - the end-to-end certification matrix and record for the correspondence flow, including what remains blocked pending a reachable backend.
 - [The Basketball Shot Lifecycle](shot-lifecycle.md) - input to launch to make to match end, the launch-time snapshot and why it exists, the three scoring worlds, two preserved oddities, and why the shot pipeline is what keeps `Assets/Scripts` in one assembly.
 - [Persistence and Account Identity](persistence-boundaries.md) - the three stores (SQLite, per-account JSON, server), which is authoritative, how identity differs from a session, retry/queue behaviour, and the client/server trust boundary.
 - [Player Input Architecture](player-input-architecture.md) - current input ownership, modernization target, migration plan, and first input-reader slice.
