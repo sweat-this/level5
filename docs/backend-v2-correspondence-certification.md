@@ -7,44 +7,162 @@ Companion to [`docs/backend-v2-correspondence-ui.md`](backend-v2-correspondence-
 
 | Field | Value |
 | --- | --- |
-| Unity commit (base) | `2d7014525ddd8b33b18bd17e62a683378c4ae58a` (`dev`) |
-| Backend commit | not established - see "Blocked" below |
-| Backend environment / base URI | `https://localhost:7029` (this project's `BackendV2ApiConfig.Development()` default) |
-| Test accounts / isolated-client setup | not established - see "Blocked" below |
-| Date/time | 2026-09-18 |
-| Validator | Claude Code (automated agent), this implementation session |
-| Overall status | **BLOCKED** - no reachable Backend V2 instance during this session |
+| Unity commit (base) | `c300299f32ec07b5c92aea4863a67d8fffdf0f04` (`dev`) |
+| Backend commit | `62107269408a015664f5dee1aa8c394bf17706ea` (`dev`, `Level5Backend` repo, both legacy and `v2/`) |
+| Backend environment / base URI | `https://localhost:7029` (this project's `BackendV2ApiConfig.Development()` default) - local dev instance, started this session via `v2/scripts/setup-local-dev.ps1` + `dotnet run --launch-profile https` against the local Postgres container (`docker-compose.local-db.yml`), `level5_v2` database rebaselined onto the current single `InitialCreate` migration (issue #20) since the container's prior schema predated that rebaseline |
+| Test accounts / isolated-client setup | Two freshly-registered accounts per phase run (`certA<suffix>` / `certB<suffix>`, unique per run), driven by two independent `HttpClient` instances (one per account) - see "Live certification session" below for why this replaced a Unity-native harness |
+| Date/time | 2026-09-22 |
+| Tester / validator | Claude Code (automated agent), this session |
+| Client build type | N/A for this session's live evidence - see "What this session's live evidence does and does not cover" below. Unity 6000.5.7f1 batchmode was used only to run this repo's own EditMode/PlayMode suites (unchanged behavior, regression check), not to drive the live two-account calls |
+| Device / environment | Windows 10, local machine; Backend V2 run as a local `dotnet run` process against local Postgres 18 (container `level5-postgres-local`) |
+| Overall status | **PARTIAL** - see matrix below: 8 of 11 scenarios fully live-passed, 2 partially live-passed (a documented, non-UI half of each remains not-yet-exercisable this session), 1 partially live-passed with its second half explicitly BLOCKED (no second client build available) |
 
-## Blocked: no reachable backend
+## Live certification session (2026-09-22)
 
-`curl -k --max-time 5 https://localhost:7029/` from this session's execution environment returned
-connection failure (exit code 7, "Failed to connect" - nothing listening on that port/host from
-here), both for the bare base URI and for `api/v2/players/me`. The user indicated a local dev
-backend was running at this address; it was not reachable from the environment this coding session
-executes in when checked at the time above.
+The prior session (2026-09-18, preserved below under "Historical: prior blocked session") could not
+reach a Backend V2 instance at all. This session started one locally (see Session record above) and
+completed a live, two-account certification pass against it.
 
-**Every scenario below is therefore BLOCKED for live execution**, not silently skipped or assumed
-to pass. What *was* validated in its place, without a live backend, is noted per scenario.
+### Why the live calls were not made through Unity itself
+
+Two Unity-native approaches were tried first and both hit hard technical walls, not just
+inconvenience:
+
+- **EditMode `[UnityTest]`**: real `UnityWebRequest` calls never complete in this Unity
+  version's batchmode EditMode test runner. Confirmed empirically with a throwaway diagnostic that
+  manually polled a raw `UnityWebRequest.isDone` every frame for 600 frames against the (reachable,
+  responding-to-curl) live backend - it stayed `InProgress`, `responseCode=0`, the entire time. The
+  existing `CoroutineTestRunner` (a synchronous `while(MoveNext())` busy-loop) only works because
+  every other EditMode test in this project uses `FakeApiTransport`, which completes on the first
+  `MoveNext()` - it was never exercised against a real async network call before.
+- **PlayMode `[UnityTest]`**: PlayMode runs a real player loop, so real `UnityWebRequest` calls do
+  complete there - but `Assets/Tests/PlayMode`'s assembly definition (`Level5.PlayModeTests.asmdef`)
+  cannot reference the default assembly where every `Level5.BackendV2.*` client class lives. This is
+  a hard Unity engine restriction (a named assembly definition can never reference the implicit
+  default assembly), already documented in this exact repo by
+  `Level5BackendV2CorrespondenceScenePlayModeTests.cs`'s own comment, not something this session
+  could route around without either moving the client library into its own assembly (a real
+  architecture change, out of scope for a certification slice) or adding certification-only code
+  into the shipped default assembly.
+
+### What was used instead
+
+A standalone `HttpClient`-based console tool
+(`Level5Backend/v2/scripts/live-certification/`, with its own `README.md`) that replicates the
+*exact same REST contract* Unity's typed clients use - same routes, same camelCase JSON DTOs (cross-
+checked directly against `Level5.Api`'s own controller/DTO records, not assumed), same auth flow.
+Two independent `HttpClient` instances (one per account) give genuine session isolation - including
+true concurrent dispatch for the Scenario 8 race check - which Unity's own client stack cannot give
+in a single process, since `BackendV2SessionStore` is a deliberate process-global singleton (this is
+a single-local-player game; it was never designed to hold two sessions at once). This matches the
+certification doc's own "isolated in-process clients... exercise the same backend API, auth, and
+session paths" acceptable setup.
+
+**What this session's live evidence does and does not cover:** this is black-box *server*
+certification - it proves Backend V2's actual HTTP behavior (auth, idempotency, sealed-result
+projection, restart survival, concurrent-completion resolution) against a live database, with real
+account credentials and real HTTP round trips. It does **not** exercise Unity's own
+`UnityWebRequestTransport`/`AuthApiClient`/`CorrespondenceScreenController`/`RemoteAttemptLauncher`
+code paths - those still only have the `FakeApiTransport`-based unit coverage and the PlayMode scene
+smoke test from the prior session (see per-scenario notes below for exactly which half of each
+scenario this does and does not close). A future session with GUI/device access to actually drive
+built Unity clients is still needed to certify the client-side wiring itself against a live backend.
+
+Two phases were run, with a genuine backend process kill+restart in between (not simulated) so
+Scenario 6 is real:
+
+- **Phase 1** (`dotnet run -- phase1`): registered two fresh accounts, formed a friendship, created
+  and accepted a Best-of-3 sealed challenge, played game 1 (including duplicate-request idempotency
+  checks and the sealed-disclosure-timing check).
+- Backend process killed (`taskkill`) and restarted fresh (`dotnet run --launch-profile https`),
+  confirmed healthy via `/health/live` before continuing.
+- **Phase 2** (`dotnet run -- phase2`): reconnected both accounts via fresh login (not a reused
+  in-memory token), verified the series survived the restart unchanged, played the deciding game 2
+  with a genuinely concurrent (`Task.WhenAll`) completion dispatch from both accounts, verified the
+  completed series remains readable in both accounts' history.
+
+Both phases passed every assertion on the first working run (after one bug fix to the harness itself
+- an evidence-logging helper crashed on array-rooted JSON bodies; fixed before any certification
+logic ran). Full harness stdout is reproducible via the tool's own README; the ids below are this
+run's actual values, not illustrative examples.
+
+### Live evidence captured this run
+
+```text
+Unity commit:            c300299f32ec07b5c92aea4863a67d8fffdf0f04
+Backend commit:           62107269408a015664f5dee1aa8c394bf17706ea
+Account A: username=certAbc6dd64d37  playerId=01a0ca81-b08f-7d82-99bb-d76038643d69
+                          tag=CERTACCOUNTABC6DD64D#5189
+Account B: username=certBbc6dd64d37  playerId=01a0ca81-b0c5-7b4c-b0fc-dcc1a75951af
+                          tag=CERTACCOUNTBBC6DD64D#6919
+Friend request id:        01a0ca81-b0de-7072-b1bd-136ffa85cc58
+Series id:                 01a0ca81-b183-70c8-b1e9-4de7a86e26ad
+clientRequestId (create): 073e1443-65b0-4ee0-80af-0b5fa65c5db9
+Winner (series complete): 01a0ca81-b08f-7d82-99bb-d76038643d69 (Account A, as designed by the harness)
+Sample conflict response (Scenario 5): HTTP 409, traceId=0HNOOKLJTCUD1:0000001A,
+  title="Attempt 01a0ca81-b247-7a10-a82b-d89dcb668968 was already completed with a different
+  result. The accepted result cannot be replaced."
+```
+
+Every call in both phases logged its own status code and client-generated `X-Correlation-Id`; the
+one shown above additionally carries the server's own `traceId` because it was the one call this run
+that produced an error response (ProblemDetails only carries `traceId` on non-2xx responses, per
+`Level5.Api.ErrorHandling.ApiExceptionHandler`).
+
+### Follow-up harness fixes (code review), re-verified live
+
+A senior-engineer review of the harness itself (`Level5Backend/v2/scripts/live-certification/`)
+found four issues, all fixed and the full two-phase run repeated end-to-end against the live backend
+to confirm nothing regressed:
+
+- The README was missing the `dotnet dev-certs https --trust` step this session actually needed
+  (plain `HttpClient` honors the OS cert store, unlike `curl -k`/`Invoke-WebRequest -SkipCertificateCheck`)
+  - now documented as step 1.
+- The state file handoff between phases carries a plaintext password; it is now deleted in a
+  `try`/`finally` so it can never survive a failed or skipped Phase 2, not only a successful one.
+- `SendAsync` now clones a `JsonElement` and disposes the underlying `JsonDocument` immediately,
+  instead of returning the still-open, never-disposed `JsonDocument` every call site had been holding
+  onto for the rest of the run.
+- Phase 2 now also exercises `POST /api/v2/auth/refresh` live for both accounts (see Scenario 3
+  below) - previously `Account.RefreshToken` was captured but never actually used by the harness.
+
+Both phases were re-run against the live backend after these fixes (fresh accounts, a second genuine
+backend process kill+restart) and passed every assertion again; the ids above are from that original
+run, not the re-verification run.
 
 ## Certification matrix
 
-| # | Scenario | Status | Notes / what was validated instead |
+| # | Scenario | Status | Notes / evidence |
 | --- | --- | --- | --- |
-| 1 | Friend lookup and accepted friendship | BLOCKED | `FriendsCoordinator` orchestration (resolve-by-tag -> send request -> refresh; accept -> refresh incoming+friends) covered by `Level5BackendV2FriendsCoordinatorTests` against `FakeApiTransport`. No live two-account friendship was formed. |
-| 2 | Create/accept a Best-of-3 sealed challenge | BLOCKED | `ChallengeCoordinator.Create`/`Accept` covered by `Level5BackendV2ChallengeCoordinatorTests` against fakes, including the `clientRequestId` retry-reuse contract. `SeriesDetail` fixture used in tests carries `informationPolicy: "SealedAttempt"`, Bo3 (`totalGames: 3`). No live challenge was created or accepted. |
-| 3 | Quit/reconnect between turns | BLOCKED | `CorrespondenceScreenController.Resume()`'s "not authenticated -> show login" path is exercised by `Level5BackendV2CorrespondenceScenePlayModeTests` (PlayMode, real scene load, no live backend needed for that path since no session exists in a fresh test run). The full quit-mid-attempt-then-reconnect-and-resume-the-same-turn flow needs a live series and was not run. |
-| 4 | Duplicate/retried challenge, accept, start, complete requests | BLOCKED | Idempotency mechanics tested against fakes: `Level5BackendV2CorrespondenceClientTests.CreateChallengeSendsTheSameClientRequestIdOnEveryAttempt` (#158, pre-existing), `Level5BackendV2ChallengeCoordinatorTests.CreateSendsTheFormsClientRequestIdAndLeavesItForACallerDecidedRetry` (new), `RemoteAttemptResultSubmitter`'s `TryClaim`/`Release` guard (`Level5BackendV2RemoteAttemptSubmissionTests`, pre-existing) plus its `PendingRemoteAttemptResult` resend-same-payload guarantee (`Level5BackendV2PendingResultRetryTests`, new). None of this proves the *server* actually treats a duplicate `clientRequestId`/duplicate accept/start/complete as idempotent - that is exactly what a live run would confirm and this could not. |
-| 5 | Lost response after an accepted completion | BLOCKED | `RemoteAttemptResultSubmitter`'s `Conflict`-clears-pending behavior is unit-tested against a fabricated `409` response, not a real one from a completion that the server actually accepted while the client's response was lost. |
-| 6 | Server restart between turns | BLOCKED | No server to restart. |
-| 7 | Second-device/state-refresh behavior | BLOCKED | The screen's "never trust stale UI state" design (refresh-on-open, refresh-after-every-command, no client-side caching of a Backend V2 decision) is documented in `docs/backend-v2-correspondence-ui.md`; not exercised against two concurrent live clients. |
-| 8 | Simultaneous completion race | BLOCKED | Needs two live attempts completing concurrently against a real server; not executable without one. |
-| 9 | Sealed first-finisher result remains hidden | BLOCKED | `SeriesRowClassifier`/`ActiveSeriesTurnClassifier` are proven, by test, to read only `YourAttempt` and never `OpponentAttempt.Result` (`Level5BackendV2SeriesRowClassifierTests.OpponentAttemptResultIsNeverReadByClassification`, `Level5BackendV2ActiveSeriesTurnClassifierTests`). This proves the **client** never reads or renders a field it shouldn't; it does not prove the **server's** sealed-result projection actually withholds `OpponentAttempt`/its `Result` from the non-finishing participant before disclosure - that assertion needs a live two-account run. |
-| 10 | Completed series history remains readable | BLOCKED | `SeriesListCoordinator` bound to `ListCompleted` and the Completed tab's rendering are implemented and unit-tested for the coordinator layer; no live completed series exists to read back. |
-| 11 | Frozen rules remain stable across a client update | BLOCKED | `RemoteAttemptDescriptorMapper` (issue #158, unchanged here) already refuses an unsupported protocol version, unknown ruleset, or unplayable ruleset version before launch, and `Level5BackendV2AttemptMappingTests` covers that. Whether a real in-progress series' frozen rules survive an actual client rebuild needs a live series across two builds. |
+| 1 | Friend lookup and accepted friendship | **PASSING (live)** | A resolved B by tag (`CERTACCOUNTBBC6DD64D#6919`), sent a friend request (id `01a0ca81-b0de-7072-b1bd-136ffa85cc58`), B saw it in `ListIncoming`, B accepted (204), both `GET /api/v2/friends` show the other side. All against the live server. |
+| 2 | Create/accept a Best-of-3 sealed challenge | **PASSING (live)** | A created series `01a0ca81-b183-70c8-b1e9-4de7a86e26ad` (Bo3, `rulesetId=score-only`) with `clientRequestId=073e1443-65b0-4ee0-80af-0b5fa65c5db9`; server-returned `rules.informationPolicy == "SealedAttempt"`, `totalGames == 3`, initial `status == "PendingAcceptance"`. B saw it via `ListIncoming`, accepted, status became `"Active"`. Both accounts' `ListActive` show it. |
+| 3 | Quit/reconnect between turns | **PARTIAL (live, login-path + refresh-token half only)** | Live-proven: between phase 1 and phase 2 this session's whole process exited and a fresh one reconnected both accounts via `POST /api/v2/auth/login` (not a reused token) and continued the same series correctly - the "login path works correctly" outcome the scenario explicitly accepts. A code-review follow-up pass also added a live `POST /api/v2/auth/refresh` exercise right after login (rotating both accounts' credentials, with every subsequent call in phase 2 using the rotated token) - the token-rotation path the real Unity client's `AuthenticatedApiClientBase.EnsureFreshAccessToken`/`ForceRefresh` actually relies on far more often than re-login, given the 15-minute access-token lifetime; re-run and reconfirmed passing live after that fix. **Not exercised this session**: the persisted-session-file / `CorrespondenceScreenController.Resume()` UI half (needs a live Unity scene/UI session, which this session's harness deliberately does not touch - see "Why the live calls were not made through Unity itself" above). The prior session's `Level5BackendV2CorrespondenceScenePlayModeTests` PlayMode coverage of the unauthenticated-path-only case still stands unchanged. |
+| 4 | Duplicate/retried challenge, accept, start, complete requests | **PASSING (live)** | All four sub-cases proven against the real server in one run: (a) duplicate `CreateChallenge` with the same `clientRequestId` returned the same series id, not a new one; (b) duplicate `Accept` on an already-`Active` series returned 200/`Active` again, not a conflict; (c) duplicate `StartAttempt` for the same player/game returned the same `attemptId`; (d) an identical resend of an already-accepted `CompleteAttempt` payload returned 200 (idempotent-success), unchanged. |
+| 5 | Lost response after an accepted completion | **PARTIAL (live, server half only)** | Live-proven server half: resending `CompleteAttempt` for an already-accepted attempt with a *materially different* payload was rejected `409`/conflict (traceId `0HNOOKLJTCUD1:0000001A`, see evidence above), and the originally accepted result was confirmed unchanged afterward (`currentGameNumber` had already advanced to 2). This is the actual "server handles duplicate/accepted result safely" proof the scenario asks for. **Not exercised this session**: the client's own `PendingRemoteAttemptResult` resend-exact-original-payload path (`RemoteAttemptResultSubmitter`) - that is client code living in the default Unity assembly and needs a live scene/UI session to drive for real; it remains unit-tested against a fabricated 409 only, as in the prior session. |
+| 6 | Server restart between turns | **PASSING (live)** | The backend process was actually killed (`taskkill`) and restarted (`dotnet run`) between phase 1 and phase 2, not simulated. After restart: series `01a0ca81-b183-70c8-b1e9-4de7a86e26ad` was still `Active`, `currentGameNumber` was still `2`, game 1's already-disclosed result was still present and correct, and `rules` (ruleset id, information policy) were byte-identical to what was returned at creation - proving Postgres-persisted state, not in-memory state that a restart would have lost. |
+| 7 | Second-device/state-refresh behavior | **PASSING (live)** | Demonstrated throughout both phases: every read one account made was a fresh HTTP round trip issued *after* the other account's mutation, using an entirely independent `HttpClient`/token with no shared client-side cache of any kind - B always learned about A's actions (and vice versa) strictly from the server's current response, never from anything cached locally. |
+| 8 | Simultaneous completion race | **PASSING (live)** | The deciding game (game 2) was completed by both accounts via a genuinely concurrent dispatch (`Task.WhenAll` on two independent `HttpClient`s, both `CompleteAttempt` calls in flight at once, not sequential). Both calls returned 200; the server resolved to a single consistent outcome (`status == "Completed"`, `winnerId` == Account A's id, no corrupted/duplicate state). |
+| 9 | Sealed first-finisher result remains hidden | **PASSING (live)** | Direct server-projection proof, not client-side classifier inference: after A completed game 1's attempt, B's own `GET /api/v2/series/{id}` showed `opponentAttempt.status != "NotStarted"` (A had submitted something) but `opponentAttempt.result == null` (still sealed). After B then completed their own attempt, A's next `GET` showed `opponentAttempt.result` populated (disclosed). This proves the *server's* projection, exactly as the scenario requires. |
+| 10 | Completed series history remains readable | **PASSING (live)** | After the series completed, both accounts' `GET /api/v2/series/completed` listed it, and a second, independent fetch on account A afterward still listed it - readable across a repeated fresh round trip, not a one-time artifact of the completion response itself. |
+| 11 | Frozen rules remain stable across a client update | **PARTIAL (live, restart half only) / BLOCKED (client-build half)** | Live-proven: `FrozenRules` (ruleset id, ruleset version, information policy, comparison keys) were confirmed byte-identical before and after the real backend process restart in Scenario 6's evidence. **Still BLOCKED**: no second Unity client build/version was available this session to test whether an in-progress series' frozen rules remain stable (or fail safely) across an actual client update - that requires two distinct client builds, which this certification slice did not produce. |
 
-## What was actually validated this session
+### Historical: prior blocked session (2026-09-18)
 
-Everything not requiring a live backend:
+`curl -k --max-time 5 https://localhost:7029/` from that session's execution environment returned
+connection failure (exit code 7, "Failed to connect" - nothing listening on that port/host from
+there), both for the bare base URI and for `api/v2/players/me`. The user indicated a local dev
+backend was running at this address; it was not reachable from the environment that coding session
+executed in when checked at the time. Every scenario was BLOCKED for live execution that session;
+what was validated instead (all `FakeApiTransport`-based unit/PlayMode coverage, not live server
+behavior) is preserved in "What was validated without a live backend (prior session, 2026-09-18)"
+below, since none of it became stale - it is still true and still passing (re-confirmed this
+session, see "This session's re-validation" below).
+
+## What was validated without a live backend (prior session, 2026-09-18)
+
+Preserved verbatim from the prior blocked session - still true and re-confirmed passing this
+session (see "This session's re-validation" below), since a certification client (this doc) never
+retires prior coverage without checking it first:
 
 - Full EditMode suite (`Assets/Tests/Editor`): **1610/1610 passed** (final run, after two independent
   code-review passes - see below), run 2026-09-18 against this session's final changes (see "Local
@@ -94,6 +212,20 @@ Everything not requiring a live backend:
   synchronous networking APIs).
 - Full solution compile via Unity batchmode (`-batchmode -quit -nographics`, no `-runTests`) - clean.
 
+## This session's re-validation (2026-09-22)
+
+Before writing up the live results above, this session re-ran every check the prior session ran,
+against the current `dev` HEAD (`c300299f...`, which had moved on since the prior session's base
+commit), to confirm nothing regressed and nothing in this session's harness work touched the Unity
+project itself (it did not - the live-certification harness lives entirely in the `Level5Backend`
+repo, outside `Assets/`):
+
+- Full solution compile via Unity batchmode (`-batchmode -quit -nographics`, no `-runTests`) -
+  **clean**.
+- Full EditMode suite: **1610/1610 passed**.
+- Full PlayMode suite: **24/24 passed**.
+- `./scripts/validate-repository.ps1` - **passed**.
+
 ## Local validation
 
 Run these to reproduce (from the repository root):
@@ -112,18 +244,54 @@ Do not pass `-quit` together with `-runTests` (the test runner never starts) or 
 PlayMode run (it silently completes without writing results) - both look like a clean pass from the
 exit code alone. Always parse the results XML.
 
-## Certifying this once a backend is reachable
+## Reproducing this live certification
 
-1. Confirm `curl -k https://<host>:<port>/` (or the actual health/base endpoint) responds.
-2. Point the client at it: either run the game with the default `BackendV2ApiConfig.Development()`
-   (already `https://localhost:7029`) if that is where the backend is, or supply a
-   `BackendV2ApiConfig.Custom(...)` via `BackendV2ApiConfigProvider.Override` for a different
-   environment.
-3. Create two accounts (or use two already-provisioned ones) - either two real installs/devices, or
-   two sequential logged-in states driven through the built game, or two isolated in-process client
-   pairs via `BackendV2Runtime.Override`/two separate session stores (whichever is more reliable
-   against the actual backend's auth model - decide at execution time).
-4. Walk the matrix above scenario by scenario, filling in a genuine pass/fail/blocked and evidence
-   (screenshots, logs, correlation ids from `ApiResponse.CorrelationId`/server traceIds) for each -
-   never carry a BLOCKED forward as a pass without re-running it.
-5. Update the "Session record" table at the top with the real backend commit and accounts used.
+The live two-account pass documented above is reproducible with
+`Level5Backend/v2/scripts/live-certification/` (see that folder's own `README.md` for full usage,
+prerequisites, and known limitations):
+
+```powershell
+# 1. Trust the local ASP.NET Core HTTPS dev cert (one-time per machine)
+dotnet dev-certs https --trust
+
+# 2. Start Backend V2 locally
+cd Level5Backend/v2
+./scripts/setup-local-dev.ps1
+cd src/Level5.Api
+dotnet run --launch-profile https
+# confirm: curl -k https://localhost:7029/health/live
+
+# 3. In another terminal
+cd Level5Backend/v2/scripts/live-certification
+dotnet run -- phase1
+
+# 4. Restart the backend process (kill it, run `dotnet run` again) to exercise Scenario 6 for real
+
+dotnet run -- phase2
+```
+
+## Remaining Backend V2 correspondence work
+
+What this live certification pass did **not** close, and what a future session should target:
+
+1. **Unity client-side wiring against a live backend** - everything this session certified is
+   black-box server behavior over raw HTTP. `UnityWebRequestTransport`, `AuthApiClient`,
+   `CorrespondenceScreenController`, `RemoteAttemptLauncher`, and `PendingRemoteAttemptResult` still
+   only have `FakeApiTransport`-based unit coverage and one PlayMode scene smoke test (unauthenticated
+   path only). A session with GUI/device access to run actual Unity builds against this same local
+   backend is needed to certify that wiring for real - the "two real installs/devices" or "one device
+   plus one Editor session" setups this doc's earlier draft anticipated, which this environment could
+   not provide.
+2. **Scenario 3's UI/session-persistence half** - the persisted-session-file /
+   `CorrespondenceScreenController.Resume()` path specifically, requiring #1 above.
+3. **Scenario 5's client-side retry half** - `PendingRemoteAttemptResult`'s exact-original-payload
+   resend, requiring #1 above.
+4. **Scenario 11's client-build half** - frozen-rules stability across an actual Unity client update
+   needs two distinct client builds; only the backend-restart half was provable this session.
+5. If Backend V2's ruleset catalog (`StaticRulesetCatalog`) grows beyond its current single
+   `score-only` entry, re-run the live-certification harness with the new ruleset id(s) too - this
+   session only certified the one entry that exists today.
+
+No defects were found in Backend V2 itself this session - every live assertion passed on the first
+working run of the harness (after one bug in the harness's own evidence-logging code, fixed before
+any certification logic ran; see "Live certification session" above).
