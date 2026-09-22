@@ -15,7 +15,7 @@ Companion to [`docs/backend-v2-correspondence-ui.md`](backend-v2-correspondence-
 | Tester / validator | Claude Code (automated agent), this session |
 | Client build type | N/A for this session's live evidence - see "What this session's live evidence does and does not cover" below. Unity 6000.5.7f1 batchmode was used only to run this repo's own EditMode/PlayMode suites (unchanged behavior, regression check), not to drive the live two-account calls |
 | Device / environment | Windows 10, local machine; Backend V2 run as a local `dotnet run` process against local Postgres 18 (container `level5-postgres-local`) |
-| Overall status | **PARTIAL** - see matrix below: 8 of 11 scenarios fully live-passed, 2 partially live-passed (a documented, non-UI half of each remains not-yet-exercisable this session), 1 partially live-passed with its second half explicitly BLOCKED (no second client build available) |
+| Overall status | **PARTIAL** - see matrix below: 8 of 11 scenarios fully live-passed, 2 partially live-passed (a documented, non-UI half of each remains not-yet-exercisable this session), 1 partially live-passed with its second half explicitly BLOCKED (no second client build available). A same-day follow-up session (see "Unity-client live-certification attempt" below) built and attempted to run real Unity-client-driven automation for the remaining non-UI halves; it could not complete in this environment - see that section for the exact, investigated reason. |
 
 ## Live certification session (2026-09-22)
 
@@ -130,21 +130,154 @@ Both phases were re-run against the live backend after these fixes (fresh accoun
 backend process kill+restart) and passed every assertion again; the ids above are from that original
 run, not the re-verification run.
 
+## Unity-client live-certification attempt (2026-09-22, continued session)
+
+A same-day follow-up session targeted exactly the gap the section above calls out: certifying Unity's
+actual `UnityWebRequestTransport` / `AuthApiClient` / `CorrespondenceScreenController` /
+`RemoteAttemptLauncher` / `PendingRemoteAttemptResult` / `RemoteAttemptResultSubmitter` code paths
+against a live backend, not just the server's own HTTP contract. This session had no interactive
+GUI/device access either (a non-interactive CLI agent session, no screen, no click/tap capability, no
+physical or emulated device) - the same constraint the prior session's "Remaining work" section
+already anticipated. Unlike the prior session, this one built and attempted to run a real, narrow
+Editor Play Mode automation script to get genuine Unity-client evidence without a human operator. It
+did not reach that evidence; the reason is recorded precisely below rather than papered over.
+
+| Field | Value |
+| --- | --- |
+| Unity commit (base) | `0e6d91302b64a284924286b46bf279eba5cce16a` (`dev`) - unchanged by this session except the new, additive `Assets/Level5/Editor/BackendV2LiveCertificationRunner.cs` |
+| Backend commit (base) | `c98a25ce1df16efa3d579e34286d93af346d084c` (`dev`, `Level5Backend` repo) - unchanged except the additive `unity-counterpart` commands in `v2/scripts/live-certification/Program.cs` |
+| Backend environment / base URI | `https://localhost:7029` (already running and confirmed healthy via `/health/live` at session start - not started fresh this session) |
+| Unity client type | **None reached** - intended Editor Play Mode (batchmode, `-executeMethod`), never entered due to the hang documented below |
+| Date/time | 2026-09-22 (same day as, immediately following, the session above) |
+| Tester / validator | Claude Code (automated agent), this session - no human operator, no GUI/device available |
+| Accounts used | None created - registration was the first live network call the automation intended to make, never reached |
+| Session isolation method | N/A - no Unity-client session was ever established |
+
+### What was built
+
+- **`Assets/Level5/Editor/BackendV2LiveCertificationRunner.cs`** (new, this session): a single-purpose
+  Editor batchmode automation, living in the same Editor-only, no-asmdef folder as the existing
+  `BackendV2CorrespondenceSceneBootstrap.cs` (so it can reference `CorrespondenceScreenController` and
+  `Level5.BackendV2.*` by type, unlike a `Level5.PlayModeTests.asmdef` test - see that class's own doc
+  comment for why that restriction exists). It does not reimplement anything: it drives the real
+  `CorrespondenceScreenController` by setting `InputField.text` and invoking a real `Button`'s real
+  `onClick` (the exact `UnityEvent` a physical click fires), via reflection only where the controller's
+  fields are private (it has no public API at all - by design, see its own doc comment). Its intended
+  session: enter real Editor Play Mode (real `UnityWebRequest` calls complete there, unlike the
+  batchmode EditMode test runner - see "Live certification session" above for why that already ruled
+  out `[UnityTest]` EditMode for this), register a fresh account directly through
+  `BackendV2Runtime.Auth.Register` (real production client, one layer below where the UI has no
+  register button), load `level_00_multiplayer`, drive the real Sign In button, confirm
+  `BackendV2SessionPersistenceStore` persisted a session file, reload the scene to exercise
+  `CorrespondenceScreenController.Resume()`'s restore path, click through every tab, and - via a
+  counterpart account - accept a live friend request and challenge and click a real "Your Turn" → Play
+  button to drive `RemoteAttemptLauncher.Run` through to `SceneTransition.LoadScene`. Confirmed to
+  **compile cleanly** (`Assembly-CSharp-Editor.dll` built with 0 errors, verified via a
+  `-batchmode -quit` compile-only pass) and its `RunFullSession()` entry point is confirmed to
+  **execute** (its first log line reliably appears - see below); it was never observed to reach
+  `RunFullSession`'s "Step 0" line, i.e. never got the chance to run its own logic.
+- **`Level5Backend/v2/scripts/live-certification/Program.cs`** (extended, this session): two new
+  sub-commands, `unity-counterpart friend <tag>` and `unity-counterpart challenge`, reusing the exact
+  same real-backend-contract helpers (`Register`, `Login`, `SendAsync`, `Expect`) the existing
+  phase1/phase2 flow already uses. These play the second account ("Account B") opposite a
+  Unity-driven "Account A", timed to act at the exact points a second human player would (send a
+  friend request once Account A's live tag is known; create a challenge only after confirming Account
+  A has already accepted the friendship live) - handed off via a small state file
+  (`%TEMP%\level5_unity_live_cert_b_state.json`), the same pattern `statePath` already uses for
+  phase1/phase2. `dotnet build` confirmed this extension compiles cleanly (0 errors). Account B here
+  is explicitly **not** Unity-driven - exactly as already accepted for the server-side pass above -
+  only Account A's actions were ever intended to be Unity-client evidence.
+
+### What happened instead: a reproducible Editor-startup hang, not a script bug
+
+Every attempt to actually enter Play Mode in this environment hung indefinitely, always at the
+identical point in Unity's own generic startup sequence - **before** `RunFullSession`'s first log line
+ever runs, i.e. before any of this session's own code executes at all:
+
+```text
+Start Indexing on Editor startup
+[Indexing] Starting Initial Indexing for Assets
+Created GICache directory at ... (completes fine)
+[Licensing::Client] Successfully resolved entitlement details  (x2, completes fine)
+[remote] error: Init socket failed
+TrimDiskCacheJob: Current cache size 0mb
+<nothing further, ever>
+```
+
+Five independent invocations were tried, each killed and cleaned up (stale `Temp/UnityLockfile`
+removed) before the next:
+
+1. Default: `-batchmode -projectPath . -executeMethod BackendV2LiveCertificationRunner.RunFullSession`
+   - hung, unbounded (first observed at ~10 minutes stale, no further log growth).
+2. With `-nographics` added - hung identically (the certification doc's own advice above is against
+   `-nographics` specifically for the `-runTests` PlayMode *test runner*'s silent-completion quirk;
+   this rules out graphics/rendering as the cause for this different, non-`-runTests` hang).
+3. With the CLI sandbox explicitly disabled for the invocation (testing whether a sandboxed shell was
+   blocking the local socket the `[remote] error: Init socket failed` line points at) - hung
+   identically.
+4. With the project's `Library/Search` index cache (120 MB, the directory this exact subsystem name
+   maps to) deleted first, forcing a rebuild - briefly showed real work (main process memory rose to
+   ~2 GB, consistent with an active rebuild) before landing at the exact same hung state a few minutes
+   later.
+5. A `-quit`-added diagnostic (`-batchmode -quit -projectPath . -executeMethod ...`) completed
+   quickly and cleanly, and its log confirms `RunFullSession()` itself *does* run (the evidence file's
+   session-start line is written, which only that method writes) - but the log never reaches the
+   `TrimDiskCacheJob` line at all in that run. This isolates the hang to whatever Unity does once idle
+   after startup while genuinely waiting for Play Mode to finish entering (which `-quit` short-circuits
+   before it can happen) - not to this script's own code, which had already run and returned by then.
+
+Every attempt was confirmed hung, not merely slow, by process memory dropping back to idle levels
+(under 100 MB, from a startup peak over 1-2 GB) while the log file stopped growing entirely for 5+
+minutes at a time with no crash, error dialog, or exit.
+
+**Conclusion:** this is a genuine, reproducible Unity Editor startup-indexing deadlock specific to
+this session's non-interactive batchmode environment (confirmed unaffected by graphics mode, CLI
+sandboxing, or a from-scratch index rebuild), not a defect in
+`BackendV2LiveCertificationRunner.cs` or the counterpart harness extension - both are confirmed to
+compile, and the runner is confirmed to start executing. It sits entirely outside this issue's scope
+to fix (it is a Unity Editor/environment concern, not a Backend V2 or correspondence-client concern),
+and attempting to route around it further (e.g. patching Unity Search preferences, disabling
+subsystems project-wide) risked exactly the kind of broad, unrelated environment surgery a narrow
+certification slice should not do.
+
+### Per-tab and remote-attempt-launch status
+
+| Tab / flow | Status | Account | Server state expected | Unity UI state observed | Notes |
+| --- | --- | --- | --- | --- | --- |
+| Friends | BLOCKED | N/A | N/A | N/A | No Unity-client session ever reached the correspondence screen - see hang investigation above. |
+| Incoming Challenges | BLOCKED | N/A | N/A | N/A | Same. |
+| Outgoing / Waiting | BLOCKED | N/A | N/A | N/A | Same. |
+| Your Turn | BLOCKED | N/A | N/A | N/A | Same. |
+| Active Series | BLOCKED | N/A | N/A | N/A | Same. |
+| Completed | BLOCKED | N/A | N/A | N/A | Same. |
+| Pending result banner | BLOCKED | N/A | N/A | N/A | Same; also see Scenario 5's client-side retry half above for the additional, independent reason this would need care even once Play Mode works. |
+| Remote-attempt launch (Your Turn → Play → `RemoteAttemptLauncher.Run` → `SceneTransition.LoadScene`) | BLOCKED | N/A | N/A | N/A | Same - `BackendV2LiveCertificationRunner.RunFullSession` was written specifically to drive this chain via a real Play-button click, but never got past Editor startup to attempt it. |
+
+### What this means for the scenarios below
+
+No Unity-client-driven evidence was collected this session - none of the PASSING claims below are
+based on it, and none should be inferred from the artifacts existing. `BackendV2LiveCertificationRunner.cs`
+and the `unity-counterpart` harness commands are left in the tree, unused by anything else (not part of
+any build, not referenced by the architecture tests' scanned paths - see
+`Level5BackendV2ArchitectureTests.CorrespondenceUiRoot`/`ClientRoot`, which do not cover
+`Assets/Level5/Editor/`), ready for a future session that has either a working interactive Editor/device
+setup or an environment where this specific Unity startup hang does not occur.
+
 ## Certification matrix
 
 | # | Scenario | Status | Notes / evidence |
 | --- | --- | --- | --- |
 | 1 | Friend lookup and accepted friendship | **PASSING (live)** | A resolved B by tag (`CERTACCOUNTBBC6DD64D#6919`), sent a friend request (id `01a0ca81-b0de-7072-b1bd-136ffa85cc58`), B saw it in `ListIncoming`, B accepted (204), both `GET /api/v2/friends` show the other side. All against the live server. |
 | 2 | Create/accept a Best-of-3 sealed challenge | **PASSING (live)** | A created series `01a0ca81-b183-70c8-b1e9-4de7a86e26ad` (Bo3, `rulesetId=score-only`) with `clientRequestId=073e1443-65b0-4ee0-80af-0b5fa65c5db9`; server-returned `rules.informationPolicy == "SealedAttempt"`, `totalGames == 3`, initial `status == "PendingAcceptance"`. B saw it via `ListIncoming`, accepted, status became `"Active"`. Both accounts' `ListActive` show it. |
-| 3 | Quit/reconnect between turns | **PARTIAL (live, login-path + refresh-token half only)** | Live-proven: between phase 1 and phase 2 this session's whole process exited and a fresh one reconnected both accounts via `POST /api/v2/auth/login` (not a reused token) and continued the same series correctly - the "login path works correctly" outcome the scenario explicitly accepts. A code-review follow-up pass also added a live `POST /api/v2/auth/refresh` exercise right after login (rotating both accounts' credentials, with every subsequent call in phase 2 using the rotated token) - the token-rotation path the real Unity client's `AuthenticatedApiClientBase.EnsureFreshAccessToken`/`ForceRefresh` actually relies on far more often than re-login, given the 15-minute access-token lifetime; re-run and reconfirmed passing live after that fix. **Not exercised this session**: the persisted-session-file / `CorrespondenceScreenController.Resume()` UI half (needs a live Unity scene/UI session, which this session's harness deliberately does not touch - see "Why the live calls were not made through Unity itself" above). The prior session's `Level5BackendV2CorrespondenceScenePlayModeTests` PlayMode coverage of the unauthenticated-path-only case still stands unchanged. |
+| 3 | Quit/reconnect between turns | **PARTIAL (live, login-path + refresh-token half only) / BLOCKED (Unity-client Resume() half)** | Live-proven: between phase 1 and phase 2 this session's whole process exited and a fresh one reconnected both accounts via `POST /api/v2/auth/login` (not a reused token) and continued the same series correctly - the "login path works correctly" outcome the scenario explicitly accepts. A code-review follow-up pass also added a live `POST /api/v2/auth/refresh` exercise right after login (rotating both accounts' credentials, with every subsequent call in phase 2 using the rotated token) - the token-rotation path the real Unity client's `AuthenticatedApiClientBase.EnsureFreshAccessToken`/`ForceRefresh` actually relies on far more often than re-login, given the 15-minute access-token lifetime; re-run and reconfirmed passing live after that fix. **BLOCKED (Unity-client Resume() half)**: a same-day follow-up session built a real Editor Play Mode automation (`BackendV2LiveCertificationRunner.RunFullSession`) specifically to drive the persisted-session-file / `CorrespondenceScreenController.Resume()` path for real, but every attempt to enter Play Mode hung in a reproducible Unity Editor startup deadlock before that script's own logic ever ran - see "Unity-client live-certification attempt" above for the full investigation (5 independent attempts, confirmed unrelated to this session's own code). No Unity-client evidence for this half exists. The prior session's `Level5BackendV2CorrespondenceScenePlayModeTests` PlayMode coverage of the unauthenticated-path-only case still stands unchanged. |
 | 4 | Duplicate/retried challenge, accept, start, complete requests | **PASSING (live)** | All four sub-cases proven against the real server in one run: (a) duplicate `CreateChallenge` with the same `clientRequestId` returned the same series id, not a new one; (b) duplicate `Accept` on an already-`Active` series returned 200/`Active` again, not a conflict; (c) duplicate `StartAttempt` for the same player/game returned the same `attemptId`; (d) an identical resend of an already-accepted `CompleteAttempt` payload returned 200 (idempotent-success), unchanged. |
-| 5 | Lost response after an accepted completion | **PARTIAL (live, server half only)** | Live-proven server half: resending `CompleteAttempt` for an already-accepted attempt with a *materially different* payload was rejected `409`/conflict (traceId `0HNOOKLJTCUD1:0000001A`, see evidence above), and the originally accepted result was confirmed unchanged afterward (`currentGameNumber` had already advanced to 2). This is the actual "server handles duplicate/accepted result safely" proof the scenario asks for. **Not exercised this session**: the client's own `PendingRemoteAttemptResult` resend-exact-original-payload path (`RemoteAttemptResultSubmitter`) - that is client code living in the default Unity assembly and needs a live scene/UI session to drive for real; it remains unit-tested against a fabricated 409 only, as in the prior session. |
+| 5 | Lost response after an accepted completion | **PARTIAL (live, server half only) / BLOCKED (Unity-client retry half)** | Live-proven server half: resending `CompleteAttempt` for an already-accepted attempt with a *materially different* payload was rejected `409`/conflict (traceId `0HNOOKLJTCUD1:0000001A`, see evidence above), and the originally accepted result was confirmed unchanged afterward (`currentGameNumber` had already advanced to 2). This is the actual "server handles duplicate/accepted result safely" proof the scenario asks for. **BLOCKED (Unity-client retry half)**: the client's own `PendingRemoteAttemptResult` resend-exact-original-payload path (`RemoteAttemptResultSubmitter.TryRetryPending()`) was not exercised live this session for two independent reasons: (1) the same Editor Play Mode startup deadlock documented under "Unity-client live-certification attempt" above prevented any Unity-client session from running at all; (2) even had Play Mode been reachable, safely inducing a genuinely *retryable* submission failure through Unity would have required either simulating a full completed match's `GameStats` (gameplay simulation, judged out of scope for a narrow certification script) or deliberately breaking network reachability mid-submission - both were judged to reach beyond this certification slice's scope rather than attempted under time pressure. It remains unit-tested against a fabricated 409 only, as in the prior session. |
 | 6 | Server restart between turns | **PASSING (live)** | The backend process was actually killed (`taskkill`) and restarted (`dotnet run`) between phase 1 and phase 2, not simulated. After restart: series `01a0ca81-b183-70c8-b1e9-4de7a86e26ad` was still `Active`, `currentGameNumber` was still `2`, game 1's already-disclosed result was still present and correct, and `rules` (ruleset id, information policy) were byte-identical to what was returned at creation - proving Postgres-persisted state, not in-memory state that a restart would have lost. |
 | 7 | Second-device/state-refresh behavior | **PASSING (live)** | Demonstrated throughout both phases: every read one account made was a fresh HTTP round trip issued *after* the other account's mutation, using an entirely independent `HttpClient`/token with no shared client-side cache of any kind - B always learned about A's actions (and vice versa) strictly from the server's current response, never from anything cached locally. |
 | 8 | Simultaneous completion race | **PASSING (live)** | The deciding game (game 2) was completed by both accounts via a genuinely concurrent dispatch (`Task.WhenAll` on two independent `HttpClient`s, both `CompleteAttempt` calls in flight at once, not sequential). Both calls returned 200; the server resolved to a single consistent outcome (`status == "Completed"`, `winnerId` == Account A's id, no corrupted/duplicate state). |
 | 9 | Sealed first-finisher result remains hidden | **PASSING (live)** | Direct server-projection proof, not client-side classifier inference: after A completed game 1's attempt, B's own `GET /api/v2/series/{id}` showed `opponentAttempt.status != "NotStarted"` (A had submitted something) but `opponentAttempt.result == null` (still sealed). After B then completed their own attempt, A's next `GET` showed `opponentAttempt.result` populated (disclosed). This proves the *server's* projection, exactly as the scenario requires. |
 | 10 | Completed series history remains readable | **PASSING (live)** | After the series completed, both accounts' `GET /api/v2/series/completed` listed it, and a second, independent fetch on account A afterward still listed it - readable across a repeated fresh round trip, not a one-time artifact of the completion response itself. |
-| 11 | Frozen rules remain stable across a client update | **PARTIAL (live, restart half only) / BLOCKED (client-build half)** | Live-proven: `FrozenRules` (ruleset id, ruleset version, information policy, comparison keys) were confirmed byte-identical before and after the real backend process restart in Scenario 6's evidence. **Still BLOCKED**: no second Unity client build/version was available this session to test whether an in-progress series' frozen rules remain stable (or fail safely) across an actual client update - that requires two distinct client builds, which this certification slice did not produce. |
+| 11 | Frozen rules remain stable across a client update | **PARTIAL (live, restart half only) / BLOCKED (client-build half)** | Live-proven: `FrozenRules` (ruleset id, ruleset version, information policy, comparison keys) were confirmed byte-identical before and after the real backend process restart in Scenario 6's evidence. **Still BLOCKED**: only a single Unity Editor instance was available in this environment - no second, distinct Unity client build/version exists to test whether an in-progress series' frozen rules remain stable (or fail safely) across an actual client update. This is unchanged by the same-day follow-up session (see "Unity-client live-certification attempt" above): that session could not even complete a single Unity-client run, so a second-build comparison was never in reach regardless. |
 
 ### Historical: prior blocked session (2026-09-18)
 
@@ -226,6 +359,27 @@ repo, outside `Assets/`):
 - Full PlayMode suite: **24/24 passed**.
 - `./scripts/validate-repository.ps1` - **passed**.
 
+### Unity-client live-certification attempt session's own validation (2026-09-22, continued)
+
+After the Play Mode hang investigation above concluded, this follow-up session re-ran the same checks
+against its own final state (Unity commit unchanged at `0e6d91302b64a284924286b46bf279eba5cce16a` -
+only the new, additive `Assets/Level5/Editor/BackendV2LiveCertificationRunner.cs` was added, nothing
+existing was modified):
+
+- Full solution compile via Unity batchmode (`-batchmode -quit -nographics`, no `-runTests`) -
+  **clean** (this same invocation shape is also how `BackendV2LiveCertificationRunner.cs` was first
+  confirmed to compile, before the Play Mode hang was ever hit).
+- Full EditMode suite: **1610/1610 passed**.
+- Full PlayMode suite: **24/24 passed**.
+- `./scripts/validate-repository.ps1` - **passed**.
+
+Notably, `-runTests` (both EditMode and PlayMode) is unaffected by the Play Mode startup hang
+documented above - both suites ran to completion normally in this same environment, including the
+existing `Level5BackendV2CorrespondenceScenePlayModeTests` PlayMode scene smoke test, which itself
+enters a real player loop. This narrows the hang specifically to the non-`-runTests`,
+`-executeMethod` + `EditorApplication.isPlaying = true` path this session's automation needed, not to
+Play Mode / real networking in this environment generally.
+
 ## Local validation
 
 Run these to reproduce (from the repository root):
@@ -270,24 +424,63 @@ dotnet run -- phase1
 dotnet run -- phase2
 ```
 
+## Reproducing the Unity-client live-certification attempt
+
+`BackendV2LiveCertificationRunner.cs` (`Assets/Level5/Editor/`) and the `unity-counterpart` harness
+commands (`Level5Backend/v2/scripts/live-certification/Program.cs`) are left in place for a future
+session, ideally one that either has interactive Editor/device access or runs on a machine where the
+Play Mode startup hang documented above does not occur:
+
+```powershell
+# 1. Backend V2 running locally (same as "Reproducing this live certification" above), reachable at
+#    https://localhost:7029/health/live
+
+# 2. From the level5 repo root - no -quit (the script calls EditorApplication.Exit itself) and no
+#    -nographics (this drives real UI/coroutine behavior):
+& "<UnityPath>\Unity.exe" -batchmode -projectPath . -executeMethod `
+    BackendV2LiveCertificationRunner.RunFullSession -logFile unity_live_cert.log
+
+# 3. Evidence accumulates at %TEMP%\level5_unity_live_cert_evidence.log across the whole session,
+#    interleaved with the Debug.Log output also visible in -logFile.
+```
+
+Optional environment variables (read at runtime, never hardcoded per this issue's own instructions):
+`LEVEL5_BACKENDV2_BASE_URI` (defaults to `BackendV2ApiConfig.Development()`'s
+`https://localhost:7029/`) and `LEVEL5_BACKEND_REPO_PATH` (defaults to assuming `Level5Backend` is a
+sibling checkout of `level5`, matching every other cross-repo path this doc already assumes).
+
+If the exact hang documented above recurs (`TrimDiskCacheJob: Current cache size 0mb` with no further
+log growth for several minutes, process memory settling back under 100 MB), that is this same Unity
+Editor environment issue, not a regression in the script - see "Unity-client live-certification
+attempt" above for the full investigation before spending further time on it.
+
 ## Remaining Backend V2 correspondence work
 
 What this live certification pass did **not** close, and what a future session should target:
 
-1. **Unity client-side wiring against a live backend** - everything this session certified is
-   black-box server behavior over raw HTTP. `UnityWebRequestTransport`, `AuthApiClient`,
-   `CorrespondenceScreenController`, `RemoteAttemptLauncher`, and `PendingRemoteAttemptResult` still
-   only have `FakeApiTransport`-based unit coverage and one PlayMode scene smoke test (unauthenticated
-   path only). A session with GUI/device access to run actual Unity builds against this same local
-   backend is needed to certify that wiring for real - the "two real installs/devices" or "one device
-   plus one Editor session" setups this doc's earlier draft anticipated, which this environment could
-   not provide.
+1. **Unity client-side wiring against a live backend, still open** - a same-day follow-up session
+   (see "Unity-client live-certification attempt" above) built real Editor Play Mode automation
+   (`BackendV2LiveCertificationRunner.cs`) and an extended counterpart harness specifically to close
+   this, but could not get it to run at all in this environment (a reproducible Unity Editor
+   startup-indexing deadlock, investigated five ways, confirmed unrelated to this session's own code -
+   see "Reproducing the Unity-client live-certification attempt" above to retry). `UnityWebRequestTransport`,
+   `AuthApiClient`, `CorrespondenceScreenController`, `RemoteAttemptLauncher`, and
+   `PendingRemoteAttemptResult` still only have `FakeApiTransport`-based unit coverage and one
+   PlayMode scene smoke test (unauthenticated path only). A future session should either retry the
+   automation above on an environment without this hang, or fall back to genuine interactive
+   Editor/device access (the "two real installs/devices" or "one device plus one Editor session"
+   setups this doc's earlier draft anticipated).
 2. **Scenario 3's UI/session-persistence half** - the persisted-session-file /
    `CorrespondenceScreenController.Resume()` path specifically, requiring #1 above.
 3. **Scenario 5's client-side retry half** - `PendingRemoteAttemptResult`'s exact-original-payload
-   resend, requiring #1 above.
+   resend, requiring #1 above. Note that even with #1 resolved, safely inducing a genuinely retryable
+   submission failure through Unity still needs either a fabricated `GameStats` (gameplay simulation)
+   or a deliberate mid-submission network break - plan for that explicitly, it is not automatic once
+   Play Mode works.
 4. **Scenario 11's client-build half** - frozen-rules stability across an actual Unity client update
-   needs two distinct client builds; only the backend-restart half was provable this session.
+   needs two distinct client builds; only the backend-restart half was provable this session, and #1's
+   automation - even once it runs - only ever drives a single Editor instance, so this specific half
+   still needs either two real builds or two Editor copies at different commits.
 5. If Backend V2's ruleset catalog (`StaticRulesetCatalog`) grows beyond its current single
    `score-only` entry, re-run the live-certification harness with the new ruleset id(s) too - this
    session only certified the one entry that exists today.
