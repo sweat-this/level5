@@ -3,6 +3,169 @@
 Companion to [`docs/backend-v2-correspondence-ui.md`](backend-v2-correspondence-ui.md) (UI flow) and
 [`docs/backend-v2-client.md`](backend-v2-client.md) (typed client layer, issue #158).
 
+## Final Unity-client live certification (2026-09-23) - closes the remaining #159 gap
+
+This session closed the one gap every prior session (below, preserved as history) could not:
+real Unity-client evidence for the actual `Play` launch, real match completion through
+`GameRules`, a genuine Unity process restart, and the client's own pending-result retry -
+using the `-runTests -testPlatform PlayMode` path (already known reliable in this
+environment) instead of the `-executeMethod`/`EditorApplication.isPlaying` path that
+previously deadlocked (see "Unity-client live-certification attempt" below).
+
+| Field | Value |
+| --- | --- |
+| Unity commit (base) | `7b55cedb18c121fbc43ca63f2ec1afe95d1a68d3` (`dev`) + this session's own commit (branch `backendv2-issue159-live-unity-certification`, PR link recorded once opened) |
+| Backend commit (base) | `caadc292...` (`dev`, `Level5Backend` repo) + this session's own commit (branch `backendv2-issue159-ruleset-catalog-fix`, PR #37) |
+| Backend environment / base URI | `https://localhost:7029` - local `dotnet run --launch-profile https` against the local Postgres container (`level5-postgres-local`), unchanged schema |
+| Account isolation method | Account A: the real Unity client, driven through real `Button.onClick`/`InputField.text` against the real `CorrespondenceScreenController`/`GameRules`/`GameLevelManager` (reflection only where those default-assembly types are otherwise unreachable from a test assembly). Account B: the existing standalone `HttpClient` counterpart harness (`Level5Backend/v2/scripts/live-certification`, extended this session with `unity-counterpart playturn`/`cleanup`) - the "equivalent isolated client" issue #159 explicitly permits in place of a second Unity install. |
+| Execution path | `Unity.exe -batchmode -projectPath . -runTests -testPlatform PlayMode -testFilter <method>` - the certification doc's own prior sessions already confirmed this path (unlike `-executeMethod` + `EditorApplication.isPlaying`) runs real Play Mode, real `UnityWebRequest` calls, to completion reliably in this environment. |
+| Date/time | 2026-09-23 |
+| Tester / validator | Claude Code (automated agent), this session - no human operator, no GUI/device available; this session used the opt-in PlayMode fixture path issue #159's own instructions called for as the fallback when interactive Editor access is unavailable. |
+| Overall status | **All mandatory #159 scenarios now have live Unity-client evidence.** Two `[UnityTest]`s in `Assets/Tests/PlayMode/BackendV2LiveCorrespondenceCertificationTests.cs`, gated behind `LEVEL5_LIVE_CERTIFICATION=1` (skipped otherwise - ordinary `-runTests` runs never depend on a live backend), run as two genuinely separate Unity processes. Both passed on the final run of this session. |
+
+### What each session certifies
+
+**Session1** (`Session1_EstablishSeriesAndCompleteGameOneViaGameRules`) - one continuous Unity
+process:
+
+1. Registers Account A directly (`BackendV2Runtime.Auth.Register`, one layer below the UI, which has
+   no register button), then loads the real start screen (`level_00_start`) and clicks the real
+   **Multiplayer** footer button (`StartManager.LoadMultiplayerMenu`) - the real entry point, not a
+   direct scene load (see "Production defect found and fixed" below for why this matters).
+2. Drives the real Sign In button; confirms `BackendV2SessionPersistenceStore` persisted a real
+   session file.
+3. Dumps all six tabs from a real server round trip while empty.
+4. Hands off to the counterpart harness (`unity-counterpart friend <tag>`) for Account B's friend
+   request; reloads the scene and confirms `Resume()` restored the session without a fresh login
+   (Scenario 3, Unity-driven half).
+5. Clicks the real **Accept** button on the Friends tab (live, server-rendered).
+6. Hands off to the counterpart harness (`unity-counterpart challenge`, ruleset `most-points`) for
+   Account B's Bo3 challenge; clicks the real **Accept** button on Incoming Challenges.
+7. Clicks the real **Play** button on Your Turn - `RemoteAttemptLauncher.Run -> StartAttempt ->
+   RemoteAttemptDescriptorMapper.Map -> ActiveMatch.Begin -> SceneTransition.LoadScene` - and confirms
+   a real scene transition into the gameplay arena.
+8. **Phase B**: on the real gameplay scene, sets a deterministic winning score directly on the real
+   `GameLevelManager.instance.Player1.gameStats.TotalPoints` (an existing, already-public production
+   property - reflection is needed only because `GameStats` lives in the default assembly, not
+   because the member is private), then calls the real, pre-existing, public
+   `GameRules.instance.RequestGameOver()` - the same seam a real "give up"/end-of-match path already
+   uses. Waits for the real `GameRules.HandleMatchEnded -> RemoteAttemptResultSubmitter ->
+   BackendV2Runtime.Correspondence.CompleteAttempt` chain to reach the live server and succeed
+   (`ActiveRemoteAttempt.IsActive` and `PendingRemoteAttemptResult.HasPending` both clear).
+9. Hands off to the counterpart harness (`unity-counterpart playturn 1 lose`) for Account B's game 1
+   attempt, then confirms via `BackendV2Runtime.Correspondence.Get` that the series correctly resolved
+   game 1 and moved to game 2 - live, both sides' attempts real.
+
+**Session2** (`Session2_ResumeAfterRestartRetryAndCompleteSeries`) - a **separate** Unity process,
+launched only after Session1's process fully exited:
+
+1. **Phase D**: asserts no in-memory session exists (`BackendV2SessionStore.IsAuthenticated == false`
+   - the fresh-process check), loads the real start screen and clicks Multiplayer again, and confirms
+   the login panel is skipped: the real `BackendV2SessionPersistenceStore.TryLoad ->
+   BackendV2SessionStore.Set -> ForceRefresh -> RefreshAll` chain restored Session1's persisted
+   session from disk. Fetches the series from Backend V2 fresh and confirms it is still at game 2 -
+   the same series Session1 established, continued correctly across a genuine process boundary (not a
+   scene reload).
+2. Hands off to the counterpart harness (`unity-counterpart playturn 2 lose`) for Account B's game 2
+   attempt, then clicks the real Play button for game 2 and confirms the scene transition.
+3. **Phase C**: points `BackendV2Runtime` at an intentionally unreachable endpoint
+   (`https://127.0.0.1:9/`, via the same `BackendV2ApiConfigProvider.Override` seam
+   `BackendV2LiveCertificationRunner` already used) and ends the match via the same real
+   `GameRules.RequestGameOver()` seam. Confirms the real production submission failure leaves the
+   *exact* attempted result represented by `PendingRemoteAttemptResult` (same `attemptId`, same
+   metrics - never rebuilt). Restores the real endpoint, reopens the correspondence screen, confirms
+   the real pending-result banner and its **Resend result** button render, clicks it for real, and
+   confirms the pending state clears only once Backend V2 accepts the resent payload.
+4. **Phase E**: confirms the series is `Completed` live (winner = Account A), no longer appears in
+   Active, and the real Completed tab renders it.
+
+### Production defect found and fixed
+
+Live certification found a genuine defect before Phase B could be attempted at all: Backend V2's
+only advertised ruleset, `"score-only"` (`StaticRulesetCatalog`), has **no counterpart in the Unity
+client's own ruleset registry** (`DefaultCompetitiveRulesets`). `RemoteAttemptDescriptorMapper.Map`
+resolves a remote attempt's ruleset by looking the server's `RulesetId` up in Unity's own
+`VersusCatalogs.Rulesets` - which has never had a `"score-only"` entry - so **no Unity client build
+could ever actually launch a match** for the server's only ruleset, contrary to
+`StaticRulesetCatalog`'s own doc comment ("every entry mirrors a real, already-shipped Unity
+ruleset"). The first real Play click in this session failed exactly this way:
+`"Most Points cannot be played on the chosen arena: game mode 1 is not in the mode catalog; level 1
+is not in the level catalog"` (a related, second-order symptom - see below).
+
+Fix (Level5Backend PR #37, branch `backendv2-issue159-ruleset-catalog-fix`): added a `"most-points"`
+entry to `StaticRulesetCatalog` that genuinely matches Unity's own `"most-points"` ruleset (id,
+`Score`/`HigherWins` comparison key) exactly. Purely additive - `"score-only"` and every existing
+test/fixture depending on it is untouched. A focused regression test
+(`StaticRulesetCatalogTests.cs`) covers both entries plus the unknown-ruleset rejection path. This
+session's certification harness (`unity-counterpart challenge`) now creates challenges with
+`rulesetId: "most-points"` instead of `"score-only"`.
+
+A second, harness-only issue surfaced in the same failure message
+(`"level 1 is not in the level catalog"`): `MatchCatalogs` (Unity's mode/level catalogs) is only
+bootstrapped by `StartManager`'s own data-load coroutine
+(`LegacyMatchCatalogBootstrap.EnsureBuilt`), which never runs if a test loads the multiplayer scene
+directly instead of going through the real start screen first. This is not a production defect -
+every real player reaches the correspondence screen through `level_00_start`'s Multiplayer button,
+which always bootstraps the catalogs first - it was purely an artifact of the certification fixture
+skipping that real entry point. Fixed in the fixture itself (routes through the real start screen and
+clicks the real Multiplayer button, which is also a strictly more faithful "real UI event path" per
+issue #159's own instructions), not in production code.
+
+### Known limitations, confirmed still accurate
+
+- **`PendingRemoteAttemptResult` is memory-only** (confirmed by reading the current source: plain
+  static fields, no disk persistence). Terminating the client after a retryable submission failure -
+  before a successful resend or a definitive `Conflict` - loses the locally completed exact result
+  payload. This is a real reliability gap worth a follow-up, but issue #159 does not require a
+  completed-but-unsubmitted result to survive client process termination, so no durable persistence
+  was added here (would be new, out-of-scope production surface). This is a *different* concern from
+  the fresh-process **session** restoration this session certified (Phase D) - that is a real,
+  disk-backed, now-live-certified path; the pending-result payload is not.
+- **Frozen-rules stability across a client build update** (issue #159's optional, "where supported"
+  clause) remains unproven by a genuine second Unity client build/version - only a single Editor
+  install was available this session, matching every prior session. Rule stability across a real
+  **backend** restart was already live-certified (see "Historical" below) and is unaffected. Per
+  issue #159's own guidance, this optional clause alone is not treated as a blocker.
+- Duplicate/retried-request idempotency (Scenario 4), a real backend process restart between turns
+  (Scenario 6), second-independent-client refresh (Scenario 7), simultaneous completion (Scenario 8),
+  and sealed-result disclosure timing (Scenario 9) were not re-driven through Unity this session -
+  they remain proven by the existing live `HttpClient`-harness evidence below, which this session's
+  own re-validation confirmed is still accurate against the current server (no server-side change
+  this session touched any of that behavior). Re-deriving already-proven backend behavior through
+  Unity again would not have added evidence, per issue #159's own "do not repeat already-proven
+  behavior without a specific reason" guidance.
+
+### Reproducing this session
+
+```powershell
+# 1. Trust the dev cert (one-time) and start Backend V2 locally (see "Reproducing this live
+#    certification" below for the full sequence) - confirm https://localhost:7029/health/live
+
+# 2. From the level5 repo root, one Unity process per session (session2 only after session1's
+#    process has fully exited):
+$env:LEVEL5_LIVE_CERTIFICATION = "1"
+& "<UnityPath>\Unity.exe" -batchmode -projectPath . -runTests -testPlatform PlayMode `
+    -testFilter "BackendV2LiveCorrespondenceCertificationTests.Session1_EstablishSeriesAndCompleteGameOneViaGameRules" `
+    -testResults session1_results.xml -logFile session1.log
+
+& "<UnityPath>\Unity.exe" -batchmode -projectPath . -runTests -testPlatform PlayMode `
+    -testFilter "BackendV2LiveCorrespondenceCertificationTests.Session2_ResumeAfterRestartRetryAndCompleteSeries" `
+    -testResults session2_results.xml -logFile session2.log
+
+# 3. Evidence accumulates at %TEMP%\level5_unity_live_cert_evidence.log across both processes.
+```
+
+Both `[UnityTest]`s are skipped (`Assert.Ignore`, with a clear prerequisite message) when
+`LEVEL5_LIVE_CERTIFICATION` is unset, so the ordinary `-runTests -testPlatform PlayMode` suite (no
+env var set) is unaffected - confirmed this session: 24/24 pre-existing PlayMode tests still pass,
+plus 2 skipped (the new live-certification tests).
+
+## Historical: prior sessions (preserved, still valid)
+
+Everything below this line predates the session above and remains accurate for the scenarios it
+covers - none of it was retired without being checked first. The session above closed exactly the
+gaps every one of these prior sessions' own "Remaining work" sections called out.
+
 ## Session record
 
 | Field | Value |
@@ -265,6 +428,14 @@ setup or an environment where this specific Unity startup hang does not occur.
 
 ## Certification matrix
 
+**Superseded for scenarios 3, 5 and 11**: this table is this (2026-09-18/2026-09-22) session's own
+point-in-time record, preserved as history. The "BLOCKED (Unity-client ... half)" notes on scenarios
+3, 5 and 11 below were closed by the "Final Unity-client live certification (2026-09-23)" session at
+the top of this document - see that section for the live evidence (real Sign-In/Resume across a
+genuine process restart, a real Resend-result click, and real Bo3 completion). Scenario 11's
+client-*build*-update half (as opposed to the backend-restart half already proven here) remains the
+one still-untested optional clause, per that section's "Known limitations" note.
+
 | # | Scenario | Status | Notes / evidence |
 | --- | --- | --- | --- |
 | 1 | Friend lookup and accepted friendship | **PASSING (live)** | A resolved B by tag (`CERTACCOUNTBBC6DD64D#6919`), sent a friend request (id `01a0ca81-b0de-7072-b1bd-136ffa85cc58`), B saw it in `ListIncoming`, B accepted (204), both `GET /api/v2/friends` show the other side. All against the live server. |
@@ -455,6 +626,13 @@ Editor environment issue, not a regression in the script - see "Unity-client liv
 attempt" above for the full investigation before spending further time on it.
 
 ## Remaining Backend V2 correspondence work
+
+**Update (2026-09-23): items 1-3 below are closed** - see "Final Unity-client live certification
+(2026-09-23)" at the top of this document. Item 4 (a genuine second Unity client build/version)
+remains open, per that section's "Known limitations" note; item 5 was itself the production defect
+that section found and fixed (Backend V2's one entry did not actually match anything in Unity's own
+catalog - the fix added a second entry that does, rather than proving the existing one). Preserved
+below verbatim as this session's own point-in-time record.
 
 What this live certification pass did **not** close, and what a future session should target:
 
