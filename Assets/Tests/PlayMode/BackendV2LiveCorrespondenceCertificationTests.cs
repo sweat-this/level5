@@ -85,7 +85,8 @@ public class BackendV2LiveCorrespondenceCertificationTests
 
     /// <summary>
     /// Phase A + Phase B. Registers Account A directly against a live Backend V2, drives the real
-    /// correspondence UI (login, all six tabs, friend accept, challenge accept) through real
+    /// correspondence UI (login, all six tabs, friend accept, a real Send-Challenge/Cancel round trip
+    /// via <see cref="CertifyRealChallengeCreationAndCancel"/>, then challenge accept) through real
     /// <c>Button.onClick</c>/<c>InputField.text</c>, launches a remote attempt through the real
     /// <c>Play</c> button (<c>RemoteAttemptLauncher.Run</c> -&gt; <c>SceneTransition.LoadScene</c>),
     /// then certifies the actual match-completion path: sets deterministic winning stats on the real
@@ -185,6 +186,8 @@ public class BackendV2LiveCorrespondenceCertificationTests
         Log("Friends tab PASSING: Account B's live incoming friend request rendered from a real server round trip.");
         acceptFriendButton.onClick.Invoke();
         yield return WaitSeconds(2f);
+
+        yield return CertifyRealChallengeCreationAndCancel(controller);
 
         var challengeStep = RunCounterpart("challenge");
         Assert.That(challengeStep.ok, Is.True, "counterpart 'challenge' step failed:\n" + challengeStep.output);
@@ -346,34 +349,57 @@ public class BackendV2LiveCorrespondenceCertificationTests
 
         // The production submitter logs this failure for real (RemoteAttemptResultSubmitter.Submit) -
         // it is the deliberate point of this phase, not an unexpected error, but Unity's strict
-        // PlayMode test runner still fails the test on any unhandled Debug.LogError.
-        LogAssert.Expect(LogType.Error, new Regex(@"^Submitting the remote attempt .* result failed: Network.*"));
-        SetDeterministicScore(winning: true);
-        InvokeRequestGameOver();
-        Log("Ended the match via the real GameRules.RequestGameOver() while the transport is unreachable.");
+        // PlayMode test runner still fails the test on any unhandled Debug.LogError. Also used below
+        // as the actual completion signal for the first (failing) submission attempt - see that
+        // comment for why HasPending alone cannot be used for that.
+        var failureLogPattern = new Regex(@"^Submitting the remote attempt .* result failed: Network.*");
+        LogAssert.Expect(LogType.Error, failureLogPattern);
 
-        yield return WaitUntil(() => PendingRemoteAttemptResult.HasPending, 30f,
-            "Phase C FAILING: the result submission did not fail/stash as pending within 30s against the " +
-            "unreachable endpoint");
-        RemoteAttemptContext pendingContext = PendingRemoteAttemptResult.Context;
-        var pendingMetrics = PendingRemoteAttemptResult.Metrics;
-        Assert.That(pendingContext.SeriesId, Is.EqualTo(seriesId));
-        Assert.That(pendingContext.GameNumber, Is.EqualTo(2));
-        Assert.That(pendingMetrics, Is.Not.Null.And.Not.Empty);
-        Log("Phase C PASSING: the production result-submission failure left the exact attempted result " +
-            $"represented by PendingRemoteAttemptResult (attemptId={pendingContext.AttemptId}, " +
-            $"metrics=[{string.Join(", ", pendingMetrics.Select(kv => kv.Key + "=" + kv.Value))}]).");
+        bool firstAttemptSettled = false;
+        void ObserveFirstAttemptSettling(string condition, string stackTrace, LogType type)
+        {
+            if (type == LogType.Error && failureLogPattern.IsMatch(condition))
+            {
+                firstAttemptSettled = true;
+            }
+        }
 
-        // PendingRemoteAttemptResult.HasPending is set synchronously the instant TrySubmit stashes the
-        // payload - BEFORE the network call even starts (RemoteAttemptResultSubmitter.TrySubmit),
-        // not after it fails. The WaitUntil above therefore returns almost immediately, while the
-        // original failing request against the unreachable endpoint is still in flight and still
-        // holds RemoteAttemptResultSubmitter's submission claim (TryClaim/Release). Restoring the
-        // endpoint and clicking Resend before that first request actually settles would make
-        // TryRetryPending's own TryClaim fail silently (already claimed) and start no new submission
-        // at all. The configured 5s request timeout bounds the worst case; the observed real failure
-        // (connection refused) settles in ~2s.
-        yield return WaitSeconds(7f);
+        Application.logMessageReceived += ObserveFirstAttemptSettling;
+        try
+        {
+            SetDeterministicScore(winning: true);
+            InvokeRequestGameOver();
+            Log("Ended the match via the real GameRules.RequestGameOver() while the transport is unreachable.");
+
+            yield return WaitUntil(() => PendingRemoteAttemptResult.HasPending, 30f,
+                "Phase C FAILING: the result submission did not fail/stash as pending within 30s against the " +
+                "unreachable endpoint");
+            RemoteAttemptContext pendingContext = PendingRemoteAttemptResult.Context;
+            var pendingMetrics = PendingRemoteAttemptResult.Metrics;
+            Assert.That(pendingContext.SeriesId, Is.EqualTo(seriesId));
+            Assert.That(pendingContext.GameNumber, Is.EqualTo(2));
+            Assert.That(pendingMetrics, Is.Not.Null.And.Not.Empty);
+            Log("Phase C PASSING: the production result-submission failure left the exact attempted result " +
+                $"represented by PendingRemoteAttemptResult (attemptId={pendingContext.AttemptId}, " +
+                $"metrics=[{string.Join(", ", pendingMetrics.Select(kv => kv.Key + "=" + kv.Value))}]).");
+
+            // PendingRemoteAttemptResult.HasPending is set synchronously the instant TrySubmit stashes
+            // the payload - BEFORE the network call even starts (RemoteAttemptResultSubmitter.
+            // TrySubmit), not after it fails. The WaitUntil above therefore returns almost immediately,
+            // while the original failing request against the unreachable endpoint is still in flight
+            // and still holds RemoteAttemptResultSubmitter's submission claim (TryClaim/Release).
+            // Restoring the endpoint and clicking Resend before that first request actually settles
+            // would make TryRetryPending's own TryClaim fail silently (already claimed) and start no
+            // new submission at all. Rather than guess a fixed delay, wait for the real completion
+            // signal: the production failure log this first attempt logs when it actually finishes.
+            yield return WaitUntil(() => firstAttemptSettled, 30f,
+                "Phase C FAILING: the original failing submission never logged its completion within 30s " +
+                "of an unreachable endpoint - RemoteAttemptResultSubmitter's claim may still be held");
+        }
+        finally
+        {
+            Application.logMessageReceived -= ObserveFirstAttemptSettling;
+        }
 
         // ---- Restore the valid endpoint and reopen the correspondence screen ----
         ApplyConfig(ResolveConfig());
@@ -432,6 +458,81 @@ public class BackendV2LiveCorrespondenceCertificationTests
 
         var cleanup = RunCounterpart("cleanup");
         Log("Counterpart harness cleanup: success=" + cleanup.ok);
+    }
+
+    /// <summary>
+    /// Certifies the real "create" half of "create/accept Best-of-3 sealed challenge" through the
+    /// actual Unity UI - <c>RenderChallengeForm</c> -&gt; the real Send Challenge button -&gt;
+    /// <c>ChallengeCoordinator.Create</c> - which every other step in this fixture leaves untested
+    /// (Account B's challenge is always created by the standalone HttpClient counterpart harness
+    /// over raw HTTP, never through Unity's own "Send Challenge" button). This creates a second,
+    /// throwaway challenge to Account B and cancels it through the real Outgoing tab afterward -
+    /// the counterpart's own challenge (created next, and never touched here) remains the only one
+    /// that reaches Active/is actually played, so every later `.Single()` lookup against
+    /// ListActive/ListOutgoing downstream still holds.
+    /// </summary>
+    private static IEnumerator CertifyRealChallengeCreationAndCancel(object controller)
+    {
+        yield return SelectTabAndWait(controller, "FriendsButton");
+        RectTransform contentRoot = (RectTransform)GetMember(controller, "contentRoot");
+        Button challengeFriendButton = FindButton(contentRoot, "ChallengeButton");
+        Assert.That(challengeFriendButton, Is.Not.Null,
+            "Account B's friend row did not show a Challenge button:\n" + DumpContentRoot(controller));
+        Log("Clicking the real Challenge button on Account B's friend row (-> RenderChallengeForm) ...");
+        challengeFriendButton.onClick.Invoke();
+        yield return null;
+
+        contentRoot = (RectTransform)GetMember(controller, "contentRoot");
+        Button bo3Button = FindButton(contentRoot, "Bo3Button");
+        Assert.That(bo3Button, Is.Not.Null,
+            "the challenge form did not render a Bo3 option:\n" + DumpContentRoot(controller));
+        bo3Button.onClick.Invoke();
+        yield return null;
+
+        contentRoot = (RectTransform)GetMember(controller, "contentRoot");
+        Button sendChallengeButton = FindButton(contentRoot, "Send ChallengeButton");
+        Assert.That(sendChallengeButton, Is.Not.Null,
+            "the challenge form did not render a Send Challenge button:\n" + DumpContentRoot(controller));
+        Log("Clicking the real Send Challenge button (-> ChallengeCoordinator.Create -> live CreateChallenge) ...");
+        sendChallengeButton.onClick.Invoke();
+        yield return WaitUntil(
+            () => (GetText(controller, "statusBanner") ?? string.Empty).Contains("challenge sent"), 20f,
+            () => "Send Challenge did not confirm live within 20s; statusBanner=\"" +
+                  GetText(controller, "statusBanner") + "\"");
+        Log("Send Challenge PASSING (live): the real create-challenge UI path (RenderChallengeForm -> " +
+            "ChallengeCoordinator.Create) reached Backend V2.");
+
+        yield return SelectTabAndWait(controller, "OutgoingButton");
+        yield return WaitUntilButtonAppears(controller, "CancelButton", 20f);
+
+        ApiResponse<SeriesSummaryPageDto> outgoingResult = null;
+        yield return BackendV2Runtime.Correspondence.ListOutgoing(20, null, r => outgoingResult = r);
+        Assert.That(outgoingResult != null && outgoingResult.Success, Is.True, "ListOutgoing failed: " + Describe(outgoingResult));
+        Guid createdSeriesId = outgoingResult.Value.Items.Single().Id;
+
+        ApiResponse<SeriesResponseDto> createdSeriesDetail = null;
+        yield return BackendV2Runtime.Correspondence.Get(createdSeriesId, r => createdSeriesDetail = r);
+        Assert.That(createdSeriesDetail != null && createdSeriesDetail.Success, Is.True,
+            "Get(createdSeriesId) failed: " + Describe(createdSeriesDetail));
+        Assert.That(createdSeriesDetail.Value.Rules.RulesetId, Is.EqualTo("most-points"));
+        Assert.That(createdSeriesDetail.Value.TotalGames, Is.EqualTo(3));
+        Log($"Create-challenge PASSING (live): series {createdSeriesId} created live with rulesetId=most-points, " +
+            "totalGames=3, via the real Unity Send Challenge button.");
+
+        contentRoot = (RectTransform)GetMember(controller, "contentRoot");
+        Button cancelOutgoingButton = FindButton(contentRoot, "CancelButton");
+        Assert.That(cancelOutgoingButton, Is.Not.Null, "Outgoing tab did not show a Cancel button for the just-created challenge");
+        Log("Clicking the real Cancel button on the Outgoing tab (-> ChallengeCoordinator.Cancel) ...");
+        cancelOutgoingButton.onClick.Invoke();
+        yield return WaitSeconds(2f);
+
+        ApiResponse<SeriesSummaryPageDto> outgoingAfterCancel = null;
+        yield return BackendV2Runtime.Correspondence.ListOutgoing(20, null, r => outgoingAfterCancel = r);
+        Assert.That(outgoingAfterCancel != null && outgoingAfterCancel.Success, Is.True,
+            "ListOutgoing (after cancel) failed: " + Describe(outgoingAfterCancel));
+        Assert.That(outgoingAfterCancel.Value.Items.Any(i => i.Id == createdSeriesId), Is.False,
+            "the cancelled challenge must no longer appear in Outgoing");
+        Log("Cancel PASSING (live): the real Cancel button removed the just-created challenge from Outgoing.");
     }
 
     // ================================================================= shared helpers
@@ -557,42 +658,66 @@ public class BackendV2LiveCorrespondenceCertificationTests
         return GetMember(target.GetType(), target, name);
     }
 
+    /// <summary>Type.GetField/GetProperty with BindingFlags.NonPublic only searches the exact type
+    /// passed in, not non-public members inherited from a base class (a well-known .NET reflection
+    /// limitation - FlattenHierarchy does not help for instance members). Every member this fixture
+    /// currently reaches happens to be declared directly on the type queried, but walking BaseType
+    /// explicitly here means a future refactor that moves one of them onto a base class fails loudly
+    /// with a clear "not found on X or its base types" message instead of a misleading one.</summary>
+    private static (FieldInfo field, PropertyInfo prop) FindMember(Type type, string name)
+    {
+        const BindingFlags flags = BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public |
+            BindingFlags.NonPublic | BindingFlags.DeclaredOnly;
+        for (Type t = type; t != null; t = t.BaseType)
+        {
+            FieldInfo field = t.GetField(name, flags);
+            if (field != null)
+            {
+                return (field, null);
+            }
+
+            PropertyInfo prop = t.GetProperty(name, flags);
+            if (prop != null)
+            {
+                return (null, prop);
+            }
+        }
+
+        return (null, null);
+    }
+
     private static object GetMember(Type type, object target, string name)
     {
-        const BindingFlags flags = BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic;
-        FieldInfo field = type.GetField(name, flags);
+        (FieldInfo field, PropertyInfo prop) = FindMember(type, name);
         if (field != null)
         {
             return field.GetValue(target);
         }
 
-        PropertyInfo prop = type.GetProperty(name, flags);
         if (prop != null)
         {
             return prop.GetValue(target);
         }
 
-        throw new InvalidOperationException($"{type.Name} has no field or property named '{name}'.");
+        throw new InvalidOperationException($"{type.Name} has no field or property named '{name}' on itself or any base type.");
     }
 
     private static void SetMember(Type type, object target, string name, object value)
     {
-        const BindingFlags flags = BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic;
-        FieldInfo field = type.GetField(name, flags);
+        (FieldInfo field, PropertyInfo prop) = FindMember(type, name);
         if (field != null)
         {
             field.SetValue(target, value);
             return;
         }
 
-        PropertyInfo prop = type.GetProperty(name, flags);
         if (prop != null)
         {
             prop.SetValue(target, value);
             return;
         }
 
-        throw new InvalidOperationException($"{type.Name} has no field or property named '{name}'.");
+        throw new InvalidOperationException($"{type.Name} has no field or property named '{name}' on itself or any base type.");
     }
 
     /// <summary>Waits until GameLevelManager.instance, GameRules.instance and
@@ -674,10 +799,25 @@ public class BackendV2LiveCorrespondenceCertificationTests
         return text == null ? null : text.text;
     }
 
+    /// <summary>Row buttons are named label + "Button" by convention (CorrespondenceScreenController.
+    /// CreateButton), so names collide by design across rows/rounds - this is only unambiguous because
+    /// the certification flow's own single-instance invariants (one friend request, one challenge, one
+    /// pending result at a time) hold. Logs when that assumption is violated instead of silently
+    /// clicking whichever row happens to render first, matching BackendV2LiveCertificationRunner's own
+    /// FindButton.</summary>
     private static Button FindButton(Transform root, string buttonGameObjectName)
     {
-        return root.GetComponentsInChildren<Button>(true)
-            .FirstOrDefault(b => b.gameObject.name == buttonGameObjectName);
+        Button[] matches = root.GetComponentsInChildren<Button>(true)
+            .Where(b => b.gameObject.name == buttonGameObjectName)
+            .ToArray();
+
+        if (matches.Length > 1)
+        {
+            Log($"WARNING: {matches.Length} buttons named '{buttonGameObjectName}' found under {root.name} - " +
+                "picking the first; this is only correct while this run's single-instance invariants hold.");
+        }
+
+        return matches.FirstOrDefault();
     }
 
     private static IEnumerator SelectTabAndWait(object controller, string tabButtonName)
@@ -761,7 +901,14 @@ public class BackendV2LiveCorrespondenceCertificationTests
 
     /// <summary>Shells out to the standalone HttpClient counterpart harness (Account B), bounded and
     /// force-killed on timeout - this runs synchronously between yields on the test runner's own
-    /// coroutine, so an unbounded wait here would hang the whole run with no way to recover.</summary>
+    /// coroutine, so an unbounded wait here would hang the whole run with no way to recover.
+    ///
+    /// Reads stdout/stderr via the async event-based API (BeginOutputReadLine/BeginErrorReadLine)
+    /// rather than two sequential synchronous ReadToEnd() calls: reading one redirected stream fully
+    /// before starting the other is a well-known deadlock (if the child fills the OS pipe buffer on
+    /// the stream not yet being read, it blocks forever waiting for a reader that never arrives,
+    /// which would also make WaitForExit's timeout below unreachable - defeating the one guarantee
+    /// this method exists to provide).</summary>
     private static (bool ok, string output) RunCounterpart(string arguments)
     {
         string repoOverride = Environment.GetEnvironmentVariable(BackendRepoPathEnvVar);
@@ -781,11 +928,18 @@ public class BackendV2LiveCorrespondenceCertificationTests
             CreateNoWindow = true,
         };
 
+        var stdout = new System.Text.StringBuilder();
+        var stderr = new System.Text.StringBuilder();
+
         try
         {
-            using Process process = Process.Start(psi);
-            string stdout = process.StandardOutput.ReadToEnd();
-            string stderr = process.StandardError.ReadToEnd();
+            using Process process = new Process { StartInfo = psi };
+            process.OutputDataReceived += (_, e) => { if (e.Data != null) stdout.AppendLine(e.Data); };
+            process.ErrorDataReceived += (_, e) => { if (e.Data != null) stderr.AppendLine(e.Data); };
+            process.Start();
+            process.BeginOutputReadLine();
+            process.BeginErrorReadLine();
+
             bool exited = process.WaitForExit(CounterpartTimeoutSeconds * 1000);
             if (!exited)
             {
@@ -800,10 +954,16 @@ public class BackendV2LiveCorrespondenceCertificationTests
 
                 return (false, "counterpart harness did not exit within " + CounterpartTimeoutSeconds +
                     "s and was killed. Output so far:" + Environment.NewLine + stdout +
-                    (string.IsNullOrEmpty(stderr) ? string.Empty : Environment.NewLine + "[stderr] " + stderr));
+                    (stderr.Length == 0 ? string.Empty : Environment.NewLine + "[stderr] " + stderr));
             }
 
-            string combined = stdout + (string.IsNullOrEmpty(stderr) ? string.Empty : Environment.NewLine + "[stderr] " + stderr);
+            // The int-timeout overload of WaitForExit does not guarantee redirected output has
+            // finished being delivered to the Data-received handlers above; the parameterless
+            // overload called after a successful exit does.
+            process.WaitForExit();
+
+            string combined = stdout.ToString() +
+                (stderr.Length == 0 ? string.Empty : Environment.NewLine + "[stderr] " + stderr);
             return (process.ExitCode == 0, combined);
         }
         catch (Exception ex)
