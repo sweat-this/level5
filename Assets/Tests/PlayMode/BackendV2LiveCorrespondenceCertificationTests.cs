@@ -216,7 +216,6 @@ public class BackendV2LiveCorrespondenceCertificationTests
         string sceneBeforeLaunch = SceneManager.GetActiveScene().name;
         Log("Clicking the real Play button (-> RemoteAttemptLauncher.Run -> StartAttempt -> " +
             "RemoteAttemptDescriptorMapper.Map -> ActiveMatch.Begin -> SceneTransition.LoadScene) ...");
-        ExpectKnownCharacterProfileLimitationLog();
         playButton.onClick.Invoke();
         yield return WaitUntil(
             () => SceneManager.GetActiveScene().name != sceneBeforeLaunch ||
@@ -231,6 +230,7 @@ public class BackendV2LiveCorrespondenceCertificationTests
             "SceneTransition.LoadScene against the live backend.");
 
         yield return WaitForGameplayReady();
+        AssertActiveMatchSlotZeroHasAResolvedCharacter();
         SetDeterministicScore(winning: true);
         InvokeRequestGameOver();
         Log("Called the real, pre-existing, public GameRules.RequestGameOver() with deterministic winning " +
@@ -332,7 +332,6 @@ public class BackendV2LiveCorrespondenceCertificationTests
 
         string sceneBeforeLaunch = SceneManager.GetActiveScene().name;
         Log("Clicking the real Play button for game 2 ...");
-        ExpectKnownCharacterProfileLimitationLog();
         playButton.onClick.Invoke();
         yield return WaitUntil(
             () => SceneManager.GetActiveScene().name != sceneBeforeLaunch ||
@@ -344,6 +343,7 @@ public class BackendV2LiveCorrespondenceCertificationTests
         Assert.That(SceneManager.GetActiveScene().name, Is.Not.EqualTo(sceneBeforeLaunch),
             "Play click for game 2 did not launch: statusBanner=\"" + GetText(controller, "statusBanner") + "\"");
         yield return WaitForGameplayReady();
+        AssertActiveMatchSlotZeroHasAResolvedCharacter();
 
         // ---- Phase C: inject a controlled transport failure before ending the match ----
         Uri unreachable = new Uri("https://127.0.0.1:9/");
@@ -768,19 +768,44 @@ public class BackendV2LiveCorrespondenceCertificationTests
     }
 
     /// <summary>
-    /// A remote attempt launches with <c>CharacterSelection.None</c> (docs/backend-v2-correspondence-
-    /// ui.md's already-documented, accepted MVP limitation: "no level/character picker exists yet for
-    /// a remote attempt"), which makes <c>SpawnCoordinator.InitializeHumanProfile</c> -&gt;
-    /// <c>CharacterProfile.intializeShooterStatsFromProfile</c> log (not throw) "could not resolve the
-    /// selected player profile for character id 0" - confirmed harmless to gameplay (the player and
-    /// its <c>GameStats</c> are already spawned before this call; only cosmetic/shooter-stat profile
-    /// loading is skipped, falling back to defaults). Unity's strict PlayMode test runner otherwise
-    /// fails the test on any unhandled <c>Debug.LogError</c>, so this expects (not silences) exactly
-    /// that already-known, pre-existing, unrelated log once per Play click.
+    /// Issue #179 positive evidence: a remote attempt now launches with a real local character
+    /// (<c>RemoteCharacterSelectionResolver</c>, replacing the previous <c>CharacterSelection.None</c>),
+    /// so <c>SpawnCoordinator.InitializeHumanProfile</c> -&gt;
+    /// <c>CharacterProfile.intializeShooterStatsFromProfile</c> must resolve a real profile instead of
+    /// logging "could not resolve the selected player profile for character id 0" - that log is no
+    /// longer expected anywhere in this fixture, so Unity's strict PlayMode test runner now fails this
+    /// test outright if it recurs. This asserts the positive side directly: the real gameplay scene's
+    /// <c>ActiveMatch.Configuration</c> (default assembly, reached via reflection like every other
+    /// production type this fixture drives) has a slot 0 whose character exists, is non-zero, and -
+    /// where a remembered stable id is available - matches <c>PlayerSelectionSession.PrimaryCharacterId</c>.
     /// </summary>
-    private static void ExpectKnownCharacterProfileLimitationLog()
+    private static void AssertActiveMatchSlotZeroHasAResolvedCharacter()
     {
-        LogAssert.Expect(LogType.Error, "CharacterProfile could not resolve the selected player profile for character id 0.");
+        Type activeMatchType = FindType("ActiveMatch");
+        object configuration = GetMember(activeMatchType, null, "Configuration");
+        Assert.That(configuration, Is.Not.Null, "ActiveMatch.Configuration is null after a successful remote launch");
+
+        object roster = GetMember(configuration.GetType(), configuration, "Roster");
+        MethodInfo getBySlotId = roster.GetType().GetMethod("GetBySlotId", BindingFlags.Instance | BindingFlags.Public);
+        object slotZero = getBySlotId.Invoke(roster, new object[] { 0 });
+        Assert.That(slotZero, Is.Not.Null, "MatchConfiguration.Roster has no slot 0");
+
+        object character = GetMember(slotZero.GetType(), slotZero, "Character");
+        Assert.That(character, Is.Not.Null, "slot 0 has no Character");
+        int characterId = (int)GetMember(character.GetType(), character, "CharacterId");
+        Assert.That(characterId, Is.Not.EqualTo(0),
+            "slot 0's character id is 0 - the character-id-0 limitation this issue fixes has recurred");
+
+        Type sessionType = FindType("PlayerSelectionSession");
+        object rememberedId = GetMember(sessionType, null, "PrimaryCharacterId");
+        if (rememberedId != null)
+        {
+            Assert.That(characterId, Is.EqualTo((int)rememberedId),
+                "the launched character does not match PlayerSelectionSession.PrimaryCharacterId");
+        }
+
+        Log($"Character resolution PASSING: ActiveMatch's slot 0 launched with a real character " +
+            $"(characterId={characterId}), not CharacterSelection.None.");
     }
 
     private static void InvokeRequestGameOver()
