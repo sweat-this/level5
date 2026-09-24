@@ -112,6 +112,35 @@ namespace Level5.BackendV2.Tests
 
         public const string CompleteAttemptRequestBody = @"{ ""metrics"": { ""Score"": 42.0 } }";
 
+        public const string MatchResultResponse = @"{
+            ""id"": ""6e45e5fa-6262-4d3f-8f5f-1baf5e4f7b8c"",
+            ""playerId"": ""8f14e45f-ceea-467e-a4d9-b3e5c76f1a3a"",
+            ""clientResultId"": ""9c1e2d3f-4a5b-4c6d-8e7f-0a1b2c3d4e5f"",
+            ""modeId"": 3,
+            ""levelId"": 7,
+            ""characterId"": ""12"",
+            ""clientVersion"": ""1.4.2"",
+            ""platform"": ""Handheld"",
+            ""metrics"": {
+                ""TotalPoints"": 120.0,
+                ""ShotsMade"": 18.0,
+                ""TotalDistance"": 342.5,
+                ""CompletionTimeSeconds"": 95.2,
+                ""LongestStreak"": 6.0,
+                ""EnemiesKilled"": 4.0
+            },
+            ""modifiers"": { ""hardcore"": false, ""trafficEnabled"": true, ""enemiesEnabled"": true, ""sniperEnabled"": false },
+            ""createdAt"": ""2026-09-01T00:00:00+00:00""
+        }";
+
+        public const string ProblemDetailsMatchResultConflict = @"{
+            ""type"": ""https://level5.game/errors/conflict"",
+            ""title"": ""This clientResultId was already used to submit a different match result."",
+            ""status"": 409,
+            ""code"": ""conflict"",
+            ""traceId"": ""00-trace-9012-00""
+        }";
+
         /// <summary>
         /// The real production "most-points" descriptor Backend V2's <c>StaticRulesetCatalog</c>
         /// freezes (Level5Backend v2/src/Level5.Infrastructure/Competition/StaticRulesetCatalog.cs) -

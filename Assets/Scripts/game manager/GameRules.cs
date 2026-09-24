@@ -553,6 +553,16 @@ public class GameRules : MonoBehaviour, IMoneyBallState, IShotMarkerSession
                     && DBConnector.instance.savePlayerGameStats(user);
                 matchScoreSaveCompleted = savedLocally || PendingMatchPersistenceStore.QueueScore(user);
 
+                // Backend V2 ordinary-result submission: only once, exactly when the score above
+                // just became locally durable (this branch is gated on !matchScoreSaveCompleted, so
+                // a later retry of SaveMatchResults never reaches here again for the same match). A
+                // no-op with no Backend V2 session at this exact moment - never created retroactively
+                // if a player signs in later.
+                if (matchScoreSaveCompleted)
+                {
+                    Level5.BackendV2.BackendV2MatchResultSubmission.TryQueue(user);
+                }
+
                 // only upload when we actually hold a session. gating on GameOptions.userid meant
                 // uploading for a user picked from the local list but never authenticated, and for
                 // an offline guest fallback - both with no Authorization header on the request.

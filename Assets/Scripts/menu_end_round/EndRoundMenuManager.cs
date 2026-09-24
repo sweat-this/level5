@@ -179,6 +179,12 @@ public class EndRoundMenuManager : MonoBehaviour
             return;
         }
 
+        // Backend V2 ordinary-result submission for the campaign aggregate (mode 26). isGameSaved
+        // above guards this method's own early return, so this runs exactly once per aggregate, from
+        // this exact HighScoreModel snapshot - never per campaign round. No-op with no Backend V2
+        // session at this exact moment - see BackendV2MatchResultSubmission's own doc comment.
+        Level5.BackendV2.BackendV2MatchResultSubmission.TryQueue(user);
+
         // only upload when we actually hold a session - see the same gate in GameRules
         if (savedLocally && APIHelper.HasSession && !string.IsNullOrEmpty(GameOptions.userName))
         {

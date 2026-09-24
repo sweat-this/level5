@@ -156,6 +156,13 @@ public class LoadManager : MonoBehaviour
     private IEnumerator LoadAllDataCoroutine()
     {
         ResetLoadState();
+
+        // Backend V2 pending match-result retry: independent of local SQLite readiness (unlike
+        // PendingMatchPersistenceStore.Repair() below, which requires DBConnector.instance), and a
+        // no-op with no Backend V2 session. Runs on BackendV2CoroutineHost, not this coroutine, so it
+        // never blocks or is blocked by the rest of this load.
+        Level5.BackendV2.MatchResultSubmissionCoordinator.TriggerDrain();
+
         float deadline = Time.realtimeSinceStartup + DatabaseReadyTimeoutSeconds;
         while (!IsDatabaseReady() && Time.realtimeSinceStartup < deadline)
         {
