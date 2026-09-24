@@ -15,6 +15,7 @@ namespace Level5.BackendV2
         private static IPlayersApiClient players;
         private static IFriendsApiClient friends;
         private static ICorrespondenceApiClient correspondence;
+        private static IMatchResultsApiClient matchResults;
 
         public static IApiTransport Transport => transport ??= new UnityWebRequestTransport(
             BackendV2ApiConfigProvider.Current, () => BackendV2SessionStore.Current?.AccessToken);
@@ -30,6 +31,9 @@ namespace Level5.BackendV2
         public static ICorrespondenceApiClient Correspondence =>
             correspondence ??= new CorrespondenceApiClient(Transport, Session);
 
+        public static IMatchResultsApiClient MatchResults =>
+            matchResults ??= new MatchResultsApiClient(Transport, Session);
+
         /// <summary>Points every client at a different transport (a fake, in tests) and rebuilds
         /// everything downstream of it so nothing keeps talking to the old one.</summary>
         public static void Override(IApiTransport apiTransport)
@@ -40,6 +44,7 @@ namespace Level5.BackendV2
             players = null;
             friends = null;
             correspondence = null;
+            matchResults = null;
         }
 
         public static void Reset()
@@ -50,6 +55,7 @@ namespace Level5.BackendV2
             players = null;
             friends = null;
             correspondence = null;
+            matchResults = null;
         }
     }
 }

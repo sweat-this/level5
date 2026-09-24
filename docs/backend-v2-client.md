@@ -33,11 +33,18 @@ Transport       -> IApiTransport, UnityWebRequestTransport, ApiRequest/ApiRespon
 Session         -> BackendV2Session, BackendV2SessionStore (in-memory), BackendV2SessionManager,
                    AuthenticatedApiClientBase (refresh-on-expiry, retry once)
 Dtos            -> wire DTOs, mirrored field-for-field from the Backend V2 controllers
-Clients         -> IAuthApiClient, IPlayersApiClient, IFriendsApiClient, ICorrespondenceApiClient
+Clients         -> IAuthApiClient, IPlayersApiClient, IFriendsApiClient, ICorrespondenceApiClient,
+                   IMatchResultsApiClient
 Correspondence  -> RemoteAttemptContext, ActiveRemoteAttempt, RemoteAttemptDescriptorMapper,
                    RemoteAttemptResultBuilder, RemoteAttemptResultSubmitter
+Results         -> PendingMatchResult, PendingMatchResultStore, MatchResultSubmissionCoordinator
 BackendV2Runtime -> composition root handing out the shared transport/session/clients
 ```
+
+`BackendV2MatchResultAdapter` and `BackendV2MatchResultSubmission` live outside `Level5.BackendV2.asmdef`
+(next to `RemoteAttemptLauncher`, in `Assets/Scripts/backendv2/`) for the same reason: they touch
+`HighScoreModel`, which has no assembly definition of its own, and a custom assembly definition
+cannot reference the implicit default assembly. See "Ordinary match-result submission" below.
 
 Every client method is an `IEnumerator` taking a callback (`Action<ApiResponse<T>>`), matching
 `APIHelper`'s own coroutine convention rather than introducing async/await or a task library. Unlike
@@ -109,6 +116,7 @@ absolute URL per endpoint with no dev/staging/prod concept, which does not scale
 | `IPlayersApiClient` | `by-tag/{tag}`, `me` (get - raw GUID, patch) |
 | `IFriendsApiClient` | list, remove, send/list-incoming/list-outgoing/accept/decline/cancel request |
 | `ICorrespondenceApiClient` | create/accept/decline/cancel/get, list incoming/outgoing/active/completed, start/complete attempt |
+| `IMatchResultsApiClient` | `Submit` (general, non-correspondence match results) |
 
 List pagination (`SeriesSummaryPageDto.NextCursor`) is opaque: forwarded exactly as received, never
 parsed or reconstructed, per Backend V2's own contract for that field.
@@ -196,6 +204,92 @@ roughly once a second until every step succeeds, `TrySubmit` guards against bein
 the same attempt while a previous submission's network round trip is still outstanding
 (`RemoteAttemptResultSubmitter.TryClaim`/`Release`) - without it, a slow connection combined with any
 other step needing a retry would fire duplicate concurrent `CompleteAttempt` calls for one attempt.
+
+## Ordinary match-result submission and durable retry
+
+General (non-correspondence) match results - every score `GameRules.SaveMatchResults` and
+`EndRoundMenuManager.saveGame` already make locally durable - are also submitted to Backend V2's
+`POST api/v2/match-results`, durably and with retry across process restarts. This is a separate
+system from correspondence result submission above: different endpoint, different idempotency
+contract (`(PlayerId, ClientResultId)` with a 409 on a *different* payload replay, not "the domain
+already decided this"), different queue, different retry classification.
+
+```
+HighScoreModel (already produced by GameRules/EndRoundMenuManager, local durability already done)
+      |
+      v
+BackendV2MatchResultAdapter.TryAdapt   (default assembly - reuses Scoreid as ClientResultId)
+      |
+      v
+BackendV2MatchResultSubmission.TryQueue   (default assembly - gates on a Backend V2 session existing
+      |                                     right now; never creates a pending result otherwise)
+      v
+MatchResultSubmissionCoordinator.Enqueue   (Level5.BackendV2 - persists, then attempts delivery)
+      |
+      v
+PendingMatchResultStore (backendv2_pending_match_results.json)  --Submit-->  IMatchResultsApiClient
+```
+
+### Ownership and durability ordering
+
+A pending result is created only when `BackendV2SessionStore.Current` is non-null at the exact
+moment the score becomes locally durable, and is owned by that player from then on -
+`BackendV2MatchResultSubmission` never creates one retroactively if a player signs in later, and
+`MatchResultSubmissionCoordinator` never sends, deletes or reassigns an entry owned by a different
+player than the one currently signed in. Neither ever reads `GameOptions.userid`/`userName` - V1
+identity and Backend V2 identity are never conflated.
+
+Ordering is fixed and never reordered: the score is made locally durable (SQLite, or
+`PendingMatchPersistenceStore` as a fallback) *before* `BackendV2MatchResultSubmission.TryQueue` is
+even called - both call sites gate the call on that success - and the exact resulting
+`SubmitMatchResultDto` is persisted to `PendingMatchResultStore` *before* the first delivery attempt.
+Backend V2 delivery is never part of `GameRules`' synchronous match-end completion gate
+(`matchEndHandled`); once durably queued, the match finishes normally regardless of network outcome.
+
+### Field mapping
+
+`BackendV2MatchResultAdapter` maps `HighScoreModel` directly (never `GameStats`, and never a second,
+independent conversion): `Scoreid` is parsed as the `ClientResultId` GUID (a malformed `Scoreid` is
+refused and logged, never replaced with a freshly-generated id); `Modeid`/`Levelid`/`Version`/
+`Platform` map directly; `Characterid` (an `int`) becomes `CharacterId` via
+`ToString(CultureInfo.InvariantCulture)` - an adapter decision for the current opaque-string wire
+contract, not a migration of the game's numeric character identity. All six supported metrics are
+always sent (`MaxShotMade` -> `ShotsMade`, `Time` -> `CompletionTimeSeconds`, `ConsecutiveShots` ->
+`LongestStreak`, the rest name-for-name) - Backend V2's own mode-to-ranking-metric leaderboard policy
+is never reproduced client-side. All four modifiers map from the model's `!= 0` int flags.
+
+### Pending queue and retry
+
+`PendingMatchResultStore` is `AtomicFile` + `BackendV2Json` (Newtonsoft, not `JsonUtility` - the
+metrics `Dictionary<string,double>` needs it), its own file
+(`backendv2_pending_match_results.json`), never `pending-match-persistence.json` (that file owns
+local SQLite recovery, a different concern). The queue key is `(OwnerPlayerId, ClientResultId)`;
+enqueuing the exact same request twice is a no-op, and a different payload under the same key is
+refused and logged as a local integrity error rather than silently overwriting the queued entry.
+
+`MatchResultSubmissionCoordinator` classifies every outcome (`Classify`, pure and directly
+EditMode-testable against a hand-built `ApiResponse<T>` for every `ApiErrorKind`, the same seam
+`ApiResponseMapper.Map` gets): success removes the entry; `Validation`/`Conflict` mark it as a
+definitive failure (kept, logged with its `ClientResultId`, never retried automatically - a 409 here
+means a *different* payload already exists under this key, not an idempotent replay); everything
+else (`Network`/`Timeout`/`ServerError`/`RateLimited`/`Unauthenticated`/...) is left pending for the
+next trigger. `Drain` sends every retryable entry for the current player sequentially, refuses a
+second concurrent call while one is in flight, and re-checks the queue once more before finishing so
+a result `Enqueue`d mid-drain (e.g. a second match ending) is never stranded until some unrelated
+later trigger.
+
+### Triggers
+
+1. Every ordinary score `GameRules.SaveMatchResults` makes locally durable (excluding `FreePlay` and
+   `BeatThaComputahs`, same as local/V1 persistence already excludes them) calls
+   `BackendV2MatchResultSubmission.TryQueue` once.
+2. The campaign aggregate `EndRoundMenuManager.saveGame` produces (mode 26) calls it once per
+   aggregate, from the exact `HighScoreModel` `convertCampaignBasketBallStatsToModel` already built -
+   never per campaign round.
+3. `LoadManager.LoadAllDataCoroutine` calls `MatchResultSubmissionCoordinator.TriggerDrain()`
+   unconditionally, independent of local SQLite readiness (unlike
+   `PendingMatchPersistenceStore.Repair()`, gated on `databaseReady`) - the restart-recovery entry
+   point, deliberately not placed in `BackendV2SessionPersistenceBootstrap`.
 
 ## Issue #159: the correspondence UI
 

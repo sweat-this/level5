@@ -35,6 +35,20 @@ namespace Level5.BackendV2.Tests
             Path.Combine(Directory.GetCurrentDirectory(), "Assets", "Scripts", "versus", "RemoteAttemptLaunch.cs"),
         };
 
+        /// <summary>
+        /// The general match-result files that, for the same reason as
+        /// <see cref="CorrespondenceLauncherFiles"/> (they need <c>HighScoreModel</c>, which has no
+        /// assembly definition of its own), live outside <see cref="ClientRoot"/> in the default
+        /// assembly. <see cref="OrdinaryResultOwnershipNeverReadsLegacyGameOptionsIdentity"/> is the
+        /// one check that specifically needs these - the raw-UnityWebRequest/legacy-APIHelper checks
+        /// above only run over <see cref="ClientRoot"/> and would miss them entirely.
+        /// </summary>
+        private static readonly string[] MatchResultDefaultAssemblyFiles =
+        {
+            Path.Combine(Directory.GetCurrentDirectory(), "Assets", "Scripts", "backendv2", "BackendV2MatchResultAdapter.cs"),
+            Path.Combine(Directory.GetCurrentDirectory(), "Assets", "Scripts", "backendv2", "BackendV2MatchResultSubmission.cs"),
+        };
+
         [Test]
         public void LegacyApiHelperHasNoBackendV2MethodsAddedToIt()
         {
@@ -152,6 +166,41 @@ namespace Level5.BackendV2.Tests
             }
 
             Assert.That(offenders, Is.Empty, string.Join("\n", offenders));
+        }
+
+        [Test]
+        public void OrdinaryResultOwnershipNeverReadsLegacyGameOptionsIdentity()
+        {
+            // Ownership of a pending general match result must come only from
+            // BackendV2SessionStore.Current.PlayerId - never GameOptions.userid/userName, which
+            // would let a player retroactively claim a match played without a Backend V2 identity,
+            // or send an owner-mismatched result under the wrong local account.
+            List<string> offenders = new List<string>();
+
+            foreach (string file in ClientFiles())
+            {
+                CheckForGameOptionsIdentity(file, offenders);
+            }
+
+            foreach (string file in MatchResultDefaultAssemblyFiles)
+            {
+                CheckForGameOptionsIdentity(file, offenders);
+            }
+
+            Assert.That(
+                offenders,
+                Is.Empty,
+                "Backend V2 general match-result ownership must never read GameOptions.userid/userName:\n"
+                + string.Join("\n", offenders));
+        }
+
+        private static void CheckForGameOptionsIdentity(string file, List<string> offenders)
+        {
+            string text = StripComments(File.ReadAllText(file));
+            if (text.Contains("GameOptions.userid") || text.Contains("GameOptions.userName"))
+            {
+                offenders.Add(Relative(file));
+            }
         }
 
         private static IEnumerable<string> ClientFiles()
