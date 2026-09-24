@@ -62,8 +62,16 @@ launched only after Session1's process fully exited:
 1. **Phase D**: asserts no in-memory session exists (`BackendV2SessionStore.IsAuthenticated == false`
    - the fresh-process check), loads the real start screen and clicks Multiplayer again, and confirms
    the login panel is skipped: the real `BackendV2SessionPersistenceStore.TryLoad ->
-   BackendV2SessionStore.Set -> ForceRefresh -> RefreshAll` chain restored Session1's persisted
-   session from disk. Fetches the series from Backend V2 fresh and confirms it is still at game 2 -
+   BackendV2SessionStore.Set` restoration (local-only, zero network requests) restored Session1's
+   persisted session from disk, and the subsequent `RefreshAll` from `CorrespondenceScreenController.
+   Resume()` is what actually talks to the server, through the normal `AuthenticatedApiClientBase`
+   refresh path. (At the time this session ran, restoration itself still eagerly force-refreshed; a
+   later change promoted restoration to `UserAccountManager.Awake` - application startup, ahead of
+   this test's own `BootstrapFromStartScreenIntoCorrespondence` entry point - and moved the
+   force-refresh out of the bootstrap entirely, so remote confirmation now happens on the first real
+   authorized request instead. This session's live pass/fail evidence is otherwise unaffected: both
+   the old and new lifecycles restore the same session and reach the same authenticated state before
+   `RefreshAll` runs.) Fetches the series from Backend V2 fresh and confirms it is still at game 2 -
    the same series Session1 established, continued correctly across a genuine process boundary (not a
    scene reload).
 2. Hands off to the counterpart harness (`unity-counterpart playturn 2 lose`) for Account B's game 2

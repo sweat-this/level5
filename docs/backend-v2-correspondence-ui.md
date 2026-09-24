@@ -167,21 +167,30 @@ additional OS-keychain/secure-storage layer. A refresh token is a bearer credent
 deliberate, accepted tradeoff (matching the project's existing local-save security posture), not an
 oversight - `BackendV2SessionStore.cs` previously left this decision open explicitly.
 
-`BackendV2SessionPersistenceBootstrap.EnsureInitialized()` (idempotent) is called once, from
-`CorrespondenceScreenController.Awake()` - not a `[RuntimeInitializeOnLoadMethod]`. That was the
-first approach and it broke the EditMode test suite: Unity 6000.5.7f1's batchmode EditMode test
-runner still fires `[RuntimeInitializeOnLoadMethod]` methods, so the very first
-`BackendV2SessionStore.Set` call anywhere in the ~1600-test suite started writing a real session
-file to disk as a side effect of unrelated tests (see the doc comment on
-`BackendV2SessionPersistenceBootstrap` for the full account). Calling it explicitly from the
-screen's own `Awake` instead is also a better fit for issue #159's actual requirement - restore
-happens at screen open, not at arbitrary app boot - and an EditMode test never loads that scene, so
-it never fires during one.
+`BackendV2SessionPersistenceBootstrap.EnsureInitialized()` is idempotent and is called from two
+places: `UserAccountManager.Awake()` - the real production ownership, since the build's first scene
+is `level_00_account_loginLocal`, making a persisted Backend V2 session available application-wide
+(MatchResult submission, leaderboard reads, ...) rather than only after a player opens Multiplayer -
+and `CorrespondenceScreenController.Awake()`, kept as a no-op fallback for any path that opens the
+correspondence screen directly (a test, a dev shortcut) without going through the local-account
+scene first. Not a `[RuntimeInitializeOnLoadMethod]`. That was the first approach and it broke the
+EditMode test suite: Unity 6000.5.7f1's batchmode EditMode test runner still fires
+`[RuntimeInitializeOnLoadMethod]` methods, so the very first `BackendV2SessionStore.Set` call
+anywhere in the ~1600-test suite started writing a real session file to disk as a side effect of
+unrelated tests (see the doc comment on `BackendV2SessionPersistenceBootstrap` for the full
+account). An EditMode test never loads either scene, so this never fires during one.
 
-On that first call, a saved session is loaded and force-refreshed (never trusting a stored access
-token's local expiry estimate after an app restart of unknown length); a refresh failure clears both
-the in-memory and persisted session, and the screen's normal "not authenticated" path prompts for
-login.
+On the first of those calls, a saved session is loaded from disk and set in memory - nothing more.
+The bootstrap performs zero network requests, so a temporary Backend V2 outage at app launch cannot
+delete an otherwise locally valid persisted session. A restored session means the credentials are
+locally available for this process, not that the server has confirmed them this session; that
+confirmation is the existing authenticated-request pipeline's job. The first authorized request
+after restoration runs the normal `AuthenticatedApiClientBase` -> `BackendV2SessionManager.
+EnsureFreshAccessToken` path (refreshing first only if the access token looks close to expiring by
+the client's own clock), and a `401` still triggers the normal `ForceRefresh` + retry-once path. A
+refresh failure at that point clears both the in-memory and persisted session, and the screen's
+normal "not authenticated" path prompts for login - the same definitive-invalidation behavior as
+before, just triggered by an actual request instead of by restoration itself.
 
 ## Known limitations / deferred work
 

@@ -49,7 +49,12 @@ The token pair itself is mirrored to its own disk location (issue #159,
 `BackendV2SessionPersistenceStore`, plaintext JSON via `AtomicFile` - the same convention every
 other local save in this project already uses) so a player is not signed out of correspondence on
 every app restart; it is a separate file from every account-scoped save above, keyed by nothing
-account-specific, since it holds exactly one Backend V2 session at a time. See
+account-specific, since it holds exactly one Backend V2 session at a time. Restoration is wired in
+at application startup (`UserAccountManager.Awake`, idempotent, zero network requests -
+`CorrespondenceScreenController.Awake` calls the same bootstrap as a fallback), not gated behind
+any of the three account-identity concepts above: a local account switch, guest continuation, or a
+failed V1 login must not clear an otherwise-valid restored Backend V2 session, and a Backend V2
+session must never be inferred from `GameOptions.userid`. See
 `docs/backend-v2-correspondence-ui.md`.
 
 AUD-045 fixed the case where `userid != 0` was being used as the authentication test. Two paths set
