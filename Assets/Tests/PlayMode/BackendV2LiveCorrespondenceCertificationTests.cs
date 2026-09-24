@@ -271,8 +271,10 @@ public class BackendV2LiveCorrespondenceCertificationTests
     /// Phase D + Phase C + Phase E, run as a genuinely separate <c>Unity.exe</c> process from
     /// Session1's (fresh process statics - this method never runs in the same process as Session1's).
     /// Never logs in: opens the correspondence screen and lets the real
-    /// <c>BackendV2SessionPersistenceStore.TryLoad -&gt; BackendV2SessionStore.Set -&gt; ForceRefresh
-    /// -&gt; RefreshAll</c> chain restore the session Session1 persisted to disk (Phase D). Then plays
+    /// <c>BackendV2SessionPersistenceStore.TryLoad -&gt; BackendV2SessionStore.Set</c> restoration -
+    /// local-only, zero network requests - restore the session Session1 persisted to disk (Phase D),
+    /// then lets <c>CorrespondenceScreenController.Resume() -&gt; RefreshAll</c> make the first real
+    /// authorized request against it, through the normal request-time refresh path. Then plays
     /// game 2 through the real Play button, injects a controlled transport failure (an unreachable
     /// base URI, via the same <c>BackendV2ApiConfigProvider.Override</c> configuration seam
     /// <c>BackendV2LiveCertificationRunner</c> already uses) right before ending the match, confirms
@@ -302,8 +304,9 @@ public class BackendV2LiveCorrespondenceCertificationTests
             "session (Application.persistentDataPath/backendv2_session.json, written by Session1's real " +
             "Sign-In click) was not restored by this fresh process");
         Log("Phase D PASSING: a genuinely fresh Unity process restored the persisted Backend V2 session " +
-            "(BackendV2SessionPersistenceStore.TryLoad -> BackendV2SessionStore.Set -> ForceRefresh -> " +
-            "RefreshAll) and skipped the login panel entirely.");
+            "(BackendV2SessionPersistenceStore.TryLoad -> BackendV2SessionStore.Set, local-only, zero " +
+            "network requests) and skipped the login panel entirely; CorrespondenceScreenController." +
+            "Resume() -> RefreshAll then made the first real authorized request against it.");
 
         Guid playerIdA = BackendV2SessionStore.Current.PlayerId;
         ApiResponse<SeriesSummaryPageDto> activeResult = null;

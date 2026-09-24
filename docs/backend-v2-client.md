@@ -77,10 +77,13 @@ absolute URL per endpoint with no dev/staging/prod concept, which does not scale
   `PlayerId`, `RefreshToken`, `RefreshTokenExpiresAt`. It never touches `GameOptions` or
   `UserModel`, for the same reason `APIHelper.bearerToken` doesn't: a token that leaks onto a model
   that gets serialized, logged or displayed stops being a secret.
-- **Known deferred decision:** refresh-token persistence across app restarts is not implemented.
-  Closing the app signs the player out of Backend V2. Persisting it is a real security/product
-  decision (device binding, revocation, secure storage) that belongs to a dedicated follow-up, not a
-  default picked here.
+- Refresh-token persistence across app restarts is implemented (`BackendV2SessionPersistenceStore`,
+  plaintext `AtomicFile` JSON - see "Still deferred / known limitations" below for the accepted
+  security tradeoff that implies). Restoration is wired in at application startup
+  (`UserAccountManager.Awake`, with `CorrespondenceScreenController.Awake` as an idempotent
+  fallback - see `docs/backend-v2-correspondence-ui.md`'s "Refresh-token persistence" section) and
+  performs zero network requests; the server only confirms a restored session once something makes
+  an actual authorized request, through the normal refresh path below.
 - `BackendV2SessionManager` drives register/login/logout, plus two refresh entry points that share
   one single-flight refresh internally (`RefreshNow`): `EnsureFreshAccessToken`, which no-ops unless
   the access token looks close to expiring by this client's own clock (used for the proactive

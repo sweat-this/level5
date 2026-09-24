@@ -1,5 +1,6 @@
 using Assets.Scripts.database;
 using Assets.Scripts.restapi;
+using Level5.BackendV2;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -63,6 +64,14 @@ public class UserAccountManager : MonoBehaviour
     // Start is called before the first frame update
     void Awake()
     {
+        // Application-wide Backend V2 session restoration seam (issue: promote persisted-session
+        // restoration to app startup). This is the earliest ordinary production composition point -
+        // the build's first scene is level_00_account_loginLocal - so a Backend V2 session persisted
+        // from a prior run is available to any later feature (MatchResult submission, leaderboard
+        // reads) without requiring the player to open Multiplayer first. Idempotent and local-only:
+        // performs zero network requests and is independent of local-account/guest/database state.
+        BackendV2SessionPersistenceBootstrap.EnsureInitialized();
+
         instance = this;
         controls = PlayerControlsProvider.Controls;
         if (!SceneManager.GetActiveScene().name.Equals(Constants.SCENE_NAME_level_00_loading))
