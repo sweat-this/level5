@@ -55,6 +55,15 @@ namespace Level5.BackendV2
                     + $"{ruleset.Version})");
             }
 
+            string comparisonKeyMismatch = FindComparisonKeyMismatch(ruleset, descriptor.ComparisonKeys);
+            if (comparisonKeyMismatch != null)
+            {
+                return RemoteAttemptMapResult.Failure(
+                    $"this build's '{ruleset.DisplayName}' rules do not match what the server froze "
+                    + $"for this series ({comparisonKeyMismatch}) - refusing to launch a match that "
+                    + "could be scored differently than the server will score it");
+            }
+
             string unsupportedMetric = FindUnsupportedMetric(descriptor.RequiredResultMetrics);
             if (unsupportedMetric != null)
             {
@@ -87,6 +96,45 @@ namespace Level5.BackendV2
 
             return RemoteAttemptMapResult.Success(
                 buildResult.Configuration, RemoteAttemptContext.FromDescriptor(descriptor));
+        }
+
+        /// <summary>
+        /// Guards against the same RulesetId+RulesetVersion silently meaning different competitive
+        /// rules on the two sides: the server's frozen, ordered comparison keys (what it will
+        /// actually resolve games and series with) must match this build's own resolved ruleset
+        /// exactly - same metrics, same order, same direction. A drift here would let a match launch
+        /// successfully while being scored differently than the server scores it, which is a
+        /// correctness defect even though nothing here fails loudly on its own. Returns a
+        /// human-readable description of the first mismatch found, or <c>null</c> if they agree.
+        /// </summary>
+        private static string FindComparisonKeyMismatch(
+            CompetitiveRuleset ruleset, System.Collections.Generic.IReadOnlyList<ComparisonKeySummaryDto> serverComparisonKeys)
+        {
+            System.Collections.Generic.IReadOnlyList<ComparisonKey> localComparisonKeys = ruleset.ComparisonKeys;
+            int serverCount = serverComparisonKeys?.Count ?? 0;
+
+            if (serverCount != localComparisonKeys.Count)
+            {
+                return $"the server froze {serverCount} comparison key(s) but this build's ruleset "
+                    + $"has {localComparisonKeys.Count}";
+            }
+
+            for (int i = 0; i < serverCount; i++)
+            {
+                ComparisonKeySummaryDto serverKey = serverComparisonKeys[i];
+                ComparisonKey localKey = localComparisonKeys[i];
+
+                if (!Enum.TryParse(serverKey.Metric, ignoreCase: false, out AttemptMetric serverMetric)
+                    || serverMetric != localKey.Metric
+                    || !Enum.TryParse(serverKey.Direction, ignoreCase: false, out MetricDirection serverDirection)
+                    || serverDirection != localKey.Direction)
+                {
+                    return $"comparison key {i} is '{serverKey.Metric} {serverKey.Direction}' on the "
+                        + $"server but '{localKey.Metric} {localKey.Direction}' locally";
+                }
+            }
+
+            return null;
         }
 
         private static string FindUnsupportedMetric(System.Collections.Generic.IReadOnlyList<string> requiredMetrics)

@@ -111,5 +111,34 @@ namespace Level5.BackendV2.Tests
         }";
 
         public const string CompleteAttemptRequestBody = @"{ ""metrics"": { ""Score"": 42.0 } }";
+
+        /// <summary>
+        /// The real production "most-points" descriptor Backend V2's <c>StaticRulesetCatalog</c>
+        /// freezes (Level5Backend v2/src/Level5.Infrastructure/Competition/StaticRulesetCatalog.cs) -
+        /// three ordered comparison keys, not the single-key stand-in <see cref="AttemptDescriptor"/>
+        /// above uses. Exists so at least one mapping test exercises Unity's actual shipped
+        /// <c>DefaultCompetitiveRulesets</c> "most-points" entry against the actual shape the server
+        /// sends, instead of two hand-rolled definitions that only agree with each other.
+        /// </summary>
+        public const string AttemptDescriptorProductionMostPoints = @"{
+            ""seriesId"": ""4c23c3d8-4040-4b1f-8d3f-9b8d3c2e5f6a"",
+            ""attemptId"": ""5d34d4e9-5151-4c2f-9e4f-0a9e4d3f6a7b"",
+            ""gameNumber"": 1,
+            ""playerId"": ""8f14e45f-ceea-467e-a4d9-b3e5c76f1a3a"",
+            ""competitionProtocolVersion"": 1,
+            ""rulesetId"": ""most-points"",
+            ""rulesetVersion"": 1,
+            ""minimumCompatibleVersion"": 1,
+            ""modeId"": ""mode-most-points"",
+            ""informationPolicy"": ""SealedAttempt"",
+            ""totalGames"": 3,
+            ""gamesToWin"": 2,
+            ""comparisonKeys"": [
+                { ""metric"": ""Score"", ""direction"": ""HigherWins"" },
+                { ""metric"": ""Accuracy"", ""direction"": ""HigherWins"" },
+                { ""metric"": ""ShotsAttempted"", ""direction"": ""LowerWins"" }
+            ],
+            ""requiredResultMetrics"": [""Score"", ""Accuracy"", ""ShotsAttempted""]
+        }";
     }
 }

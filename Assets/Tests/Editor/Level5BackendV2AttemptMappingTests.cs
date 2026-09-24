@@ -40,7 +40,8 @@ namespace Level5.BackendV2.Tests
             int rulesetVersion = 2,
             int protocolVersion = RemoteAttemptDescriptorMapper.SupportedCompetitionProtocolVersion,
             string rulesetId = RulesetIdValue,
-            List<string> requiredMetrics = null)
+            List<string> requiredMetrics = null,
+            List<ComparisonKeySummaryDto> comparisonKeys = null)
         {
             return new AttemptDescriptorDto
             {
@@ -56,7 +57,7 @@ namespace Level5.BackendV2.Tests
                 InformationPolicy = "SealedAttempt",
                 TotalGames = 3,
                 GamesToWin = 2,
-                ComparisonKeys = new List<ComparisonKeySummaryDto>
+                ComparisonKeys = comparisonKeys ?? new List<ComparisonKeySummaryDto>
                 {
                     new ComparisonKeySummaryDto { Metric = "Score", Direction = "HigherWins" }
                 },
@@ -166,6 +167,101 @@ namespace Level5.BackendV2.Tests
 
             Assert.That(metrics, Has.Count.EqualTo(1));
             Assert.That(metrics["Score"], Is.EqualTo(42.0));
+        }
+
+        [Test]
+        public void AServerComparisonKeyOrderThatDiffersFromTheLocalRulesetFailsToMap()
+        {
+            // This build's catalog ruleset (SetUp above) compares only on Score. A server that
+            // froze an extra tie-break under the exact same RulesetId+RulesetVersion would be
+            // silently able to score a game differently than this build ever could - that must
+            // refuse to launch, not launch with mismatched rules.
+            RemoteAttemptMapResult result = RemoteAttemptDescriptorMapper.Map(
+                Descriptor(comparisonKeys: new List<ComparisonKeySummaryDto>
+                {
+                    new ComparisonKeySummaryDto { Metric = "Score", Direction = "HigherWins" },
+                    new ComparisonKeySummaryDto { Metric = "Accuracy", Direction = "HigherWins" }
+                }),
+                levelId: 4, participantId: new ParticipantId("p1"), character: CharacterSelection.None);
+
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.Configuration, Is.Null);
+        }
+
+        [Test]
+        public void AServerComparisonKeyDirectionThatDiffersFromTheLocalRulesetFailsToMap()
+        {
+            // Same metric, opposite direction: "LowerWins" here would hand the round to whoever
+            // scored less, the inverse of what this build's own ruleset (HigherWins) decides.
+            RemoteAttemptMapResult result = RemoteAttemptDescriptorMapper.Map(
+                Descriptor(comparisonKeys: new List<ComparisonKeySummaryDto>
+                {
+                    new ComparisonKeySummaryDto { Metric = "Score", Direction = "LowerWins" }
+                }),
+                levelId: 4, participantId: new ParticipantId("p1"), character: CharacterSelection.None);
+
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.Configuration, Is.Null);
+        }
+
+        [Test]
+        public void AMatchingServerComparisonKeyOrderMapsSuccessfully()
+        {
+            // The positive counterpart to the two mismatch tests above: agreement is not itself
+            // an error condition.
+            RemoteAttemptMapResult result = RemoteAttemptDescriptorMapper.Map(
+                Descriptor(comparisonKeys: new List<ComparisonKeySummaryDto>
+                {
+                    new ComparisonKeySummaryDto { Metric = "Score", Direction = "HigherWins" }
+                }),
+                levelId: 4, participantId: new ParticipantId("p1"), character: CharacterSelection.None);
+
+            Assert.That(result.Succeeded, Is.True, result.Error);
+        }
+
+        /// <summary>
+        /// Uses Unity's actual shipped <see cref="DefaultCompetitiveRulesets"/> "most-points" entry
+        /// (not a hand-rolled stand-in that merely reuses the same id) against the exact descriptor
+        /// shape Backend V2's real <c>StaticRulesetCatalog</c> freezes for it
+        /// (<see cref="BackendV2Fixtures.AttemptDescriptorProductionMostPoints"/>'s three ordered
+        /// comparison keys), so a change to either side's real "most-points" definition that
+        /// desynchronizes them is caught here instead of only by two test doubles that agree with
+        /// each other but not with production.
+        /// </summary>
+        [Test]
+        public void TheProductionMostPointsRulesetMapsTheProductionDescriptorSuccessfully()
+        {
+            VersusCatalogs.Override(new CompetitiveRulesetCatalog(DefaultCompetitiveRulesets.CreateAll()));
+
+            AttemptDescriptorDto descriptor = new AttemptDescriptorDto
+            {
+                SeriesId = Guid.NewGuid(),
+                AttemptId = Guid.NewGuid(),
+                GameNumber = 1,
+                PlayerId = Guid.NewGuid(),
+                CompetitionProtocolVersion = RemoteAttemptDescriptorMapper.SupportedCompetitionProtocolVersion,
+                RulesetId = RulesetIdValue,
+                RulesetVersion = 1,
+                MinimumCompatibleVersion = 1,
+                ModeId = "mode-most-points",
+                InformationPolicy = "SealedAttempt",
+                TotalGames = 3,
+                GamesToWin = 2,
+                ComparisonKeys = new List<ComparisonKeySummaryDto>
+                {
+                    new ComparisonKeySummaryDto { Metric = "Score", Direction = "HigherWins" },
+                    new ComparisonKeySummaryDto { Metric = "Accuracy", Direction = "HigherWins" },
+                    new ComparisonKeySummaryDto { Metric = "ShotsAttempted", Direction = "LowerWins" }
+                },
+                RequiredResultMetrics = new List<string> { "Score", "Accuracy", "ShotsAttempted" }
+            };
+
+            RemoteAttemptMapResult result = RemoteAttemptDescriptorMapper.Map(
+                descriptor, levelId: 4, participantId: new ParticipantId("p1"), character: CharacterSelection.None);
+
+            Assert.That(result.Succeeded, Is.True, result.Error);
+            Assert.That(result.Configuration.ModeId, Is.EqualTo(GameModeId.TotalPoints));
+            Assert.That(result.Context.RequiredResultMetrics, Is.EquivalentTo(new[] { "Score", "Accuracy", "ShotsAttempted" }));
         }
     }
 }
