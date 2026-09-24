@@ -1,6 +1,7 @@
 ﻿
 using Assets.Scripts.database;
 using Assets.Scripts.restapi;
+using Level5.BackendV2;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -102,8 +103,25 @@ public class StatsManager : MonoBehaviour
     // high score results pagination
     [SerializeField]
     int localResultsPageNumber;
-    [SerializeField]
-    int onlineResultsPageNumber;
+
+    // Online results use Backend V2's server-authoritative cursor contract, not a page/offset -
+    // see docs/backend-v2-client.md and the leaderboard cutover notes. onlinePagination owns
+    // page number, cursor and next-cursor together so they cannot drift apart the way three
+    // separate fields could.
+    readonly OnlineLeaderboardPaginationState onlinePagination = new OnlineLeaderboardPaginationState();
+
+    /// <summary>Which leaderboard source (local SQLite or online Backend V2) the currently
+    /// displayed high-score rows represent. Only the local/online mode or page controls change
+    /// this - a filter toggle refreshes whichever source is already current without switching it,
+    /// and this is never inferred from EventSystem selection (a filter button becoming selected
+    /// must not appear to switch the displayed source).</summary>
+    private enum StatsDisplaySource
+    {
+        Local,
+        Online
+    }
+
+    private StatsDisplaySource currentDisplaySource = StatsDisplaySource.Local;
 
     // high score rows
     const string highScoreRowPrefabPath = "Prefabs/stats/highScoreRow";
@@ -241,7 +259,7 @@ public class StatsManager : MonoBehaviour
 
         // default page number value, start on first page
         localResultsPageNumber = 0;
-        onlineResultsPageNumber = 0;
+        onlinePagination.Reset();
 
         AnaylticsManager.MenuStatsLoaded();
 
@@ -297,7 +315,10 @@ public class StatsManager : MonoBehaviour
         initializeOnlinePageNumberDisplay();
 
         changeHighScoreDataDisplay();
-        changeHighScoreDataDisplayOnline();
+        // The online leaderboard is not requested here (issue: Backend V2 leaderboard cutover) -
+        // opening Stats must not contact Backend V2, or show a signed-out failure, merely because
+        // the scene loaded. The first online request happens only when the player actually
+        // selects the online leaderboard (changeHighScoreDataDisplayOnline).
         getUnsubmittedHighscores();
         //submitUnsubmittedScores();
         RegisterButtonCallbacks();
@@ -500,7 +521,7 @@ public class StatsManager : MonoBehaviour
         {
             changeSelectedTrafficOption();
             initializeTrafficOptionDisplay();
-            changeHighScoreDataDisplay();
+            RefreshCurrentSourceAfterFilterChange();
         });
     }
 
@@ -510,7 +531,7 @@ public class StatsManager : MonoBehaviour
         {
             changeSelectedHardcoreOption();
             initializeHardcoreOptionDisplay();
-            changeHighScoreDataDisplay();
+            RefreshCurrentSourceAfterFilterChange();
         });
     }
 
@@ -520,7 +541,7 @@ public class StatsManager : MonoBehaviour
         {
             changeSelectedEnemiesOption();
             initializeEnemyOptionDisplay();
-            changeHighScoreDataDisplay();
+            RefreshCurrentSourceAfterFilterChange();
         });
     }
 
@@ -530,8 +551,27 @@ public class StatsManager : MonoBehaviour
         {
             changeSelectedSniperOption();
             initializeSniperOptionDisplay();
-            changeHighScoreDataDisplay();
+            RefreshCurrentSourceAfterFilterChange();
         });
+    }
+
+    /// <summary>
+    /// A filter change always invalidates online pagination (the cursor is scoped to the exact
+    /// mode/filter combination it was issued for - see OnlineLeaderboardPaginationState), even
+    /// while viewing the local table. Only the table currently being viewed is refreshed - a
+    /// filter change never fetches the source that is not on screen.
+    /// </summary>
+    private void RefreshCurrentSourceAfterFilterChange()
+    {
+        onlinePagination.Reset();
+        if (currentDisplaySource == StatsDisplaySource.Online)
+        {
+            changeHighScoreDataDisplayOnline();
+        }
+        else
+        {
+            changeHighScoreDataDisplay();
+        }
     }
 
     private void ChangeLocalModeRight()
@@ -559,7 +599,8 @@ public class StatsManager : MonoBehaviour
     {
         RunStatsAction(() =>
         {
-            onlineResultsPageNumber = 0;
+            // changeSelectedMode already resets onlinePagination (its cursor is scoped to the
+            // mode it was issued for).
             previousHighlightedButton = currentHighlightedButton;
             changeSelectedMode(direction);
             changeHighScoreDataDisplayOnline();
@@ -680,6 +721,56 @@ public class StatsManager : MonoBehaviour
         }
     }
 
+    /// <summary>
+    /// Writes an online (Backend V2) row's presentation values directly into the display row at
+    /// <paramref name="index"/>. Unlike <see cref="SetHighScoreRow"/>, there is no intermediate
+    /// <see cref="StatsTableHighScoreRow"/> source instance - <see cref="LeaderboardEntryDto"/> is
+    /// never turned into one, per the row-mapping requirement to prefer direct binding of
+    /// presentation values over a throwaway GameObject/component.
+    /// </summary>
+    private void SetHighScoreRowValues(int index, LeaderboardRowPresentation presentation)
+    {
+        if (highScoreRowsObjectsList == null || index < 0 || index >= highScoreRowsObjectsList.Count
+            || presentation == null)
+        {
+            return;
+        }
+
+        GameObject rowObject = highScoreRowsObjectsList[index];
+        if (rowObject == null)
+        {
+            return;
+        }
+
+        StatsTableHighScoreRow row = rowObject.GetComponent<StatsTableHighScoreRow>();
+        if (row == null)
+        {
+            return;
+        }
+
+        row.UserName = presentation.UserName;
+        row.Score = presentation.Score;
+        row.Character = presentation.Character;
+        row.Level = presentation.Level;
+        row.Date = presentation.Date;
+        row.HardcoreEnabled = presentation.HardcoreEnabled;
+        row.Bind();
+    }
+
+    private static string ResolveCharacterDisplayName(int characterId)
+    {
+        return LoadedData.instance != null
+            ? LoadedData.instance.getSelectedCharacterProfile(characterId)?.PlayerDisplayName
+            : null;
+    }
+
+    private static string ResolveLevelDisplayName(int levelId)
+    {
+        return LoadedData.instance != null && LoadedData.instance.LevelCatalog != null
+            ? LoadedData.instance.LevelCatalog.FindByLevelId(levelId)?.LevelDisplayName
+            : null;
+    }
+
     private void ClearHighScoreRows(int startIndex)
     {
         if (highScoreRowsObjectsList == null)
@@ -721,6 +812,12 @@ public class StatsManager : MonoBehaviour
 
     public void changeSelectedMode(string direction)
     {
+        // currentModeSelectedIndex is shared between the local and online tables, so any change
+        // here invalidates online pagination regardless of which control triggered it (local mode
+        // button, online mode button, or a touch swipe on either) - the cursor is scoped to the
+        // mode it was issued for and must never be reused once that mode changes.
+        onlinePagination.Reset();
+
         // left option || decrement
         if (direction.ToLower().Equals("left"))
         {
@@ -841,6 +938,7 @@ public class StatsManager : MonoBehaviour
 
     public void changeHighScoreDataDisplay()
     {
+        currentDisplaySource = StatsDisplaySource.Local;
         if (GameObject.FindGameObjectWithTag("database") != null)
         {
             // get highscore field/mode from mode prefab - a defect here is an invalid
@@ -899,9 +997,14 @@ public class StatsManager : MonoBehaviour
 
     public void changeHighScoreDataDisplayOnline()
     {
+        currentDisplaySource = StatsDisplaySource.Online;
         StartCoroutine(ChangeHighScoreDataDisplayOnlineCoroutine(++onlineRequestVersion));
     }
 
+    /// <summary>
+    /// Backend V2 online leaderboard read (issue: leaderboard client cutover). Local SQLite,
+    /// StatsPaging and all-time stats are untouched by this method.
+    /// </summary>
     private IEnumerator ChangeHighScoreDataDisplayOnlineCoroutine(int requestVersion)
     {
         if (modesList == null || currentModeSelectedIndex < 0 || currentModeSelectedIndex >= modesList.Count)
@@ -910,44 +1013,75 @@ public class StatsManager : MonoBehaviour
         }
 
         int modeId = modesList[currentModeSelectedIndex].modeSelectedId;
-        int hardcore = Convert.ToInt32(hardcoreEnabled);
-        int traffic = Convert.ToInt32(trafficEnabled);
-        int enemies = Convert.ToInt32(enemiesEnabled);
-        int sniper = Convert.ToInt32(sniperEnabled);
 
-        ApiResult<int> countResult = null;
-        yield return APIHelper.GetHighscoreCountByModeid(
-            modeId, hardcore, traffic, enemies, sniper, value => countResult = value);
-        if (requestVersion != onlineRequestVersion)
+        // Never leave rows from a previous mode/filter/page visible under the newly selected
+        // scope, whether this request succeeds, fails, or never goes out at all.
+        ClearHighScoreRows(0);
+        numOnlineResults = 0;
+
+        // BackendV2SessionStore.IsAuthenticated is the only valid evidence of a Backend V2
+        // session - never APIHelper.HasSession/GameOptions.userid/userName, which prove only a
+        // V1 session or a local account selection. V1 and V2 authentication are independent.
+        if (!BackendV2SessionStore.IsAuthenticated)
         {
+            onlinePagination.Reset();
+            modeSelectButtonOnlineText.text = "sign in required";
+            initializeOnlinePageNumberDisplay();
             yield break;
         }
 
-        ApiResult<List<StatsTableHighScoreRow>> rowsResult = null;
-        yield return APIHelper.GetHighscoreByModeid(
+        modeSelectButtonOnlineText.text = "loading...";
+
+        OnlineLeaderboardFilterQuery filters = OnlineLeaderboardFilterTranslator.Translate(
+            hardcoreEnabled, trafficEnabled, enemiesEnabled, sniperEnabled);
+
+        ApiResponse<LeaderboardPageDto> response = null;
+        yield return BackendV2Runtime.Leaderboards.GetPage(
             modeId,
-            hardcore,
-            traffic,
-            enemies,
-            sniper,
-            onlineResultsPageNumber,
-            ResultsPerPage,
-            value => rowsResult = value);
+            StatsPaging.ResultsPerPage,
+            onlinePagination.Cursor,
+            filters.Hardcore,
+            filters.Traffic,
+            filters.Enemies,
+            filters.Sniper,
+            value => response = value);
+
         if (requestVersion != onlineRequestVersion)
         {
             yield break;
         }
 
-        // AUD-078: same null-result guard UserAccountManager.LoginGuestCoroutine already uses after
-        // the identical APIHelper callback pattern.
-        numOnlineResults = countResult != null && countResult.Success ? countResult.Value : 0;
-        List<StatsTableHighScoreRow> rows = rowsResult != null && rowsResult.Success && rowsResult.Value != null
-            ? rowsResult.Value
-            : new List<StatsTableHighScoreRow>();
-        int displayedRows = modeId == 99 ? 0 : Math.Min(rows.Count, highScoreRowsObjectsList.Count);
+        if (response == null || !response.Success)
+        {
+            // Covers both an unsupported-mode 400 (server code "unsupported_leaderboard_mode")
+            // and a rejected/invalid cursor 400 - either way the query as scoped is unusable, so
+            // pagination resets rather than compounding the failure on the next "next page" press.
+            // A network/timeout/server/auth failure leaves pagination alone, since the same page
+            // is worth retrying once transient trouble clears.
+            modeSelectButtonOnlineText.text = "leaderboard unavailable";
+            if (response != null && response.ErrorKind == ApiErrorKind.Validation)
+            {
+                onlinePagination.Reset();
+            }
+
+            initializeOnlinePageNumberDisplay();
+            yield break;
+        }
+
+        LeaderboardPageDto page = response.Value;
+        List<LeaderboardEntryDto> items = page != null && page.Items != null
+            ? page.Items
+            : new List<LeaderboardEntryDto>();
+        // NextCursor is opaque - stored and forwarded verbatim on the next page, never decoded.
+        onlinePagination.RecordPageResult(page != null ? page.NextCursor : null);
+        numOnlineResults = items.Count;
+
+        int displayedRows = Math.Min(items.Count, highScoreRowsObjectsList.Count);
         for (int i = 0; i < displayedRows; i++)
         {
-            SetHighScoreRow(i, rows[i]);
+            LeaderboardRowPresentation presentation = LeaderboardEntryPresentationMapper.Map(
+                items[i], page.Metric, ResolveCharacterDisplayName, ResolveLevelDisplayName);
+            SetHighScoreRowValues(i, presentation);
         }
 
         ClearHighScoreRows(displayedRows);
@@ -1010,8 +1144,9 @@ public class StatsManager : MonoBehaviour
     }
     public void initializeOnlinePageNumberDisplay()
     {
-        pageNumberOnlineSelectButtonText.text =
-            StatsPaging.DisplayLabel(onlineResultsPageNumber, numOnlineResults);
+        // No fabricated "/ M" denominator online - the server never reports a total result count
+        // (issue: leaderboard client cutover). StatsPaging.DisplayLabel remains local-only.
+        pageNumberOnlineSelectButtonText.text = onlinePagination.DisplayLabel();
     }
 
     public void changeSelectedTrafficOption()
@@ -1050,15 +1185,22 @@ public class StatsManager : MonoBehaviour
 
     public void increaseOnlineResultsPageNumber()
     {
-        onlineResultsPageNumber = StatsPaging.NextPage(onlineResultsPageNumber, numOnlineResults);
+        // Advances using the server's last NextCursor, wrapping to the first page when there is
+        // none - see OnlineLeaderboardPaginationState. This forward-cycling behavior replaces the
+        // old total-count-based StatsPaging.NextPage wrap for online results only; local paging is
+        // unchanged.
+        onlinePagination.AdvancePage();
         initializeOnlinePageNumberDisplay();
         changeHighScoreDataDisplayOnline();
     }
     public void decreaseOnlineResultsPageNumber()
     {
-        // wraps within a valid page range. this used to land on numPages - 1, which is -1 when
-        // there are no results at all.
-        onlineResultsPageNumber = StatsPaging.PreviousPage(onlineResultsPageNumber, numOnlineResults);
+        // No live caller navigates backward through online results (forward-only cursor
+        // pagination wired to a single "next" control everywhere it is used - confirmed by a
+        // repository-wide search). The opaque server cursor carries no reverse-navigation
+        // information, so unlike the local/SQLite previous-page wrap, the only page always safely
+        // reachable here without walking the entire server-side result set is the first one.
+        onlinePagination.Reset();
         initializeOnlinePageNumberDisplay();
         changeHighScoreDataDisplayOnline();
     }
@@ -1081,5 +1223,21 @@ public class StatsManager : MonoBehaviour
     public string PreviousHighlightedButton { get => previousHighlightedButton; set => previousHighlightedButton = value; }
     public string CurrentHighlightedButton { get => currentHighlightedButton; set => currentHighlightedButton = value; }
     public int LocalResultsPageNumber { get => localResultsPageNumber; set => localResultsPageNumber = value; }
-    public int OnlineResultsPageNumber { get => onlineResultsPageNumber; set => onlineResultsPageNumber = value; }
+
+    public int OnlineResultsPageNumber => onlinePagination.PageNumber;
+
+    /// <summary>
+    /// Restarts online pagination (page 0, no cursor) - the only thing a caller outside this class
+    /// ever needs to do to online paging directly. Replaces a former public settable
+    /// OnlineResultsPageNumber property whose setter silently ignored its own assigned value and
+    /// always reset regardless - a real int-typed setter would have implied normal store semantics
+    /// that cursor pagination cannot actually support (there is no way to jump to an arbitrary
+    /// page N without walking the server's cursor chain). changeSelectedMode already calls this
+    /// itself for every mode change, so a caller that also changes mode right after this (as
+    /// TouchInputStatsScreenController does) is calling it redundantly but harmlessly.
+    /// </summary>
+    public void ResetOnlinePagination()
+    {
+        onlinePagination.Reset();
+    }
 }

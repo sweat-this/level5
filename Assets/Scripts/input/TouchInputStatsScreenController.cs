@@ -261,7 +261,7 @@ public class TouchInputStatsScreenController : MonoBehaviour
         {
             //save previous button
             StatsManager.instance.PreviousHighlightedButton = StatsManager.instance.CurrentHighlightedButton;
-            StatsManager.instance.OnlineResultsPageNumber = 0;
+            StatsManager.instance.ResetOnlinePagination();
 
             StatsManager.instance.changeSelectedMode("left");
             StatsManager.instance.changeHighScoreDataDisplayOnline();
@@ -364,7 +364,7 @@ public class TouchInputStatsScreenController : MonoBehaviour
         {
             //save previous button
             StatsManager.instance.PreviousHighlightedButton = StatsManager.instance.CurrentHighlightedButton;
-            StatsManager.instance.OnlineResultsPageNumber = 0;
+            StatsManager.instance.ResetOnlinePagination();
 
             StatsManager.instance.changeSelectedMode("right");
             StatsManager.instance.changeHighScoreDataDisplayOnline();
