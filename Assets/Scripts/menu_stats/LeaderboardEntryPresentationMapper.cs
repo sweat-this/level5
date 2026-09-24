@@ -42,9 +42,22 @@ public static class LeaderboardEntryPresentationMapper
             Score = FormatValue(entry.Value, metric),
             Character = ResolveCharacter(entry.CharacterId, resolveCharacterDisplayName),
             Level = ResolveLevel(entry.LevelId, resolveLevelDisplayName),
-            Date = entry.CreatedAt.ToLocalTime().ToString(),
+            Date = FormatDate(entry.CreatedAt),
             HardcoreEnabled = entry.Modifiers != null && entry.Modifiers.Hardcore ? "ON" : "OFF"
         };
+    }
+
+    /// <summary>
+    /// A missing "createdAt" in the wire JSON leaves this at default(DateTimeOffset) (year 1) -
+    /// Newtonsoft has no required-field enforcement. Converting that to local time via
+    /// ToLocalTime() throws ArgumentOutOfRangeException for any negative-UTC-offset timezone
+    /// (it would underflow below DateTimeOffset.MinValue), which would abort the whole row-mapping
+    /// loop mid-page rather than just this one row. Fail safely instead, the same principle
+    /// FormatValue already applies to an unrecognized metric name.
+    /// </summary>
+    private static string FormatDate(DateTimeOffset createdAt)
+    {
+        return createdAt != default(DateTimeOffset) ? createdAt.ToLocalTime().ToString() : "";
     }
 
     /// <summary>

@@ -127,6 +127,24 @@ namespace Level5.BackendV2.Tests
             Assert.That(row.Date, Is.EqualTo(createdAt.ToLocalTime().ToString()));
         }
 
+        /// <summary>
+        /// Regression: a missing "createdAt" in the wire JSON leaves this at
+        /// default(DateTimeOffset) (year 1), and DateTimeOffset.MinValue.ToLocalTime() throws
+        /// ArgumentOutOfRangeException for any negative-UTC-offset timezone - which would have
+        /// aborted the whole row-mapping loop mid-page, not just this one row.
+        /// </summary>
+        [Test]
+        public void AMissingServerTimestampFormatsSafelyInsteadOfThrowing()
+        {
+            LeaderboardEntryDto entry = Entry();
+            entry.CreatedAt = default(DateTimeOffset);
+
+            LeaderboardRowPresentation row = null;
+            Assert.DoesNotThrow(() => row = LeaderboardEntryPresentationMapper.Map(
+                entry, "TotalPoints", id => null, id => null));
+            Assert.That(row.Date, Is.EqualTo(""));
+        }
+
         [Test]
         public void HardcoreTrueRendersOn()
         {

@@ -1224,16 +1224,20 @@ public class StatsManager : MonoBehaviour
     public string CurrentHighlightedButton { get => currentHighlightedButton; set => currentHighlightedButton = value; }
     public int LocalResultsPageNumber { get => localResultsPageNumber; set => localResultsPageNumber = value; }
 
+    public int OnlineResultsPageNumber => onlinePagination.PageNumber;
+
     /// <summary>
-    /// Every live caller (TouchInputStatsScreenController's online mode-select swipe) only ever
-    /// assigns 0 immediately before changing mode and re-requesting - i.e. "restart online
-    /// pagination". The setter honors that intent directly via onlinePagination.Reset() rather than
-    /// storing a raw page number that could drift out of sync with the cursor state
-    /// changeSelectedMode also resets.
+    /// Restarts online pagination (page 0, no cursor) - the only thing a caller outside this class
+    /// ever needs to do to online paging directly. Replaces a former public settable
+    /// OnlineResultsPageNumber property whose setter silently ignored its own assigned value and
+    /// always reset regardless - a real int-typed setter would have implied normal store semantics
+    /// that cursor pagination cannot actually support (there is no way to jump to an arbitrary
+    /// page N without walking the server's cursor chain). changeSelectedMode already calls this
+    /// itself for every mode change, so a caller that also changes mode right after this (as
+    /// TouchInputStatsScreenController does) is calling it redundantly but harmlessly.
     /// </summary>
-    public int OnlineResultsPageNumber
+    public void ResetOnlinePagination()
     {
-        get => onlinePagination.PageNumber;
-        set => onlinePagination.Reset();
+        onlinePagination.Reset();
     }
 }
