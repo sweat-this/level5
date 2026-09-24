@@ -136,6 +136,36 @@ namespace Level5.BackendV2.Tests
             Assert.That(loadedScenes, Has.Count.EqualTo(1), "exactly one scene load for a successful launch");
         }
 
+        /// <summary>
+        /// Uses Unity's actual shipped <see cref="DefaultCompetitiveRulesets"/> "most-points" entry
+        /// (not this file's own hand-rolled single-key stand-in) and drives Backend V2's exact wire
+        /// JSON for it (<see cref="BackendV2Fixtures.AttemptDescriptorProductionMostPoints"/>'s
+        /// three ordered comparison keys) through the full deserialize -&gt; mapper -&gt; launch
+        /// sequence, so a change to either side's real "most-points" definition that desynchronizes
+        /// them - including a JSON-shape change this file's other, hand-built-DTO tests would never
+        /// see - is caught here.
+        /// </summary>
+        [Test]
+        public void AProductionMostPointsDescriptorMapsThroughTheRealCatalogAndLaunches()
+        {
+            VersusCatalogs.Override(new CompetitiveRulesetCatalog(DefaultCompetitiveRulesets.CreateAll()));
+
+            FakeApiTransport transport = new FakeApiTransport();
+            transport.Enqueue(RawApiResponse.Completed(200, BackendV2Fixtures.AttemptDescriptorProductionMostPoints));
+            BackendV2Runtime.Override(transport);
+            RemoteAttemptLauncher.OverrideSceneLoader(_ => { });
+
+            RemoteAttemptLaunch result = default;
+            CoroutineTestRunner.RunToCompletion(RemoteAttemptLauncher.Run(
+                Guid.NewGuid(), 1, 4, CharacterSelection.None, null, launch => result = launch));
+
+            Assert.That(result.Succeeded, Is.True, result.Error);
+            Assert.That(result.Configuration.ModeId, Is.EqualTo(GameModeId.TotalPoints));
+            Assert.That(ActiveRemoteAttempt.IsActive, Is.True);
+            Assert.That(ActiveRemoteAttempt.Context.RequiredResultMetrics,
+                Is.EquivalentTo(new[] { "Score", "Accuracy", "ShotsAttempted" }));
+        }
+
         /// <summary>Issue #179: a non-empty local character selection (as <see
         /// cref="RemoteCharacterSelectionResolver"/> now supplies, replacing the previous
         /// <c>CharacterSelection.None</c>) must reach slot zero of the resulting

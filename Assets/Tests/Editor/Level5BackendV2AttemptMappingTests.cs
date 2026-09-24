@@ -221,12 +221,16 @@ namespace Level5.BackendV2.Tests
 
         /// <summary>
         /// Uses Unity's actual shipped <see cref="DefaultCompetitiveRulesets"/> "most-points" entry
-        /// (not a hand-rolled stand-in that merely reuses the same id) against the exact descriptor
-        /// shape Backend V2's real <c>StaticRulesetCatalog</c> freezes for it
-        /// (<see cref="BackendV2Fixtures.AttemptDescriptorProductionMostPoints"/>'s three ordered
-        /// comparison keys), so a change to either side's real "most-points" definition that
-        /// desynchronizes them is caught here instead of only by two test doubles that agree with
-        /// each other but not with production.
+        /// (not a hand-rolled stand-in that merely reuses the same id) against the exact three-key
+        /// descriptor shape Backend V2's real <c>StaticRulesetCatalog</c> freezes for it, so a
+        /// change to either side's real "most-points" definition that desynchronizes them is caught
+        /// here instead of only by two test doubles that agree with each other but not with
+        /// production. Exercises <see cref="RemoteAttemptDescriptorMapper.Map"/> directly with a
+        /// hand-built DTO; <see
+        /// cref="Level5BackendV2RemoteAttemptLauncherTests.AProductionMostPointsDescriptorMapsThroughTheRealCatalogAndLaunches"/>
+        /// covers the same production ruleset through the actual wire JSON
+        /// (<see cref="BackendV2Fixtures.AttemptDescriptorProductionMostPoints"/>) and the full
+        /// launch sequence.
         /// </summary>
         [Test]
         public void TheProductionMostPointsRulesetMapsTheProductionDescriptorSuccessfully()

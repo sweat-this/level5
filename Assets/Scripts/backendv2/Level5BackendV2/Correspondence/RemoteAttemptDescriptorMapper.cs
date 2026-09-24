@@ -124,6 +124,11 @@ namespace Level5.BackendV2
                 ComparisonKeySummaryDto serverKey = serverComparisonKeys[i];
                 ComparisonKey localKey = localComparisonKeys[i];
 
+                if (serverKey == null)
+                {
+                    return $"comparison key {i} is missing on the server";
+                }
+
                 if (!Enum.TryParse(serverKey.Metric, ignoreCase: false, out AttemptMetric serverMetric)
                     || serverMetric != localKey.Metric
                     || !Enum.TryParse(serverKey.Direction, ignoreCase: false, out MetricDirection serverDirection)
