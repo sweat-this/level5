@@ -1,4 +1,6 @@
+using System;
 using Assets.Scripts.database;
+using UnityEngine;
 
 namespace Level5.BackendV2
 {
@@ -19,21 +21,36 @@ namespace Level5.BackendV2
     {
         /// <summary>Call once, immediately after <paramref name="score"/> has become locally durable
         /// (SQLite or <c>PendingMatchPersistenceStore</c>) - never before. No-ops with no Backend V2
-        /// session, a null score, or an already-logged adapter failure.</summary>
+        /// session, a null score, or an already-logged adapter failure.
+        ///
+        /// Never lets an exception escape: this is a best-effort side effect of match-end/campaign
+        /// persistence, called from <c>GameRules.SaveMatchResults</c> and
+        /// <c>EndRoundMenuManager.saveGame</c> - the latter has no enclosing try/catch of its own, so
+        /// an unhandled exception here would silently skip that method's remaining statements (the V1
+        /// upload trigger and the <c>CampaignGameStats</c> component reset).</summary>
         public static void TryQueue(HighScoreModel score)
         {
-            BackendV2Session session = BackendV2SessionStore.Current;
-            if (session == null)
+            try
             {
-                return;
-            }
+                BackendV2Session session = BackendV2SessionStore.Current;
+                if (session == null)
+                {
+                    return;
+                }
 
-            if (!BackendV2MatchResultAdapter.TryAdapt(score, out SubmitMatchResultDto request))
+                if (!BackendV2MatchResultAdapter.TryAdapt(score, out SubmitMatchResultDto request))
+                {
+                    return;
+                }
+
+                MatchResultSubmissionCoordinator.Enqueue(session.PlayerId, request);
+            }
+            catch (Exception exception)
             {
-                return;
+                Debug.LogError(
+                    "BackendV2MatchResultSubmission.TryQueue failed; this must never block or skip the "
+                    + "caller's own remaining work. " + exception);
             }
-
-            MatchResultSubmissionCoordinator.Enqueue(session.PlayerId, request);
         }
     }
 }

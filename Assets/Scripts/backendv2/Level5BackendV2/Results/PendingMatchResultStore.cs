@@ -148,6 +148,19 @@ namespace Level5.BackendV2
             {
                 PendingMatchResultData data = Load();
                 update(data);
+                if (Save(data))
+                {
+                    return true;
+                }
+
+                // A queue mutation (in particular the very first Enqueue for a match, right after it
+                // became locally durable) is a one-shot opportunity: once matchScoreSaveCompleted is
+                // true, GameRules/EndRoundMenuManager never call back in to retry it, so a write that
+                // silently fails here would permanently and silently drop that match's Backend V2
+                // submission. One immediate retry of the write only (not update(data) again, which
+                // already mutated data once and is not safe to re-run blindly) is enough to ride out a
+                // one-shot transient local I/O failure (a momentary file lock, an AV scan, ...)
+                // without looping indefinitely.
                 return Save(data);
             }
             catch (Exception exception)

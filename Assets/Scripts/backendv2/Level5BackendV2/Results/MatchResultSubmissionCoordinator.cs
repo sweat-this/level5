@@ -57,7 +57,14 @@ namespace Level5.BackendV2
         /// <summary>Starts <see cref="Drain"/> on <see cref="BackendV2CoroutineHost"/> if nothing is
         /// already draining; a no-op otherwise. The restart-recovery entry point (called from
         /// <c>LoadManager</c>, independent of local SQLite readiness) as well as <see cref="Enqueue"/>'s
-        /// own trigger.</summary>
+        /// own trigger.
+        ///
+        /// Never lets an exception escape: <c>StartCoroutine</c> runs a coroutine's first leg
+        /// synchronously, inline, so a failure constructing/starting it (or anything reached before
+        /// the first real yield) would otherwise propagate into this method's caller - for
+        /// <c>LoadManager.LoadAllDataCoroutine</c>, that caller has no try/catch of its own, and this
+        /// call is meant to be a background, best-effort retry that can never abort the rest of that
+        /// coroutine (database wait, catalog loading, <c>PendingMatchPersistenceStore.Repair()</c>).</summary>
         public static void TriggerDrain()
         {
             if (draining)
@@ -65,7 +72,16 @@ namespace Level5.BackendV2
                 return;
             }
 
-            BackendV2CoroutineHost.Instance.StartCoroutine(Drain());
+            try
+            {
+                BackendV2CoroutineHost.Instance.StartCoroutine(Drain());
+            }
+            catch (Exception exception)
+            {
+                Debug.LogError(
+                    "MatchResultSubmissionCoordinator.TriggerDrain failed; this must never block or "
+                    + "abort its caller. " + exception);
+            }
         }
 
         /// <summary>The actual drain: sends every retryable entry owned by the current Backend V2
