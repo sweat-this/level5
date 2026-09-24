@@ -149,11 +149,16 @@ hook - the screen is a natural owning `MonoBehaviour` and outlives nothing this 
 3. On success: `ActiveMatch.Begin`, `ActiveRemoteAttempt.Begin`, `LegacyGameOptionsBridge.Apply`,
    `SceneTransition.LoadScene` - the same sequence `VersusLauncher.Launch` uses for local play.
 
-**Known limitation:** no level/character picker exists yet for a remote attempt - it launches with a
-fixed default level and no character customization. This mirrors local versus play, which also has
-no production launch UI yet (`VersusLauncher.Launch`'s only caller before this issue was
-`VersusDevConsole`, a dev-only tool). A level/character picker for versus play in general is future
-work, not something #159 introduces a gap in.
+**Known limitation:** no level picker exists yet for a remote attempt - it launches with a fixed
+default level. This mirrors local versus play, which also has no production launch UI yet
+(`VersusLauncher.Launch`'s only caller before this issue was `VersusDevConsole`, a dev-only tool). A
+level picker for versus play in general is future work, not something #159 introduces a gap in.
+
+Character selection is no longer a limitation (#179): `RemoteCharacterSelectionResolver` resolves the
+current local primary character - the same stable id `PlayerSelectionSession`/`PlayerSelectionController`
+use for ordinary local launches - into a `CharacterSelection` before `RemoteAttemptLauncher.Run` is
+called, so a resolution/lock failure is shown inline and never reaches `StartAttempt`. No
+correspondence-specific character picker or character state was introduced.
 
 ## Refresh-token persistence
 
@@ -198,7 +203,7 @@ before, just triggered by an actual request instead of by restoration itself.
   action, never on a timer.
 - Unlock-state revalidation for a network-driven match launch remains open (the existing
   `VersusLauncher` gap noted in `docs/persistence-boundaries.md` applies identically here).
-- No level/character picker (see above).
+- No level picker (see above); character selection is resolved from existing player-select authority.
 - Built entirely at runtime from code rather than authored as a scene/prefab, unlike every other
   menu screen in this project (see the doc comment on `CorrespondenceScreenController` for why -
   in short, this change did not have interactive Editor/prefab-authoring access, and hand-typing

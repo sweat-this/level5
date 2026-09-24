@@ -480,12 +480,22 @@ public sealed class CorrespondenceScreenController : MonoBehaviour
         RenderCurrentTab();
     }
 
-    /// <summary>#159 §7: StartAttempt -&gt; RemoteAttemptDescriptorMapper -&gt; ordinary gameplay
-    /// launch. No level/character picker exists yet for remote attempts (none exists for local
-    /// versus play either - VersusLauncher.Launch has no production caller today); this uses a fixed
-    /// default level and no character customization, a known MVP limitation, not a silent gap.</summary>
+    /// <summary>#159 §7 / #179: local character resolution -&gt; StartAttempt -&gt;
+    /// RemoteAttemptDescriptorMapper -&gt; ordinary gameplay launch. The character comes from the
+    /// existing player-select authority (<see cref="RemoteCharacterSelectionResolver"/>) rather than
+    /// <c>CharacterSelection.None</c> - a resolution/lock failure is shown inline and never reaches
+    /// <c>StartAttempt</c>. No level picker exists yet for remote attempts (none exists for local
+    /// versus play either - VersusLauncher.Launch has no production caller today); this still uses a
+    /// fixed default level, a known MVP limitation, not a silent gap.</summary>
     private IEnumerator PlayTurn(Guid seriesId, int gameNumber)
     {
+        RemoteCharacterSelectionResult characterResult = RemoteCharacterSelectionResolver.ResolveCurrentPrimary();
+        if (!characterResult.Succeeded)
+        {
+            SetStatus("could not resolve a player character: " + characterResult.Error);
+            yield break;
+        }
+
         SetStatus("starting attempt...");
         RemoteAttemptLaunch result = default;
 
@@ -495,7 +505,7 @@ public sealed class CorrespondenceScreenController : MonoBehaviour
         // directly means a success's scene load and this coroutine settle in the same step, with no
         // separate cross-coroutine polling needed.
         yield return RemoteAttemptLauncher.Run(
-            seriesId, gameNumber, DefaultLevelId, Level5.Core.Match.CharacterSelection.None, null,
+            seriesId, gameNumber, DefaultLevelId, characterResult.Character, null,
             launch => result = launch);
 
         if (!result.Succeeded)

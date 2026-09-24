@@ -135,5 +135,34 @@ namespace Level5.BackendV2.Tests
             Assert.That(ActiveRemoteAttempt.Context.RulesetId, Is.EqualTo(RulesetIdValue));
             Assert.That(loadedScenes, Has.Count.EqualTo(1), "exactly one scene load for a successful launch");
         }
+
+        /// <summary>Issue #179: a non-empty local character selection (as <see
+        /// cref="RemoteCharacterSelectionResolver"/> now supplies, replacing the previous
+        /// <c>CharacterSelection.None</c>) must reach slot zero of the resulting
+        /// <see cref="MatchConfiguration"/> unchanged - the same slot <c>SpawnCoordinator</c>/
+        /// <c>CharacterProfile</c> resolve the human player's profile from.</summary>
+        [Test]
+        public void ASuppliedCharacterReachesSlotZeroOfTheResultingMatchConfigurationUnchanged()
+        {
+            FakeApiTransport transport = new FakeApiTransport();
+            transport.Enqueue(RawApiResponse.Completed(200, BackendV2Fixtures.AttemptDescriptor));
+            BackendV2Runtime.Override(transport);
+            RemoteAttemptLauncher.OverrideSceneLoader(_ => { });
+
+            CharacterSelection character = new CharacterSelection(7, "obj7", "Character Seven", isShooter: true, isFighter: false);
+
+            RemoteAttemptLaunch result = default;
+            CoroutineTestRunner.RunToCompletion(RemoteAttemptLauncher.Run(
+                Guid.NewGuid(), 1, 4, character, null, launch => result = launch));
+
+            Assert.That(result.Succeeded, Is.True, result.Error);
+            PlayerSlot slotZero = result.Configuration.Roster.GetBySlotId(0);
+            Assert.That(slotZero, Is.Not.Null);
+            Assert.That(slotZero.Character.CharacterId, Is.EqualTo(7));
+            Assert.That(slotZero.Character.ObjectName, Is.EqualTo("obj7"));
+            Assert.That(slotZero.Character.DisplayName, Is.EqualTo("Character Seven"));
+            Assert.That(slotZero.Character.IsShooter, Is.True);
+            Assert.That(slotZero.Character.IsFighter, Is.False);
+        }
     }
 }
