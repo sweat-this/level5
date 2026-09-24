@@ -9,10 +9,10 @@ namespace Level5.BackendV2
     /// <summary>
     /// The create-challenge request.
     ///
-    /// <see cref="ClientRequestId"/> is optional on the wire (Backend V2's own DTO declares it
-    /// nullable) but required by this client: <see cref="ICorrespondenceApiClient.CreateChallenge"/>
-    /// refuses to send a request with an empty id, because retrying a create without reusing the
-    /// same id is exactly the non-idempotent mistake the field exists to prevent.
+    /// <see cref="ClientRequestId"/> is required: Backend V2 rejects a missing, null, or empty id
+    /// with a 400, and <see cref="ICorrespondenceApiClient.CreateChallenge"/> also refuses to send
+    /// one locally. Retrying a create without reusing the same id is exactly the non-idempotent
+    /// mistake the field exists to prevent.
     /// </summary>
     public sealed class CreateChallengeDto
     {
