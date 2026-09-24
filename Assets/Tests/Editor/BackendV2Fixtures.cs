@@ -141,6 +141,44 @@ namespace Level5.BackendV2.Tests
             ""traceId"": ""00-trace-9012-00""
         }";
 
+        public const string LeaderboardPage = @"{
+            ""modeId"": 3,
+            ""metric"": ""ShotsMade"",
+            ""direction"": ""HigherWins"",
+            ""items"": [{
+                ""matchResultId"": ""6e45e5fa-6262-4d3f-8f5f-1baf5e4f7b8c"",
+                ""player"": {
+                    ""playerId"": ""8f14e45f-ceea-467e-a4d9-b3e5c76f1a3a"",
+                    ""displayName"": ""Ada"",
+                    ""tag"": ""ADA#1234""
+                },
+                ""characterId"": ""12"",
+                ""levelId"": 7,
+                ""value"": 42.0,
+                ""createdAt"": ""2026-09-01T12:00:00+00:00"",
+                ""modifiers"": { ""hardcore"": false, ""trafficEnabled"": true, ""enemiesEnabled"": false, ""sniperEnabled"": false }
+            }],
+            ""limit"": 10,
+            ""nextCursor"": ""opaque-leaderboard-cursor-page-2""
+        }";
+
+        public const string LeaderboardPageTerminal = @"{
+            ""modeId"": 3,
+            ""metric"": ""ShotsMade"",
+            ""direction"": ""HigherWins"",
+            ""items"": [],
+            ""limit"": 10,
+            ""nextCursor"": null
+        }";
+
+        public const string ProblemDetailsUnsupportedLeaderboardMode = @"{
+            ""type"": ""https://level5.game/errors/unsupported_leaderboard_mode"",
+            ""title"": ""Mode 27 has no leaderboard."",
+            ""status"": 400,
+            ""code"": ""unsupported_leaderboard_mode"",
+            ""traceId"": ""00-trace-3456-00""
+        }";
+
         /// <summary>
         /// The real production "most-points" descriptor Backend V2's <c>StaticRulesetCatalog</c>
         /// freezes (Level5Backend v2/src/Level5.Infrastructure/Competition/StaticRulesetCatalog.cs) -
