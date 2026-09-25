@@ -205,6 +205,50 @@ namespace Level5.BackendV2.Tests
         }
 
         [Test]
+        public void GetMyProfileRequestsTheProfileEndpointAndDeserializesIt()
+        {
+            BackendV2SessionStore.Set(new BackendV2Session(
+                "access-token", DateTimeOffset.UtcNow.AddHours(1), Guid.NewGuid(), "refresh-token",
+                DateTimeOffset.UtcNow.AddDays(30)));
+
+            FakeApiTransport transport = new FakeApiTransport();
+            transport.Enqueue(RawApiResponse.Completed(200, BackendV2Fixtures.PlayerProfile));
+            PlayersApiClient playersClient = new PlayersApiClient(
+                transport, new BackendV2SessionManager(new AuthApiClient(transport)));
+
+            ApiResponse<PlayerProfileResponseDto> result = null;
+            CoroutineTestRunner.RunToCompletion(playersClient.GetMyProfile(r => result = r));
+
+            Assert.That(result.Success, Is.True);
+            Assert.That(result.Value.PlayerId.ToString(), Is.EqualTo("8f14e45f-ceea-467e-a4d9-b3e5c76f1a3a"));
+            Assert.That(result.Value.DisplayName, Is.EqualTo("Ada"));
+            Assert.That(result.Value.Tag, Is.EqualTo("ADA#1234"));
+            Assert.That(transport.Requests, Has.Count.EqualTo(1));
+            Assert.That(transport.Requests[0].RelativePath, Is.EqualTo("api/v2/players/me/profile"));
+            Assert.That(transport.Requests[0].RequiresAuth, Is.True);
+        }
+
+        [Test]
+        public void GetMeRemainsABareGuidContractDistinctFromGetMyProfile()
+        {
+            BackendV2SessionStore.Set(new BackendV2Session(
+                "access-token", DateTimeOffset.UtcNow.AddHours(1), Guid.NewGuid(), "refresh-token",
+                DateTimeOffset.UtcNow.AddDays(30)));
+
+            FakeApiTransport transport = new FakeApiTransport();
+            transport.Enqueue(RawApiResponse.Completed(200, "\"8f14e45f-ceea-467e-a4d9-b3e5c76f1a3a\""));
+            PlayersApiClient playersClient = new PlayersApiClient(
+                transport, new BackendV2SessionManager(new AuthApiClient(transport)));
+
+            ApiResponse<Guid> result = null;
+            CoroutineTestRunner.RunToCompletion(playersClient.GetMe(r => result = r));
+
+            Assert.That(result.Success, Is.True);
+            Assert.That(result.Value.ToString(), Is.EqualTo("8f14e45f-ceea-467e-a4d9-b3e5c76f1a3a"));
+            Assert.That(transport.Requests[0].RelativePath, Is.EqualTo("api/v2/players/me"));
+        }
+
+        [Test]
         public void CorrelationIdsAreUniquePerCall()
         {
             string first = CorrelationIdGenerator.NewId();

@@ -152,13 +152,19 @@ absolute URL per endpoint with no dev/staging/prod concept, which does not scale
 | Client | Endpoints |
 | --- | --- |
 | `IAuthApiClient` | `register`, `login`, `refresh`, `logout` |
-| `IPlayersApiClient` | `by-tag/{tag}`, `me` (get - raw GUID, patch) |
+| `IPlayersApiClient` | `by-tag/{tag}`, `me` (get - raw GUID, patch), `me/profile` (get - `PlayerProfileResponseDto`) |
 | `IFriendsApiClient` | list, remove, send/list-incoming/list-outgoing/accept/decline/cancel request |
 | `ICorrespondenceApiClient` | create/accept/decline/cancel/get, list incoming/outgoing/active/completed, start/complete attempt |
 | `IMatchResultsApiClient` | `Submit` (general, non-correspondence, non-versus match results - see "Competitive-attempt exclusion" below) |
 
 List pagination (`SeriesSummaryPageDto.NextCursor`) is opaque: forwarded exactly as received, never
 parsed or reconstructed, per Backend V2's own contract for that field.
+
+`IPlayersApiClient.GetMe()` and `GetMyProfile()` are two distinct, coexisting endpoints, not a
+migration of one into the other. `GetMe()` is the frozen bare-`Guid` contract other production code
+already depends on (`api/v2/players/me`) - it stays exactly as it is. `GetMyProfile()` is the additive,
+richer sibling (`api/v2/players/me/profile`, `PlayerProfileResponseDto`: `PlayerId`/`DisplayName`/`Tag`)
+added for player-facing self-profile display - see "Issue: the online-account screen" below.
 
 `CreateChallenge` requires a non-empty, caller-generated `clientRequestId`
 (`ClientRequestIdGenerator.NewId()`) and refuses to send the request at all without one - retrying a
@@ -380,6 +386,18 @@ app-layer/coordinator types in `Level5.BackendV2` - `FriendsCoordinator`, `Serie
 `Level5.BackendV2.asmdef`) is the `StartAttempt -> RemoteAttemptDescriptorMapper -> ActiveMatch /
 ActiveRemoteAttempt / LegacyGameOptionsBridge / SceneTransition` sequence that was previously
 missing - `RemoteAttemptDescriptorMapper` had no production caller before this.
+
+## The online-account screen
+
+`OnlineAccountController`/`OnlineAccountUiObjects` (`Assets/Scripts/menu_login/`, scene
+`Assets/Scenes/level_00_account_online.unity`, reached from a button on the Account hub
+`level_00_account`) is the first-class player-facing register/sign-in/sign-out/self-profile surface -
+unlike `CorrespondenceScreenController`'s inline sign-in panel (a Multiplayer-only fallback), this is
+reachable without going through Multiplayer at all, and is the normal scene-authored uGUI/TMP
+convention every other menu screen uses. `OnlineAccountCoordinator`
+(`Assets/Scripts/backendv2/Level5BackendV2/UI/`) is the orchestration layer - same split as
+`FriendsCoordinator`/`ChallengeCoordinator` - and is what is actually unit-tested; the controller only
+wires UI to it. See `docs/backend-v2-online-account-ui.md`.
 
 **Still deferred / known limitations**, not silently dropped:
 

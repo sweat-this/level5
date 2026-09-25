@@ -37,6 +37,7 @@ public class AccountManager : MonoBehaviour
     const string createNewButtonName = "createNew";
     const string loginExistingButtonName = "loginExisting";
     const string loginLocalButtonName = "loginLocal";
+    const string onlineAccountButtonName = "onlineAccount";
 
     string emailInput;
     string userNameInput;
@@ -60,6 +61,7 @@ public class AccountManager : MonoBehaviour
     Button createNewButton;
     Button loginExistingButton;
     Button loginLocalButton;
+    Button onlineAccountButton;
     Button createAccountButton;
     Button loginButton;
 
@@ -206,6 +208,7 @@ public class AccountManager : MonoBehaviour
             createNewButton = hubUi.CreateNewButton;
             loginExistingButton = hubUi.LoginExistingButton;
             loginLocalButton = hubUi.LoginLocalButton;
+            onlineAccountButton = hubUi.OnlineAccountButton;
         }
         else if (createUi != null)
         {
@@ -251,6 +254,7 @@ public class AccountManager : MonoBehaviour
         UiSelectionAdapter.RegisterButton(createNewButton, LoadCreateNewAccount);
         UiSelectionAdapter.RegisterButton(loginExistingButton, LoadLoginExisting);
         UiSelectionAdapter.RegisterButton(loginLocalButton, LoadLoginLocal);
+        UiSelectionAdapter.RegisterButton(onlineAccountButton, LoadOnlineAccount);
         UiSelectionAdapter.RegisterButton(checkEmailButton, OnCheckEmailButtonClicked);
         UiSelectionAdapter.RegisterButton(checkUserNameButton, OnCheckUserNameButtonClicked);
         UiSelectionAdapter.RegisterButton(createAccountButton, OnCreateAccountButtonClicked);
@@ -267,6 +271,7 @@ public class AccountManager : MonoBehaviour
         UiSelectionAdapter.UnregisterButton(createNewButton, LoadCreateNewAccount);
         UiSelectionAdapter.UnregisterButton(loginExistingButton, LoadLoginExisting);
         UiSelectionAdapter.UnregisterButton(loginLocalButton, LoadLoginLocal);
+        UiSelectionAdapter.UnregisterButton(onlineAccountButton, LoadOnlineAccount);
         UiSelectionAdapter.UnregisterButton(checkEmailButton, OnCheckEmailButtonClicked);
         UiSelectionAdapter.UnregisterButton(checkUserNameButton, OnCheckUserNameButtonClicked);
         UiSelectionAdapter.UnregisterButton(createAccountButton, OnCreateAccountButtonClicked);
@@ -449,6 +454,11 @@ public class AccountManager : MonoBehaviour
     private void LoadLoginLocal()
     {
         SceneManager.LoadSceneAsync(Constants.SCENE_NAME_level_00_account_loginLocal);
+    }
+
+    private void LoadOnlineAccount()
+    {
+        SceneManager.LoadSceneAsync(Constants.SCENE_NAME_level_00_account_online);
     }
 
     private void SetMessage(string message)
@@ -814,5 +824,6 @@ public class AccountManager : MonoBehaviour
     public static string CreateNewButtonName => createNewButtonName;
     public static string LoginExistingButtonName => loginExistingButtonName;
     public static string LoginLocalButtonName => loginLocalButtonName;
+    public static string OnlineAccountButtonName => onlineAccountButtonName;
     public static string AccountMenuButtonName => accountMenuButtonName;
 }

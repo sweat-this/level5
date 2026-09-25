@@ -180,6 +180,11 @@ public class TouchInputAccountScreenController : MonoBehaviour
         {
             SceneManager.LoadSceneAsync(Constants.SCENE_NAME_level_00_account_loginLocal);
         }
+        // online account
+        if (selectedObject.name.Equals(AccountManager.OnlineAccountButtonName))
+        {
+            SceneManager.LoadSceneAsync(Constants.SCENE_NAME_level_00_account_online);
+        }
         // account
         if (selectedObject.name.Equals(AccountManager.AccountMenuButtonName))
         {
