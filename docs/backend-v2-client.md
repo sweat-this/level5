@@ -116,7 +116,7 @@ absolute URL per endpoint with no dev/staging/prod concept, which does not scale
 | `IPlayersApiClient` | `by-tag/{tag}`, `me` (get - raw GUID, patch) |
 | `IFriendsApiClient` | list, remove, send/list-incoming/list-outgoing/accept/decline/cancel request |
 | `ICorrespondenceApiClient` | create/accept/decline/cancel/get, list incoming/outgoing/active/completed, start/complete attempt |
-| `IMatchResultsApiClient` | `Submit` (general, non-correspondence match results) |
+| `IMatchResultsApiClient` | `Submit` (general, non-correspondence, non-versus match results - see "Competitive-attempt exclusion" below) |
 
 List pagination (`SeriesSummaryPageDto.NextCursor`) is opaque: forwarded exactly as received, never
 parsed or reconstructed, per Backend V2's own contract for that field.
@@ -229,6 +229,39 @@ MatchResultSubmissionCoordinator.Enqueue   (Level5.BackendV2 - persists, then at
       v
 PendingMatchResultStore (backendv2_pending_match_results.json)  --Submit-->  IMatchResultsApiClient
 ```
+
+### Competitive-attempt exclusion
+
+`BackendV2MatchResultSubmission.TryQueue` is the sole eligibility gate for the general pipeline, and
+it no-ops before even checking for a Backend V2 session when the match now ending is an active
+competitive attempt:
+
+```
+if (ActiveRemoteAttempt.IsActive || ActiveVersusAttempt.IsActive)
+{
+    return;
+}
+```
+
+`api/v2/match-results` is the general, non-competitive result path. A remote correspondence attempt
+is owned end to end by `RemoteAttemptResultSubmitter` against Backend V2's `VersusSeries`
+(`POST api/v2/series/{series}/games/{game}/attempts/{attempt}/complete`); a local versus attempt is
+owned by `VersusMatchReporter` against the local versus series on disk. Neither is a leaderboard
+result (see `docs/versus-architecture.md`), and neither may gain a second route into the general
+pipeline's leaderboard/ranking processing.
+
+Both `ActiveRemoteAttempt.IsActive` and `ActiveVersusAttempt.IsActive` are bound to the exact
+`ActiveMatch.Configuration` object that launched the attempt (compared by reference), not merely to
+whether attempt state exists. This is what stops an abandoned/stale competitive attempt from
+suppressing a later ordinary match's general result: once `ActiveMatch.Begin` records a different
+match, the stale attempt's `IsActive` reads `false` even though its ids are still sitting unreleased
+in static state, outstanding server/document-side for the correspondence UI or local series to pick
+up later.
+
+The exclusion is enforced once, here, rather than by branching in `GameRules` - every current and
+future caller of `TryQueue` inherits it, and `GameRules.HandleMatchEnded`'s own orchestration
+(`SaveMatchResults` -> `VersusMatchReporter.TryReport` -> `RemoteAttemptResultSubmitter.TrySubmit`)
+is unchanged.
 
 ### Ownership and durability ordering
 
