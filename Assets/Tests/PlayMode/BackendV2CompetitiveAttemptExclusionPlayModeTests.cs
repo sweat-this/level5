@@ -37,7 +37,7 @@ public class BackendV2CompetitiveAttemptExclusionPlayModeTests
 
         hosts.Clear();
         PendingMatchResultStore.Clear();
-        PendingRemoteAttemptResult.Clear();
+        PendingRemoteAttemptResultStore.Clear();
         ActiveRemoteAttempt.Clear();
         ActiveMatch.Clear();
         BackendV2SessionStore.Clear();

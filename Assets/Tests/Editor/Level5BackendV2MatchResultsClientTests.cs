@@ -81,12 +81,15 @@ namespace Level5.BackendV2.Tests
             Assert.That(body, Does.Contain("\"characterId\":\"12\""));
             Assert.That(body, Does.Contain("\"clientVersion\":\"1.4.2\""));
             Assert.That(body, Does.Contain("\"platform\":\"Handheld\""));
-            Assert.That(body, Does.Contain("\"totalPoints\":120"));
-            Assert.That(body, Does.Contain("\"shotsMade\":18"));
-            Assert.That(body, Does.Contain("\"totalDistance\":342.5"));
-            Assert.That(body, Does.Contain("\"completionTimeSeconds\":95.2"));
-            Assert.That(body, Does.Contain("\"longestStreak\":6"));
-            Assert.That(body, Does.Contain("\"enemiesKilled\":4"));
+            // Dictionary keys are never camelCased, unlike this DTO's own declared property names
+            // above - see BackendV2Json's own doc comment. MatchResultMetric.ToString() (PascalCase)
+            // is exactly what Backend V2's MatchResultsController.MetricsByName name lookup expects.
+            Assert.That(body, Does.Contain("\"TotalPoints\":120"));
+            Assert.That(body, Does.Contain("\"ShotsMade\":18"));
+            Assert.That(body, Does.Contain("\"TotalDistance\":342.5"));
+            Assert.That(body, Does.Contain("\"CompletionTimeSeconds\":95.2"));
+            Assert.That(body, Does.Contain("\"LongestStreak\":6"));
+            Assert.That(body, Does.Contain("\"EnemiesKilled\":4"));
             Assert.That(body, Does.Contain("\"trafficEnabled\":true"));
             Assert.That(body, Does.Contain("\"enemiesEnabled\":true"));
             // PlayerId is never part of the outgoing payload - Backend V2 derives ownership from the

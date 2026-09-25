@@ -19,6 +19,14 @@ namespace Level5.BackendV2
     /// UI to retry via <see cref="TryRetryPending"/> - never silently discarded, and never turned
     /// into a second, differently-shaped submission.
     ///
+    /// The exact result is durably persisted (<see cref="PendingRemoteAttemptResult.Stash"/>) before
+    /// the first <c>CompleteAttempt</c> call, never after: an application termination between "the
+    /// server accepted the result" and "the client processed that response" must converge safely
+    /// through Backend V2's idempotent replay of this exact same payload on the next resend, which is
+    /// only possible if the payload was already durable before that request was ever sent. If the
+    /// durable persist itself fails, <c>CompleteAttempt</c> is never called for that attempt this
+    /// pass - see <see cref="TrySubmit"/>.
+    ///
     /// Never sends a winner, score, current game, revision, frozen rules or the opponent's result -
     /// only the named metrics the descriptor required. Those decisions belong to Backend V2.
     /// </summary>
@@ -58,7 +66,24 @@ namespace Level5.BackendV2
                 return;
             }
 
-            PendingRemoteAttemptResult.Stash(context, metrics);
+            PendingRemoteAttemptResultEnqueueResult stashOutcome = PendingRemoteAttemptResult.Stash(context, metrics);
+            if (stashOutcome == PendingRemoteAttemptResultEnqueueResult.Failed
+                || stashOutcome == PendingRemoteAttemptResultEnqueueResult.ConflictingPayload)
+            {
+                // Never make an ambiguous network submission without first durably retaining the
+                // exact replay payload. GameRules' own match-end retry loop calls TrySubmit again
+                // about once a second while ActiveRemoteAttempt stays active and GameStats still
+                // exists, so releasing the claim here (rather than leaving some separate in-memory
+                // stash) is enough to let the very next pass try the persist again from the same
+                // deterministic GameStats - no rebuild-from-nothing risk, and no second code path to
+                // keep in sync with the durable store.
+                Debug.LogError(
+                    $"Could not durably persist the remote attempt {context.AttemptId} result "
+                    + $"({stashOutcome}); it was not submitted. It will be retried automatically.");
+                Release(context.AttemptId);
+                return;
+            }
+
             BackendV2CoroutineHost.Instance.StartCoroutine(Submit(context, metrics));
         }
 
@@ -118,30 +143,83 @@ namespace Level5.BackendV2
             // by a claim that only ever meant "don't send a second one while this one is in flight".
             Release(context.AttemptId);
 
+            switch (Classify(response))
+            {
+                case RemoteAttemptSubmissionOutcome.Success:
+                    ActiveRemoteAttempt.Clear();
+                    PendingRemoteAttemptResult.Clear(context.PlayerId, context.AttemptId);
+                    break;
+
+                case RemoteAttemptSubmissionOutcome.Definitive:
+                    // The domain already decided this attempt (an authoritative refusal, not an
+                    // ambiguous transport failure); resubmitting the identical payload would only be
+                    // refused again. Removed rather than retried forever on every future resend.
+                    Debug.LogWarning(
+                        $"Remote attempt {context.AttemptId} result was refused with a definitive "
+                        + $"{response?.ErrorKind} ({response?.Problem?.Code}, correlation "
+                        + $"{response?.CorrelationId}) and will not be retried.");
+                    ActiveRemoteAttempt.Clear();
+                    PendingRemoteAttemptResult.Clear(context.PlayerId, context.AttemptId);
+                    break;
+
+                default:
+                    // Network, timeout, server, rate-limit, auth or malformed-response failure (or
+                    // any other/unclassified outcome): left pending on purpose. The turn may already
+                    // be settled server-side (in particular MalformedResponse, where a 2xx body just
+                    // failed to parse) - PendingRemoteAttemptResult keeps the exact durably-persisted
+                    // payload so a resend is a safe idempotent replay, never a rebuild.
+                    Debug.LogError(
+                        $"Submitting the remote attempt {context.AttemptId} result failed: "
+                        + $"{response?.ErrorKind} ({response?.Problem?.Code}, correlation {response?.CorrelationId}).");
+                    break;
+            }
+        }
+
+        /// <summary>
+        /// Pure classification of one <c>CompleteAttempt</c> outcome, with no network/coroutine/store
+        /// involvement - exercised directly in EditMode tests against a hand-built
+        /// <see cref="ApiResponse{T}"/> for every <see cref="ApiErrorKind"/>, the same testability
+        /// seam <see cref="MatchResultSubmissionCoordinator.Classify"/> already gets.
+        ///
+        /// <c>Validation</c>/<c>Forbidden</c>/<c>NotFound</c>/<c>Conflict</c> are terminal for
+        /// replaying this exact request: identical malformed/missing/invalid metrics or attempt state
+        /// cannot heal through retry (<c>Validation</c>); the authenticated player is not authorized
+        /// for this attempt (<c>Forbidden</c>); the series/attempt is absent or hidden from this
+        /// participant (<c>NotFound</c>); or authoritative server state has already, definitively
+        /// rejected this payload/transition (<c>Conflict</c>). Every other kind - including
+        /// <c>Unauthenticated</c>/<c>Expired</c> (the owning player may sign back in) and
+        /// <c>MalformedResponse</c> (the server may have committed the result before the client
+        /// failed to deserialize the response, so an exact idempotent replay is the safe recovery) -
+        /// remains retryable.
+        /// </summary>
+        public static RemoteAttemptSubmissionOutcome Classify(ApiResponse<SeriesResponseDto> response)
+        {
             if (response != null && response.Success)
             {
-                ActiveRemoteAttempt.Clear();
-                PendingRemoteAttemptResult.Clear();
-                yield break;
+                return RemoteAttemptSubmissionOutcome.Success;
             }
 
-            if (response != null && response.ErrorKind == ApiErrorKind.Conflict)
+            if (response != null && IsDefinitive(response.ErrorKind))
             {
-                // The domain already decided this attempt; resubmitting would only be refused again.
-                Debug.LogWarning(
-                    $"Remote attempt {context.AttemptId} result conflicted and will not be retried "
-                    + $"({response.Problem?.Code}, correlation {response.CorrelationId}).");
-                ActiveRemoteAttempt.Clear();
-                PendingRemoteAttemptResult.Clear();
-                yield break;
+                return RemoteAttemptSubmissionOutcome.Definitive;
             }
 
-            // Network, server, validation or auth failure: left active on purpose. The turn is still
-            // outstanding server-side; PendingRemoteAttemptResult keeps the exact metrics so the
-            // correspondence UI can offer a retry without rebuilding them.
-            Debug.LogError(
-                $"Submitting the remote attempt {context.AttemptId} result failed: "
-                + $"{response?.ErrorKind} ({response?.Problem?.Code}, correlation {response?.CorrelationId}).");
+            return RemoteAttemptSubmissionOutcome.Retryable;
         }
+
+        private static bool IsDefinitive(ApiErrorKind? errorKind)
+        {
+            return errorKind == ApiErrorKind.Validation
+                || errorKind == ApiErrorKind.Forbidden
+                || errorKind == ApiErrorKind.NotFound
+                || errorKind == ApiErrorKind.Conflict;
+        }
+    }
+
+    public enum RemoteAttemptSubmissionOutcome
+    {
+        Success,
+        Retryable,
+        Definitive
     }
 }
