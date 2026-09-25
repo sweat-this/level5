@@ -39,9 +39,9 @@ can reach them.
 
 ## UI flow
 
-One scene, six sub-panels rendered into a single content area (not six persistent panel
+One scene, seven sub-panels rendered into a single content area (not seven persistent panel
 GameObjects - the coordinators below already hold each tab's state, so switching tabs just
-re-renders from that state rather than needing six parallel hierarchies):
+re-renders from that state rather than needing seven parallel hierarchies):
 
 - **Friends** - resolve-by-tag + send request, incoming/outgoing friend requests
   (accept/decline/cancel), friends list (remove, or start a challenge from that row).
@@ -50,7 +50,10 @@ re-renders from that state rather than needing six parallel hierarchies):
 - **Your Turn** - `ListActive`, filtered to rows this player has not yet completed their current
   attempt for (see "Whose turn" below), with a Play action.
 - **Active Series** - every `ListActive` row, badged with whose turn it is.
-- **Completed** - `ListCompleted`, read-only.
+- **Completed** - `ListCompleted`, read-only. Scoped to series that actually finished play only.
+- **History** - `ListHistory`, read-only. Every terminal series either participant is in -
+  Completed, Declined, Cancelled, or Expired - each row labelled with its status. The durable
+  correspondence-history view: unlike the other tabs, these rows never disappear on their own.
 
 Reconnect/resume (screen open, or `Start()` after a scene load): checks
 `BackendV2SessionStore.IsAuthenticated` and shows an inline sign-in form if not (no separate login

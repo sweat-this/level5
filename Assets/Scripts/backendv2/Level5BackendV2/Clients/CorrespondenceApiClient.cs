@@ -69,6 +69,11 @@ namespace Level5.BackendV2
             return ListPage("api/v2/series/completed", limit, cursor, completed);
         }
 
+        public IEnumerator ListHistory(int limit, string cursor, Action<ApiResponse<SeriesSummaryPageDto>> completed)
+        {
+            return ListPage("api/v2/series/history", limit, cursor, completed);
+        }
+
         public IEnumerator StartAttempt(
             Guid seriesId, int gameNumber, Action<ApiResponse<AttemptDescriptorDto>> completed)
         {
