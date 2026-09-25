@@ -21,7 +21,18 @@ namespace Level5.BackendV2
     {
         /// <summary>Call once, immediately after <paramref name="score"/> has become locally durable
         /// (SQLite or <c>PendingMatchPersistenceStore</c>) - never before. No-ops with no Backend V2
-        /// session, a null score, or an already-logged adapter failure.
+        /// session, a null score, an already-logged adapter failure, or when the current
+        /// <see cref="ActiveMatch"/> is an active competitive attempt (<see cref="ActiveRemoteAttempt"/>
+        /// or <see cref="ActiveVersusAttempt"/>).
+        ///
+        /// The general <c>/api/v2/match-results</c> path is not the correspondence or local-versus
+        /// result path - those own their own result submission (<see cref="RemoteAttemptResultSubmitter"/>,
+        /// <c>VersusMatchReporter</c>) against Backend V2's series-specific sealed-result projection,
+        /// and a competitive attempt must never also gain an alternate route through this general
+        /// pipeline. Checking <c>IsActive</c> rather than merely "does attempt state exist" matters: both
+        /// predicates are deliberately bound to the exact <see cref="ActiveMatch.Configuration"/> that
+        /// launched them, so an abandoned/stale competitive attempt never suppresses a later ordinary
+        /// match.
         ///
         /// Never lets an exception escape: this is a best-effort side effect of match-end/campaign
         /// persistence, called from <c>GameRules.SaveMatchResults</c> and
@@ -32,6 +43,11 @@ namespace Level5.BackendV2
         {
             try
             {
+                if (ActiveRemoteAttempt.IsActive || ActiveVersusAttempt.IsActive)
+                {
+                    return;
+                }
+
                 BackendV2Session session = BackendV2SessionStore.Current;
                 if (session == null)
                 {
