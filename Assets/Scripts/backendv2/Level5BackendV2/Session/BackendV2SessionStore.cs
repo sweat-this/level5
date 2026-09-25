@@ -42,5 +42,13 @@ namespace Level5.BackendV2
         {
             return Current == null || DateTimeOffset.UtcNow + lead >= Current.ExpiresAt;
         }
+
+        /// <summary>Whether <paramref name="session"/>'s refresh token is already past its own
+        /// expiry, by this client's own clock. A refresh attempt against it is guaranteed to be
+        /// rejected by the server, so callers can skip the network round trip entirely.</summary>
+        public static bool IsRefreshTokenExpired(BackendV2Session session)
+        {
+            return DateTimeOffset.UtcNow >= session.RefreshTokenExpiresAt;
+        }
     }
 }
