@@ -170,6 +170,199 @@ namespace Level5.BackendV2.Tests
             Assert.That(transport.Requests, Has.Count.EqualTo(1), "B must not have issued a second refresh");
         }
 
+        [Test]
+        public void ConcurrentRefreshCallsShareOneTransientFailure()
+        {
+            // The failure-path counterpart to ConcurrentRefreshCallsShareOneRefreshRequest above:
+            // two callers racing a refresh that fails transiently must both observe the same
+            // failure from a single refresh request, and the session must survive it.
+            BackendV2Session original = Session(DateTimeOffset.UtcNow.AddSeconds(5));
+            BackendV2SessionStore.Set(original);
+            FakeApiTransport transport = new FakeApiTransport();
+            transport.Enqueue(RawApiResponse.NetworkError());
+            BackendV2SessionManager manager = new BackendV2SessionManager(new AuthApiClient(transport));
+
+            ApiResponse<bool> resultA = null;
+            ApiResponse<bool> resultB = null;
+
+            IEnumerator outerA = manager.EnsureFreshAccessToken(r => resultA = r);
+            Assert.That(outerA.MoveNext(), Is.True);
+            IEnumerator refreshA = (IEnumerator)outerA.Current;
+            Assert.That(refreshA.MoveNext(), Is.True);
+            Assert.That(refreshA.Current, Is.InstanceOf<IEnumerator>(), "A should be suspended on its own Refresh call");
+
+            IEnumerator outerB = manager.EnsureFreshAccessToken(r => resultB = r);
+            Assert.That(outerB.MoveNext(), Is.True);
+            IEnumerator refreshB = (IEnumerator)outerB.Current;
+            Assert.That(refreshB.MoveNext(), Is.True);
+            Assert.That(refreshB.Current, Is.Null, "B should be waiting on A's in-flight refresh");
+
+            DrainPending(refreshA);
+            Assert.That(transport.Requests, Has.Count.EqualTo(1), "only one refresh request should ever be sent");
+            Assert.That(resultA.Success, Is.False);
+            Assert.That(resultA.ErrorKind, Is.EqualTo(ApiErrorKind.Network));
+
+            DrainPending(refreshB);
+            Assert.That(resultB.Success, Is.False);
+            Assert.That(resultB.ErrorKind, Is.EqualTo(ApiErrorKind.Network));
+            Assert.That(transport.Requests, Has.Count.EqualTo(1), "B must not have issued a second refresh");
+
+            Assert.That(BackendV2SessionStore.IsAuthenticated, Is.True, "a transient failure must not clear the session");
+            Assert.That(BackendV2SessionStore.Current, Is.SameAs(original));
+        }
+
+        [Test]
+        public void ANetworkRefreshFailurePreservesTheSession()
+        {
+            AssertTransientRefreshFailurePreservesTheSession(RawApiResponse.NetworkError(), ApiErrorKind.Network);
+        }
+
+        [Test]
+        public void ATimeoutRefreshFailurePreservesTheSession()
+        {
+            AssertTransientRefreshFailurePreservesTheSession(RawApiResponse.Timeout(), ApiErrorKind.Timeout);
+        }
+
+        [Test]
+        public void AServerErrorRefreshFailurePreservesTheSession()
+        {
+            AssertTransientRefreshFailurePreservesTheSession(
+                RawApiResponse.Completed(500, BackendV2Fixtures.ProblemDetailsNotFound), ApiErrorKind.ServerError);
+        }
+
+        [Test]
+        public void ARateLimitedRefreshFailurePreservesTheSession()
+        {
+            AssertTransientRefreshFailurePreservesTheSession(
+                RawApiResponse.Completed(429, BackendV2Fixtures.ProblemDetailsNotFound), ApiErrorKind.RateLimited);
+        }
+
+        [Test]
+        public void AMalformedRefreshResponsePreservesTheSession()
+        {
+            AssertTransientRefreshFailurePreservesTheSession(
+                RawApiResponse.Completed(200, "not valid json"), ApiErrorKind.MalformedResponse);
+        }
+
+        /// <summary>None of these are evidence Backend V2 rejected the refresh credential itself -
+        /// only a definitive server 401 (<see cref="ApiErrorKind.Unauthenticated"/>) or a locally
+        /// expired refresh token is. Every other failure class must leave the exact same session
+        /// object in place, not merely an equal-looking replacement.</summary>
+        private static void AssertTransientRefreshFailurePreservesTheSession(
+            RawApiResponse failureResponse, ApiErrorKind expectedKind)
+        {
+            BackendV2Session original = Session(DateTimeOffset.UtcNow.AddSeconds(5));
+            BackendV2SessionStore.Set(original);
+            FakeApiTransport transport = new FakeApiTransport();
+            transport.Enqueue(failureResponse);
+            BackendV2SessionManager manager = new BackendV2SessionManager(new AuthApiClient(transport));
+
+            ApiResponse<bool> result = null;
+            CoroutineTestRunner.RunToCompletion(manager.ForceRefresh(r => result = r));
+
+            Assert.That(result.Success, Is.False);
+            Assert.That(result.ErrorKind, Is.EqualTo(expectedKind));
+            Assert.That(BackendV2SessionStore.IsAuthenticated, Is.True);
+            Assert.That(BackendV2SessionStore.Current, Is.SameAs(original));
+            Assert.That(BackendV2SessionStore.Current.PlayerId, Is.EqualTo(original.PlayerId));
+            Assert.That(BackendV2SessionStore.Current.RefreshToken, Is.EqualTo(original.RefreshToken));
+        }
+
+        [Test]
+        public void ADefinitiveUnauthenticatedRefreshFailureClearsTheSession()
+        {
+            BackendV2SessionStore.Set(Session(DateTimeOffset.UtcNow.AddSeconds(5)));
+            FakeApiTransport transport = new FakeApiTransport();
+            transport.Enqueue(RawApiResponse.Completed(401, BackendV2Fixtures.ProblemDetailsNotFound));
+            BackendV2SessionManager manager = new BackendV2SessionManager(new AuthApiClient(transport));
+
+            ApiResponse<bool> result = null;
+            CoroutineTestRunner.RunToCompletion(manager.ForceRefresh(r => result = r));
+
+            Assert.That(result.Success, Is.False);
+            Assert.That(result.ErrorKind, Is.EqualTo(ApiErrorKind.Unauthenticated));
+            Assert.That(BackendV2SessionStore.IsAuthenticated, Is.False);
+        }
+
+        [Test]
+        public void AnAlreadyExpiredRefreshTokenClearsLocallyWithoutAnyNetworkCall()
+        {
+            BackendV2Session expiredRefresh = new BackendV2Session(
+                "access-token", DateTimeOffset.UtcNow.AddHours(1), Guid.NewGuid(), "refresh-token",
+                DateTimeOffset.UtcNow.AddMinutes(-1));
+            BackendV2SessionStore.Set(expiredRefresh);
+            FakeApiTransport transport = new FakeApiTransport();
+            BackendV2SessionManager manager = new BackendV2SessionManager(new AuthApiClient(transport));
+
+            ApiResponse<bool> result = null;
+            CoroutineTestRunner.RunToCompletion(manager.ForceRefresh(r => result = r));
+
+            Assert.That(result.Success, Is.False);
+            Assert.That(result.ErrorKind, Is.EqualTo(ApiErrorKind.Unauthenticated));
+            Assert.That(BackendV2SessionStore.IsAuthenticated, Is.False);
+            Assert.That(transport.Requests, Is.Empty, "a locally expired refresh token must never reach the network");
+        }
+
+        [Test]
+        public void AStaleSuccessfulRefreshResponseDoesNotOverwriteANewerSession()
+        {
+            BackendV2Session sessionA = Session(DateTimeOffset.UtcNow.AddHours(1));
+            BackendV2SessionStore.Set(sessionA);
+            FakeApiTransport transport = new FakeApiTransport();
+            transport.Enqueue(RawApiResponse.Completed(200, BackendV2Fixtures.TokenResponse));
+            BackendV2SessionManager manager = new BackendV2SessionManager(new AuthApiClient(transport));
+
+            ApiResponse<bool> result = null;
+            IEnumerator outer = manager.ForceRefresh(r => result = r);
+            Assert.That(outer.MoveNext(), Is.True);
+            IEnumerator refresh = (IEnumerator)outer.Current;
+            Assert.That(refresh.MoveNext(), Is.True);
+            Assert.That(refresh.Current, Is.InstanceOf<IEnumerator>(), "should be suspended on its own Refresh call");
+
+            // Session B replaces A while A's refresh is still in flight - e.g. a fresh login
+            // completing before the old refresh response arrives.
+            BackendV2Session sessionB = Session(DateTimeOffset.UtcNow.AddHours(2));
+            BackendV2SessionStore.Set(sessionB);
+
+            DrainPending(refresh);
+
+            Assert.That(BackendV2SessionStore.Current, Is.SameAs(sessionB),
+                "a refresh response for a superseded session must not overwrite the session that replaced it");
+
+            // The caller whose refresh got superseded must not be told it has a usable rotated
+            // token - session B's authentication is not this caller's to use. Reporting success
+            // here would let AuthenticatedApiClientBase retry a protected request under session
+            // B's identity even though it was made for session A.
+            Assert.That(result.Success, Is.True);
+            Assert.That(result.Value, Is.False,
+                "a stale refresh must never report a usable token, even though some other session is authenticated");
+        }
+
+        [Test]
+        public void ALogoutReplacementRaceDoesNotClearANewerSession()
+        {
+            BackendV2Session sessionA = Session(DateTimeOffset.UtcNow.AddHours(1));
+            BackendV2SessionStore.Set(sessionA);
+            FakeApiTransport transport = new FakeApiTransport();
+            transport.Enqueue(RawApiResponse.NetworkError());
+            BackendV2SessionManager manager = new BackendV2SessionManager(new AuthApiClient(transport));
+
+            ApiResponse<ApiVoid> result = null;
+            IEnumerator logout = manager.Logout(r => result = r);
+            Assert.That(logout.MoveNext(), Is.True);
+            Assert.That(logout.Current, Is.InstanceOf<IEnumerator>(), "should be suspended on the logout HTTP call");
+
+            // A new session is established (e.g. the player logged back in) before A's offline
+            // logout request finishes.
+            BackendV2Session sessionB = Session(DateTimeOffset.UtcNow.AddHours(2));
+            BackendV2SessionStore.Set(sessionB);
+
+            DrainPending(logout);
+
+            Assert.That(BackendV2SessionStore.Current, Is.SameAs(sessionB),
+                "a stale logout response must not clear a session that replaced the one it logged out");
+        }
+
         /// <summary>Finishes draining an enumerator that has already had <c>MoveNext()</c> called on
         /// it at least once (so its <see cref="IEnumerator.Current"/> may already be a nested
         /// enumerator <see cref="CoroutineTestRunner.RunToCompletion"/> has not seen yet).</summary>

@@ -101,12 +101,51 @@ absolute URL per endpoint with no dev/staging/prod concept, which does not scale
   two authorized calls firing close together near expiry (a normal access pattern, e.g. a screen
   listing several things at once) could race two refreshes and have a losing one's failure clear a
   session a winning one had just set.
-- `AuthenticatedApiClientBase` calls `EnsureFreshAccessToken` before every authorized request,
-  fails fast with `ApiErrorKind.Unauthenticated` (no network call) if that leaves no session at all,
-  and otherwise sends the request. On a `401` classified as `ApiErrorKind.Expired` it calls
-  `ForceRefresh` and retries the same request exactly once before surfacing the failure.
+- **A session is cleared only when its refresh credential is definitively unusable**, never merely
+  because a refresh attempt failed. There are three distinct states, not two:
+  - **session present, access token usable** - the ordinary case; nothing about the refresh
+    credential has been questioned.
+  - **session present, refresh temporarily unavailable** - a refresh attempt returned `Network`,
+    `Timeout`, `ServerError`, `RateLimited`, `MalformedResponse`, or another non-`Unauthenticated`
+    failure. Backend V2 never actually rejected the refresh token; the session (and its on-disk
+    copy) is left exactly as it was, and the real `ApiErrorKind` is handed back to the caller. A
+    session surviving this state is **not** a claim that its access token currently works - only
+    that the stored refresh identity has not been shown to be invalid. The next attempt to use it
+    goes through the same refresh/retry path again.
+  - **refresh credential definitively invalid** - either the refresh token is already past its own
+    `RefreshTokenExpiresAt` by this client's own clock (cleared with zero network calls), or the
+    server rejected the refresh request itself with `ApiErrorKind.Unauthenticated`. Only this state
+    clears `BackendV2SessionStore` (and, through `Changed`, the persisted copy).
+
+  `RefreshNow` captures the exact `BackendV2Session` instance a refresh started for before making
+  the call, and only applies a rotated token, or clears on definitive rejection, if
+  `BackendV2SessionStore.Current` still is that same instance by the time the response arrives. If
+  a newer login, logout, or another refresh already replaced or cleared it in the meantime, the
+  stale response is discarded rather than resurrecting a superseded session or overwriting newer
+  session state - the same reference-identity guard `Logout` uses to avoid clearing a session that
+  replaced the one it logged out while its own (possibly offline) request was still in flight. A
+  stale response - even a successful one - always reports back "no usable refresh" to the caller
+  it belonged to, regardless of whether some other session is now authenticated: that other
+  session belongs to a different caller, and `AuthenticatedApiClientBase` must not retry the
+  original protected request under it (the transport always sends whichever session is currently
+  ambient, so a stale "success" would otherwise let one player's request silently execute under
+  another player's identity).
+- `AuthenticatedApiClientBase` calls `EnsureFreshAccessToken` before every authorized request and
+  **captures its outcome** rather than discarding it: a failed proactive refresh (transient or
+  definitive) is returned to the caller immediately, without ever sending the protected request
+  under a token already known to be stale. Only when the proactive refresh succeeded (including the
+  common no-refresh-needed case) does it check `BackendV2SessionStore.IsAuthenticated` and send the
+  request. On a `401` classified as `ApiErrorKind.Expired` it calls `ForceRefresh` and, only on a
+  successful refresh for a session this request can still use, retries the same request exactly
+  once. A transient forced-refresh failure is surfaced as that failure (not the original `Expired`)
+  with no retry; a definitive one is surfaced as `Unauthenticated`, since the session has just been
+  cleared.
 - `api/v2/auth/logout` is called with **no** bearer token, matching the backend: it must work with
-  an already-expired access token, since it only needs the refresh token in the body.
+  an already-expired access token, since it only needs the refresh token in the body. `Logout`
+  captures the session it is logging out before the call and clears the store only if that same
+  session is still current afterward, so a logout response that arrives after the player has
+  already signed back in (or the request was in flight when a newer session was established) cannot
+  clear that newer session.
 
 ## Typed clients and endpoint coverage
 

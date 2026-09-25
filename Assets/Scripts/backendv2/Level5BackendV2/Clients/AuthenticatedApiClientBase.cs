@@ -29,14 +29,27 @@ namespace Level5.BackendV2
             Action<ApiResponse<TResponse>> completed,
             IReadOnlyDictionary<string, string> query = null)
         {
-            yield return sessionManager.EnsureFreshAccessToken(completed: null);
+            // The outcome of the proactive refresh must be captured, not discarded: a transient
+            // failure (network, timeout, 5xx, ...) now preserves the session instead of clearing
+            // it, so IsAuthenticated alone can no longer tell "refresh failed" apart from "refresh
+            // never happened to be needed". Sending the protected request anyway after a failed
+            // refresh would use a token already known to be stale, guaranteeing a doomed request
+            // and a second, redundant refresh attempt inside this same logical operation.
+            ApiResponse<bool> proactiveRefresh = null;
+            yield return sessionManager.EnsureFreshAccessToken(result => proactiveRefresh = result);
+
+            if (proactiveRefresh != null && !proactiveRefresh.Success)
+            {
+                completed?.Invoke(
+                    ApiResponse<TResponse>.Fail(proactiveRefresh.ErrorKind ?? ApiErrorKind.Network, proactiveRefresh.Problem));
+                yield break;
+            }
 
             if (!BackendV2SessionStore.IsAuthenticated)
             {
-                // The proactive refresh above ran and failed (or there was never a session at
-                // all): sending the request now is guaranteed to come back unauthenticated. Fail
-                // fast with the accurate error instead of a doomed round trip classified as
-                // "Expired" for what is really "never signed in".
+                // There was never a session at all: sending the request now is guaranteed to come
+                // back unauthenticated. Fail fast with the accurate error instead of a doomed round
+                // trip classified as "Expired" for what is really "never signed in".
                 completed?.Invoke(ApiResponse<TResponse>.Fail(ApiErrorKind.Unauthenticated));
                 yield break;
             }
@@ -48,14 +61,30 @@ namespace Level5.BackendV2
 
             if (!response1.Success && response1.ErrorKind == ApiErrorKind.Expired)
             {
-                bool refreshed = false;
-                yield return sessionManager.ForceRefresh(result => refreshed = result.Success && result.Value);
+                ApiResponse<bool> forcedRefresh = null;
+                yield return sessionManager.ForceRefresh(result => forcedRefresh = result);
 
-                if (refreshed)
+                if (forcedRefresh != null && forcedRefresh.Success && forcedRefresh.Value)
                 {
                     RawApiResponse retryRaw = null;
                     yield return transport.Send(request, response => retryRaw = response);
                     response1 = ApiResponseMapper.Map<TResponse>(retryRaw, requestRequiredAuth: true);
+                }
+                else if (forcedRefresh == null || !forcedRefresh.Success)
+                {
+                    // The refresh itself is why this operation cannot proceed - surface that
+                    // failure (transient, or a definitive Unauthenticated once the session has
+                    // been cleared) rather than the original access-token Expired response, which
+                    // was never the real blocker.
+                    response1 = ApiResponse<TResponse>.Fail(
+                        forcedRefresh?.ErrorKind ?? ApiErrorKind.Network, forcedRefresh?.Problem);
+                }
+                else
+                {
+                    // Refresh reported success but not for a session this request can use (e.g. a
+                    // logout/new-session race completed the refresh for a session nothing points
+                    // at anymore) - nothing usable to retry with.
+                    response1 = ApiResponse<TResponse>.Fail(ApiErrorKind.Unauthenticated);
                 }
             }
 
