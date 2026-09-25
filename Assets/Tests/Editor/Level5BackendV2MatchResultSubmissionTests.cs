@@ -78,9 +78,9 @@ namespace Level5.BackendV2.Tests
             return Attempt.Issue(
                 new AttemptId("attempt-1"),
                 new ParticipantId("patrick"),
-                gameIndex: 0,
+                0,
                 new RulesetId("most-points"),
-                rulesetVersion: 1,
+                1,
                 DateTime.UtcNow);
         }
 
