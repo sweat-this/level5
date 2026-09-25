@@ -38,6 +38,7 @@ public sealed class CorrespondenceScreenController : MonoBehaviour
         YourTurn,
         Active,
         Completed,
+        History,
     }
 
     private const int DefaultLevelId = 1;
@@ -51,6 +52,7 @@ public sealed class CorrespondenceScreenController : MonoBehaviour
     private SeriesListCoordinator outgoing;
     private SeriesListCoordinator active;
     private SeriesListCoordinator completed;
+    private SeriesListCoordinator history;
 
     private Tab currentTab = Tab.Friends;
     private Guid? challengingFriendId;
@@ -73,6 +75,7 @@ public sealed class CorrespondenceScreenController : MonoBehaviour
         outgoing = new SeriesListCoordinator(BackendV2Runtime.Correspondence.ListOutgoing);
         active = new SeriesListCoordinator(BackendV2Runtime.Correspondence.ListActive);
         completed = new SeriesListCoordinator(BackendV2Runtime.Correspondence.ListCompleted);
+        history = new SeriesListCoordinator(BackendV2Runtime.Correspondence.ListHistory);
 
         BuildUi();
     }
@@ -103,6 +106,7 @@ public sealed class CorrespondenceScreenController : MonoBehaviour
         yield return outgoing.Refresh();
         yield return active.Refresh();
         yield return completed.Refresh();
+        yield return history.Refresh();
         turnClassifier.Reset();
         yield return turnClassifier.ClassifyAll(active.State.Items, RenderCurrentTab);
         RenderCurrentTab();
@@ -179,6 +183,9 @@ public sealed class CorrespondenceScreenController : MonoBehaviour
             case Tab.Completed:
                 yield return completed.Refresh();
                 break;
+            case Tab.History:
+                yield return history.Refresh();
+                break;
         }
 
         RenderCurrentTab();
@@ -220,6 +227,9 @@ public sealed class CorrespondenceScreenController : MonoBehaviour
                 break;
             case Tab.Completed:
                 RenderCompletedTab();
+                break;
+            case Tab.History:
+                RenderHistoryTab();
                 break;
         }
     }
@@ -460,6 +470,21 @@ public sealed class CorrespondenceScreenController : MonoBehaviour
         }
 
         RenderLoadMore(completed);
+    }
+
+    /// <summary>Every terminal series (Completed, Declined, Cancelled, Expired) - the durable
+    /// history view, distinct from <see cref="RenderCompletedTab"/>'s "actually finished play"
+    /// scope. Shows the status explicitly since this tab mixes all four.</summary>
+    private void RenderHistoryTab()
+    {
+        CreateHeader($"History ({history.State.Items.Count})");
+        RenderListStatus(history.State);
+        foreach (SeriesSummaryDto series in history.State.Items)
+        {
+            CreateRow($"{DescribeSeries(series)} - {series.Status}");
+        }
+
+        RenderLoadMore(history);
     }
 
     private void RenderLoadMore(SeriesListCoordinator coordinator)
@@ -733,6 +758,7 @@ public sealed class CorrespondenceScreenController : MonoBehaviour
         CreateButton(topBar.transform, "Your Turn", () => SelectTab(Tab.YourTurn));
         CreateButton(topBar.transform, "Active", () => SelectTab(Tab.Active));
         CreateButton(topBar.transform, "Completed", () => SelectTab(Tab.Completed));
+        CreateButton(topBar.transform, "History", () => SelectTab(Tab.History));
 
         GameObject statusGo = new GameObject("Status", typeof(RectTransform));
         statusGo.transform.SetParent(root.transform, false);
