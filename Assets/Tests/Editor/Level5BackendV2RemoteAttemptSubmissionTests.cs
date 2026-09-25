@@ -8,8 +8,10 @@ namespace Level5.BackendV2.Tests
     /// The re-entrancy guard <see cref="RemoteAttemptResultSubmitter"/> uses to stop
     /// <c>GameRules</c>' own match-end retry loop from firing a second, concurrent
     /// <c>CompleteAttempt</c> submission for the same attempt while a prior one is still in
-    /// flight. Tested as a pure state transition (claim/release) rather than by driving the real
-    /// coroutine, since <c>MonoBehaviour.StartCoroutine</c> does not advance in EditMode.
+    /// flight (tested as a pure state transition rather than by driving the real coroutine, since
+    /// <c>MonoBehaviour.StartCoroutine</c> does not advance in EditMode), and
+    /// <see cref="RemoteAttemptResultSubmitter.Classify"/>, the pure outcome classification exercised
+    /// exhaustively over every <see cref="ApiErrorKind"/>.
     /// </summary>
     public class Level5BackendV2RemoteAttemptSubmissionTests
     {
@@ -38,6 +40,51 @@ namespace Level5.BackendV2.Tests
         public void ReleasingAnAttemptThatIsNotClaimedIsANoOp()
         {
             Assert.DoesNotThrow(() => RemoteAttemptResultSubmitter.Release(Guid.NewGuid()));
+        }
+
+        // --- Classify: pure, exhaustive over every ApiErrorKind -------------------------------
+
+        [Test]
+        public void ClassifySuccessIsSuccess()
+        {
+            ApiResponse<SeriesResponseDto> response = ApiResponse<SeriesResponseDto>.Ok(new SeriesResponseDto());
+            Assert.That(
+                RemoteAttemptResultSubmitter.Classify(response), Is.EqualTo(RemoteAttemptSubmissionOutcome.Success));
+        }
+
+        [Test]
+        public void ClassifyANullResponseIsRetryable()
+        {
+            Assert.That(
+                RemoteAttemptResultSubmitter.Classify(null), Is.EqualTo(RemoteAttemptSubmissionOutcome.Retryable));
+        }
+
+        [Test]
+        public void ClassifyEveryDefinitiveErrorKindIsDefinitive(
+            [Values(ApiErrorKind.Validation, ApiErrorKind.Forbidden, ApiErrorKind.NotFound, ApiErrorKind.Conflict)]
+            ApiErrorKind kind)
+        {
+            Assert.That(
+                RemoteAttemptResultSubmitter.Classify(Fail(kind)),
+                Is.EqualTo(RemoteAttemptSubmissionOutcome.Definitive));
+        }
+
+        [Test]
+        public void ClassifyEveryOtherErrorKindIsRetryable(
+            [Values(
+                ApiErrorKind.Unauthenticated, ApiErrorKind.Expired, ApiErrorKind.RateLimited,
+                ApiErrorKind.ServerError, ApiErrorKind.Network, ApiErrorKind.Timeout,
+                ApiErrorKind.MalformedResponse)]
+            ApiErrorKind kind)
+        {
+            Assert.That(
+                RemoteAttemptResultSubmitter.Classify(Fail(kind)),
+                Is.EqualTo(RemoteAttemptSubmissionOutcome.Retryable));
+        }
+
+        private static ApiResponse<SeriesResponseDto> Fail(ApiErrorKind kind)
+        {
+            return ApiResponse<SeriesResponseDto>.Fail(kind);
         }
     }
 }

@@ -43,15 +43,20 @@ using Debug = UnityEngine.Debug;
 /// <c>https://localhost:7029/</c>) and <c>LEVEL5_BACKEND_REPO_PATH</c> (defaults to assuming
 /// <c>Level5Backend</c> is a sibling checkout of <c>level5</c>).
 ///
-/// Session1 and Session2 are meant to run as two SEPARATE <c>Unity.exe</c> invocations (issue #159's
-/// Phase D: a genuine process restart, not a scene reload - see each method's own doc comment).
-/// Nothing is shared between them in memory; only two things on disk carry state across the process
-/// boundary, both already-real production/tooling paths: the real
-/// <c>Application.persistentDataPath/backendv2_session.json</c> session file (Session1's real Sign-In
-/// click writes it via the real <c>BackendV2SessionPersistenceBootstrap</c>; Session2 never logs in,
-/// only restores it), and the standalone HttpClient counterpart harness's own <c>%TEMP%</c> state
-/// file (<c>Level5Backend/v2/scripts/live-certification</c>, which plays "Account B" - the isolated
-/// second client issue #159 explicitly permits in place of a second Unity install).
+/// Session1, Session2 and Session3 are meant to run as three SEPARATE <c>Unity.exe</c> invocations
+/// (issue #159's Phase D and issue #188's own restart requirement: a genuine process restart, not a
+/// scene reload - see each method's own doc comment). Nothing is shared between them in memory; only
+/// things on disk carry state across each process boundary, all already-real production/tooling
+/// paths: the real <c>Application.persistentDataPath/backendv2_session.json</c> session file
+/// (Session1's real Sign-In click writes it via the real <c>BackendV2SessionPersistenceBootstrap</c>;
+/// Session2 and Session3 never log in, only restore it), the real
+/// <c>Application.persistentDataPath/backendv2_pending_remote_attempt_results.json</c> store
+/// (<see cref="PendingRemoteAttemptResultStore"/> - Session2's real, live-failed submission durably
+/// persists game 2's exact result there before Session2's process exits; Session3 restores and
+/// resends it from disk, never rebuilding it), and the standalone HttpClient counterpart harness's
+/// own <c>%TEMP%</c> state file (<c>Level5Backend/v2/scripts/live-certification</c>, which plays
+/// "Account B" - the isolated second client issue #159 explicitly permits in place of a second Unity
+/// install).
 ///
 /// Drives the real default-assembly <c>CorrespondenceScreenController</c>/<c>GameRules</c>/
 /// <c>GameLevelManager</c> production types via reflection only: a named assembly definition (this
@@ -268,7 +273,7 @@ public class BackendV2LiveCorrespondenceCertificationTests
     // ================================================================= Session 2
 
     /// <summary>
-    /// Phase D + Phase C + Phase E, run as a genuinely separate <c>Unity.exe</c> process from
+    /// Phase D + Phase C's failure half, run as a genuinely separate <c>Unity.exe</c> process from
     /// Session1's (fresh process statics - this method never runs in the same process as Session1's).
     /// Never logs in: opens the correspondence screen and lets the real
     /// <c>BackendV2SessionPersistenceStore.TryLoad -&gt; BackendV2SessionStore.Set</c> restoration -
@@ -277,15 +282,24 @@ public class BackendV2LiveCorrespondenceCertificationTests
     /// authorized request against it, through the normal request-time refresh path. Then plays
     /// game 2 through the real Play button, injects a controlled transport failure (an unreachable
     /// base URI, via the same <c>BackendV2ApiConfigProvider.Override</c> configuration seam
-    /// <c>BackendV2LiveCertificationRunner</c> already uses) right before ending the match, confirms
-    /// the failed result is represented by <c>PendingRemoteAttemptResult</c>, restores the real
-    /// endpoint, reopens the correspondence screen, and clicks the real "Resend result" button
-    /// (Phase C). Finally confirms the Bo3 completed, Active no longer lists it, and the real
-    /// Completed tab does (Phase E).
+    /// <c>BackendV2LiveCertificationRunner</c> already uses) right before ending the match, and
+    /// confirms the failed result is durably represented by <c>PendingRemoteAttemptResult</c> - i.e.
+    /// on disk in <c>PendingRemoteAttemptResultStore</c>'s own file, not merely in this process's
+    /// memory (issue #188).
+    ///
+    /// Deliberately stops here, with the injected transport failure still in effect and before ever
+    /// clicking "Resend result": issue #188's own requirement is that the process can end at exactly
+    /// this point - after the failed submission's exact result has been durably stashed, before any
+    /// resend - and still recover safely. This process exits right after; Session3 is a genuinely
+    /// separate <c>Unity.exe</c> invocation that certifies the actual restart-and-resend recovery,
+    /// never a same-process scene reload standing in for one. The injected endpoint override itself
+    /// is in-memory-only <c>BackendV2ApiConfigProvider</c> state and is never written to disk, so
+    /// Session3 needs no explicit "restore" step - it resolves the correct endpoint the same way this
+    /// method's own <c>ApplyConfig(ResolveConfig())</c> line does.
     /// </summary>
     [UnityTest]
     [Timeout(600000)]
-    public IEnumerator Session2_ResumeAfterRestartRetryAndCompleteSeries()
+    public IEnumerator Session2_PlayGameTwoAndDurablyStashAFailedSubmission()
     {
         RequireLiveCertificationOptIn();
         ApplyConfig(ResolveConfig());
@@ -308,7 +322,6 @@ public class BackendV2LiveCorrespondenceCertificationTests
             "network requests) and skipped the login panel entirely; CorrespondenceScreenController." +
             "Resume() -> RefreshAll then made the first real authorized request against it.");
 
-        Guid playerIdA = BackendV2SessionStore.Current.PlayerId;
         ApiResponse<SeriesSummaryPageDto> activeResult = null;
         yield return BackendV2Runtime.Correspondence.ListActive(20, null, r => activeResult = r);
         Assert.That(activeResult != null && activeResult.Success, Is.True, "ListActive failed: " + Describe(activeResult));
@@ -386,56 +399,135 @@ public class BackendV2LiveCorrespondenceCertificationTests
                 $"represented by PendingRemoteAttemptResult (attemptId={pendingContext.AttemptId}, " +
                 $"metrics=[{string.Join(", ", pendingMetrics.Select(kv => kv.Key + "=" + kv.Value))}]).");
 
+            // Issue #188: PendingRemoteAttemptResult.HasPending being true is not itself proof the
+            // result is durable - a memory-only stash would satisfy this exact same assertion. Reading
+            // straight from PendingRemoteAttemptResultStore (never through the current-process facade)
+            // is what actually proves the exact payload already reached disk, independent of whether
+            // this process ever gets to resend it.
+            bool found = PendingRemoteAttemptResultStore.TryGetForOwner(
+                BackendV2SessionStore.Current.PlayerId, out var persistedEntry);
+            Assert.That(found, Is.True,
+                "Phase C / issue #188 FAILING: PendingRemoteAttemptResultStore has no durable entry for " +
+                "this player - the stash was not actually written to disk");
+            Assert.That(persistedEntry.Context.SeriesId, Is.EqualTo(seriesId));
+            Assert.That(persistedEntry.Context.AttemptId, Is.EqualTo(pendingContext.AttemptId));
+            Assert.That(persistedEntry.Metrics, Is.Not.Empty);
+            Log("Issue #188 PASSING: the exact failed result is durably persisted on disk in " +
+                "PendingRemoteAttemptResultStore, independent of this process's own memory.");
+
             // PendingRemoteAttemptResult.HasPending is set synchronously the instant TrySubmit stashes
             // the payload - BEFORE the network call even starts (RemoteAttemptResultSubmitter.
             // TrySubmit), not after it fails. The WaitUntil above therefore returns almost immediately,
             // while the original failing request against the unreachable endpoint is still in flight
             // and still holds RemoteAttemptResultSubmitter's submission claim (TryClaim/Release).
-            // Restoring the endpoint and clicking Resend before that first request actually settles
-            // would make TryRetryPending's own TryClaim fail silently (already claimed) and start no
-            // new submission at all. Rather than guess a fixed delay, wait for the real completion
-            // signal: the production failure log this first attempt logs when it actually finishes.
+            // Session2 exits shortly after this settles, so - unlike the pre-#188 version of this
+            // fixture, which restored the endpoint and clicked Resend in the same process - nothing
+            // here depends on that claim ever being released in this process; Session3 starts with a
+            // clean in-memory claim table regardless. Still waited for so the failing request's own
+            // Debug.LogError (expected above) has actually fired before this process exits, rather
+            // than racing Unity's teardown.
             yield return WaitUntil(() => firstAttemptSettled, 30f,
                 "Phase C FAILING: the original failing submission never logged its completion within 30s " +
-                "of an unreachable endpoint - RemoteAttemptResultSubmitter's claim may still be held");
+                "of an unreachable endpoint");
         }
         finally
         {
             Application.logMessageReceived -= ObserveFirstAttemptSettling;
         }
 
-        // ---- Restore the valid endpoint and reopen the correspondence screen ----
-        ApplyConfig(ResolveConfig());
-        Log("Restored the real Backend V2 endpoint: " + BackendV2ApiConfigProvider.Current.BaseUri);
+        Log("Session2 complete: game 2's result was built, durably persisted to disk, and its first " +
+            "submission attempt failed and settled against an intentionally unreachable endpoint. The " +
+            "endpoint override is in-memory-only and never reaches disk, so process will now exit with " +
+            "no further cleanup; Session3 will resolve the correct endpoint fresh and certify a genuine " +
+            "restart, restore and resend.");
+    }
 
-        yield return LoadSceneAndSettle();
-        controller = FindController();
-        Assert.That(controller, Is.Not.Null, "CorrespondenceScreen not found after reopening");
-        loginPanel = (GameObject)GetMember(controller, "loginPanel");
-        Assert.That(loginPanel.activeSelf, Is.False,
-            "the still-valid in-memory session should not require a fresh login just from reopening the screen");
+    // ================================================================= Session 3
+
+    /// <summary>
+    /// Phase C's resend half + Phase E, run as a genuinely separate <c>Unity.exe</c> process from
+    /// both Session1's and Session2's (issue #188: the process must be able to end right after a
+    /// failed submission's exact result is durably stashed, and a later, independent process must
+    /// still be able to recover it - never simulated by clearing statics in the same process).
+    ///
+    /// Never logs in and never re-plays game 2: opens the correspondence screen and lets the same
+    /// real session-restoration path Session2 used restore Account A's session (Phase D), then proves
+    /// the pending-result banner for game 2 - the one Session2's process never got to resend - renders
+    /// from <see cref="PendingRemoteAttemptResultStore"/>'s own on-disk file, matches the exact
+    /// series/attempt Session2 built, and can be resent through the real "Resend result" button
+    /// against the (now default, reachable) live Backend V2. Finally confirms the Bo3 completed,
+    /// Active no longer lists it, and the real Completed tab does (Phase E).
+    /// </summary>
+    [UnityTest]
+    [Timeout(600000)]
+    public IEnumerator Session3_ResumeAfterRestartResendPendingResultAndCompleteSeries()
+    {
+        RequireLiveCertificationOptIn();
+        ApplyConfig(ResolveConfig());
+        Log("Resolved the default Backend V2 endpoint fresh in this process: " +
+            BackendV2ApiConfigProvider.Current.BaseUri +
+            " (Session2's unreachable-endpoint override was in-memory-only and never reached this process).");
+
+        Assert.That(BackendV2SessionStore.IsAuthenticated, Is.False,
+            "this test must run as a fresh Unity process with no in-memory session - if this fails, " +
+            "Session2 and Session3 ran in the same process, which does not certify a genuine restart");
+
+        yield return BootstrapFromStartScreenIntoCorrespondence();
+        object controller = FindController();
+        Assert.That(controller, Is.Not.Null, "CorrespondenceScreen not found after scene load");
+
+        GameObject loginPanel = (GameObject)GetMember(controller, "loginPanel");
+        yield return WaitUntil(() => !loginPanel.activeSelf, 30f,
+            "Phase D FAILING: the login panel is still showing 30s after scene load - the persisted " +
+            "session was not restored by this fresh process");
+        Log("Phase D PASSING: a third, genuinely fresh Unity process restored the persisted Backend V2 " +
+            "session and skipped the login panel entirely.");
+
+        Guid playerIdA = BackendV2SessionStore.Current.PlayerId;
+        ApiResponse<SeriesSummaryPageDto> activeResult = null;
+        yield return BackendV2Runtime.Correspondence.ListActive(20, null, r => activeResult = r);
+        Assert.That(activeResult != null && activeResult.Success, Is.True, "ListActive failed: " + Describe(activeResult));
+        SeriesSummaryDto activeSeries = activeResult.Value.Items.Single();
+        Guid seriesId = activeSeries.Id;
+        Assert.That(activeSeries.CurrentGameNumber, Is.EqualTo(2),
+            "game 2 must still be outstanding server-side - Session2's submission never reached Backend V2");
+        Log($"seriesId={seriesId}, still at game 2 (Session2's submission never reached the server).");
+
+        // Issue #188 core proof: the exact pending result restores from disk in a process that never
+        // ran Session2's own TrySubmit call - PendingRemoteAttemptResult (the current-player-scoped
+        // facade) must already report it before any UI interaction, straight off
+        // BackendV2SessionPersistenceStore's restored session + PendingRemoteAttemptResultStore's own
+        // file, never reconstructed from GameStats (there is no gameplay scene loaded at all here).
+        Assert.That(PendingRemoteAttemptResult.HasPending, Is.True,
+            "Phase C / issue #188 FAILING: no pending remote attempt result was restored from disk in " +
+            "this fresh process for the restored session's own player");
+        RemoteAttemptContext restoredContext = PendingRemoteAttemptResult.Context;
+        Assert.That(restoredContext.SeriesId, Is.EqualTo(seriesId));
+        Assert.That(restoredContext.GameNumber, Is.EqualTo(2));
+        Assert.That(PendingRemoteAttemptResult.Metrics, Is.Not.Null.And.Not.Empty);
+        Log($"Issue #188 PASSING: a genuinely fresh process restored the exact pending result from disk " +
+            $"(attemptId={restoredContext.AttemptId}) with no active gameplay context and no GameStats " +
+            "involved at all.");
 
         yield return WaitUntilButtonAppears(controller, "Resend resultButton", 20f);
-        contentRoot = (RectTransform)GetMember(controller, "contentRoot");
+        RectTransform contentRoot = (RectTransform)GetMember(controller, "contentRoot");
         Button resendButton = FindButton(contentRoot, "Resend resultButton");
         Assert.That(resendButton, Is.Not.Null,
             "the pending-result banner's real 'Resend result' button did not render within 20s:\n" +
             DumpContentRoot(controller));
-        Log("Pending-result banner PASSING: visible on the real correspondence screen after reopening.");
+        Log("Issue #188 PASSING: the real correspondence screen's pending-result banner rendered from " +
+            "the disk-restored state in a genuinely fresh process.");
 
-        IApiTransport liveTransport = BackendV2Runtime.Transport;
-        object liveTransportConfig = GetMember(liveTransport.GetType(), liveTransport, "config");
         Log("Clicking the real 'Resend result' button (-> RemoteAttemptResultSubmitter.TryRetryPending, " +
-            "resending the exact stashed payload) ... BackendV2Runtime.Transport actual config.BaseUri=" +
-            GetMember(liveTransportConfig.GetType(), liveTransportConfig, "BaseUri"));
+            "resending the exact persisted payload) against the live, reachable Backend V2 ...");
         resendButton.onClick.Invoke();
 
         yield return WaitUntil(
             () => !PendingRemoteAttemptResult.HasPending && !ActiveRemoteAttempt.IsActive, 30f,
-            "the pending result did not clear within 30s after a real Resend-result click against the " +
-            "restored endpoint");
-        Log("Phase C PASSING: the real Resend-result click resubmitted the exact stashed payload and " +
-            "Backend V2 accepted it - the pending state cleared only after that definitive server outcome.");
+            "the pending result did not clear within 30s after a real Resend-result click");
+        Log("Phase C PASSING: the real Resend-result click resubmitted the exact persisted payload and " +
+            "Backend V2 accepted it - the pending state cleared only after that definitive server outcome, " +
+            "and PendingRemoteAttemptResultStore's own file no longer holds this entry.");
 
         // ---- Phase E: the Bo3 must now be complete ----
         ApiResponse<SeriesResponseDto> finalSeries = null;

@@ -17,6 +17,8 @@ namespace Level5.BackendV2.Tests
     {
         private const string RulesetIdValue = "most-points";
 
+        private Guid sessionPlayerId;
+
         [SetUp]
         public void SetUp()
         {
@@ -34,8 +36,9 @@ namespace Level5.BackendV2.Tests
                 displayName: "Most Points");
             VersusCatalogs.Override(new CompetitiveRulesetCatalog(new[] { ruleset }));
 
+            sessionPlayerId = Guid.NewGuid();
             BackendV2SessionStore.Set(new BackendV2Session(
-                "access-token", DateTimeOffset.UtcNow.AddHours(1), Guid.NewGuid(), "refresh-token",
+                "access-token", DateTimeOffset.UtcNow.AddHours(1), sessionPlayerId, "refresh-token",
                 DateTimeOffset.UtcNow.AddDays(30)));
         }
 
@@ -49,7 +52,7 @@ namespace Level5.BackendV2.Tests
             RemoteAttemptLauncher.ResetSceneLoader();
             ActiveMatch.Clear();
             ActiveRemoteAttempt.Clear();
-            PendingRemoteAttemptResult.Clear();
+            PendingRemoteAttemptResultStore.Clear();
         }
 
         [Test]
@@ -58,10 +61,11 @@ namespace Level5.BackendV2.Tests
             // A previous attempt failed to submit and its result is still pending retry -
             // ActiveRemoteAttempt/PendingRemoteAttemptResult are single global slots, so starting a
             // second attempt here would silently overwrite (and lose) the first one's unretried
-            // result.
+            // result. Owned by the same player as this test's own signed-in session (SetUp) - a
+            // pending result is only visible to, and only blocks, its own owner.
             PendingRemoteAttemptResult.Stash(
                 new RemoteAttemptContext(
-                    Guid.NewGuid(), 1, Guid.NewGuid(), Guid.NewGuid(), RulesetIdValue, 1, 1,
+                    Guid.NewGuid(), 1, Guid.NewGuid(), sessionPlayerId, RulesetIdValue, 1, 1,
                     Array.Empty<ComparisonKeySummaryDto>(), new[] { "Score" }),
                 new Dictionary<string, double> { ["Score"] = 1 });
 
@@ -164,6 +168,67 @@ namespace Level5.BackendV2.Tests
             Assert.That(ActiveRemoteAttempt.IsActive, Is.True);
             Assert.That(ActiveRemoteAttempt.Context.RequiredResultMetrics,
                 Is.EquivalentTo(new[] { "Score", "Accuracy", "ShotsAttempted" }));
+        }
+
+        /// <summary>Issue #188: the pending-result launch guard is owner-aware through
+        /// <see cref="PendingRemoteAttemptResult"/>'s current-player scoping - a different Backend V2
+        /// player signed in on this device must never be blocked by another player's still-pending
+        /// result.</summary>
+        [Test]
+        public void ADifferentSignedInPlayerIsNotBlockedByAnotherPlayersPendingResult()
+        {
+            Guid otherOwner = Guid.NewGuid();
+            PendingRemoteAttemptResult.Stash(
+                new RemoteAttemptContext(
+                    Guid.NewGuid(), 1, Guid.NewGuid(), otherOwner, RulesetIdValue, 1, 1,
+                    Array.Empty<ComparisonKeySummaryDto>(), new[] { "Score" }),
+                new Dictionary<string, double> { ["Score"] = 1 });
+
+            // sessionPlayerId (SetUp) is a different player than otherOwner - their own pending
+            // result, if any, is irrelevant here; otherOwner's must never block them.
+            FakeApiTransport transport = new FakeApiTransport();
+            transport.Enqueue(RawApiResponse.Completed(200, BackendV2Fixtures.AttemptDescriptor));
+            BackendV2Runtime.Override(transport);
+            RemoteAttemptLauncher.OverrideSceneLoader(_ => { });
+
+            RemoteAttemptLaunch result = default;
+            CoroutineTestRunner.RunToCompletion(RemoteAttemptLauncher.Run(
+                Guid.NewGuid(), 1, 4, CharacterSelection.None, null, launch => result = launch));
+
+            Assert.That(result.Succeeded, Is.True, result.Error);
+            Assert.That(transport.Requests, Has.Count.EqualTo(1), "must have reached StartAttempt");
+        }
+
+        /// <summary>Issue #188: signing back in as the owning player must restore the block - the
+        /// guard is scoped to whichever player is currently signed in, not to a fixed local identity
+        /// resolved once at launcher start.</summary>
+        [Test]
+        public void SigningBackInAsTheOwningPlayerRestoresTheLaunchBlock()
+        {
+            PendingRemoteAttemptResult.Stash(
+                new RemoteAttemptContext(
+                    Guid.NewGuid(), 1, Guid.NewGuid(), sessionPlayerId, RulesetIdValue, 1, 1,
+                    Array.Empty<ComparisonKeySummaryDto>(), new[] { "Score" }),
+                new Dictionary<string, double> { ["Score"] = 1 });
+
+            // A different player signs in - not blocked (proven above) - then the original owner
+            // signs back in.
+            BackendV2SessionStore.Set(new BackendV2Session(
+                "access-token", DateTimeOffset.UtcNow.AddHours(1), Guid.NewGuid(), "refresh-token",
+                DateTimeOffset.UtcNow.AddDays(30)));
+            BackendV2SessionStore.Set(new BackendV2Session(
+                "access-token", DateTimeOffset.UtcNow.AddHours(1), sessionPlayerId, "refresh-token",
+                DateTimeOffset.UtcNow.AddDays(30)));
+
+            FakeApiTransport transport = new FakeApiTransport();
+            BackendV2Runtime.Override(transport);
+
+            RemoteAttemptLaunch result = default;
+            CoroutineTestRunner.RunToCompletion(RemoteAttemptLauncher.Run(
+                Guid.NewGuid(), 1, 4, CharacterSelection.None, null, launch => result = launch));
+
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(transport.Requests, Is.Empty, "must fail before ever calling StartAttempt");
         }
 
         /// <summary>Issue #179: a non-empty local character selection (as <see
