@@ -49,6 +49,18 @@ namespace Level5.BackendV2.Tests
             Path.Combine(Directory.GetCurrentDirectory(), "Assets", "Scripts", "backendv2", "BackendV2MatchResultSubmission.cs"),
         };
 
+        /// <summary>
+        /// The online-account screen's MonoBehaviour, which - like <see cref="MatchResultDefaultAssemblyFiles"/> -
+        /// lives in the default assembly (it needs <c>MenuFooterUiObjects</c>/<c>UiSelectionAdapter</c>,
+        /// which have no assembly definition of their own), so <see cref="ClientFiles"/> alone would
+        /// miss it. <see cref="OnlineAccountControllerNeverUsesLocalProfileIdentity"/> is the one check
+        /// that specifically needs this file.
+        /// </summary>
+        private static readonly string[] OnlineAccountControllerFiles =
+        {
+            Path.Combine(Directory.GetCurrentDirectory(), "Assets", "Scripts", "menu_login", "OnlineAccountController.cs"),
+        };
+
         [Test]
         public void LegacyApiHelperHasNoBackendV2MethodsAddedToIt()
         {
@@ -201,6 +213,34 @@ namespace Level5.BackendV2.Tests
             {
                 offenders.Add(Relative(file));
             }
+        }
+
+        [Test]
+        public void OnlineAccountControllerNeverUsesLocalProfileIdentity()
+        {
+            // The online-account screen is a Backend V2 online-identity surface only - it must never
+            // read or write local profile identity (GameOptions.userid/userName, which would blur it
+            // with the player's local save-selection) or fall back to the legacy V1 account API
+            // (APIHelper) or its UserModel, which would defeat the point of a dedicated V2 screen.
+            List<string> offenders = new List<string>();
+
+            foreach (string file in OnlineAccountControllerFiles)
+            {
+                string text = StripComments(File.ReadAllText(file));
+                if (text.Contains("GameOptions.userid")
+                    || text.Contains("GameOptions.userName")
+                    || text.Contains("APIHelper")
+                    || text.Contains("UserModel"))
+                {
+                    offenders.Add(Relative(file));
+                }
+            }
+
+            Assert.That(
+                offenders,
+                Is.Empty,
+                "The online-account controller must never use local profile identity or the legacy "
+                    + "account API:\n" + string.Join("\n", offenders));
         }
 
         private static IEnumerable<string> ClientFiles()

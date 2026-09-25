@@ -23,6 +23,11 @@ namespace Level5.BackendV2
             return SendAuthorized(ApiHttpMethod.Get, "api/v2/players/me", null, completed);
         }
 
+        public IEnumerator GetMyProfile(Action<ApiResponse<PlayerProfileResponseDto>> completed)
+        {
+            return SendAuthorized(ApiHttpMethod.Get, "api/v2/players/me/profile", null, completed);
+        }
+
         public IEnumerator UpdateMe(string displayName, Action<ApiResponse<PlayerProfileResponseDto>> completed)
         {
             return SendAuthorized(

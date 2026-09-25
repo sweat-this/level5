@@ -110,6 +110,9 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/Scenes/level_00_multiplayer.unity
     guid: 06341e8b38c82064f9c4e9eef4182a0e
+  - enabled: 1
+    path: Assets/Scenes/level_00_account_online.unity
+    guid: 8c5f23539ee195849ba1ae0be37878b4
   m_configObjects:
     com.unity.adaptiveperformance.loader_settings: {fileID: 11400000, guid: 807e81753eb35b94b8452c51ec5e4c3b,
       type: 2}

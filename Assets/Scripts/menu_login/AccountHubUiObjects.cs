@@ -12,10 +12,12 @@ public class AccountHubUiObjects : MonoBehaviour
     [SerializeField] private Button createNewButton;
     [SerializeField] private Button loginExistingButton;
     [SerializeField] private Button loginLocalButton;
+    [SerializeField] private Button onlineAccountButton;
 
     public Button CreateNewButton => createNewButton;
     public Button LoginExistingButton => loginExistingButton;
     public Button LoginLocalButton => loginLocalButton;
+    public Button OnlineAccountButton => onlineAccountButton;
 
     public bool Validate(List<string> missing)
     {
@@ -23,6 +25,7 @@ public class AccountHubUiObjects : MonoBehaviour
         if (createNewButton == null) missing.Add("AccountHubUiObjects.createNewButton");
         if (loginExistingButton == null) missing.Add("AccountHubUiObjects.loginExistingButton");
         if (loginLocalButton == null) missing.Add("AccountHubUiObjects.loginLocalButton");
+        if (onlineAccountButton == null) missing.Add("AccountHubUiObjects.onlineAccountButton");
         return missing.Count == before;
     }
 }

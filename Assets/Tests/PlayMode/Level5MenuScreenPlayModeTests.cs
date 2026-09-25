@@ -111,5 +111,21 @@ public class Level5MenuScreenPlayModeTests
         Assert.That(EventSystem.current, Is.Not.Null);
         Assert.That(EventSystem.current.currentSelectedGameObject, Is.Not.Null);
     }
+
+    [UnityTest]
+    public IEnumerator OnlineAccountScreenLoadsAndKeepsItsControllerEnabled()
+    {
+        yield return LoadMenuScene(Constants.SCENE_NAME_level_00_account_online);
+
+        MonoBehaviour controller =
+            RealScenePlayModeTestSupport.FindActiveBehaviourInScene(loadedScene, "OnlineAccountController");
+        Assert.That(controller, Is.Not.Null, "OnlineAccountController was not found in the loaded scene.");
+        Assert.That(
+            controller.enabled,
+            Is.True,
+            "OnlineAccountController disabled itself - a required UI reference is missing.");
+        Assert.That(EventSystem.current, Is.Not.Null);
+        Assert.That(EventSystem.current.currentSelectedGameObject, Is.Not.Null);
+    }
 }
 #endif

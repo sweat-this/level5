@@ -902,6 +902,7 @@ public sealed class Level5ProjectValidator : IPreprocessBuildWithReport
                 AddMenuUiContractErrors<StatsManager>(errors, buildScene.path, scene, (m, missing) => m.ValidateMenuUi(missing));
                 AddMenuUiContractErrors<ProgressionManager>(errors, buildScene.path, scene, (m, missing) => m.ValidateMenuUi(missing));
                 AddMenuUiContractErrors<AccountManager>(errors, buildScene.path, scene, (m, missing) => m.ValidateMenuUi(missing));
+                AddMenuUiContractErrors<OnlineAccountController>(errors, buildScene.path, scene, (m, missing) => m.ValidateMenuUi(missing));
                 AddMenuUiContractErrors<StartManager>(errors, buildScene.path, scene, (m, missing) => m.ValidateMenuUi(missing));
                 AddMenuUiContractErrors<Pause>(errors, buildScene.path, scene, (m, missing) => m.ValidateMenuUi(missing));
             }
