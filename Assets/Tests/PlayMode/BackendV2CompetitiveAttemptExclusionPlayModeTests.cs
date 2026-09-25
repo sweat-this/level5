@@ -2,7 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
-using Assets.Scripts.database;
+using System.Reflection;
 using Level5.BackendV2;
 using Level5.Core.Match;
 using NUnit.Framework;
@@ -22,6 +22,9 @@ using UnityEngine.TestTools;
 /// </summary>
 public class BackendV2CompetitiveAttemptExclusionPlayModeTests
 {
+    private const string HighScoreModelTypeName = "Assets.Scripts.database.HighScoreModel";
+    private const string MatchResultSubmissionTypeName = "Level5.BackendV2.BackendV2MatchResultSubmission";
+
     private readonly List<GameObject> hosts = new List<GameObject>();
 
     [TearDown]
@@ -31,7 +34,7 @@ public class BackendV2CompetitiveAttemptExclusionPlayModeTests
         {
             if (host != null)
             {
-                Object.DestroyImmediate(host);
+                UnityEngine.Object.DestroyImmediate(host);
             }
         }
 
@@ -72,18 +75,20 @@ public class BackendV2CompetitiveAttemptExclusionPlayModeTests
         BackendV2Runtime.Override(transport);
 
         // The exact two calls GameRules.HandleMatchEnded makes at match end, in order: the general
-        // submission first, then the correspondence submission.
-        HighScoreModel score = new HighScoreModel
-        {
-            Scoreid = Guid.NewGuid().ToString("N"),
-            Modeid = 3,
-            Levelid = 7,
-            Characterid = 12,
-            Version = "1.4.2",
-            Platform = "Handheld",
-            TotalPoints = 120,
-        };
-        BackendV2MatchResultSubmission.TryQueue(score);
+        // submission first, then the correspondence submission. HighScoreModel lives in the implicit
+        // default assembly, which this named PlayModeTests assembly can never reference at compile
+        // time (a hard Unity restriction) - built and submitted through reflection instead, matching
+        // BackendV2LiveCorrespondenceCertificationTests' own convention for driving default-assembly
+        // production types.
+        object score = BuildHighScoreModel(
+            scoreid: Guid.NewGuid().ToString("N"),
+            modeid: 3,
+            levelid: 7,
+            characterid: 12,
+            version: "1.4.2",
+            platform: "Handheld",
+            totalPoints: 120);
+        InvokeTryQueue(score);
 
         GameObject statsHost = new GameObject("competitive-exclusion-stats");
         hosts.Add(statsHost);
@@ -108,6 +113,73 @@ public class BackendV2CompetitiveAttemptExclusionPlayModeTests
             "the correspondence attempt must still be completed through its own endpoint");
         Assert.That(PendingMatchResultStore.GetRetryable(playerId), Is.Empty,
                 "TryQueue must not have queued a general result for this attempt");
+    }
+
+    /// <summary>Resolves <c>Assets.Scripts.database.HighScoreModel</c> by full name across the loaded
+    /// AppDomain and builds one through reflection, setting the same fields the pre-reflection version
+    /// of this fixture set directly.</summary>
+    private static object BuildHighScoreModel(
+        string scoreid, int modeid, int levelid, int characterid, string version, string platform, int totalPoints)
+    {
+        Type type = ResolveType(HighScoreModelTypeName);
+        object instance = Activator.CreateInstance(type);
+        SetPublicField(type, instance, "Scoreid", scoreid);
+        SetPublicField(type, instance, "Modeid", modeid);
+        SetPublicField(type, instance, "Levelid", levelid);
+        SetPublicField(type, instance, "Characterid", characterid);
+        SetPublicField(type, instance, "Version", version);
+        SetPublicField(type, instance, "Platform", platform);
+        SetPublicField(type, instance, "TotalPoints", totalPoints);
+        return instance;
+    }
+
+    /// <summary>Invokes the real, production <c>Level5.BackendV2.BackendV2MatchResultSubmission.
+    /// TryQueue</c> through reflection. Despite the shared <c>Level5.BackendV2</c> namespace,
+    /// <c>BackendV2MatchResultSubmission</c> itself lives outside <c>Level5.BackendV2.asmdef</c>'s
+    /// folder (next to <c>HighScoreModel</c>, in the implicit default assembly - see that class's own
+    /// doc comment), so it is just as unreachable at compile time from this named assembly as its
+    /// <c>HighScoreModel</c> parameter is; both are resolved by full name instead.</summary>
+    private static void InvokeTryQueue(object score)
+    {
+        Type type = ResolveType(MatchResultSubmissionTypeName);
+        MethodInfo method = type.GetMethod("TryQueue", BindingFlags.Public | BindingFlags.Static);
+        if (method == null)
+        {
+            throw new InvalidOperationException(
+                $"{MatchResultSubmissionTypeName} has no public static method 'TryQueue' - " +
+                "BackendV2CompetitiveAttemptExclusionPlayModeTests can no longer drive it through reflection.");
+        }
+
+        method.Invoke(null, new[] { score });
+    }
+
+    private static Type ResolveType(string fullName)
+    {
+        foreach (Assembly assembly in AppDomain.CurrentDomain.GetAssemblies())
+        {
+            Type type = assembly.GetType(fullName);
+            if (type != null)
+            {
+                return type;
+            }
+        }
+
+        throw new InvalidOperationException(
+            $"Type '{fullName}' was not found in any loaded assembly - " +
+            "BackendV2CompetitiveAttemptExclusionPlayModeTests can no longer resolve it through reflection.");
+    }
+
+    private static void SetPublicField(Type type, object instance, string fieldName, object value)
+    {
+        FieldInfo field = type.GetField(fieldName, BindingFlags.Public | BindingFlags.Instance);
+        if (field == null)
+        {
+            throw new InvalidOperationException(
+                $"{type.FullName} has no public instance field '{fieldName}' - " +
+                "BackendV2CompetitiveAttemptExclusionPlayModeTests can no longer set it through reflection.");
+        }
+
+        field.SetValue(instance, value);
     }
 
     /// <summary>Local, minimal counterpart to the EditMode-only <c>FakeApiTransport</c>

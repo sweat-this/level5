@@ -1,9 +1,12 @@
 using System;
+using System.Text.RegularExpressions;
 using Assets.Scripts.database;
 using Level5.BackendV2;
 using Level5.Core.Match;
 using Level5.Core.Versus;
 using NUnit.Framework;
+using UnityEngine;
+using UnityEngine.TestTools;
 
 namespace Level5.BackendV2.Tests
 {
@@ -140,6 +143,7 @@ namespace Level5.BackendV2.Tests
                 "access-token", DateTimeOffset.UtcNow.AddHours(1), Guid.NewGuid(), "refresh-token",
                 DateTimeOffset.UtcNow.AddDays(30)));
 
+            LogAssert.Expect(LogType.Error, new Regex("BackendV2MatchResultAdapter was given a null HighScoreModel"));
             Assert.DoesNotThrow(() => BackendV2MatchResultSubmission.TryQueue(null));
         }
 
@@ -151,6 +155,7 @@ namespace Level5.BackendV2.Tests
                 "access-token", DateTimeOffset.UtcNow.AddHours(1), playerId, "refresh-token",
                 DateTimeOffset.UtcNow.AddDays(30)));
 
+            LogAssert.Expect(LogType.Error, new Regex("BackendV2MatchResultAdapter could not parse HighScoreModel.Scoreid"));
             BackendV2MatchResultSubmission.TryQueue(ValidScore(scoreid: "not-a-guid"));
 
             Assert.That(PendingMatchResultStore.GetRetryable(playerId), Is.Empty);

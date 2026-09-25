@@ -1,8 +1,11 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Text.RegularExpressions;
 using Level5.BackendV2;
 using NUnit.Framework;
+using UnityEngine;
+using UnityEngine.TestTools;
 
 namespace Level5.BackendV2.Tests
 {
@@ -12,9 +15,11 @@ namespace Level5.BackendV2.Tests
     ///
     /// <see cref="MatchResultSubmissionCoordinator.Drain"/> is driven directly via
     /// <see cref="CoroutineTestRunner"/> rather than through <c>TriggerDrain</c>/<c>Enqueue</c>'s own
-    /// <c>BackendV2CoroutineHost.StartCoroutine</c> call, which does not advance in EditMode (the
-    /// same boundary <see cref="Level5BackendV2PendingResultRetryTests"/> already documents for
-    /// <c>RemoteAttemptResultSubmitter</c>).
+    /// path: <c>TriggerDrain</c> no-ops outright outside Play mode (no player loop to ever advance a
+    /// <c>BackendV2CoroutineHost.StartCoroutine</c> call), the same boundary
+    /// <see cref="Level5BackendV2PendingResultRetryTests"/> documents for
+    /// <c>RemoteAttemptResultSubmitter</c>, whose own coroutine trigger is still reachable but simply
+    /// never advances in EditMode.
     /// </summary>
     public class Level5BackendV2MatchResultSubmissionCoordinatorTests
     {
@@ -103,9 +108,9 @@ namespace Level5.BackendV2.Tests
             Guid owner = SetAuthenticatedSession();
             Guid clientResultId = Guid.NewGuid();
 
-            // TriggerDrain (called internally by Enqueue) starts a coroutine on
-            // BackendV2CoroutineHost, which does not advance in EditMode - so if persistence
-            // depended on that coroutine ever running, this would still show nothing queued.
+            // TriggerDrain (called internally by Enqueue) no-ops outright in EditMode (no player loop
+            // to ever run a BackendV2CoroutineHost coroutine on) - so if persistence depended on that
+            // background trigger actually delivering anything, this would still show nothing queued.
             MatchResultSubmissionCoordinator.Enqueue(owner, Request(clientResultId));
 
             List<PendingMatchResult> retryable = PendingMatchResultStore.GetRetryable(owner);
@@ -239,6 +244,7 @@ namespace Level5.BackendV2.Tests
             transport.Enqueue(RawApiResponse.Completed(400, string.Empty));
             BackendV2Runtime.Override(transport);
 
+            LogAssert.Expect(LogType.Error, new Regex("was refused with a definitive Validation"));
             CoroutineTestRunner.RunToCompletion(MatchResultSubmissionCoordinator.Drain());
 
             Assert.That(PendingMatchResultStore.GetRetryable(owner), Is.Empty,
@@ -259,6 +265,7 @@ namespace Level5.BackendV2.Tests
             transport.Enqueue(RawApiResponse.Completed(409, BackendV2Fixtures.ProblemDetailsMatchResultConflict));
             BackendV2Runtime.Override(transport);
 
+            LogAssert.Expect(LogType.Error, new Regex("was refused with a definitive Conflict"));
             CoroutineTestRunner.RunToCompletion(MatchResultSubmissionCoordinator.Drain());
 
             Assert.That(PendingMatchResultStore.GetRetryable(owner), Is.Empty,

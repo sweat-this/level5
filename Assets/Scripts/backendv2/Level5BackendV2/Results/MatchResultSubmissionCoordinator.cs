@@ -72,6 +72,16 @@ namespace Level5.BackendV2
                 return;
             }
 
+            // EditMode has no player loop and no scene to attach a coroutine host to -
+            // BackendV2CoroutineHost.Instance would still construct one via Object.DontDestroyOnLoad,
+            // which logs an engine error outside Play mode. EditMode tests drive Drain() directly
+            // (CoroutineTestRunner.RunToCompletion) instead of relying on this background trigger, so
+            // skipping it here does not change EditMode behavior, only silences that spurious error.
+            if (!Application.isPlaying)
+            {
+                return;
+            }
+
             try
             {
                 BackendV2CoroutineHost.Instance.StartCoroutine(Drain());
