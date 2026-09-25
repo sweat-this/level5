@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Text.RegularExpressions;
 using Level5.BackendV2;
 using NUnit.Framework;
 using UnityEngine;
+using UnityEngine.TestTools;
 
 namespace Level5.BackendV2.Tests
 {
@@ -108,6 +110,7 @@ namespace Level5.BackendV2.Tests
             Guid clientResultId = Guid.NewGuid();
             PendingMatchResultStore.Enqueue(owner, Request(clientResultId, totalPoints: 100));
 
+            LogAssert.Expect(LogType.Error, new Regex("PendingMatchResultStore refused to enqueue a match result"));
             PendingMatchResultEnqueueResult outcome =
                 PendingMatchResultStore.Enqueue(owner, Request(clientResultId, totalPoints: 999));
 

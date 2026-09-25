@@ -1,7 +1,10 @@
 using System;
+using System.Text.RegularExpressions;
 using Assets.Scripts.database;
 using Level5.BackendV2;
 using NUnit.Framework;
+using UnityEngine;
+using UnityEngine.TestTools;
 
 namespace Level5.BackendV2.Tests
 {
@@ -111,6 +114,7 @@ namespace Level5.BackendV2.Tests
             HighScoreModel score = ValidScore();
             score.Scoreid = "not-a-guid";
 
+            LogAssert.Expect(LogType.Error, new Regex("BackendV2MatchResultAdapter could not parse HighScoreModel.Scoreid"));
             bool adapted = BackendV2MatchResultAdapter.TryAdapt(score, out SubmitMatchResultDto request);
 
             Assert.That(adapted, Is.False);
@@ -123,6 +127,7 @@ namespace Level5.BackendV2.Tests
             HighScoreModel score = ValidScore();
             score.Scoreid = null;
 
+            LogAssert.Expect(LogType.Error, new Regex("BackendV2MatchResultAdapter could not parse HighScoreModel.Scoreid"));
             bool adapted = BackendV2MatchResultAdapter.TryAdapt(score, out SubmitMatchResultDto request);
 
             Assert.That(adapted, Is.False);
@@ -132,6 +137,7 @@ namespace Level5.BackendV2.Tests
         [Test]
         public void TryAdaptReturnsFalseForANullScore()
         {
+            LogAssert.Expect(LogType.Error, new Regex("BackendV2MatchResultAdapter was given a null HighScoreModel"));
             bool adapted = BackendV2MatchResultAdapter.TryAdapt(null, out SubmitMatchResultDto request);
 
             Assert.That(adapted, Is.False);
