@@ -213,6 +213,25 @@ public class BackendV2LiveOnlineAccountCertificationTests
         RequireLiveCertificationOptIn();
         ApplyConfig(ResolveConfig());
 
+        // Cleanup (handoff file, local session state, config override) runs in `finally` so a failed
+        // assertion anywhere below still leaves this process's local certification state clean - e.g.
+        // a stale handoff file must never survive to confuse a later, independent Session2-only rerun.
+        try
+        {
+            yield return RunSession2();
+        }
+        finally
+        {
+            DeleteHandoffFileIfPresent();
+            BackendV2SessionPersistenceStore.Clear();
+            BackendV2SessionStore.Clear();
+            BackendV2ApiConfigProvider.Reset();
+            Log("Session2 cleanup: handoff file deleted, local session state cleared, config override reset.");
+        }
+    }
+
+    private static IEnumerator RunSession2()
+    {
         Assert.That(BackendV2SessionStore.IsAuthenticated, Is.False,
             "this test must run as a fresh Unity process with no in-memory session - if this fails, " +
             "Session1 and Session2 ran in the same process, which does not certify a genuine restart");
@@ -327,13 +346,7 @@ public class BackendV2LiveOnlineAccountCertificationTests
             "expected Unauthenticated for a revoked refresh token; got " + refreshResult.ErrorKind);
         Log("Refresh-token revocation PASSING (live): POST api/v2/auth/logout -> LogoutUseCase -> " +
             "AuthSession.Revoke rejected the old refresh token with Unauthenticated.");
-
-        // ---- Cleanup ----
-        DeleteHandoffFileIfPresent();
-        BackendV2SessionPersistenceStore.Clear();
-        BackendV2SessionStore.Clear();
-        BackendV2ApiConfigProvider.Reset();
-        Log("Session2 complete: handoff file deleted, local session state cleared, config override reset.");
+        Log("Session2 complete.");
     }
 
     // ================================================================= shared helpers
