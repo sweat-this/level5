@@ -93,6 +93,24 @@ namespace Level5.BackendV2.Tests
             ""nextCursor"": ""opaque-cursor-token""
         }";
 
+        /// <summary>Same shape as <see cref="SeriesSummaryPage"/> but with a terminal
+        /// <c>"Expired"</c> status and its own distinct cursor - proves a History-route test
+        /// exercises History's own response/cursor, not a copy-pasted Incoming/Outgoing one.</summary>
+        public const string SeriesSummaryPageHistoryExpired = @"{
+            ""items"": [{
+                ""id"": ""4c23c3d8-4040-4b1f-8d3f-9b8d3c2e5f6a"",
+                ""challengerId"": ""8f14e45f-ceea-467e-a4d9-b3e5c76f1a3a"",
+                ""opponentId"": ""1b645389-2473-467d-9073-72d45eb05abc"",
+                ""status"": ""Expired"",
+                ""currentGameNumber"": 1,
+                ""totalGames"": 3,
+                ""revision"": 4,
+                ""createdAt"": ""2026-09-01T00:00:00+00:00""
+            }],
+            ""limit"": 20,
+            ""nextCursor"": ""opaque-history-cursor-token""
+        }";
+
         public const string AttemptDescriptor = @"{
             ""seriesId"": ""4c23c3d8-4040-4b1f-8d3f-9b8d3c2e5f6a"",
             ""attemptId"": ""5d34d4e9-5151-4c2f-9e4f-0a9e4d3f6a7b"",
