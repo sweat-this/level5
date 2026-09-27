@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Level5.BackendV2;
 using Level5.Core.Match;
+using Level5.Core.Progression;
 using Level5.Core.Versus;
 using NUnit.Framework;
 
@@ -16,8 +17,17 @@ namespace Level5.BackendV2.Tests
     public class Level5BackendV2RemoteAttemptLauncherTests
     {
         private const string RulesetIdValue = "most-points";
+        private const int EligibleLevelId = 4;
 
         private Guid sessionPlayerId;
+
+        /// <summary>An unlock snapshot that answers a single level as unlocked - the default shape
+        /// every pre-#198 test in this file needs now that <see cref="RemoteAttemptLauncher.Run"/>
+        /// requires one. The eligibility-specific tests below build their own.</summary>
+        private static UnlockSnapshot Unlocked(int levelId)
+        {
+            return new UnlockSnapshot(null, new Dictionary<int, bool> { [levelId] = true });
+        }
 
         [SetUp]
         public void SetUp()
@@ -74,7 +84,7 @@ namespace Level5.BackendV2.Tests
 
             RemoteAttemptLaunch result = default;
             CoroutineTestRunner.RunToCompletion(RemoteAttemptLauncher.Run(
-                Guid.NewGuid(), 1, 4, CharacterSelection.None, null, launch => result = launch));
+                Guid.NewGuid(), 1, 4, CharacterSelection.None, null, Unlocked(EligibleLevelId), launch => result = launch));
 
             Assert.That(result.Succeeded, Is.False);
             Assert.That(transport.Requests, Is.Empty, "must fail before ever calling StartAttempt");
@@ -91,7 +101,7 @@ namespace Level5.BackendV2.Tests
             RemoteAttemptLaunch result = default;
             bool completedCalled = false;
             CoroutineTestRunner.RunToCompletion(RemoteAttemptLauncher.Run(
-                Guid.NewGuid(), 1, 4, CharacterSelection.None, null,
+                Guid.NewGuid(), 1, 4, CharacterSelection.None, null, Unlocked(EligibleLevelId),
                 launch => { result = launch; completedCalled = true; }));
 
             Assert.That(completedCalled, Is.True);
@@ -111,7 +121,7 @@ namespace Level5.BackendV2.Tests
 
             RemoteAttemptLaunch result = default;
             CoroutineTestRunner.RunToCompletion(RemoteAttemptLauncher.Run(
-                Guid.NewGuid(), 1, 4, CharacterSelection.None, null, launch => result = launch));
+                Guid.NewGuid(), 1, 4, CharacterSelection.None, null, Unlocked(EligibleLevelId), launch => result = launch));
 
             Assert.That(result.Succeeded, Is.False);
             Assert.That(result.Error, Does.Contain("no-such-ruleset"));
@@ -131,7 +141,7 @@ namespace Level5.BackendV2.Tests
 
             RemoteAttemptLaunch result = default;
             CoroutineTestRunner.RunToCompletion(RemoteAttemptLauncher.Run(
-                Guid.NewGuid(), 1, 4, CharacterSelection.None, null, launch => result = launch));
+                Guid.NewGuid(), 1, 4, CharacterSelection.None, null, Unlocked(EligibleLevelId), launch => result = launch));
 
             Assert.That(result.Succeeded, Is.True, result.Error);
             Assert.That(ActiveMatch.IsActive, Is.True);
@@ -161,7 +171,7 @@ namespace Level5.BackendV2.Tests
 
             RemoteAttemptLaunch result = default;
             CoroutineTestRunner.RunToCompletion(RemoteAttemptLauncher.Run(
-                Guid.NewGuid(), 1, 4, CharacterSelection.None, null, launch => result = launch));
+                Guid.NewGuid(), 1, 4, CharacterSelection.None, null, Unlocked(EligibleLevelId), launch => result = launch));
 
             Assert.That(result.Succeeded, Is.True, result.Error);
             Assert.That(result.Configuration.ModeId, Is.EqualTo(GameModeId.TotalPoints));
@@ -193,7 +203,7 @@ namespace Level5.BackendV2.Tests
 
             RemoteAttemptLaunch result = default;
             CoroutineTestRunner.RunToCompletion(RemoteAttemptLauncher.Run(
-                Guid.NewGuid(), 1, 4, CharacterSelection.None, null, launch => result = launch));
+                Guid.NewGuid(), 1, 4, CharacterSelection.None, null, Unlocked(EligibleLevelId), launch => result = launch));
 
             Assert.That(result.Succeeded, Is.True, result.Error);
             Assert.That(transport.Requests, Has.Count.EqualTo(1), "must have reached StartAttempt");
@@ -225,7 +235,7 @@ namespace Level5.BackendV2.Tests
 
             RemoteAttemptLaunch result = default;
             CoroutineTestRunner.RunToCompletion(RemoteAttemptLauncher.Run(
-                Guid.NewGuid(), 1, 4, CharacterSelection.None, null, launch => result = launch));
+                Guid.NewGuid(), 1, 4, CharacterSelection.None, null, Unlocked(EligibleLevelId), launch => result = launch));
 
             Assert.That(result.Succeeded, Is.False);
             Assert.That(transport.Requests, Is.Empty, "must fail before ever calling StartAttempt");
@@ -248,7 +258,7 @@ namespace Level5.BackendV2.Tests
 
             RemoteAttemptLaunch result = default;
             CoroutineTestRunner.RunToCompletion(RemoteAttemptLauncher.Run(
-                Guid.NewGuid(), 1, 4, character, null, launch => result = launch));
+                Guid.NewGuid(), 1, 4, character, null, Unlocked(EligibleLevelId), launch => result = launch));
 
             Assert.That(result.Succeeded, Is.True, result.Error);
             PlayerSlot slotZero = result.Configuration.Roster.GetBySlotId(0);
@@ -258,6 +268,83 @@ namespace Level5.BackendV2.Tests
             Assert.That(slotZero.Character.DisplayName, Is.EqualTo("Character Seven"));
             Assert.That(slotZero.Character.IsShooter, Is.True);
             Assert.That(slotZero.Character.IsFighter, Is.False);
+        }
+
+        // ---------------------------------------------------------------- issue #198: level eligibility preflight
+
+        /// <summary>Issue #198: a locked level must never reach <c>StartAttempt</c>. The zero-request
+        /// assertion is the proof this failed in the launcher's own preflight, before the network
+        /// call - unlike <see cref="AMappingFailureSurfacesTheErrorAndNeverBeginsAMatch"/>, which
+        /// proves a different (post-request) kind of failure.</summary>
+        [Test]
+        public void ALockedLevelFailsBeforeStartAttemptWithNoNetworkRequestsOrMatchSideEffects()
+        {
+            FakeApiTransport transport = new FakeApiTransport();
+            BackendV2Runtime.Override(transport);
+
+            UnlockSnapshot locked = new UnlockSnapshot(null, new Dictionary<int, bool> { [EligibleLevelId] = false });
+
+            RemoteAttemptLaunch result = default;
+            CoroutineTestRunner.RunToCompletion(RemoteAttemptLauncher.Run(
+                Guid.NewGuid(), 1, EligibleLevelId, CharacterSelection.None, null, locked, launch => result = launch));
+
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(transport.Requests, Is.Empty, "must fail before ever calling StartAttempt");
+            Assert.That(ActiveMatch.IsActive, Is.False);
+            Assert.That(ActiveRemoteAttempt.IsActive, Is.False);
+        }
+
+        [Test]
+        public void ANonSelectableLevelFailsBeforeStartAttemptWithNoNetworkRequestsOrMatchSideEffects()
+        {
+            GameModeDefinition mode = TestDefinitions.Mode(GameModeId.TotalPoints);
+            LevelDefinition nonSelectableLevel = TestDefinitions.Level(
+                5, objectName: "level_05_hidden", sceneDescriptor: "day", selectable: false);
+            MatchCatalogs.Override(new GameModeCatalog(new[] { mode }), new LevelDefinitionCatalog(new[] { nonSelectableLevel }));
+
+            FakeApiTransport transport = new FakeApiTransport();
+            BackendV2Runtime.Override(transport);
+
+            RemoteAttemptLaunch result = default;
+            CoroutineTestRunner.RunToCompletion(RemoteAttemptLauncher.Run(
+                Guid.NewGuid(), 1, 5, CharacterSelection.None, null, Unlocked(5), launch => result = launch));
+
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(transport.Requests, Is.Empty, "must fail before ever calling StartAttempt");
+            Assert.That(ActiveMatch.IsActive, Is.False);
+            Assert.That(ActiveRemoteAttempt.IsActive, Is.False);
+        }
+
+        [Test]
+        public void AnUnknownLevelFailsBeforeStartAttemptWithNoNetworkRequests()
+        {
+            FakeApiTransport transport = new FakeApiTransport();
+            BackendV2Runtime.Override(transport);
+
+            RemoteAttemptLaunch result = default;
+            CoroutineTestRunner.RunToCompletion(RemoteAttemptLauncher.Run(
+                Guid.NewGuid(), 1, 999, CharacterSelection.None, null, Unlocked(999), launch => result = launch));
+
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(transport.Requests, Is.Empty, "must fail before ever calling StartAttempt");
+            Assert.That(ActiveMatch.IsActive, Is.False);
+            Assert.That(ActiveRemoteAttempt.IsActive, Is.False);
+        }
+
+        /// <summary>The remote path must never silently treat a missing snapshot as the permissive
+        /// null <see cref="MatchConfigurationBuilder.Build"/> allows for unmigrated callers.</summary>
+        [Test]
+        public void AMissingUnlockSnapshotFailsBeforeStartAttemptRatherThanFallingBackToPermissiveBehavior()
+        {
+            FakeApiTransport transport = new FakeApiTransport();
+            BackendV2Runtime.Override(transport);
+
+            RemoteAttemptLaunch result = default;
+            CoroutineTestRunner.RunToCompletion(RemoteAttemptLauncher.Run(
+                Guid.NewGuid(), 1, EligibleLevelId, CharacterSelection.None, null, null, launch => result = launch));
+
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(transport.Requests, Is.Empty, "must fail before ever calling StartAttempt");
         }
     }
 }

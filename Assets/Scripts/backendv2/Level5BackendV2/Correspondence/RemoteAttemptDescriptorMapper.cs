@@ -1,5 +1,6 @@
 using System;
 using Level5.Core.Match;
+using Level5.Core.Progression;
 using Level5.Core.Versus;
 
 namespace Level5.BackendV2
@@ -14,6 +15,12 @@ namespace Level5.BackendV2
     /// descriptor. The only caller-supplied input is <c>levelId</c> and cosmetic choices
     /// (character, modifiers) - exactly the inputs <c>VersusLauncher.BuildMatch</c> already accepts
     /// as legitimately local, since the descriptor itself carries no arena/level id.
+    ///
+    /// <paramref name="unlock"/> is required, not optional: this is the final, authoritative
+    /// re-check of local level eligibility (issue #198), reached through the exact same
+    /// <see cref="MatchConfigurationBuilder.Build"/> gate every ordinary launch path goes through,
+    /// so a caller cannot silently bypass it the way passing <c>null</c> to that builder's own
+    /// optional parameter would for an unmigrated caller.
     /// </summary>
     public static class RemoteAttemptDescriptorMapper
     {
@@ -26,11 +33,18 @@ namespace Level5.BackendV2
             int levelId,
             ParticipantId participantId,
             CharacterSelection character,
+            UnlockSnapshot unlock,
             MatchModifiers modifiers = null)
         {
             if (descriptor == null)
             {
                 return RemoteAttemptMapResult.Failure("no attempt descriptor was provided");
+            }
+
+            if (unlock == null)
+            {
+                return RemoteAttemptMapResult.Failure(
+                    "no local unlock snapshot was provided - refusing to launch without a level eligibility check");
             }
 
             if (descriptor.CompetitionProtocolVersion != SupportedCompetitionProtocolVersion)
@@ -87,7 +101,7 @@ namespace Level5.BackendV2
                 CheerleaderSelection.None,
                 "backend v2 remote attempt");
 
-            MatchBuildResult buildResult = MatchCatalogs.Builder.Build(request);
+            MatchBuildResult buildResult = MatchCatalogs.Builder.Build(request, unlock);
             if (!buildResult.Succeeded)
             {
                 return RemoteAttemptMapResult.Failure(

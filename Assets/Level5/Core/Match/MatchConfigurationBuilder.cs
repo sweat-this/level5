@@ -79,18 +79,18 @@ namespace Level5.Core.Match
             LevelDefinition level = levels.Find(request.LevelId);
             MatchModifiers modifiers = request.Modifiers ?? MatchModifiers.Default;
 
-            if (unlock != null && !LevelEligibility.IsSelectableContent(level))
+            if (unlock != null)
             {
-                return MatchBuildResult.Failure(ValidationResult.Invalid(
-                    MatchValidationCode.LevelNotSelectable,
-                    $"'{level.DisplayName}' is not selectable"));
-            }
-
-            if (unlock != null && !LevelEligibility.IsUnlockedForAccount(level, unlock))
-            {
-                return MatchBuildResult.Failure(ValidationResult.Invalid(
-                    MatchValidationCode.LevelLocked,
-                    $"'{level.DisplayName}' is locked"));
+                // Delegates to LevelEligibility.ValidateForLaunch (its own level==null branch is
+                // unreachable here - compatibility.Validate above already rejected an unknown level)
+                // so this and the remote-attempt preflight (RemoteAttemptLauncher.Run) construct
+                // these two rejections from exactly one place rather than two copies that could
+                // silently drift apart.
+                ValidationResult eligibility = LevelEligibility.ValidateForLaunch(level, request.LevelId, unlock);
+                if (!eligibility.IsValid)
+                {
+                    return MatchBuildResult.Failure(eligibility);
+                }
             }
 
             ResolvedMatchRules rules = Resolve(mode, level, request.Roster, modifiers);

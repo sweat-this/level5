@@ -193,19 +193,39 @@ match, through the exact same `MatchRequest -> MatchConfigurationBuilder -> Matc
 pipeline every other launch path uses (the same shape as `VersusLauncher.BuildMatch` - not a parallel
 "remote gameplay" branch):
 
+0. **(#198)** Require a non-null `UnlockSnapshot` - unlike `MatchConfigurationBuilder.Build`'s own
+   optional parameter (which stays permissive for other, unmigrated callers), this mapper fails
+   clearly on a missing snapshot rather than silently falling back to that permissive behavior.
 1. Reject an unsupported `CompetitionProtocolVersion`.
 2. Resolve `RulesetId` against the local `CompetitiveRulesetCatalog` (`VersusCatalogs.Rulesets`) and
    reject an unknown ruleset.
 3. Reject a `RulesetVersion` this build cannot play (`CompetitiveRuleset.CanPlayVersion`).
 4. Reject any `RequiredResultMetrics` name this build does not recognize as an `AttemptMetric`.
 5. Build the same one-human `PlayerRoster` + `MatchRequest(ruleset.ModeId, ...)` that
-   `VersusLauncher.BuildMatch` builds, and validate it through `MatchCatalogs.Builder.Build`.
+   `VersusLauncher.BuildMatch` builds, and validate it through
+   `MatchCatalogs.Builder.Build(request, unlock)` - the same `unlock` from step 0, so a locked or
+   non-selectable `levelId` is rejected here even if it somehow reached this far (in the production
+   `RemoteAttemptLauncher.Run` path it already didn't - see the level-eligibility preflight below).
 
 Every frozen value (mode, ruleset, comparison keys, required metrics) comes from the descriptor -
 **never** from caller-supplied UI state. `levelId` and cosmetic choices (character, modifiers) are
 the only caller-supplied inputs, because the descriptor itself carries no arena/level id (matching
-`VersusLauncher.BuildMatch`'s own signature). Any failure above happens *before* a
+`VersusLauncher.BuildMatch`'s own signature) - `levelId` remains a local launch input, not part of the
+competition protocol, and issue #198 does not change that. Any failure above happens *before* a
 `MatchConfiguration` is produced, so a scene load is never attempted for an unsupported attempt.
+
+**Level eligibility preflight (issue #198).** Before any of the above - before `StartAttempt` is even
+called - `RemoteAttemptLauncher.Run` checks the local `levelId` against the caller's current
+`UnlockSnapshot` via `Level5.Core.Match.LevelEligibility.ValidateForLaunch`: unknown, non-selectable,
+or locked fails locally with zero Backend requests and no `ActiveMatch`/`ActiveRemoteAttempt`/scene
+side effects. The snapshot is the exact one
+`RemoteCharacterSelectionResolver.ResolveCurrentPrimary(out UnlockSnapshot)` already built to validate
+the character - one snapshot, reused for both checks in a single launch attempt, never rebuilt
+independently later. This closes the gap where an ordinary local launch revalidated level unlock
+state at `MatchConfigurationBuilder.Build` time but the remote path did not; see "Unlock authority" in
+`docs/persistence-boundaries.md` for the underlying policy, which is unchanged by this issue - no new
+level-progression semantics were introduced, and Backend V2's competition protocol/contract is
+unchanged.
 
 `ActiveRemoteAttempt` (the Backend V2 counterpart to `ActiveVersusAttempt`) then carries the
 resulting `RemoteAttemptContext` for the duration of the match, tied to the exact
@@ -407,13 +427,16 @@ wires UI to it. See `docs/backend-v2-online-account-ui.md`.
 - No automatic retry/backoff policy for list polling: a list refreshes on tab open and on an
   explicit action (refresh, load more, after a command), never on a timer. A player must reopen a
   tab (or retry a failed action) to see server-side changes made elsewhere.
-- Revalidating unlock state for a network-driven match launch remains open - the existing gap noted
-  in `docs/persistence-boundaries.md` for `VersusLauncher` applies identically to
-  `RemoteAttemptLauncher`.
+- Revalidating unlock state for a network-driven match launch is resolved for `RemoteAttemptLauncher`
+  (#198): local level and character are both checked against one current `UnlockSnapshot` before
+  `StartAttempt`, and again through `MatchConfigurationBuilder.Build`. The equivalent gap in local
+  `VersusLauncher` (`docs/persistence-boundaries.md`) is unchanged and remains deferred - its only
+  caller at the time of #198 is still the dev-only `VersusDevConsole`, not a production launch path.
 - No level/character picker for a remote attempt yet: `RemoteAttemptLauncher` launches with a fixed
-  default level and no character customization. This mirrors local versus play, which also has no
-  production launch UI yet (`VersusLauncher.Launch` previously had only `VersusDevConsole`, a dev
-  tool, as a caller).
+  default level and no character customization, though both are now validated against current account
+  state rather than merely assumed playable (#179, #198). This mirrors local versus play, which also
+  has no production launch UI yet (`VersusLauncher.Launch` previously had only `VersusDevConsole`, a
+  dev tool, as a caller).
 - The correspondence screen is built at runtime from code rather than authored as a scene/prefab
   (every other menu screen in this project is Editor-authored uGUI). This was the safe choice
   without interactive Editor/prefab-authoring access during this change - see the doc comment on

@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Assets.Scripts.Utility;
 using Level5.BackendV2;
+using Level5.Core.Progression;
 using Level5.Core.Versus;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -505,16 +506,19 @@ public sealed class CorrespondenceScreenController : MonoBehaviour
         RenderCurrentTab();
     }
 
-    /// <summary>#159 §7 / #179: local character resolution -&gt; StartAttempt -&gt;
-    /// RemoteAttemptDescriptorMapper -&gt; ordinary gameplay launch. The character comes from the
-    /// existing player-select authority (<see cref="RemoteCharacterSelectionResolver"/>) rather than
-    /// <c>CharacterSelection.None</c> - a resolution/lock failure is shown inline and never reaches
-    /// <c>StartAttempt</c>. No level picker exists yet for remote attempts (none exists for local
-    /// versus play either - VersusLauncher.Launch has no production caller today); this still uses a
-    /// fixed default level, a known MVP limitation, not a silent gap.</summary>
+    /// <summary>#159 §7 / #179 / #198: local character + unlock resolution -&gt; local level
+    /// eligibility preflight -&gt; StartAttempt -&gt; RemoteAttemptDescriptorMapper -&gt; ordinary
+    /// gameplay launch. The character comes from the existing player-select authority (<see
+    /// cref="RemoteCharacterSelectionResolver"/>) rather than <c>CharacterSelection.None</c>, and the
+    /// exact same current <see cref="UnlockSnapshot"/> that resolution used goes on to gate the
+    /// level too (<see cref="RemoteAttemptLauncher.Run"/>) - a resolution/lock/eligibility failure is
+    /// shown inline and never reaches <c>StartAttempt</c>. No level picker exists yet for remote
+    /// attempts (none exists for local versus play either - VersusLauncher.Launch has no production
+    /// caller today); this still uses a fixed default level, a known MVP limitation, not a silent
+    /// gap.</summary>
     private IEnumerator PlayTurn(Guid seriesId, int gameNumber)
     {
-        RemoteCharacterSelectionResult characterResult = RemoteCharacterSelectionResolver.ResolveCurrentPrimary();
+        RemoteCharacterSelectionResult characterResult = RemoteCharacterSelectionResolver.ResolveCurrentPrimary(out UnlockSnapshot unlock);
         if (!characterResult.Succeeded)
         {
             SetStatus("could not resolve a player character: " + characterResult.Error);
@@ -530,7 +534,7 @@ public sealed class CorrespondenceScreenController : MonoBehaviour
         // directly means a success's scene load and this coroutine settle in the same step, with no
         // separate cross-coroutine polling needed.
         yield return RemoteAttemptLauncher.Run(
-            seriesId, gameNumber, DefaultLevelId, characterResult.Character, null,
+            seriesId, gameNumber, DefaultLevelId, characterResult.Character, null, unlock,
             launch => result = launch);
 
         if (!result.Succeeded)

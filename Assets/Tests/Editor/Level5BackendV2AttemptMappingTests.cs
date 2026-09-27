@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Level5.BackendV2;
 using Level5.Core.Match;
+using Level5.Core.Progression;
 using Level5.Core.Versus;
 using NUnit.Framework;
 
@@ -10,6 +11,15 @@ namespace Level5.BackendV2.Tests
     public class Level5BackendV2AttemptMappingTests
     {
         private const string RulesetIdValue = "most-points";
+
+        /// <summary>An unlock snapshot that answers a single level as unlocked - the shape every
+        /// existing (pre-#198) test in this file needs now that <see
+        /// cref="RemoteAttemptDescriptorMapper.Map"/> requires one, without any of them needing to
+        /// know or care about eligibility, which is covered separately below.</summary>
+        private static UnlockSnapshot Unlocked(int levelId)
+        {
+            return new UnlockSnapshot(null, new Dictionary<int, bool> { [levelId] = true });
+        }
 
         [SetUp]
         public void SetUp()
@@ -69,7 +79,8 @@ namespace Level5.BackendV2.Tests
         public void AValidDescriptorProducesAPlayableConfiguration()
         {
             RemoteAttemptMapResult result = RemoteAttemptDescriptorMapper.Map(
-                Descriptor(), levelId: 4, participantId: new ParticipantId("p1"), character: CharacterSelection.None);
+                Descriptor(), levelId: 4, participantId: new ParticipantId("p1"), character: CharacterSelection.None,
+                unlock: Unlocked(4));
 
             Assert.That(result.Succeeded, Is.True, result.Error);
             Assert.That(result.Configuration.ModeId, Is.EqualTo(GameModeId.TotalPoints));
@@ -83,7 +94,8 @@ namespace Level5.BackendV2.Tests
         {
             AttemptDescriptorDto descriptor = Descriptor();
             RemoteAttemptMapResult result = RemoteAttemptDescriptorMapper.Map(
-                descriptor, levelId: 4, participantId: new ParticipantId("p1"), character: CharacterSelection.None);
+                descriptor, levelId: 4, participantId: new ParticipantId("p1"), character: CharacterSelection.None,
+                unlock: Unlocked(4));
 
             Assert.That(result.Context.SeriesId, Is.EqualTo(descriptor.SeriesId));
             Assert.That(result.Context.AttemptId, Is.EqualTo(descriptor.AttemptId));
@@ -97,7 +109,8 @@ namespace Level5.BackendV2.Tests
                 Descriptor(protocolVersion: 99),
                 levelId: 4,
                 participantId: new ParticipantId("p1"),
-                character: CharacterSelection.None);
+                character: CharacterSelection.None,
+                unlock: Unlocked(4));
 
             Assert.That(result.Succeeded, Is.False);
             Assert.That(result.Configuration, Is.Null);
@@ -111,7 +124,8 @@ namespace Level5.BackendV2.Tests
                 Descriptor(rulesetId: "no-such-ruleset"),
                 levelId: 4,
                 participantId: new ParticipantId("p1"),
-                character: CharacterSelection.None);
+                character: CharacterSelection.None,
+                unlock: Unlocked(4));
 
             Assert.That(result.Succeeded, Is.False);
             Assert.That(result.Error, Does.Contain("no-such-ruleset"));
@@ -126,7 +140,8 @@ namespace Level5.BackendV2.Tests
                 Descriptor(rulesetVersion: 3),
                 levelId: 4,
                 participantId: new ParticipantId("p1"),
-                character: CharacterSelection.None);
+                character: CharacterSelection.None,
+                unlock: Unlocked(4));
 
             Assert.That(result.Succeeded, Is.False);
             Assert.That(result.Error, Does.Contain("version"));
@@ -139,7 +154,8 @@ namespace Level5.BackendV2.Tests
                 Descriptor(requiredMetrics: new List<string> { "NotARealMetric" }),
                 levelId: 4,
                 participantId: new ParticipantId("p1"),
-                character: CharacterSelection.None);
+                character: CharacterSelection.None,
+                unlock: Unlocked(4));
 
             Assert.That(result.Succeeded, Is.False);
             Assert.That(result.Error, Does.Contain("NotARealMetric"));
@@ -149,7 +165,8 @@ namespace Level5.BackendV2.Tests
         public void AnUnknownLevelFailsThroughTheOrdinaryBuilderValidation()
         {
             RemoteAttemptMapResult result = RemoteAttemptDescriptorMapper.Map(
-                Descriptor(), levelId: 999, participantId: new ParticipantId("p1"), character: CharacterSelection.None);
+                Descriptor(), levelId: 999, participantId: new ParticipantId("p1"), character: CharacterSelection.None,
+                unlock: Unlocked(999));
 
             Assert.That(result.Succeeded, Is.False);
         }
@@ -182,7 +199,8 @@ namespace Level5.BackendV2.Tests
                     new ComparisonKeySummaryDto { Metric = "Score", Direction = "HigherWins" },
                     new ComparisonKeySummaryDto { Metric = "Accuracy", Direction = "HigherWins" }
                 }),
-                levelId: 4, participantId: new ParticipantId("p1"), character: CharacterSelection.None);
+                levelId: 4, participantId: new ParticipantId("p1"), character: CharacterSelection.None,
+                unlock: Unlocked(4));
 
             Assert.That(result.Succeeded, Is.False);
             Assert.That(result.Configuration, Is.Null);
@@ -198,7 +216,8 @@ namespace Level5.BackendV2.Tests
                 {
                     new ComparisonKeySummaryDto { Metric = "Score", Direction = "LowerWins" }
                 }),
-                levelId: 4, participantId: new ParticipantId("p1"), character: CharacterSelection.None);
+                levelId: 4, participantId: new ParticipantId("p1"), character: CharacterSelection.None,
+                unlock: Unlocked(4));
 
             Assert.That(result.Succeeded, Is.False);
             Assert.That(result.Configuration, Is.Null);
@@ -214,7 +233,8 @@ namespace Level5.BackendV2.Tests
                 {
                     new ComparisonKeySummaryDto { Metric = "Score", Direction = "HigherWins" }
                 }),
-                levelId: 4, participantId: new ParticipantId("p1"), character: CharacterSelection.None);
+                levelId: 4, participantId: new ParticipantId("p1"), character: CharacterSelection.None,
+                unlock: Unlocked(4));
 
             Assert.That(result.Succeeded, Is.True, result.Error);
         }
@@ -261,11 +281,67 @@ namespace Level5.BackendV2.Tests
             };
 
             RemoteAttemptMapResult result = RemoteAttemptDescriptorMapper.Map(
-                descriptor, levelId: 4, participantId: new ParticipantId("p1"), character: CharacterSelection.None);
+                descriptor, levelId: 4, participantId: new ParticipantId("p1"), character: CharacterSelection.None,
+                unlock: Unlocked(4));
 
             Assert.That(result.Succeeded, Is.True, result.Error);
             Assert.That(result.Configuration.ModeId, Is.EqualTo(GameModeId.TotalPoints));
             Assert.That(result.Context.RequiredResultMetrics, Is.EquivalentTo(new[] { "Score", "Accuracy", "ShotsAttempted" }));
+        }
+
+        // ---------------------------------------------------------------- issue #198: level eligibility
+
+        [Test]
+        public void AnEligibleLevelMapsSuccessfully()
+        {
+            RemoteAttemptMapResult result = RemoteAttemptDescriptorMapper.Map(
+                Descriptor(), levelId: 4, participantId: new ParticipantId("p1"), character: CharacterSelection.None,
+                unlock: Unlocked(4));
+
+            Assert.That(result.Succeeded, Is.True, result.Error);
+            Assert.That(result.Configuration, Is.Not.Null);
+        }
+
+        [Test]
+        public void ALockedLevelFailsToMapEvenWithAnOtherwiseCompatibleDescriptor()
+        {
+            UnlockSnapshot locked = new UnlockSnapshot(null, new Dictionary<int, bool> { [4] = false });
+
+            RemoteAttemptMapResult result = RemoteAttemptDescriptorMapper.Map(
+                Descriptor(), levelId: 4, participantId: new ParticipantId("p1"), character: CharacterSelection.None,
+                unlock: locked);
+
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.Configuration, Is.Null);
+            Assert.That(result.Error, Does.Contain("locked"));
+        }
+
+        [Test]
+        public void ANonSelectableLevelFailsToMap()
+        {
+            GameModeDefinition mode = TestDefinitions.Mode(GameModeId.TotalPoints);
+            LevelDefinition nonSelectableLevel = TestDefinitions.Level(
+                5, objectName: "level_05_hidden", sceneDescriptor: "day", selectable: false);
+            MatchCatalogs.Override(new GameModeCatalog(new[] { mode }), new LevelDefinitionCatalog(new[] { nonSelectableLevel }));
+
+            RemoteAttemptMapResult result = RemoteAttemptDescriptorMapper.Map(
+                Descriptor(), levelId: 5, participantId: new ParticipantId("p1"), character: CharacterSelection.None,
+                unlock: Unlocked(5));
+
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.Configuration, Is.Null);
+            Assert.That(result.Error, Does.Contain("not selectable"));
+        }
+
+        [Test]
+        public void AMissingUnlockSnapshotFailsClosedRatherThanFallingBackToPermissiveBehavior()
+        {
+            RemoteAttemptMapResult result = RemoteAttemptDescriptorMapper.Map(
+                Descriptor(), levelId: 4, participantId: new ParticipantId("p1"), character: CharacterSelection.None,
+                unlock: null);
+
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.Configuration, Is.Null);
         }
     }
 }
