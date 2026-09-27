@@ -45,41 +45,57 @@ a hardcoded GUID.
 | `challenge-cancelled` | `Cancelled` | `Cancelled` | Excluded, empty state rendered (correctly) | **PASSING (live)** |
 | `challenge-expired` | `Expired` | `Expired` | Excluded, empty state rendered (correctly) | **PASSING (live)** |
 
-Evidence log excerpts (seriesId truncated to the same 8-character prefix the rendered UI itself
-uses; full ids were cross-checked but are not secrets and are included in full below since they are
-disposable, per-run fixture data with no bearing on production):
+Evidence log excerpts from the final re-verification pass (below) - seriesId truncated to the same
+8-character prefix the rendered UI itself uses; full ids were cross-checked but are not secrets and
+are included in full below since they are disposable, per-run fixture data with no bearing on
+production:
 
 ```text
 === Completed fixture certification start === expectedInCompleted=True
-Direct ListHistory PASSING: seriesId=01a0e2de-906f-7e54-8cfc-ede7ae4d0403, status=Completed.
-History tab PASSING (live): rendered row contains seriesId prefix '01a0e2de' and status 'Completed':
-    History (1) | series 01a0e2de - game 1/1 - Completed
+Direct ListHistory PASSING: seriesId=01a0e3e4-2470-763b-a33d-4b5f2ad07b3b, status=Completed.
+History tab PASSING (live): rendered row contains seriesId prefix '01a0e3e4' and status 'Completed':
+    History (1) | series 01a0e3e4 - game 1/1 - Completed
 Read-only PASSING: no Accept/Decline/Cancel/Play action is present under the rendered History tab.
-Completed tab PASSING (live): rendered row contains seriesId prefix '01a0e2de':
-    Completed (1) | series 01a0e2de - game 1/1
+Completed tab PASSING (live): rendered row contains seriesId prefix '01a0e3e4':
+    Completed (1) | series 01a0e3e4 - game 1/1
 
 === Declined fixture certification start === expectedInCompleted=False
-Direct ListHistory PASSING: seriesId=01a0e2df-2f4f-74b3-bfaf-ece8e0a0a806, status=Declined.
-History tab PASSING (live): rendered row contains seriesId prefix '01a0e2df' and status 'Declined':
-    History (1) | series 01a0e2df - game 1/1 - Declined
+Direct ListHistory PASSING: seriesId=01a0e3e4-b7e5-799d-be91-4095ed47f0ec, status=Declined.
+History tab PASSING (live): rendered row contains seriesId prefix '01a0e3e4' and status 'Declined':
+    History (1) | series 01a0e3e4 - game 1/1 - Declined
 Completed tab PASSING (live): the seeded fixture series correctly does not appear there, and the empty state renders.
 
 === Cancelled fixture certification start === expectedInCompleted=False
-Direct ListHistory PASSING: seriesId=01a0e2df-bf14-7faa-8b5a-ebe8fd71c53a, status=Cancelled.
-History tab PASSING (live): rendered row contains seriesId prefix '01a0e2df' and status 'Cancelled':
-    History (1) | series 01a0e2df - game 1/1 - Cancelled
+Direct ListHistory PASSING: seriesId=01a0e3e5-4b50-71f1-b5e2-0ed9644a455f, status=Cancelled.
+History tab PASSING (live): rendered row contains seriesId prefix '01a0e3e5' and status 'Cancelled':
+    History (1) | series 01a0e3e5 - game 1/1 - Cancelled
 Completed tab PASSING (live): the seeded fixture series correctly does not appear there, and the empty state renders.
 
 === Expired fixture certification start === expectedInCompleted=False
-Direct ListHistory PASSING: seriesId=01a0e2e0-4964-70fa-9a2d-13528eb6bec9, status=Expired.
-History tab PASSING (live): rendered row contains seriesId prefix '01a0e2e0' and status 'Expired':
-    History (1) | series 01a0e2e0 - game 1/1 - Expired
+Direct ListHistory PASSING: seriesId=01a0e3e5-dd76-7a00-8f7a-e36543b5a5c8, status=Expired.
+History tab PASSING (live): rendered row contains seriesId prefix '01a0e3e5' and status 'Expired':
+    History (1) | series 01a0e3e5 - game 1/1 - Expired
 Completed tab PASSING (live): the seeded fixture series correctly does not appear there, and the empty state renders.
 ```
 
-No production defect was found - every assertion passed on the first live run of each scenario, no
-Backend or Unity production code changed beyond the two stale doc-comment lines in
-`SeriesListCoordinator.cs` (unrelated to certification results themselves).
+No production defect was found - every assertion passed on every live run of every scenario (both
+the initial pass and the re-verification pass below), no Backend or Unity production code changed
+beyond the two stale doc-comment lines in `SeriesListCoordinator.cs` (unrelated to certification
+results themselves).
+
+### Code-review follow-up, re-verified live
+
+A senior-engineer review of this fixture (before merge) found one Low/Risk finding: `DoLogin()`
+hides the login panel *before* its own `RefreshAll()` call even starts
+(`CorrespondenceScreenController.cs`), so `CertifyTerminalFixture`'s wait for the login panel to
+disappear could return while `RefreshAll()`'s own `history.Refresh()`/`completed.Refresh()` fetches
+were still in flight - a later tab click would then start a second, concurrent `Refresh()` racing
+that still-in-flight one on the same `SeriesListCoordinator.State`. Harmless with this fixture's
+single static series (both fetches return identical data), but unnecessary risk under real network
+variance. Fixed: the fixture now resolves the `history`/`completed` coordinators once and waits for
+both to report `!IsLoading` right after login, before doing anything else. All four scenarios were
+re-run live end-to-end after the fix (evidence above is from that re-verification pass) and all four
+passing.
 
 ## Also validated this session (non-live)
 

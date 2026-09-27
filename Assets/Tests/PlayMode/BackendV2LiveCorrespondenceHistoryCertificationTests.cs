@@ -155,6 +155,23 @@ public class BackendV2LiveCorrespondenceHistoryCertificationTests
 
         RectTransform contentRoot = RealScenePlayModeTestSupport.GetField<RectTransform>(controller, "contentRoot");
         GameObject screenRoot = RealScenePlayModeTestSupport.GetField<GameObject>(controller, "screenRoot");
+        SeriesListCoordinator historyCoordinator =
+            RealScenePlayModeTestSupport.GetField<SeriesListCoordinator>(controller, "history");
+        SeriesListCoordinator completedCoordinator =
+            RealScenePlayModeTestSupport.GetField<SeriesListCoordinator>(controller, "completed");
+        Assert.That(historyCoordinator, Is.Not.Null, "coordinator field 'history' was not resolved");
+        Assert.That(completedCoordinator, Is.Not.Null, "coordinator field 'completed' was not resolved");
+
+        // DoLogin() hides the login panel (above) BEFORE its own yield return RefreshAll() even
+        // starts (CorrespondenceScreenController.DoLogin), so the wait above can return while
+        // RefreshAll()'s sequential per-tab fetches - including history.Refresh()/completed.Refresh()
+        // - are still in flight. Waiting for both coordinators to settle here, before this test drives
+        // any further UI interaction, avoids a second, concurrent Refresh() racing that still in-flight
+        // one on the same ListViewState (SeriesListCoordinator.cs) - harmless with this fixture's single
+        // static series, but unnecessary risk under real network variance otherwise.
+        yield return WaitUntil(
+            () => !historyCoordinator.State.IsLoading && !completedCoordinator.State.IsLoading, 30f,
+            "the initial RefreshAll() triggered by login did not settle within 30s");
 
         // ---- cross-check against the real DTO before touching the UI, for a non-tautological
         //      identity assertion below (never a hardcoded GUID). ----
@@ -171,7 +188,7 @@ public class BackendV2LiveCorrespondenceHistoryCertificationTests
         Log($"Direct ListHistory PASSING: seriesId={fixtureSeries.Id}, status={fixtureSeries.Status}.");
 
         // ---- real History tab ----
-        yield return SelectTabAndWaitSettled(controller, screenRoot, contentRoot, "HistoryButton", "history");
+        yield return SelectTabAndWaitSettled(screenRoot, "HistoryButton", historyCoordinator);
         string historyTabText = DumpContentRoot(contentRoot);
         Assert.That(historyTabText, Does.Contain(idPrefix).And.Contain(expectedStatus),
             "the real History tab did not render the seeded fixture series with its expected status:\n" +
@@ -188,7 +205,7 @@ public class BackendV2LiveCorrespondenceHistoryCertificationTests
         Log("Read-only PASSING: no Accept/Decline/Cancel/Play action is present under the rendered History tab.");
 
         // ---- real Completed tab ----
-        yield return SelectTabAndWaitSettled(controller, screenRoot, contentRoot, "CompletedButton", "completed");
+        yield return SelectTabAndWaitSettled(screenRoot, "CompletedButton", completedCoordinator);
         string completedTabText = DumpContentRoot(contentRoot);
         if (expectedInCompleted)
         {
@@ -263,25 +280,20 @@ public class BackendV2LiveCorrespondenceHistoryCertificationTests
     }
 
     /// <summary>
-    /// Clicks the real tab button, then waits on the real <see cref="SeriesListCoordinator"/> field
-    /// behind it (<paramref name="coordinatorFieldName"/> - "history" or "completed") rather than
-    /// scraping rendered text for a "loading..." marker: <c>RenderCurrentTab()</c> for these two tabs
-    /// only runs once, after the fetch fully completes (unlike Active/Your Turn, which render a
-    /// loading state mid-fetch) - so rendered text alone cannot distinguish "not started yet" from
-    /// "already done". One extra settle frame after the coordinator reports done, since its own
+    /// Clicks the real tab button, then waits on the real <see cref="SeriesListCoordinator"/> behind
+    /// it rather than scraping rendered text for a "loading..." marker: <c>RenderCurrentTab()</c> for
+    /// these two tabs only runs once, after the fetch fully completes (unlike Active/Your Turn, which
+    /// render a loading state mid-fetch) - so rendered text alone cannot distinguish "not started yet"
+    /// from "already done". One extra settle frame after the coordinator reports done, since its own
     /// completion callback and this screen's <c>RenderCurrentTab()</c> call are still two statements
     /// in the same coroutine continuation, not guaranteed to have both run by the exact frame this
     /// poll observes <c>IsLoading == false</c>.
     /// </summary>
     private static IEnumerator SelectTabAndWaitSettled(
-        object controller, GameObject screenRoot, RectTransform contentRoot, string tabButtonName, string coordinatorFieldName)
+        GameObject screenRoot, string tabButtonName, SeriesListCoordinator coordinator)
     {
         Button tabButton = FindButton(screenRoot.transform, tabButtonName);
         Assert.That(tabButton, Is.Not.Null, $"tab button '{tabButtonName}' not found under screenRoot");
-
-        SeriesListCoordinator coordinator =
-            RealScenePlayModeTestSupport.GetField<SeriesListCoordinator>(controller, coordinatorFieldName);
-        Assert.That(coordinator, Is.Not.Null, $"coordinator field '{coordinatorFieldName}' was not resolved");
 
         tabButton.onClick.Invoke();
 
