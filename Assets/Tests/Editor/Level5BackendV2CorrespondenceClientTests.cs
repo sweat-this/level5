@@ -91,6 +91,30 @@ namespace Level5.BackendV2.Tests
         }
 
         [Test]
+        public void ListHistoryUsesTheHistoryRouteParsesATerminalStatusAndTreatsCursorAsOpaque()
+        {
+            FakeApiTransport transport = new FakeApiTransport();
+            transport.Enqueue(RawApiResponse.Completed(200, BackendV2Fixtures.SeriesSummaryPageHistoryExpired));
+            CorrespondenceApiClient client = Client(transport);
+
+            ApiResponse<SeriesSummaryPageDto> result = null;
+            CoroutineTestRunner.RunToCompletion(client.ListHistory(20, null, r => result = r));
+
+            Assert.That(transport.Requests[0].RelativePath, Is.EqualTo("api/v2/series/history"));
+            Assert.That(result.Success, Is.True);
+            Assert.That(result.Value.Items, Has.Count.EqualTo(1));
+            Assert.That(result.Value.Items[0].Status, Is.EqualTo("Expired"), "a terminal status must deserialize unchanged");
+            Assert.That(result.Value.Limit, Is.EqualTo(20));
+            Assert.That(result.Value.NextCursor, Is.EqualTo("opaque-history-cursor-token"));
+
+            // The cursor must be forwarded exactly as received, never parsed or reconstructed.
+            transport.Requests.Clear();
+            transport.Enqueue(RawApiResponse.Completed(200, BackendV2Fixtures.SeriesSummaryPageHistoryExpired));
+            CoroutineTestRunner.RunToCompletion(client.ListHistory(20, result.Value.NextCursor, _ => { }));
+            Assert.That(transport.Requests[0].Query["cursor"], Is.EqualTo("opaque-history-cursor-token"));
+        }
+
+        [Test]
         public void StartAttemptParsesTheDescriptor()
         {
             FakeApiTransport transport = new FakeApiTransport();

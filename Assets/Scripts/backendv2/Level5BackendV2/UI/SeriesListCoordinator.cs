@@ -4,15 +4,15 @@ using System.Collections;
 namespace Level5.BackendV2
 {
     /// <summary>A paged series-list fetch, matching
-    /// <c>ICorrespondenceApiClient.ListIncoming</c>/<c>ListOutgoing</c>/<c>ListActive</c>/<c>ListCompleted</c>'s
+    /// <c>ICorrespondenceApiClient.ListIncoming</c>/<c>ListOutgoing</c>/<c>ListActive</c>/<c>ListCompleted</c>/<c>ListHistory</c>'s
     /// shared shape.</summary>
     public delegate IEnumerator SeriesPageFetcher(
         int limit, string cursor, Action<ApiResponse<SeriesSummaryPageDto>> completed);
 
     /// <summary>
-    /// One instance per series tab (Incoming / Outgoing / Active / Completed), each constructed with
-    /// its own <see cref="ICorrespondenceApiClient"/> list method. Handles refresh and "load more"
-    /// uniformly for all four - the opaque cursor is forwarded exactly as
+    /// One instance per series tab (Incoming / Outgoing / Active / Completed / History), each
+    /// constructed with its own <see cref="ICorrespondenceApiClient"/> list method. Handles refresh
+    /// and "load more" uniformly for all five - the opaque cursor is forwarded exactly as
     /// <see cref="SeriesSummaryPageDto"/> returned it, never parsed or reconstructed.
     /// </summary>
     public sealed class SeriesListCoordinator

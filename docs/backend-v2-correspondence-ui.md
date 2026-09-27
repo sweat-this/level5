@@ -4,7 +4,10 @@ Companion to [`docs/backend-v2-client.md`](backend-v2-client.md) (the typed clie
 #158) and [`docs/versus-architecture.md`](versus-architecture.md) §10. This document covers the
 player-facing screen built on top of that client layer, and points at
 [`docs/backend-v2-correspondence-certification.md`](backend-v2-correspondence-certification.md)
-for end-to-end certification evidence.
+for end-to-end certification evidence and
+[`docs/backend-v2-correspondence-history-certification.md`](backend-v2-correspondence-history-certification.md)
+for the History tab's own live certification against Backend V2's deterministic terminal-series E2E
+fixtures (issue #196).
 
 ## Where it lives
 
