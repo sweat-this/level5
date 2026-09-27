@@ -17,21 +17,33 @@ using Level5.Core.Progression;
 /// </summary>
 public static class RemoteCharacterSelectionResolver
 {
-    /// <summary>
-    /// Production entry point: projects the same loaded profile/unlock data local player select
-    /// already draws from (<see cref="LoadedData"/>, <see cref="MatchCatalogs.Levels"/>) and
-    /// resolves the current primary through it.
-    /// </summary>
+    /// <summary>Production entry point for callers that only need the character - see the
+    /// <see cref="ResolveCurrentPrimary(out UnlockSnapshot)"/> overload for callers (remote launch)
+    /// that also need the exact same current <see cref="UnlockSnapshot"/> this resolution used, so
+    /// character and level eligibility are never checked against two different snapshots.</summary>
     public static RemoteCharacterSelectionResult ResolveCurrentPrimary()
+    {
+        return ResolveCurrentPrimary(out _);
+    }
+
+    /// <summary>
+    /// Projects the same loaded profile/unlock data local player select already draws from
+    /// (<see cref="LoadedData"/>, <see cref="MatchCatalogs.Levels"/>), resolves the current primary
+    /// through it, and hands back the exact <see cref="UnlockSnapshot"/> it was resolved against so
+    /// a caller launching a remote attempt can reuse it for level eligibility instead of building a
+    /// second, potentially different, snapshot moments later.
+    /// </summary>
+    public static RemoteCharacterSelectionResult ResolveCurrentPrimary(out UnlockSnapshot unlock)
     {
         IReadOnlyList<CharacterProfile> primaryProfiles = LoadedData.instance != null ? LoadedData.instance.PlayerSelectedData : null;
         if (primaryProfiles == null || primaryProfiles.Count == 0)
         {
+            unlock = null;
             return RemoteCharacterSelectionResult.Failure("no player character data is loaded yet");
         }
 
         IReadOnlyList<CharacterProfile> cpuProfiles = LoadedData.instance.CpuPlayerSelectedData;
-        UnlockSnapshot unlock = UnlockSnapshotBuilder.Build(primaryProfiles, cpuProfiles, MatchCatalogs.Levels);
+        unlock = UnlockSnapshotBuilder.Build(primaryProfiles, cpuProfiles, MatchCatalogs.Levels);
         PlayerSelectCatalog catalog = PlayerSelectCatalogAdapter.Project(primaryProfiles, cpuProfiles, unlock);
 
         return ResolveFromCatalog(catalog.PrimaryOptions);

@@ -167,12 +167,25 @@ is exactly the previous (unenforced) authored intent, now actually enforced at s
 Durable level progress remains a follow-up, blocked on a product decision about what "completing a
 level" means.
 
-**Not yet covered:** `Assets/Scripts/versus/VersusLauncher.cs` calls
-`MatchCatalogs.Builder.Build(request)` without an `UnlockSnapshot`, so versus/correspondence launches
-do not get the new launch-time unlock re-check. This is not a regression - no unlock check existed
-on that path before either - but closing it requires understanding whether "unlocked" even means the
-same thing for a network-driven match (whose account's unlock state would apply?), which is
-`docs/versus-architecture.md` territory and was out of scope for this slice.
+**Remote correspondence is covered (issue #198).** `RemoteAttemptLauncher.Run` requires the caller's
+current `UnlockSnapshot` (the same one `RemoteCharacterSelectionResolver.ResolveCurrentPrimary(out
+UnlockSnapshot)` already builds to validate the character) and checks the local `levelId` against it
+twice: once as a preflight via `LevelEligibility.ValidateForLaunch`, before `StartAttempt` (so an
+unknown/non-selectable/locked level makes zero Backend requests), and again inside
+`RemoteAttemptDescriptorMapper.Map`, which now requires that same snapshot and passes it to
+`MatchCatalogs.Builder.Build(request, unlock)` instead of the permissive `Build(request)` overload -
+the exact ordinary launch-time gate this section describes above. "Whose account's unlock state
+applies" is answered the same way character validation already answers it: the local account signed
+into this device, never Backend V2's `PlayerId` - `levelId` is not part of the competition protocol
+and this issue does not add it there.
+
+**Still not covered:** `Assets/Scripts/versus/VersusLauncher.cs` calls
+`MatchCatalogs.Builder.Build(request)` without an `UnlockSnapshot`. At the time of #198, its only
+caller remains the dev-only `VersusDevConsole` (`Assets/Scripts/Dev/VersusDevConsole.cs`) - there is
+still no production local-versus launch UI - so this is deferred rather than fixed alongside remote
+correspondence. Should a production caller appear, it should receive the identical
+`LevelEligibility.ValidateForLaunch` + `Build(request, unlock)` treatment rather than a
+versus-specific reinvention.
 
 ## Open items
 
@@ -180,6 +193,7 @@ same thing for a network-driven match (whose account's unlock state would apply?
   it to JSON. Nothing reconciles them. Today that is invisible because the JSON side is only a
   fallback, but the two will drift the moment either becomes authoritative.
 - Confirm the two server-side expectations above against `Level5Backend`.
-- `VersusLauncher`'s launch path does not yet revalidate level unlock state (see "Unlock authority" above).
+- `VersusLauncher`'s launch path does not yet revalidate level unlock state (see "Unlock authority"
+  above); remote correspondence's equivalent path does, as of issue #198.
 - Durable level-progress/completion persistence remains unimplemented pending a product decision on
   what "completing a level" means (see "Unlock authority" above).

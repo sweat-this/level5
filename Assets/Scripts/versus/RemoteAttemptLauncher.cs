@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using Assets.Scripts.Utility;
 using Level5.Core.Match;
+using Level5.Core.Progression;
 using Level5.Core.Versus;
 
 namespace Level5.BackendV2
@@ -22,6 +23,12 @@ namespace Level5.BackendV2
     ///
     /// Runs on <see cref="BackendV2CoroutineHost"/> rather than the calling UI panel's own
     /// MonoBehaviour, since a successful launch immediately unloads that panel's scene.
+    ///
+    /// Takes the caller's current <see cref="UnlockSnapshot"/> (issue #198) and checks the local
+    /// level against it twice: once here, before <c>StartAttempt</c>, so an unknown/non-selectable/
+    /// locked level never reaches the server; and again inside <see cref="RemoteAttemptDescriptorMapper"/>,
+    /// through the ordinary <c>MatchConfigurationBuilder.Build</c> gate, so the final
+    /// <c>MatchConfiguration</c> is never produced any other way than every other launch path uses.
     /// </summary>
     public static class RemoteAttemptLauncher
     {
@@ -33,10 +40,11 @@ namespace Level5.BackendV2
             int levelId,
             CharacterSelection character,
             MatchModifiers modifiers,
+            UnlockSnapshot unlock,
             Action<RemoteAttemptLaunch> completed)
         {
             BackendV2CoroutineHost.Instance.StartCoroutine(
-                Run(seriesId, gameNumber, levelId, character, modifiers, completed));
+                Run(seriesId, gameNumber, levelId, character, modifiers, unlock, completed));
         }
 
         /// <summary>Exposed (rather than folded into <see cref="Launch"/>) so EditMode tests can
@@ -49,6 +57,7 @@ namespace Level5.BackendV2
             int levelId,
             CharacterSelection character,
             MatchModifiers modifiers,
+            UnlockSnapshot unlock,
             Action<RemoteAttemptLaunch> completed)
         {
             // ActiveRemoteAttempt and PendingRemoteAttemptResult are both single global slots (the
@@ -65,6 +74,27 @@ namespace Level5.BackendV2
                 yield break;
             }
 
+            // Issue #198: the same local level-eligibility recheck an ordinary launch performs
+            // (MatchCatalogs.Builder.Build(request, unlockSnapshot)) is enforced here too, before
+            // anything is spent on the attempt it would be used for - an unknown, non-selectable or
+            // locked level must never reach StartAttempt. unlock is required (not optional the way
+            // MatchConfigurationBuilder.Build's own parameter is for unmigrated callers): the remote
+            // path must never silently fall back to permissive null-unlock behavior.
+            if (unlock == null)
+            {
+                completed?.Invoke(RemoteAttemptLaunch.Failure(
+                    "no local unlock snapshot was provided - refusing to start a remote attempt without a level eligibility check"));
+                yield break;
+            }
+
+            LevelDefinition level = MatchCatalogs.Levels.Find(levelId);
+            ValidationResult levelValidation = LevelEligibility.ValidateForLaunch(level, levelId, unlock);
+            if (!levelValidation.IsValid)
+            {
+                completed?.Invoke(RemoteAttemptLaunch.Failure(levelValidation.ToString()));
+                yield break;
+            }
+
             ApiResponse<AttemptDescriptorDto> response = null;
             yield return BackendV2Runtime.Correspondence.StartAttempt(
                 seriesId, gameNumber, result => response = result);
@@ -77,7 +107,7 @@ namespace Level5.BackendV2
 
             ParticipantId participantId = BackendV2ParticipantIdentity.Current();
             RemoteAttemptMapResult mapResult = RemoteAttemptDescriptorMapper.Map(
-                response.Value, levelId, participantId, character, modifiers);
+                response.Value, levelId, participantId, character, unlock, modifiers);
 
             if (!mapResult.Succeeded)
             {

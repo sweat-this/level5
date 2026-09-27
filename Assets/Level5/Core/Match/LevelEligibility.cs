@@ -37,6 +37,37 @@ namespace Level5.Core.Match
             return IsSelectableContent(level) && IsUnlockedForAccount(level, unlock);
         }
 
+        /// <summary>
+        /// The preflight a launcher runs against a chosen level before spending anything on the
+        /// attempt it would be used for: does it exist, is it selectable, is it unlocked. Reuses
+        /// the same <see cref="MatchValidationCode"/>/<see cref="ValidationResult"/> shape
+        /// <see cref="MatchConfigurationBuilder.Build"/> re-checks with at launch time, so a
+        /// preflight rejection and the builder's own rejection read identically instead of each
+        /// constructing their own error text.
+        /// </summary>
+        public static ValidationResult ValidateForLaunch(LevelDefinition level, int levelId, UnlockSnapshot unlock)
+        {
+            if (level == null)
+            {
+                return ValidationResult.Invalid(
+                    MatchValidationCode.UnknownLevel, $"level {levelId} is not in the level catalog");
+            }
+
+            if (!IsSelectableContent(level))
+            {
+                return ValidationResult.Invalid(
+                    MatchValidationCode.LevelNotSelectable, $"'{level.DisplayName}' is not selectable");
+            }
+
+            if (!IsUnlockedForAccount(level, unlock))
+            {
+                return ValidationResult.Invalid(
+                    MatchValidationCode.LevelLocked, $"'{level.DisplayName}' is locked");
+            }
+
+            return ValidationResult.Valid();
+        }
+
         /// <summary>The full selection question: content, mode and account gates together.</summary>
         public static bool CanSelect(
             LevelDefinition level,

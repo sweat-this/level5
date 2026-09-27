@@ -148,11 +148,18 @@ hook - the screen is a natural owning `MonoBehaviour` and outlives nothing this 
    `ActiveVersusAttempt`: "the one match/attempt currently being played"), so beginning a new attempt
    while an earlier one's failed result is still awaiting retry would silently overwrite and lose it.
    The player must resend (successfully, or to a definitive failure) that pending result first.
-1. `ICorrespondenceApiClient.StartAttempt` - failure surfaces as an inline error, mutates nothing.
-2. `RemoteAttemptDescriptorMapper.Map` (unchanged from #158) - failure (unsupported protocol
-   version, unknown ruleset, unplayable ruleset version, unknown required metric) surfaces the same
-   way; `ActiveMatch.Begin`/`ActiveRemoteAttempt.Begin` are never called on a mapping failure.
-3. On success: `ActiveMatch.Begin`, `ActiveRemoteAttempt.Begin`, `LegacyGameOptionsBridge.Apply`,
+1. **(#198)** Local level eligibility preflight, still before any network call: the fixed default
+   `levelId` is checked against the caller's current `UnlockSnapshot` via
+   `LevelEligibility.ValidateForLaunch` - unknown, non-selectable, or locked fails locally with the
+   same inline error path and zero `StartAttempt` requests. `RemoteAttemptLauncher.Run` requires this
+   snapshot; passing `null` fails clearly rather than launching unchecked.
+2. `ICorrespondenceApiClient.StartAttempt` - failure surfaces as an inline error, mutates nothing.
+3. `RemoteAttemptDescriptorMapper.Map` - failure (unsupported protocol version, unknown ruleset,
+   unplayable ruleset version, unknown required metric, or **(#198)** the same level not selectable/
+   locked, re-checked through the ordinary `MatchConfigurationBuilder.Build(request, unlock)` gate
+   using the identical snapshot from step 1 above) surfaces the same way; `ActiveMatch.Begin`/
+   `ActiveRemoteAttempt.Begin` are never called on a mapping failure.
+4. On success: `ActiveMatch.Begin`, `ActiveRemoteAttempt.Begin`, `LegacyGameOptionsBridge.Apply`,
    `SceneTransition.LoadScene` - the same sequence `VersusLauncher.Launch` uses for local play.
 
 **Known limitation:** no level picker exists yet for a remote attempt - it launches with a fixed
@@ -165,6 +172,12 @@ current local primary character - the same stable id `PlayerSelectionSession`/`P
 use for ordinary local launches - into a `CharacterSelection` before `RemoteAttemptLauncher.Run` is
 called, so a resolution/lock failure is shown inline and never reaches `StartAttempt`. No
 correspondence-specific character picker or character state was introduced.
+
+Level eligibility is no longer a limitation either (#198): the exact `UnlockSnapshot`
+`RemoteCharacterSelectionResolver.ResolveCurrentPrimary(out UnlockSnapshot)` already built to validate
+the character is the same one `PlayTurn` reuses for the level - one snapshot, one launch attempt,
+both checks. This closes the gap where an ordinary local launch revalidated level unlock state
+(`MatchCatalogs.Builder.Build(request, unlockSnapshot)`) but the remote path did not.
 
 ## Refresh-token persistence
 
@@ -207,9 +220,14 @@ before, just triggered by an actual request instead of by restoration itself.
 
 - No automatic retry/backoff for list refresh - lists refresh on tab open and after an explicit
   action, never on a timer.
-- Unlock-state revalidation for a network-driven match launch remains open (the existing
-  `VersusLauncher` gap noted in `docs/persistence-boundaries.md` applies identically here).
-- No level picker (see above); character selection is resolved from existing player-select authority.
+- Unlock-state revalidation for a network-driven match launch is resolved for this path (#198): the
+  local level and character are both checked against one current `UnlockSnapshot` before
+  `StartAttempt`, and again through the ordinary `MatchConfigurationBuilder.Build` gate. The
+  equivalent gap in local `VersusLauncher` (noted in `docs/persistence-boundaries.md`) is unchanged -
+  at present its only caller is the dev-only `VersusDevConsole`, not a production launch path.
+- No level picker (see above); character selection is resolved from existing player-select authority,
+  and the fixed default level is checked against that same authority's current unlock state (#198),
+  not merely assumed playable.
 - Built entirely at runtime from code rather than authored as a scene/prefab, unlike every other
   menu screen in this project (see the doc comment on `CorrespondenceScreenController` for why -
   in short, this change did not have interactive Editor/prefab-authoring access, and hand-typing
