@@ -255,10 +255,12 @@ handing back the object they were given.
 ## 7. How a turn actually runs
 
 ```
-VersusLauncher.Launch(seriesId, participantId, levelId, character)
+VersusLauncher.Launch(seriesId, participantId, levelId, character, unlockSnapshot)
+  0. LevelEligibility.ValidateForLaunch(level, levelId, unlock) -> fail closed, no attempt issued,
+     if the level is unknown, not selectable, locked, or no snapshot was supplied (issue #203)
   1. coordinator.IssueAttempt          -> attempt, saved before anything else happens
   2. read the mode from the series' FROZEN ruleset
-  3. build an ordinary MatchRequest -> MatchCatalogs.Builder -> MatchConfiguration
+  3. build an ordinary MatchRequest -> MatchCatalogs.Builder.Build(request, unlock) -> MatchConfiguration
   4. ActiveMatch.Begin + ActiveVersusAttempt.Begin + LegacyGameOptionsBridge.Apply
   5. coordinator.StartAttempt
   6. load the scene
@@ -272,6 +274,17 @@ GameRules.HandleMatchEnded
     - coordinator.SubmitResult -> game may resolve -> series may advance
     - could not save?  return false; the existing match-end retry loop tries again
 ```
+
+Step 0 and step 3 fail for different reasons on purpose. Step 0 is local content/account
+eligibility - unknown, not selectable, or locked - which is known for free before anything is spent
+on the attempt, so it must never reach `IssueAttempt`. Step 3's builder revalidation can still refuse
+an otherwise eligible level if the series' frozen ruleset cannot be played there (an arena/mode
+mismatch); that can only be known once the ruleset is read in step 2, which is after the attempt in
+step 1 already exists and is persisted. That attempt is deliberately left outstanding rather than
+abandoned, so the same turn can be retried on a compatible arena instead of costing the participant
+their go for a reason that has nothing to do with them. `RemoteAttemptLauncher` (Backend V2
+correspondence, issue #198) is the same join with the same two-stage shape, built against a server
+attempt instead of a local one.
 
 The roster is one local human. An attempt is one participant's run whether the opponent is sitting
 next to them or answering on Thursday, which is exactly why the same code covers local alternating

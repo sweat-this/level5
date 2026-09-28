@@ -197,13 +197,23 @@ applies" is answered the same way character validation already answers it: the l
 into this device, never Backend V2's `PlayerId` - `levelId` is not part of the competition protocol
 and this issue does not add it there.
 
-**Still not covered:** `Assets/Scripts/versus/VersusLauncher.cs` calls
-`MatchCatalogs.Builder.Build(request)` without an `UnlockSnapshot`. At the time of #198, its only
-caller remains the dev-only `VersusDevConsole` (`Assets/Scripts/Dev/VersusDevConsole.cs`) - there is
-still no production local-versus launch UI - so this is deferred rather than fixed alongside remote
-correspondence. Should a production caller appear, it should receive the identical
-`LevelEligibility.ValidateForLaunch` + `Build(request, unlock)` treatment rather than a
-versus-specific reinvention.
+**Local versus is covered too (issue #203).** `VersusLauncher.Launch`/`BuildMatch` now require the
+caller's current `UnlockSnapshot`, with the same two-stage shape as remote correspondence: a
+preflight via `LevelEligibility.ValidateForLaunch` against `MatchCatalogs.Levels.Find(levelId)`,
+*before* `VersusMatchCoordinator.IssueAttempt` (so an unknown/non-selectable/locked level never
+consumes a competitive attempt), and a final revalidation inside `BuildMatch`, which passes that same
+snapshot to `MatchCatalogs.Builder.Build(request, unlock)` rather than the permissive `Build(request)`
+overload. A null snapshot fails closed at both call sites instead of falling back to that permissive
+behavior. `VersusDevConsole` (`Assets/Scripts/Dev/VersusDevConsole.cs`), still the only caller and
+still development-only, builds its snapshot through the same `UnlockSnapshotBuilder` every other
+launch path uses - there is no second unlock authority.
+
+Mode/arena compatibility is deliberately *not* part of this preflight: an otherwise
+selectable/unlocked level that the series' frozen ruleset cannot use is still only caught afterward,
+inside `BuildMatch`'s builder revalidation - by then the attempt has already been issued and
+persisted, and it is left outstanding so the same turn can be retried on a compatible arena. Local
+level eligibility and mode/arena compatibility are different failures on purpose: the first is known
+before anything is spent on the attempt, the second only after the frozen ruleset is known.
 
 ## Open items
 
@@ -211,7 +221,5 @@ versus-specific reinvention.
   it to JSON. Nothing reconciles them. Today that is invisible because the JSON side is only a
   fallback, but the two will drift the moment either becomes authoritative.
 - Confirm the two server-side expectations above against `Level5Backend`.
-- `VersusLauncher`'s launch path does not yet revalidate level unlock state (see "Unlock authority"
-  above); remote correspondence's equivalent path does, as of issue #198.
 - Durable level-progress/completion persistence remains unimplemented pending a product decision on
   what "completing a level" means (see "Unlock authority" above).
