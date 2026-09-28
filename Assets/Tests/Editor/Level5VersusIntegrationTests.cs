@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Level5.Core.Match;
+using Level5.Core.Progression;
 using Level5.Core.Versus;
 using Level5.Core.Versus.Persistence;
 using NUnit.Framework;
@@ -262,11 +263,13 @@ public class Level5VersusIntegrationTests
 
         try
         {
+            UnlockSnapshot unlock = new UnlockSnapshot(null, new Dictionary<int, bool> { [1] = true });
             MatchConfiguration configuration = VersusLauncher.BuildMatch(
                 ruleset,
                 levelId: 1,
                 participantId: VersusTestFixtures.PatrickId,
-                character: TestCharacter());
+                character: TestCharacter(),
+                unlock: unlock);
 
             Assert.That(configuration, Is.Not.Null);
             Assert.That(configuration.ModeId, Is.EqualTo(GameModeId.TotalPoints));

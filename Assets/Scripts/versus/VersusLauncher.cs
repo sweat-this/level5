@@ -1,5 +1,7 @@
+using System;
 using Assets.Scripts.Utility;
 using Level5.Core.Match;
+using Level5.Core.Progression;
 using Level5.Core.Versus;
 using UnityEngine;
 
@@ -17,23 +19,56 @@ using UnityEngine;
 /// The roster is one local human. An attempt is one participant's run, whether the opponent is
 /// sitting next to them or answering on Thursday - which is exactly why the same code covers local
 /// alternating play and correspondence with nothing switching between them.
+///
+/// Takes the caller's current <see cref="UnlockSnapshot"/> (issue #203, following remote
+/// correspondence's #198) and checks the local level against it twice: once here, before
+/// <c>IssueAttempt</c>, so an unknown/non-selectable/locked level never consumes a competitive
+/// attempt; and again inside <see cref="BuildMatch"/>, through the ordinary
+/// <see cref="MatchConfigurationBuilder.Build"/> gate, so the final <see cref="MatchConfiguration"/>
+/// is never produced any other way than every other launch path uses.
 /// </summary>
 public static class VersusLauncher
 {
+    private static Action<string> sceneLoaderOverride;
+
     /// <summary>
     /// Issues the participant's attempt and loads the match for it.
     ///
     /// The attempt is issued and saved <em>before</em> the scene loads. If the application dies
     /// during the load, the turn is already outstanding in the stored series and is handed back on
     /// the next request rather than lost.
+    ///
+    /// <paramref name="unlock"/> is required, not optional the way
+    /// <see cref="MatchConfigurationBuilder.Build"/>'s own parameter is for unmigrated callers: this
+    /// path must never silently fall back to permissive null-unlock behavior. The local level
+    /// eligibility check runs before <c>IssueAttempt</c> - unlike an incompatible mode/arena
+    /// combination (which is deliberately only caught afterward, at <see cref="BuildMatch"/>, and
+    /// leaves the attempt outstanding for retry), an unknown, non-selectable or locked level is known
+    /// without spending anything on the attempt, so it must never reach <c>IssueAttempt</c> at all.
     /// </summary>
     public static VersusLaunch Launch(
         SeriesId seriesId,
         ParticipantId participantId,
         int levelId,
         CharacterSelection character,
+        UnlockSnapshot unlock,
         MatchModifiers modifiers = null)
     {
+        if (unlock == null)
+        {
+            return VersusLaunch.Failure(VersusValidationResult.Invalid(
+                VersusValidationCode.SeriesNotPlayable,
+                "no local unlock snapshot was provided - refusing to start a turn without a level eligibility check"));
+        }
+
+        LevelDefinition level = MatchCatalogs.Levels.Find(levelId);
+        ValidationResult levelValidation = LevelEligibility.ValidateForLaunch(level, levelId, unlock);
+        if (!levelValidation.IsValid)
+        {
+            return VersusLaunch.Failure(VersusValidationResult.Invalid(
+                VersusValidationCode.SeriesNotPlayable, levelValidation.ToString()));
+        }
+
         VersusMatchCoordinator coordinator = VersusRuntime.Coordinator;
 
         AttemptOperation issued = coordinator.IssueAttempt(seriesId, participantId);
@@ -46,12 +81,13 @@ public static class VersusLauncher
         Attempt attempt = issued.Attempt;
         CompetitiveRuleset ruleset = series.Snapshot.GameAt(attempt.GameIndex);
 
-        MatchConfiguration configuration = BuildMatch(ruleset, levelId, participantId, character, modifiers);
+        MatchConfiguration configuration = BuildMatch(ruleset, levelId, participantId, character, unlock, modifiers);
         if (configuration == null)
         {
             // The attempt stays outstanding on purpose. It is a legitimate turn that could not be
             // played on this arena, and abandoning it here would cost the participant their go for
-            // a reason that has nothing to do with them.
+            // a reason that has nothing to do with them. This is a mode/arena compatibility failure,
+            // not a local-eligibility one - those are already refused above, before IssueAttempt.
             return VersusLaunch.Failure(VersusValidationResult.Invalid(
                 VersusValidationCode.SeriesNotPlayable,
                 $"{ruleset.DisplayName} cannot be played on the chosen arena"));
@@ -69,7 +105,7 @@ public static class VersusLauncher
 
         coordinator.StartAttempt(seriesId, attempt.Id);
 
-        SceneTransition.LoadScene(configuration.SceneName);
+        (sceneLoaderOverride ?? SceneTransition.LoadScene)(configuration.SceneName);
         return VersusLaunch.Success(series, attempt, configuration);
     }
 
@@ -78,17 +114,31 @@ public static class VersusLauncher
     ///
     /// Separate so a screen can find out whether a turn is playable on a given arena before
     /// offering it, and so tests can check the join without loading a scene. Returns null when the
-    /// combination is refused; the reason is logged by the builder's own validation.
+    /// combination is refused (including a missing <paramref name="unlock"/>, which fails closed
+    /// rather than falling back to <see cref="MatchConfigurationBuilder"/>'s permissive
+    /// unmigrated-caller default); the reason is logged by the builder's own validation.
     /// </summary>
     public static MatchConfiguration BuildMatch(
         CompetitiveRuleset ruleset,
         int levelId,
         ParticipantId participantId,
         CharacterSelection character,
+        UnlockSnapshot unlock,
         MatchModifiers modifiers = null)
     {
         if (ruleset == null)
         {
+            return null;
+        }
+
+        if (unlock == null)
+        {
+            // Unlike ruleset (an internal, always-supplied value), unlock is a caller-supplied
+            // parameter a direct BuildMatch caller could plausibly forget - so this failure gets the
+            // same diagnostic every other rejection below gets, rather than a silent null.
+            Debug.LogWarning(
+                $"A versus attempt at {ruleset.DisplayName} could not be launched on level {levelId}: "
+                + "no local unlock snapshot was provided - refusing to build a match without a level eligibility check");
             return null;
         }
 
@@ -108,7 +158,7 @@ public static class VersusLauncher
             CheerleaderSelection.None,
             "versus series");
 
-        MatchBuildResult result = MatchCatalogs.Builder.Build(request);
+        MatchBuildResult result = MatchCatalogs.Builder.Build(request, unlock);
         if (result.Succeeded)
         {
             return result.Configuration;
@@ -118,6 +168,19 @@ public static class VersusLauncher
             $"A versus attempt at {ruleset.DisplayName} could not be launched on level {levelId}: "
             + result.Validation);
         return null;
+    }
+
+    /// <summary>Test-only seam so the success path can be exercised in EditMode without a real
+    /// <c>SceneManager.LoadScene</c> call, matching <see cref="Level5.BackendV2.RemoteAttemptLauncher"/>'s
+    /// <c>OverrideSceneLoader</c>/<c>ResetSceneLoader</c> convention.</summary>
+    public static void OverrideSceneLoader(Action<string> loader)
+    {
+        sceneLoaderOverride = loader;
+    }
+
+    public static void ResetSceneLoader()
+    {
+        sceneLoaderOverride = null;
     }
 }
 

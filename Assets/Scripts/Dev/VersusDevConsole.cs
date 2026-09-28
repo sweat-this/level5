@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Text;
 using Level5.Core.Match;
+using Level5.Core.Progression;
 using Level5.Core.Versus;
 using UnityEngine;
 
@@ -183,11 +184,29 @@ public class VersusDevConsole : MonoBehaviour
             true,
             true);
 
-        VersusLaunch launch = VersusLauncher.Launch(series.Id, participantId, levelId, character);
+        UnlockSnapshot unlock = CurrentUnlockSnapshot();
+        VersusLaunch launch = VersusLauncher.Launch(series.Id, participantId, levelId, character, unlock);
         if (!launch.Succeeded)
         {
             Debug.LogError($"Could not start {participantId}'s turn: {launch.Validation}", this);
         }
+    }
+
+    /// <summary>
+    /// The same current-account <see cref="UnlockSnapshot"/> a real menu would build
+    /// (<see cref="RemoteCharacterSelectionResolver"/> does the equivalent for remote correspondence):
+    /// whatever primary/CPU character profile lists are currently loaded, plus the live level
+    /// catalog. There is no second unlock authority here - this reuses the same
+    /// <see cref="UnlockSnapshotBuilder"/> every other launch path does.
+    /// </summary>
+    private static UnlockSnapshot CurrentUnlockSnapshot()
+    {
+        IReadOnlyList<CharacterProfile> primaryProfiles =
+            LoadedData.instance != null ? LoadedData.instance.PlayerSelectedData : null;
+        IReadOnlyList<CharacterProfile> cpuProfiles =
+            LoadedData.instance != null ? LoadedData.instance.CpuPlayerSelectedData : null;
+
+        return UnlockSnapshotBuilder.Build(primaryProfiles, cpuProfiles, MatchCatalogs.Levels);
     }
 
     private VersusSeries LoadCurrent()
