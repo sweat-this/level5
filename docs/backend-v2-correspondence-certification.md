@@ -3,6 +3,104 @@
 Companion to [`docs/backend-v2-correspondence-ui.md`](backend-v2-correspondence-ui.md) (UI flow) and
 [`docs/backend-v2-client.md`](backend-v2-client.md) (typed client layer, issue #158).
 
+## Issue #198/#200: local level-eligibility gate certified through full Unity and live execution (2026-09-28)
+
+PR #199 (issue #198) added a local level-eligibility preflight (`LevelEligibility.ValidateForLaunch`)
+to the remote correspondence launch path (`RemoteAttemptLauncher.Run` before `StartAttempt`,
+`RemoteAttemptDescriptorMapper.Map` before `MatchConfigurationBuilder.Build`), but its authoring
+environment had no valid Unity Editor license, so it could not run the full Unity suites or live
+certification - see issue #200 for the tracked follow-up this session closed.
+
+| Field | Value |
+| --- | --- |
+| Level5 (Unity) SHA | `03b983243136c67d56fa01f54e3693aeb032e5d0` (`dev`) |
+| Backend V2 SHA (live certification) | `8613c05359e4a2d7cc81a2c8779a4378121157e6` (`dev`, local `dotnet run --launch-profile https` against local Postgres, `level5-postgres-local`) |
+| Unity version | 6000.5.7f1, Unity Personal (valid, unlimited license confirmed active in this environment) |
+| Tester / validator | Claude Code (automated agent), this session |
+
+### Clean compile
+
+`-batchmode -nographics` (no `-runTests`) - 0 compile errors (only pre-existing obsolete-API warnings
+unrelated to #198).
+
+### Focused EditMode tests (issue #198's own new/extended coverage)
+
+`Level5LevelEligibilityTests`, `Level5RemoteCharacterSelectionResolverTests`,
+`Level5BackendV2AttemptMappingTests`, `Level5BackendV2RemoteAttemptLauncherTests`: **56/56 passed**.
+Confirmed by test name and log inspection (not just green count) that locked/non-selectable/unknown/
+missing-snapshot cases all reject with zero transport requests and no `ActiveMatch`/
+`ActiveRemoteAttempt`/scene load, and that an eligible level produces exactly one `StartAttempt` and
+one scene load through the real catalog.
+
+### Production-data characterization (new this session)
+
+No existing test proved the real fallback catalog resolves `DefaultLevelId = 1` correctly, so one
+focused test was added:
+`LegacyMatchCatalogBootstrapTests.ProductionFallbackDataResolvesLevelOneAsTheUnlockedSelectableScrapyard`
+(`Assets/Tests/Editor/LegacyMatchCatalogBootstrapTests.cs`). Using the real
+`LoadManager.TryLoadFallbackData` -> `LegacyMatchCatalogBootstrap.EnsureBuilt` ->
+`MatchCatalogs.Levels` path (the same technique the file's other tests already use, not
+`TestDefinitions.Level(...)`), it proves:
+
+```text
+MatchCatalogs.Levels.Find(1).DisplayName == "The Scrapyard"
+MatchCatalogs.Levels.Find(1).Selectable   == true
+MatchCatalogs.Levels.Find(1).Locked       == false
+UnlockSnapshotBuilder.Build(..., MatchCatalogs.Levels).IsLevelUnlocked(1) == true
+```
+
+No `LevelDefinition` assets were generated or committed; this only reads the already-authored
+`level_selected_01_scrapyard.prefab` (`levelId: 1`, `levelDisplayName: The Scrapyard`,
+`isSelectable: 1`, `isLocked: 0`) through the real production fallback composition. Passed
+(5/5 in `LegacyMatchCatalogBootstrapTests`, including this new test).
+
+### Full Unity validation
+
+- Full EditMode suite: **1798/1798 passed**, 0 failed (grown from the prior 1610/1610 baseline -
+  expected per #198's own new tests plus unrelated work merged since; not compared against the old
+  count as an acceptance bar).
+- Full PlayMode suite: **29/29 passed**, 0 failed, 13 skipped (all pre-existing opt-in
+  live-certification/restart-recovery fixtures correctly gated behind their own environment guards -
+  not run without `LEVEL5_LIVE_CERTIFICATION=1` or a genuine multi-process restart harness).
+
+### Repository validation
+
+`./scripts/validate-repository.ps1` - **passed**.
+
+### Live correspondence certification (`LEVEL5_LIVE_CERTIFICATION=1`)
+
+Backend V2 started locally (`v2/scripts/setup-local-dev.ps1` then `dotnet run --launch-profile https`,
+confirmed healthy via `https://localhost:7029/health/live`) and the existing three-process
+Session1/Session2/Session3 workflow re-run in full against it, each a genuinely separate
+`Unity.exe -runTests -testPlatform PlayMode -testFilter <method>` process:
+
+- **Session1** (`Session1_EstablishSeriesAndCompleteGameOneViaGameRules`) - **PASSED (1/1)**. The
+  real Play button click drove `RemoteAttemptLauncher.Run -> StartAttempt ->
+  RemoteAttemptDescriptorMapper.Map -> ActiveMatch.Begin -> SceneTransition.LoadScene`, and the log
+  confirms `Loaded scene 'Assets/Scenes/level_01_scrapyard.unity'` - the real production
+  `DefaultLevelId = 1` passed the new eligibility preflight live and reached the real gameplay scene.
+  Game 1 completed through the real `GameRules` match-end path and resolved live.
+- **Session2** (`Session2_PlayGameTwoAndDurablyStashAFailedSubmission`) - **PASSED (1/1)**, a
+  genuinely separate process. Restored Session1's persisted session with zero network requests,
+  confirmed the series still at game 2, clicked the real Play button for game 2 (the eligibility
+  gate passed again against the same `DefaultLevelId = 1`), then exercised the durable
+  pending-result path (issue #188) against an intentionally unreachable endpoint.
+- **Session3** (`Session3_ResumeAfterRestartResendPendingResultAndCompleteSeries`) - **PASSED
+  (1/1)**, a third genuinely separate process. Restored the exact persisted pending result from disk,
+  resent it live via the real "Resend result" button, confirmed Backend V2 accepted it, and confirmed
+  the series completed live with the correct winner.
+
+No unlock gate was weakened or bypassed to obtain these results; the eligibility preflight ran
+unmodified on both live launches (Session1 game 1, Session2 game 2) and both succeeded because the
+real production catalog genuinely resolves level 1 as selectable and unlocked (see the
+characterization test above), not because the gate was loosened.
+
+### Completion
+
+Issue #200 (this certification follow-up) is closed as certification-only: no production defect was
+found, so no production code changed. The only tree changes this session made are additive test
+coverage (the characterization test above) and this documentation update.
+
 ## Final Unity-client live certification (2026-09-23) - closes the remaining #159 gap
 
 This session closed the one gap every prior session (below, preserved as history) could not:
