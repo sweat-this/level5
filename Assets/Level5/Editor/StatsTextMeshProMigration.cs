@@ -50,8 +50,6 @@ public static class StatsTextMeshProMigration
         ("hardcore_value_button", "hardcoreOptionValueText"),        // hardcoreSelectOptionText
         ("enemies_value_button", "enemiesOptionValueText"),          // enemySelectOptionText
         ("sniper_value_button", "sniperOptionValueText"),            // sniperSelectOptionText
-        ("submitButton", "submittedHighscoresText"),                 // submittedHighscoresText
-        ("submitCount", "numUnsubmittedHighscoresText"),              // numUnsubmittedHighscoresText
     };
 
     private static readonly (string GameObjectName, string RowFieldName)[] HighScoreRowLabelFields =
@@ -160,7 +158,7 @@ public static class StatsTextMeshProMigration
 
     /// <summary>
     /// Idempotent Text -&gt; TextMeshProUGUI conversion for every legacy Text directly owned by
-    /// <see cref="StatsManagerPrefabPath"/>, wiring the 11 named fields (<see cref="NamedTextFields"/>)
+    /// <see cref="StatsManagerPrefabPath"/>, wiring the named fields (<see cref="NamedTextFields"/>)
     /// into <see cref="StatsUiObjects"/>. No-ops (logged) if none remain. Aborts without saving on any
     /// per-Text failure, a null targetGraphic left on a Selectable, or a named field that cannot be
     /// resolved - see <see cref="MenuTextMeshProMigration.Migrate"/> for why <c>LoadPrefabContents</c>

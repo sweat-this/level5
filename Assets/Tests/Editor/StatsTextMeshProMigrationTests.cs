@@ -45,8 +45,6 @@ public class StatsTextMeshProMigrationTests
         Assert.That(ui.HardcoreOptionValueText, Is.Not.Null);
         Assert.That(ui.EnemiesOptionValueText, Is.Not.Null);
         Assert.That(ui.SniperOptionValueText, Is.Not.Null);
-        Assert.That(ui.SubmittedHighscoresText, Is.Not.Null);
-        Assert.That(ui.NumUnsubmittedHighscoresText, Is.Not.Null);
     }
 
     [Test]

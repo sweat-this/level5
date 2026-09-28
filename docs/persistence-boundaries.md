@@ -4,13 +4,28 @@ Written 2026-08-07 for AUD-011. Describes what actually exists today, not a targ
 system is half-wired or dead, that is stated rather than smoothed over - the point of this document
 is that "which store is the source of truth" was previously unanswerable without reading six files.
 
-## The three stores
+## The stores
 
 | Store | Location | Authority | Written by | Read by |
 | --- | --- | --- | --- | --- |
-| **SQLite** | `Application.persistentDataPath/level5.db` | **Authoritative for everything the game currently shows** | `DBHelper` (~30 methods, all lock-guarded via `DBConnector`) | `LoadManager`, `StartManager`, `ProgressionManager`, `StatsManager` |
+| **SQLite** | `Application.persistentDataPath/level5.db` | **Authoritative for local score/history and everything else the game currently shows** | `DBHelper` (~30 methods, all lock-guarded via `DBConnector`) | `LoadManager`, `StartManager`, `ProgressionManager`, `StatsManager` |
 | **JSON per-account files** | `Application.persistentDataPath/accounts/<accountId>-characters.json` | Never authoritative; fallback only - see below | `ProgressionService` → `CharacterProgressStore.TryApplyProgressionSnapshot` | `UnlockSnapshotBuilder`, `CharacterRuntimeProvider` (both as a *fallback only*) |
-| **Server** | `Constants.API_ADDRESS_DEV_*` via `APIHelper` | Authoritative for leaderboards; the client cannot verify it | `APIHelper.PostHighscore`, `PostUnsubmittedHighscores` | `StatsManager` (online tab), `AccountManager` |
+| **Backend V2 MatchResults** | `api/v2/match-results` via `MatchResultSubmissionCoordinator`/`BackendV2MatchResultsClient` | **Remote score authority.** The client cannot verify it | `BackendV2MatchResultSubmission.TryQueue` (called from `GameRules.SaveMatchResults` and `EndRoundMenuManager.saveGame`, once the score is already locally durable) | Server-side only today; the client does not read results back |
+| **Backend V2 Leaderboards** | `api/v2/leaderboards` via `BackendV2Runtime.Leaderboards` | **Remote leaderboard authority.** The client cannot verify it | n/a (read-only from the client) | `StatsManager` (online tab) |
+
+The legacy V1 score/leaderboard HTTP transport (`APIHelper.PostHighscore`, `PostUnsubmittedHighscores`,
+`GetHighscoreByModeid`, and friends; `DBHelper.setGameScoreSubmitted`,
+`getUnsubmittedHighScoreFromDatabase`) was retired once Backend V2 MatchResults/Leaderboards became the
+production remote paths for ordinary and campaign results and for online leaderboard reads. There is no
+production code left that calls it. The `submittedToApi` SQLite column is inert schema compatibility
+only - no production reader or writer remains, and it is not removed to avoid an unnecessary migration
+of existing databases.
+
+**A match played with no Backend V2 session at the moment it becomes locally durable stays local-only
+and is never retroactively claimed by a later sign-in.** `BackendV2MatchResultSubmission.TryQueue`
+no-ops when `BackendV2SessionStore.Current` is null at that exact moment; there is no reconciliation
+queue for historical local scores. This mirrors the same rule already documented above for Backend V2
+correspondence sessions (`CharacterProgressAccountId` / session identity are never conflated either).
 
 ### The SQLite / JSON split is the thing to know
 
@@ -85,7 +100,7 @@ Every write path degrades to a queue rather than losing data:
 | Match score → SQLite | `PendingMatchPersistenceStore.QueueScore` | `LoadManager` calls `PendingMatchPersistenceStore.Repair()` on load |
 | All-time stats → SQLite | `PendingMatchPersistenceStore.QueueAllTime` | same |
 | Progression award | `PendingProgressionStore.Queue(accountId, resultId, ...)` | `ProgressionService` drains via `GetPending` / `Remove` |
-| Score → server | row stays marked unsubmitted | next `PostUnsubmittedHighscores`, or the manual submit button in `StatsManager` |
+| Score → Backend V2 MatchResults | `PendingMatchResultStore.Enqueue` | `MatchResultSubmissionCoordinator`'s durable retry (see `docs/backend-v2-client.md`) |
 
 `resultId` is what makes the progression queue idempotent - an award is removed by id once applied,
 so a crash between "applied" and "removed" cannot double-grant.
@@ -110,10 +125,13 @@ while others use the `DatabaseLocked` property, so grepping one name finds only 
 
 The client cannot enforce any of this; it is recorded so it can be confirmed against `Level5Backend`.
 
-- **Score fields are client-authored.** `PostUnsubmittedHighscores` stamps `score.Userid` and
-  `score.UserName` from `GameOptions` before sending, and the score values come from local
-  `GameStats`. The server must derive identity from the bearer token and never trust the posted
-  `Userid`. Client-side score integrity is not achievable and should not be attempted here.
+- **Score fields are client-authored.** The score values submitted to Backend V2 MatchResults come
+  from local `GameStats`/`HighScoreModel`. Unlike the retired V1 transport (which stamped
+  `score.Userid`/`score.UserName` from `GameOptions` onto the score itself),
+  `MatchResultSubmissionCoordinator.Enqueue` derives ownership from `BackendV2SessionStore.Current`'s
+  `PlayerId`, never from a client-set field on the payload - but the metric values themselves are still
+  client-authored. The server must derive identity from the access token and never trust a posted
+  identity field. Client-side score integrity is not achievable and should not be attempted here.
 - **Account enumeration is by design.** `UserNameExists`, `EmailExists`, and `GetUserByUserName` are
   unauthenticated, and `AccountManager.LoginUserCoroutine` fetches the full user record *by username*
   before it holds any credential. Given that API shape the client has no better option, but the

@@ -65,187 +65,10 @@ namespace Assets.Scripts.restapi
             GameOptions.userid = 0;
         }
 
-        public static IEnumerator PostHighscore(HighScoreModel score, Action<ApiResult<bool>> completed = null)
-        {
-            if (score == null)
-            {
-                completed?.Invoke(ApiResult<bool>.Fail("No score was provided."));
-                yield break;
-            }
-
-            // enforced here as well as at the call sites, so a future caller cannot post a score
-            // with no Authorization header. treated exactly like a failed submission: the row stays
-            // marked unsubmitted and is retried once a session exists.
-            if (!HasSession)
-            {
-                if (DBHelper.instance != null)
-                {
-                    yield return SetScoreSubmittedWhenAvailable(score.Scoreid, false);
-                }
-
-                completed?.Invoke(ApiResult<bool>.Fail("Sign in to submit scores."));
-                yield break;
-            }
-
-            ApiResult<string> response = null;
-            yield return SendJson(
-                Constants.API_ADDRESS_DEV_publicApiHighScores,
-                UnityWebRequest.kHttpVerbPOST,
-                JsonUtility.ToJson(score),
-                true,
-                result => response = result);
-
-            bool accepted = response.Success || response.StatusCode == 409;
-            if (DBHelper.instance != null)
-            {
-                yield return SetScoreSubmittedWhenAvailable(score.Scoreid, accepted);
-            }
-
-            completed?.Invoke(accepted
-                ? ApiResult<bool>.Ok(true, response.StatusCode)
-                : ApiResult<bool>.Fail(response.Error, response.StatusCode));
-        }
-
         public static IEnumerator PutCharacterProfileStats(List<CharacterProfile> characters)
         {
             // The server currently exposes no character-profile batch endpoint.
             yield break;
-        }
-
-        public static IEnumerator PostUnsubmittedHighscores(
-            List<HighScoreModel> highscores,
-            Action<ApiResult<int>> completed = null)
-        {
-            if (highscores == null || highscores.Count == 0)
-            {
-                completed?.Invoke(ApiResult<int>.Ok(0, 204));
-                yield break;
-            }
-
-            // the stamping below claims an identity, so it must not happen without a session
-            if (!HasSession)
-            {
-                completed?.Invoke(ApiResult<int>.Fail("Sign in to submit scores."));
-                yield break;
-            }
-
-            foreach (HighScoreModel score in highscores)
-            {
-                score.Userid = GameOptions.userid;
-                score.UserName = GameOptions.userName;
-            }
-
-            ApiResult<string> response = null;
-            yield return SendJson(
-                Constants.API_ADDRESS_DEV_publicApiHighScoresUnsubmitted,
-                UnityWebRequest.kHttpVerbPOST,
-                JsonConvert.SerializeObject(highscores),
-                true,
-                result => response = result);
-
-            if (response.Success || response.StatusCode == 409)
-            {
-                if (DBHelper.instance != null)
-                {
-                    foreach (HighScoreModel score in highscores)
-                    {
-                        yield return SetScoreSubmittedWhenAvailable(score.Scoreid, true);
-                    }
-                }
-
-                completed?.Invoke(ApiResult<int>.Ok(highscores.Count, response.StatusCode));
-                yield break;
-            }
-
-            completed?.Invoke(ApiResult<int>.Fail(response.Error, response.StatusCode));
-        }
-
-        public static IEnumerator PutHighscore(HighScoreModel score, Action<ApiResult<bool>> completed = null)
-        {
-            if (score == null)
-            {
-                completed?.Invoke(ApiResult<bool>.Fail("No score was provided."));
-                yield break;
-            }
-
-            ApiResult<string> response = null;
-            string scoreId = UnityWebRequest.EscapeURL(score.Scoreid ?? string.Empty);
-            yield return SendJson(
-                Constants.API_ADDRESS_DEV_publicApiHighScores + scoreId,
-                UnityWebRequest.kHttpVerbPUT,
-                JsonUtility.ToJson(score),
-                true,
-                result => response = result);
-
-            completed?.Invoke(response.Success
-                ? ApiResult<bool>.Ok(true, response.StatusCode)
-                : ApiResult<bool>.Fail(response.Error, response.StatusCode));
-        }
-
-        public static IEnumerator GetHighscoreByScoreid(
-            string scoreId,
-            Action<ApiResult<List<HighScoreModel>>> completed)
-        {
-            string url = Constants.API_ADDRESS_DEV_publicApiHighScoresByScoreid
-                + UnityWebRequest.EscapeURL(scoreId ?? string.Empty);
-            yield return GetJson(url, true, completed);
-        }
-
-        public static IEnumerator GetHighscoreByModeid(
-            int modeId,
-            int hardcore,
-            int traffic,
-            int enemies,
-            int sniper,
-            int page,
-            int results,
-            Action<ApiResult<List<StatsTableHighScoreRow>>> completed)
-        {
-            if (modeId > 19 && modeId < 23)
-            {
-                enemies = 1;
-            }
-
-            string url;
-            if (hardcore == 0 && traffic == 0 && enemies == 0 && sniper == 0)
-            {
-                url = Constants.API_ADDRESS_DEV_publicApiHighScoresByModeidInGameDisplayAll + modeId
-                    + "?page=" + page
-                    + "&results=" + results;
-            }
-            else
-            {
-                url = Constants.API_ADDRESS_DEV_publicApiHighScoresByModeidInGameDisplayFiltered + modeId
-                    + "?hardcore=" + hardcore
-                    + "&traffic=" + traffic
-                    + "&enemies=" + enemies
-                    + "&sniper=" + sniper
-                    + "&page=" + page
-                    + "&results=" + results;
-            }
-
-            yield return GetJson(url, true, completed);
-        }
-
-        public static IEnumerator GetHighscoreCountByModeid(
-            int modeId,
-            int hardcore,
-            int traffic,
-            int enemies,
-            int sniper,
-            Action<ApiResult<int>> completed)
-        {
-            if (modeId > 19 && modeId < 23)
-            {
-                enemies = 1;
-            }
-
-            string url = Constants.API_ADDRESS_DEV_publicApiHighScoresCountByModeid + modeId
-                + "?hardcore=" + hardcore
-                + "&traffic=" + traffic
-                + "&enemies=" + enemies
-                + "&sniper=" + sniper;
-            yield return GetJson(url, true, completed);
         }
 
         public static IEnumerator PostUser(UserModel user, Action<ApiResult<UserModel>> completed = null)
@@ -284,13 +107,6 @@ namespace Assets.Scripts.restapi
         public static IEnumerator UserExists(string username, Action<ApiResult<bool>> completed)
         {
             yield return UserNameExists(username, completed);
-        }
-
-        public static IEnumerator ScoreIdExists(string scoreId, Action<ApiResult<bool>> completed)
-        {
-            string url = Constants.API_ADDRESS_DEV_publicApiHighScoresByScoreid
-                + UnityWebRequest.EscapeURL(scoreId ?? string.Empty);
-            yield return ResourceExists(url, false, completed);
         }
 
         public static IEnumerator UserNameExists(string username, Action<ApiResult<bool>> completed)
@@ -561,23 +377,5 @@ namespace Assets.Scripts.restapi
                 : "The request failed. Try again.";
         }
 
-        private static IEnumerator SetScoreSubmittedWhenAvailable(string scoreId, bool submitted)
-        {
-            float deadline = Time.realtimeSinceStartup + 5f;
-            while (DBHelper.instance != null
-                && DBHelper.instance.DatabaseLocked
-                && Time.realtimeSinceStartup < deadline)
-            {
-                yield return null;
-            }
-
-            if (DBHelper.instance == null || DBHelper.instance.DatabaseLocked)
-            {
-                Debug.LogWarning("Could not update the local submission state for score " + scoreId + ".");
-                yield break;
-            }
-
-            DBHelper.instance.setGameScoreSubmitted(scoreId, submitted);
-        }
     }
 }
