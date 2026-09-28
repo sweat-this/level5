@@ -13,7 +13,7 @@ These are, and remain, two completely independent identities:
 | --- | --- | --- |
 | Owner | `LocalAccountIdentity.UserId`/`UserName` (`GameOptions.userid`/`userName` forward here) | `BackendV2SessionStore.Current.PlayerId` |
 | What it is | Which local save/progression profile is selected on this device - "a local selection only, it proves nothing about authentication" (see `LocalAccountIdentity`'s own doc comment) | Who is signed in to Backend V2 - match results, leaderboards, friends, correspondence |
-| Created/changed by | `AccountManager` (`level_00_account_createNew`/`_loginExisting`/`_loginLocal`), legacy `APIHelper`/`UserModel` | `OnlineAccountController` (`level_00_account_online`), `BackendV2Runtime.Session` |
+| Created/changed by | `AccountManager` (`level_00_account_createNew`/`_loginLocal`), `LocalAccount`/`UserAccountManager`, `DBHelper.CreateLocalProfile` - entirely local, no network | `OnlineAccountController` (`level_00_account_online`), `BackendV2Runtime.Session` |
 
 **The online-account screen never reads or writes local profile identity**, and registering, signing
 in, or signing out of a Backend V2 account never changes which local profile is selected, never creates
@@ -21,6 +21,12 @@ or touches a local SQLite `User` row, and never implies any sync between local p
 player. `Level5BackendV2ArchitectureTests.OnlineAccountControllerNeverUsesLocalProfileIdentity`
 enforces this at the source-text level (no `GameOptions.userid`/`userName`/`APIHelper`/`UserModel`
 reference anywhere in `OnlineAccountController.cs`).
+
+The legacy V1 account/auth transport (`APIHelper.PostUser`/`PostToken`/`UserNameExists`/`GetUserByUserName`)
+that the local-profile side used to depend on is retired; local profile creation/selection/guest are
+now zero-network. `level_00_account_loginExisting` (the old "log in to an existing remote-authenticated
+account" screen) is no longer reachable from production navigation, but its scene/`AccountLoginUiObjects`
+stay as `OnlineAccountSceneBootstrap`'s editor-only template - see `docs/persistence-boundaries.md`.
 
 ## Where it lives
 

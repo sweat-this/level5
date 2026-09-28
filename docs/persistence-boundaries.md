@@ -46,50 +46,46 @@ if either reader is touched again.
 
 ## Account identity
 
-Three different things are easy to confuse. They are not interchangeable:
+**The V1 account/auth transport (`APIHelper.PostUser`/`PostToken`/`UserNameExists`/`EmailExists`/
+`GetUserByUserName`, and the bearer-session machinery that backed them - `bearerToken`, `HasSession`,
+`BearerToken`, `ClearSession`) was retired.** Local profiles are created and selected entirely on
+device now, with no server round trip at any point; selecting an existing local profile, creating a
+new one, and continuing as guest are all zero-network operations. The old `APIHelper.HasSession`
+model ("a session token proves the authenticated identity") no longer applies to local profiles at
+all - there is no local session concept any more, only a local selection. What's left is a clean
+two-boundary model:
 
 | Concept | Where | Means |
 | --- | --- | --- |
-| `GameOptions.userid` / `GameOptions.userName` | static, set by `LocalAccount` | **A local selection.** The user picked an account from the list, or fell back to offline guest. Proves nothing. |
-| `APIHelper.HasSession` | `!string.IsNullOrEmpty(bearerToken)` | **A real session.** A token was obtained from the server. This is the only valid test for "may we call an authenticated endpoint". |
-| `CharacterProgressAccountId.GetCurrent()` | derived | **A filesystem scope.** `userid` if > 0, else `userName`, else `"guest"`. Chooses which JSON file local progress goes in. |
+| `LocalAccountIdentity.UserId` / `.UserName` (`GameOptions.userid`/`userName` forward here) | static, set by `LocalAccount`/`UserAccountManager`/`AccountManager` | **Local save/profile scope.** Which local profile is selected, or the offline guest fallback. Not a credential of any kind - a local profile is a save selector, not a security principal. |
+| `CharacterProgressAccountId.GetCurrent()` | derived from the row above | **A filesystem/SQLite scope.** `UserId` if > 0, else `UserName`, else `"guest"`. Chooses which local progress a save belongs to. |
+| `BackendV2SessionStore.IsAuthenticated` | `Level5.BackendV2`, access/refresh token pair | **The sole online authenticated identity.** The only test for "may we call an authenticated `api/v2/*` endpoint". Entirely independent of the row above - never assign one from the other. |
 
-A separate, parallel boundary exists for Backend V2 (issue #158): `BackendV2SessionStore.IsAuthenticated`
-is the equivalent "may we call an authenticated endpoint" test for `api/v2/*`, backed by an
-access/refresh token pair that never touches `GameOptions` or `UserModel`, for the same reason
-`APIHelper.bearerToken` doesn't. The two sessions are independent - a legacy session and a Backend V2
-session are not the same login. See `docs/backend-v2-client.md`.
-
-The token pair itself is mirrored to its own disk location (issue #159,
-`BackendV2SessionPersistenceStore`, plaintext JSON via `AtomicFile` - the same convention every
-other local save in this project already uses) so a player is not signed out of correspondence on
-every app restart; it is a separate file from every account-scoped save above, keyed by nothing
-account-specific, since it holds exactly one Backend V2 session at a time. Restoration is wired in
-at application startup (`UserAccountManager.Awake`, idempotent, zero network requests -
-`CorrespondenceScreenController.Awake` calls the same bootstrap as a fallback), not gated behind
-any of the three account-identity concepts above: a local account switch, guest continuation, or a
-failed V1 login must not clear an otherwise-valid restored Backend V2 session, and a Backend V2
-session must never be inferred from `GameOptions.userid`. See
+`BackendV2SessionStore` is the only session concept left in the client; see `docs/backend-v2-client.md`.
+Its token pair is mirrored to its own disk location (issue #159, `BackendV2SessionPersistenceStore`,
+plaintext JSON via `AtomicFile`) so a player is not signed out of correspondence on every app restart;
+restoration runs at application startup (`UserAccountManager.Awake`, idempotent, zero network
+requests) independent of local profile selection: selecting a different local profile, creating one,
+or continuing as guest must never clear an otherwise-valid restored Backend V2 session, and a Backend
+V2 session must never be inferred from `LocalAccountIdentity`/`GameOptions.userid`. See
 `docs/backend-v2-correspondence-ui.md`.
 
-AUD-045 fixed the case where `userid != 0` was being used as the authentication test. Two paths set
-an identity without a session, and both are intentional:
-
-1. `LocalAccount.LoginButton` writes `userName`/`userid` from the selected account and *then*
-   navigates to the login screen. Backing out leaves both set.
-2. `LocalAccount.LoginAsGuestCoroutine` calls `ClearSession()` on token failure and then re-sets the
-   guest identity, deliberately leaving no token.
-
-Both are correct: `AccountManager` prefills the username from them, and `CharacterProgressAccountId`
-scopes offline progress by them. Clearing them would send offline progress to a nameless file. The
-rule is simply that **nothing which talks to the server may read them as proof of a session**.
+**Local ids are allocated on-device, not by a server.** `DBHelper.CreateLocalProfile` computes
+`MAX(userid) + 1` inside a single SQLite transaction with the insert (so a rejected candidate never
+reaches a committed row), skipping the reserved guest id (74) and rejecting integer exhaustion.
+Existing V1-era local rows (whose `userid` came from the server at the time they were created) are
+untouched and remain valid local identities exactly as before - this only changes where a *new* row's
+id comes from. Pre-existing `password`/`bearerToken` columns on the `User` table are inert schema
+compatibility (still scrubbed to `NULL` on every launch); no production reader or writer of either
+remains, matching the precedent already set by the retired V1 score transport's `submittedToApi`
+column.
 
 ### Guest account
 
-`UserAccountManager` hardcodes `guestUserid = 74`, `guestUsername = "guest"`, `guestPassword =
-"guest"`. A shared credential in a shipped binary is readable by anyone, so that account must be
-assumed writable by anyone. This cannot be fixed client-side; the server should treat it as
-untrusted.
+`UserAccountManager` hardcodes `guestUserid = 74`, `guestUsername = "guest"`. A shared, well-known
+local identity is not a security concern any more since it was never a credential to begin with -
+"guest" is simply the local save scope nothing else claims. The retired guest password existed only
+to satisfy the old V1 login call and is gone along with it.
 
 ## Failure handling and retry
 
@@ -132,10 +128,10 @@ The client cannot enforce any of this; it is recorded so it can be confirmed aga
   `PlayerId`, never from a client-set field on the payload - but the metric values themselves are still
   client-authored. The server must derive identity from the access token and never trust a posted
   identity field. Client-side score integrity is not achievable and should not be attempted here.
-- **Account enumeration is by design.** `UserNameExists`, `EmailExists`, and `GetUserByUserName` are
-  unauthenticated, and `AccountManager.LoginUserCoroutine` fetches the full user record *by username*
-  before it holds any credential. Given that API shape the client has no better option, but the
-  server must be returning a minimal projection - no password hash, no email, no PII.
+- **Local profile enumeration no longer exists.** `UserNameExists`/`EmailExists`/`GetUserByUserName`
+  and the account-by-username lookup they backed were retired with the rest of the V1 transport - a
+  duplicate local profile name is now rejected deterministically by `DBHelper.CreateLocalProfile`
+  itself, inside SQLite, with no server round trip at all.
 
 ## Unlock authority (issue #39)
 

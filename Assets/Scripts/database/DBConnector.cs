@@ -58,6 +58,19 @@ public class DBConnector : MonoBehaviour
         dbHelper = gameObject.GetComponent<DBHelper>();
     }
 
+    /// <summary>
+    /// Test-only seam mirroring <see cref="DBHelper.ConfigureForTests"/>: redirects this instance at
+    /// a caller-supplied database file instead of <see cref="Application.persistentDataPath"/>, and
+    /// re-asserts the sibling <see cref="DBHelper"/> reference explicitly rather than relying on
+    /// Awake()'s own <c>GetComponent&lt;DBHelper&gt;()</c> - a harness that adds both components to a
+    /// freshly-constructed GameObject has no guarantee Awake() already ran when this is called.
+    /// </summary>
+    internal void ConfigureForTests(string filePath, DBHelper helperOverride)
+    {
+        filepath = filePath;
+        dbHelper = helperOverride;
+    }
+
     void Start()
     {
         // create database / add tables if not exist
@@ -554,7 +567,11 @@ public class DBConnector : MonoBehaviour
     // =========================================================================
 
     // create tables if not created
-    IEnumerator createDatabase()
+    // Internal (not private) so EditMode tests - which have no asmdef under Assets/Tests/Editor and
+    // compile into this same default assembly - can drive schema creation directly via
+    // CoroutineTestRunner instead of through Start()'s StartCoroutine, which never advances outside
+    // play mode.
+    internal IEnumerator createDatabase()
     {
         yield return new WaitUntil(() => !dbHelper.DatabaseLocked);
         dbHelper.DatabaseLocked = true;

@@ -113,6 +113,21 @@ public class Level5MenuScreenPlayModeTests
     }
 
     [UnityTest]
+    public IEnumerator CreateLocalProfileScreenLoadsAndKeepsItsManagerEnabled()
+    {
+        // The retired-V1-account-auth scene surgery collapsed this screen from a 5-field registration
+        // form to a single profile-name field - a real PlayMode load catches a broken serialized
+        // reference or missing script the EditMode-only scene scans could miss.
+        yield return LoadMenuScene(Constants.SCENE_NAME_level_00_account_createNew);
+
+        MonoBehaviour manager = RealScenePlayModeTestSupport.FindActiveBehaviourInScene(loadedScene, "AccountManager");
+        Assert.That(manager, Is.Not.Null, "AccountManager was not found in the loaded scene.");
+        Assert.That(manager.enabled, Is.True, "AccountManager disabled itself - a required UI reference is missing.");
+        Assert.That(EventSystem.current, Is.Not.Null);
+        Assert.That(EventSystem.current.currentSelectedGameObject, Is.Not.Null);
+    }
+
+    [UnityTest]
     public IEnumerator OnlineAccountScreenLoadsAndKeepsItsControllerEnabled()
     {
         yield return LoadMenuScene(Constants.SCENE_NAME_level_00_account_online);

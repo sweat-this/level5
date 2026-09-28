@@ -53,12 +53,8 @@ public static class Constants
     public const string SCENE_NAME_level_23_dev = "level_23_dev";
     public const string SCENE_NAME_level_24_aveb_cemetary = "level_24_aveb_cemetary";
     // dev server api address constants
-    public const string API_ADDRESS_DEV_publicApi = "https://api.sweatthis.com/api/";
-    public const string API_ADDRESS_DEV_publicApiUsers = "https://api.sweatthis.com/api/users";
-    public const string API_ADDRESS_DEV_publicApiUsersByUserid = "https://api.sweatthis.com/api/users/userid";
-    public const string API_ADDRESS_DEV_publicApiUsersByUserName = "https://api.sweatthis.com/api/users/username/";
-    public const string API_ADDRESS_DEV_publicApiUsersByEmail = "https://api.sweatthis.com/api/users/email/";
-    public const string API_ADDRESS_DEV_publicApiToken = "https://api.sweatthis.com/api/token/";
+    // V1 account/auth endpoints (publicApiUsers*, publicApiToken) were retired along with the rest of
+    // the legacy account/auth transport - local profiles no longer call a server at all.
     public const string API_ADDRESS_DEV_publicApplicationVersionCurrent = "https://api.sweatthis.com/api/application/version/current";
     public const string API_ADDRESS_DEV_publicUserReport = "https://api.sweatthis.com/api/userreport";
     public const string API_ADDRESS_DEV_publicServerMessages = "https://api.sweatthis.com/api/servermessages";
