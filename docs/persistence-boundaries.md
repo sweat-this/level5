@@ -8,8 +8,8 @@ is that "which store is the source of truth" was previously unanswerable without
 
 | Store | Location | Authority | Written by | Read by |
 | --- | --- | --- | --- | --- |
-| **SQLite** | `Application.persistentDataPath/level5.db` | **Authoritative for local score/history and everything else the game currently shows** | `DBHelper` (~30 methods, all lock-guarded via `DBConnector`) | `LoadManager`, `StartManager`, `ProgressionManager`, `StatsManager` |
-| **JSON per-account files** | `Application.persistentDataPath/accounts/<accountId>-characters.json` | Never authoritative; fallback only - see below | `ProgressionService` → `CharacterProgressStore.TryApplyProgressionSnapshot` | `UnlockSnapshotBuilder`, `CharacterRuntimeProvider` (both as a *fallback only*) |
+| **SQLite** | `Application.persistentDataPath/level5.db` | **Sole live authority for character progression, and for local score/history and everything else the game currently shows** | `DBHelper` (~30 methods, all lock-guarded via `DBConnector`) | `LoadManager`, `StartManager`, `ProgressionManager`, `StatsManager` |
+| **JSON per-account files** | `Application.persistentDataPath/accounts/<accountId>-characters.json` | **Retired, ignored compatibility artifact** - never read or written by any production path; see below | nothing in production | nothing in production - `CharacterProgressStore.DeleteAccountFiles` only *removes* this file family on profile deletion |
 | **Backend V2 MatchResults** | `api/v2/match-results` via `MatchResultSubmissionCoordinator`/`BackendV2MatchResultsClient` | **Remote score authority.** The client cannot verify it | `BackendV2MatchResultSubmission.TryQueue` (called from `GameRules.SaveMatchResults` and `EndRoundMenuManager.saveGame`, once the score is already locally durable) | Server-side only today; the client does not read results back |
 | **Backend V2 Leaderboards** | `api/v2/leaderboards` via `BackendV2Runtime.Leaderboards` | **Remote leaderboard authority.** The client cannot verify it | n/a (read-only from the client) | `StatsManager` (online tab) |
 
@@ -27,22 +27,39 @@ no-ops when `BackendV2SessionStore.Current` is null at that exact moment; there 
 queue for historical local scores. This mirrors the same rule already documented above for Backend V2
 correspondence sessions (`CharacterProgressAccountId` / session identity are never conflated either).
 
-### The SQLite / JSON split is the thing to know
+### SQLite is the sole live progression authority
 
-These are two independent progression systems. SQLite is live and authoritative. The JSON store is a
-fallback only, written by `ProgressionService` → `CharacterProgressStore.TryApplyProgressionSnapshot`
-and read by `UnlockService`/`CharacterRuntimeProvider` only when a character is not found in the
-SQLite-backed data first.
+**Resolved.** SQLite `CharacterProfile` is the only live character-progression store. Two SQLite-side
+mechanisms sit alongside it, both still in production use:
 
-**Resolved 2026-08-13.** The never-called seeding path was deleted rather than wired, because making
-JSON authoritative would have been a real progression-authority change nobody had requested, and
-`CharacterProgressMigration`/`CharacterProgressStore.Load` had zero callers to begin with - deleting
-them changes no runtime behavior. `CharacterProgressStore.TryLoadExisting`, `Save`, and
-`TryApplyProgressionSnapshot` are unchanged and remain the only entry points into the JSON store.
-SQLite stays the sole source of truth; the JSON store stays a plain fallback that is never seeded from
-it. Reordering `UnlockService`/`CharacterRuntimeProvider` to check the JSON store first would still
-return empty progress for existing players - that risk is unchanged by this fix and worth remembering
-if either reader is touched again.
+- **`ProgressionResultLedger`** (SQLite table) - result-id idempotency. A repeated `resultId` is
+  detected and reported as `MatchProgressionResult.Duplicate` rather than double-awarding experience;
+  `DBConnector.ApplyProgressionResult`/`DBHelper.ApplyProgressionResult` own this in one transaction
+  alongside the `CharacterProfile` update. Its `projectionApplied` column is inert schema
+  compatibility only since this issue, matching the `submittedToApi`/`password`/`bearerToken`
+  precedent above - new rows write `1` (there is no longer a pending secondary projection to track),
+  and pre-existing `0` rows require no migration and are never read by anything.
+- **`PendingProgressionStore`** (JSON, `<accountId>-pending-progression.json`) - durable retry for the
+  authoritative SQLite write itself, when SQLite is unavailable or the write fails. Drained by
+  `ProgressionService.RepairPendingProgression()` (called from `LoadManager` once the database is
+  ready). This file is about retrying the *SQLite* write, not a second progression representation.
+
+The separate JSON per-account file (`<accountId>-characters.json`, `CharacterProgressStore`) that used
+to receive a best-effort "projection" of every successful SQLite write, and that
+`UnlockSnapshotBuilder` used to fall back to for a character absent from the loaded SQLite profile
+lists, is now dead code on both the write and read side. Neither `ProgressionService.ApplyMatchResult`
+nor `UnlockSnapshotBuilder.Build` reference it any more - enforced by
+`Level5ProgressionJsonDependencyGuardTests`. `CharacterProgressStore.TryLoadExisting`/`Save` remain
+only as test fixtures and as the filename convention `DeleteAccountFiles` reuses when a local profile
+is deleted; no production write or read path calls them for progression any more.
+`CharacterRuntimeProvider`, the JSON store's other historical reader, was
+deleted outright (zero production callers, zero scene/prefab GUID references) once its only reason to
+exist - JSON progress lookup - was retired.
+
+A pre-existing `<accountId>-characters.json`/`.bak`/`.tmp` file family from before this retirement is
+left alone during normal gameplay - nothing deletes it on startup, and nothing reads it. It is only
+ever removed as part of "Local profile deletion" below, alongside that profile's other account-scoped
+files.
 
 ## Account identity
 
@@ -197,11 +214,13 @@ filesystem read) on every call:
   was not built with answers locked (a deterministic safe default, not "unknown").
 - **`UnlockSnapshotBuilder`** (`Assets/Scripts/menu_start/UnlockSnapshotBuilder.cs`) - the adapter
   that builds a snapshot from live account data. Replaces `UnlockService`, which is deleted (it had
-  no callers, so this changed no runtime behavior). Character precedence is unchanged from
-  `UnlockService`'s: the SQLite-backed `CharacterProfile` lists the menu already loaded are checked
-  first; the JSON store (`CharacterProgressStore`) fills in only characters absent from those lists,
-  and never overrides a known SQLite answer. See `Level5UnlockSnapshotTests.cs` for the regression
-  coverage proving disagreement resolves toward SQLite in both directions.
+  no callers, so this changed no runtime behavior). Character answers come solely from the
+  SQLite-backed `CharacterProfile` lists the menu already loaded (primary roster first, CPU roster
+  only filling in what the primary roster did not answer); a character absent from both defaults
+  locked. The JSON store is no longer consulted at all - see "SQLite is the sole live progression
+  authority" above. See `Level5UnlockSnapshotTests.cs` for the regression coverage, including
+  `AStaleLegacyJsonEntryCannotUnlockACharacterAbsentFromSqlite` proving a leftover legacy JSON file
+  cannot resurrect an unlock SQLite does not know about.
   **Caught in code review before this reached `dev`:** the primary and CPU profile lists must not be
   merged as equals. `LoadManager.loadCpuSelectDataList` never sets `CharacterProfile.IsLocked` from
   SQLite the way `loadPlayerSelectDataList` does for the primary roster, so a CPU-list profile's lock
@@ -260,9 +279,6 @@ before anything is spent on the attempt, the second only after the frozen rulese
 
 ## Open items
 
-- `ProgressionManager` and `StartManager` read progression from SQLite; `ProgressionService` writes
-  it to JSON. Nothing reconciles them. Today that is invisible because the JSON side is only a
-  fallback, but the two will drift the moment either becomes authoritative.
 - Confirm the two server-side expectations above against `Level5Backend`.
 - Durable level-progress/completion persistence remains unimplemented pending a product decision on
   what "completing a level" means (see "Unlock authority" above).

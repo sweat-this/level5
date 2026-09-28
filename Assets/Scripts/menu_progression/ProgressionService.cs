@@ -72,21 +72,16 @@ public class ProgressionService
         PendingProgressionStore.Remove(accountId, result.ResultId);
         result.Applied = true;
         result.Duplicate = status == ProgressionApplyStatus.Duplicate;
-        bool projectionComplete = RepairPendingJsonProjections(accountId);
         result.Message = result.Duplicate
             ? "Progression result was already applied."
-            : projectionComplete
-                ? "Progression result applied."
-                : "Progression result applied; its JSON projection is queued for repair.";
+            : "Progression result applied.";
         return result;
     }
 
-    public bool RepairPendingJsonProjections()
+    public bool RepairPendingProgression()
     {
         string accountId = CharacterProgressAccountId.GetCurrent();
-        bool pendingResultsRepaired = RepairPendingResults(accountId);
-        bool projectionsRepaired = RepairPendingJsonProjections(accountId);
-        return pendingResultsRepaired && projectionsRepaired;
+        return RepairPendingResults(accountId);
     }
 
     private static bool RepairPendingResults(string accountId)
@@ -118,38 +113,6 @@ public class ProgressionService
                 out _);
             if (status == ProgressionApplyStatus.Failed
                 || !PendingProgressionStore.Remove(accountId, pending.resultId))
-            {
-                allApplied = false;
-            }
-        }
-
-        return allApplied;
-    }
-
-    private static bool RepairPendingJsonProjections(string accountId)
-    {
-        if (DBConnector.instance == null)
-        {
-            return false;
-        }
-
-        List<ProgressionSnapshot> pending = DBConnector.instance.GetPendingProgressionProjections(accountId);
-        bool allApplied = true;
-        foreach (ProgressionSnapshot snapshot in pending)
-        {
-            if (!CharacterProgressStore.TryApplyProgressionSnapshot(
-                accountId,
-                snapshot.CharacterId,
-                snapshot.Experience,
-                snapshot.Level,
-                out string error))
-            {
-                allApplied = false;
-                Debug.LogWarning("Progression projection remains pending: " + error);
-                continue;
-            }
-
-            if (!DBConnector.instance.MarkProgressionProjectionApplied(snapshot.ResultId))
             {
                 allApplied = false;
             }

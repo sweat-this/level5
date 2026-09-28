@@ -3,14 +3,13 @@ using Level5.Core.Match;
 using Level5.Core.Progression;
 
 /// <summary>
-/// Builds an <see cref="UnlockSnapshot"/> from whatever the current account's data actually is:
-/// the SQLite-backed <see cref="CharacterProfile"/> lists the menu already loaded, and the JSON
-/// progress store as a fallback only when a character does not appear in either profile list.
+/// Builds an <see cref="UnlockSnapshot"/> from the current account's SQLite-backed
+/// <see cref="CharacterProfile"/> lists the menu already loaded. A character absent from both the
+/// primary and CPU rosters defaults locked - see docs/persistence-boundaries.md.
 ///
 /// This replaces the old <c>UnlockService</c>, which answered the same question but recomputed it
 /// (including a filesystem read) on every single call instead of once per refresh, and had no
-/// production caller. The precedence here is unchanged from that code: SQLite first, JSON only for
-/// what SQLite does not know about, never the reverse - see docs/persistence-boundaries.md.
+/// production caller.
 ///
 /// <paramref name="cpuProfiles"/> never overrides an id <paramref name="primaryProfiles"/> already
 /// answered. <c>LoadManager.loadCpuSelectDataList</c> never sets <c>CharacterProfile.IsLocked</c>
@@ -34,7 +33,6 @@ public static class UnlockSnapshotBuilder
         Dictionary<int, bool> characters = new Dictionary<int, bool>();
         AddProfiles(characters, primaryProfiles, overwrite: true);
         AddProfiles(characters, cpuProfiles, overwrite: false);
-        AddJsonFallback(characters);
 
         Dictionary<int, bool> levels = new Dictionary<int, bool>();
         if (levelCatalog != null)
@@ -71,26 +69,6 @@ public static class UnlockSnapshotBuilder
             }
 
             characters[profile.PlayerId] = !profile.IsLocked;
-        }
-    }
-
-    private static void AddJsonFallback(Dictionary<int, bool> characters)
-    {
-        if (!CharacterProgressStore.TryLoadExisting(CharacterProgressAccountId.GetCurrent(), out CharacterProgressSave save)
-            || save.characters == null)
-        {
-            return;
-        }
-
-        foreach (PlayerCharacterProgress progress in save.characters)
-        {
-            // SQLite already answered for this character (it was in one of the loaded profile
-            // lists) - the JSON projection never overrides a known SQLite answer, it only fills in
-            // what SQLite did not have.
-            if (progress != null && !characters.ContainsKey(progress.legacyPlayerId))
-            {
-                characters[progress.legacyPlayerId] = progress.unlocked;
-            }
         }
     }
 }

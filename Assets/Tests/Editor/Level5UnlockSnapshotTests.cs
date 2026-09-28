@@ -8,10 +8,13 @@ using UnityEngine;
 
 /// <summary>
 /// <see cref="UnlockSnapshot"/> is the pure, immutable answer; <see cref="UnlockSnapshotBuilder"/>
-/// is the one place that resolves it from live account data. The precedence tests below are the
-/// regression coverage for docs/persistence-boundaries.md: SQLite-backed data must win over the
-/// JSON fallback whenever both exist, and JSON must only ever fill in what SQLite does not know
-/// about - never override it.
+/// is the one place that resolves it from live account data. SQLite-backed
+/// <see cref="CharacterProfile"/> data (primary roster first, CPU roster only filling in what the
+/// primary roster did not answer) is the sole character-unlock source - see
+/// docs/persistence-boundaries.md. The legacy per-account JSON file is a retired, ignored
+/// compatibility artifact; <see cref="AStaleLegacyJsonEntryCannotUnlockACharacterAbsentFromSqlite"/>
+/// is the regression coverage proving it can no longer resurrect an unlock SQLite does not know
+/// about.
 /// </summary>
 public class Level5UnlockSnapshotTests
 {
@@ -186,39 +189,19 @@ public class Level5UnlockSnapshotTests
         Assert.That(snapshot.IsCharacterUnlocked(702), Is.True);
     }
 
-    // ---- UnlockSnapshotBuilder: character precedence (SQLite first, JSON fallback only) -------
+    // ---- UnlockSnapshotBuilder: legacy JSON is ignored, never a character-unlock source --------
 
     [Test]
-    public void SqliteBackedProfileWinsWhenJsonDisagreesUnlocked()
+    public void AStaleLegacyJsonEntryCannotUnlockACharacterAbsentFromSqlite()
     {
-        SeedJsonAccount(legacyPlayerId: 501, unlocked: false);
-        CharacterProfile profile = MakeProfile(501, locked: false); // SQLite: unlocked
+        // A pre-existing legacy <accountId>-characters.json (from before the JSON projection was
+        // retired) may still claim this character is unlocked. It must never resurrect that answer
+        // for a character SQLite (the sole live authority) has nothing to say about.
+        SeedJsonAccount(legacyPlayerId: 911, unlocked: true);
 
-        UnlockSnapshot snapshot = UnlockSnapshotBuilder.Build(new[] { profile }, new List<CharacterProfile>(), LevelDefinitionCatalog.Empty());
-
-        Assert.That(snapshot.IsCharacterUnlocked(501), Is.True, "SQLite said unlocked; JSON disagreeing must not win");
-    }
-
-    [Test]
-    public void SqliteBackedProfileWinsWhenJsonDisagreesLocked()
-    {
-        SeedJsonAccount(legacyPlayerId: 502, unlocked: true);
-        CharacterProfile profile = MakeProfile(502, locked: true); // SQLite: locked
-
-        UnlockSnapshot snapshot = UnlockSnapshotBuilder.Build(new[] { profile }, new List<CharacterProfile>(), LevelDefinitionCatalog.Empty());
-
-        Assert.That(snapshot.IsCharacterUnlocked(502), Is.False, "SQLite said locked; JSON disagreeing must not win");
-    }
-
-    [Test]
-    public void JsonIsUsedOnlyWhenSqliteHasNoAnswer()
-    {
-        SeedJsonAccount(legacyPlayerId: 503, unlocked: true);
-
-        // No CharacterProfile at all for id 503 - SQLite-backed data has nothing to say.
         UnlockSnapshot snapshot = UnlockSnapshotBuilder.Build(new List<CharacterProfile>(), new List<CharacterProfile>(), LevelDefinitionCatalog.Empty());
 
-        Assert.That(snapshot.IsCharacterUnlocked(503), Is.True, "with no SQLite answer, the JSON fallback should be used");
+        Assert.That(snapshot.IsCharacterUnlocked(911), Is.False, "a stale legacy JSON entry must not unlock a character absent from authoritative SQLite state");
     }
 
     [Test]

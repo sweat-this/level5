@@ -78,51 +78,6 @@ public static class CharacterProgressStore
         AtomicFile.WriteAllText(path, json);
     }
 
-    public static bool TryApplyProgressionSnapshot(
-        string userId,
-        int characterId,
-        int experience,
-        int level,
-        out string error)
-    {
-        error = string.Empty;
-        try
-        {
-            string normalizedUserId = NormalizeUserId(userId);
-            CharacterProgressSave save;
-            if (!TryLoadExisting(normalizedUserId, out save))
-            {
-                save = CreateEmptySave(normalizedUserId);
-            }
-
-            Normalize(normalizedUserId, save);
-            PlayerCharacterProgress progress = save.characters.Find(value =>
-                value != null && value.legacyPlayerId == characterId);
-            if (progress == null)
-            {
-                progress = new PlayerCharacterProgress
-                {
-                    characterId = "legacy-" + characterId,
-                    legacyPlayerId = characterId,
-                    unlocked = true
-                };
-                save.characters.Add(progress);
-            }
-
-            progress.experience = Math.Max(0, experience);
-            progress.level = Math.Max(0, level);
-            progress.lastModifiedUtc = DateTime.UtcNow.ToString("o");
-            Save(save);
-            return true;
-        }
-        catch (Exception exception)
-        {
-            error = exception.Message;
-            Debug.LogError("Failed to update the character progress projection: " + exception);
-            return false;
-        }
-    }
-
     public static string GetAccountProgressPath(string userId)
     {
         string safeUserId = SanitizeFileName(NormalizeUserId(userId));
@@ -139,14 +94,6 @@ public static class CharacterProgressStore
     public static bool DeleteAccountFiles(string userId)
     {
         return AtomicFile.TryDeleteFamily(GetAccountProgressPath(userId));
-    }
-
-    private static CharacterProgressSave CreateEmptySave(string userId)
-    {
-        return new CharacterProgressSave
-        {
-            userId = userId
-        };
     }
 
     private static string NormalizeUserId(string userId)
