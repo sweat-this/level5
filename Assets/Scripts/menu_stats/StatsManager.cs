@@ -74,11 +74,6 @@ public class StatsManager : MonoBehaviour
     List<GameObject> highScoreRowsObjectsList;
     // list of modes
     List<mode> modesList;
-    //list of unsubmitted highscores
-    [SerializeField]
-    List<HighScoreModel> unsubmittedHighScores;
-    [SerializeField]
-    int numUnsubmittedHighscores;
 
     [SerializeField]
     private bool trafficEnabled;
@@ -94,8 +89,6 @@ public class StatsManager : MonoBehaviour
     private TextMeshProUGUI hardcoreSelectOptionText;
     private TextMeshProUGUI enemySelectOptionText;
     private TextMeshProUGUI sniperSelectOptionText;
-    private TextMeshProUGUI submittedHighscoresText;
-    private TextMeshProUGUI numUnsubmittedHighscoresText;
 
     int defaultModeSelectedIndex;
     int currentModeSelectedIndex;
@@ -319,8 +312,6 @@ public class StatsManager : MonoBehaviour
         // opening Stats must not contact Backend V2, or show a signed-out failure, merely because
         // the scene loaded. The first online request happens only when the player actually
         // selects the online leaderboard (changeHighScoreDataDisplayOnline).
-        getUnsubmittedHighscores();
-        //submitUnsubmittedScores();
         RegisterButtonCallbacks();
         UiSelectionAdapter.EnsureSelected(GetDefaultSelectedButton());
         initialized = true;
@@ -353,8 +344,6 @@ public class StatsManager : MonoBehaviour
         hardcoreSelectOptionText = ui.HardcoreOptionValueText;
         enemySelectOptionText = ui.EnemiesOptionValueText;
         sniperSelectOptionText = ui.SniperOptionValueText;
-        submittedHighscoresText = ui.SubmittedHighscoresText;
-        numUnsubmittedHighscoresText = ui.NumUnsubmittedHighscoresText;
     }
 
     /// <summary>
@@ -848,93 +837,6 @@ public class StatsManager : MonoBehaviour
             }
         }
     }
-
-    public void submitUnsubmittedScores()
-    {
-        StartCoroutine(SubmitUnsubmittedScoresCoroutine());
-    }
-
-    private IEnumerator SubmitUnsubmittedScoresCoroutine()
-    {
-        // PostUnsubmittedHighscores stamps each score with GameOptions.userid/userName, which are
-        // set by picking a local account or by the offline guest fallback - neither proves a
-        // session. Without a token the request carries no Authorization header, so it would fail
-        // server-side with nothing here to explain why.
-        if (!APIHelper.HasSession)
-        {
-            submittedHighscoresText.text = "sign in to submit";
-            yield break;
-        }
-
-        // getUnsubmittedHighScoreFromDatabase already owns SQLite recovery internally and signals
-        // failure by returning null rather than throwing (DBHelper.cs).
-        List<HighScoreModel> unsubmitted = DBHelper.instance.getUnsubmittedHighScoreFromDatabase();
-        if (unsubmitted == null)
-        {
-            Debug.LogError("Could not read unsubmitted scores from the local database.");
-            submittedHighscoresText.text = "scores unavailable";
-            yield break;
-        }
-
-        unsubmittedHighScores = unsubmitted;
-
-        numUnsubmittedHighscores = unsubmittedHighScores.Count;
-        if (numUnsubmittedHighscores == 0)
-        {
-            submittedHighscoresText.text = "no scores to submit";
-            numUnsubmittedHighscoresText.text = string.Empty;
-            yield break;
-        }
-
-        submittedHighscoresText.text = "submitting...";
-        ApiResult<int> result = null;
-        yield return APIHelper.PostUnsubmittedHighscores(unsubmittedHighScores, value => result = value);
-        // AUD-078: same null-result guard UserAccountManager.LoginGuestCoroutine already uses after
-        // the identical APIHelper callback pattern.
-        bool submitted = result != null && result.Success;
-        submittedHighscoresText.text = submitted ? "scores submitted" : "submission failed";
-        numUnsubmittedHighscoresText.text = submitted ? string.Empty : "+" + numUnsubmittedHighscores;
-    }
-
-    private void getUnsubmittedHighscores()
-    {
-        List<HighScoreModel> unsubmitted;
-        DBHelper.instance.DatabaseLocked = true;
-        try
-        {
-            // get unsubmitted scores
-            unsubmitted = DBHelper.instance.getUnsubmittedHighScoreFromDatabase();
-        }
-        finally
-        {
-            DBHelper.instance.DatabaseLocked = false;
-        }
-
-        // getUnsubmittedHighScoreFromDatabase already owns SQLite recovery internally and signals
-        // failure by returning null rather than throwing (DBHelper.cs).
-        if (unsubmitted == null)
-        {
-            Debug.LogError("Could not read unsubmitted scores from the local database.");
-            return;
-        }
-
-        unsubmittedHighScores = unsubmitted;
-        numUnsubmittedHighscores = unsubmittedHighScores.Count;
-
-        // if count > 0,  set appropriate text
-        if (numUnsubmittedHighscores > 0)
-        {
-            submittedHighscoresText.text = "submit scores";
-            numUnsubmittedHighscoresText.text = "+" + numUnsubmittedHighscores.ToString();
-        }
-        // if none, set appropriate text
-        if (numUnsubmittedHighscores == 0)
-        {
-            submittedHighscoresText.text = "no scores to submit";
-            numUnsubmittedHighscoresText.text = "";
-        }
-    }
-
 
     public void changeHighScoreDataDisplay()
     {

@@ -38,8 +38,6 @@ public class StatsUiObjects : MonoBehaviour
     [SerializeField] private TextMeshProUGUI hardcoreOptionValueText;
     [SerializeField] private TextMeshProUGUI enemiesOptionValueText;
     [SerializeField] private TextMeshProUGUI sniperOptionValueText;
-    [SerializeField] private TextMeshProUGUI submittedHighscoresText;
-    [SerializeField] private TextMeshProUGUI numUnsubmittedHighscoresText;
 
     public GameObject HighScoreTableObject => highScoreTableObject;
     public GameObject AllTimeTableObject => allTimeTableObject;
@@ -65,8 +63,6 @@ public class StatsUiObjects : MonoBehaviour
     public TextMeshProUGUI HardcoreOptionValueText => hardcoreOptionValueText;
     public TextMeshProUGUI EnemiesOptionValueText => enemiesOptionValueText;
     public TextMeshProUGUI SniperOptionValueText => sniperOptionValueText;
-    public TextMeshProUGUI SubmittedHighscoresText => submittedHighscoresText;
-    public TextMeshProUGUI NumUnsubmittedHighscoresText => numUnsubmittedHighscoresText;
 
     public bool Validate(List<string> missing)
     {
@@ -93,8 +89,6 @@ public class StatsUiObjects : MonoBehaviour
         if (hardcoreOptionValueText == null) missing.Add("StatsUiObjects.hardcoreOptionValueText");
         if (enemiesOptionValueText == null) missing.Add("StatsUiObjects.enemiesOptionValueText");
         if (sniperOptionValueText == null) missing.Add("StatsUiObjects.sniperOptionValueText");
-        if (submittedHighscoresText == null) missing.Add("StatsUiObjects.submittedHighscoresText");
-        if (numUnsubmittedHighscoresText == null) missing.Add("StatsUiObjects.numUnsubmittedHighscoresText");
         return missing.Count == before;
     }
 }

@@ -185,16 +185,6 @@ public class EndRoundMenuManager : MonoBehaviour
         // session at this exact moment - see BackendV2MatchResultSubmission's own doc comment.
         Level5.BackendV2.BackendV2MatchResultSubmission.TryQueue(user);
 
-        // only upload when we actually hold a session - see the same gate in GameRules
-        if (savedLocally && APIHelper.HasSession && !string.IsNullOrEmpty(GameOptions.userName))
-        {
-            StartCoroutine(APIHelper.PostHighscore(user));
-        }
-        else if (savedLocally && DBHelper.instance != null)
-        {
-            DBHelper.instance.setGameScoreSubmitted(user.Scoreid, false);
-        }
-
         Destroy(PlayerData.instance.GetComponent<GameStats>());
         PlayerData.instance.CampaignGameStats = PlayerData.instance.gameObject.AddComponent<GameStats>();
     }
