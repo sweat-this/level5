@@ -265,4 +265,115 @@ public class Level5LocalProfileAllocationTests
             }
         }
     }
+
+    // ------------------------------------------------------------------
+    // ID non-reuse (durable LocalProfileIdSequence high-water, independent of which User rows
+    // currently exist - see docs/persistence-boundaries.md and DBHelper.AllocateNextUserId).
+    // ------------------------------------------------------------------
+
+    [Test]
+    public void ADeletedProfilesIdIsNeverReissuedToTheNextCreatedProfile()
+    {
+        ApiResult<UserModel> a = CreateProfile("reuse-a");
+        Assert.That(a.Success, Is.True, a.Error);
+        int deletedId = a.Value.Userid;
+
+        bool deleted = session.Helper.DeleteLocalProfile(a.Value, out string deleteError);
+        Assert.That(deleted, Is.True, deleteError);
+
+        ApiResult<UserModel> b = CreateProfile("reuse-b");
+
+        Assert.That(b.Success, Is.True, b.Error);
+        Assert.That(b.Value.Userid, Is.GreaterThan(deletedId));
+        Assert.That(b.Value.Userid, Is.Not.EqualTo(deletedId));
+    }
+
+    [Test]
+    public void DeletingTheCurrentHighestIdAmongMultipleProfilesStillDoesNotReuseIt()
+    {
+        ApiResult<UserModel> a = CreateProfile("multi-a");
+        ApiResult<UserModel> c = CreateProfile("multi-c");
+        Assert.That(a.Success, Is.True, a.Error);
+        Assert.That(c.Success, Is.True, c.Error);
+        Assert.That(c.Value.Userid, Is.GreaterThan(a.Value.Userid));
+        int highestDeletedId = c.Value.Userid;
+
+        bool deleted = session.Helper.DeleteLocalProfile(c.Value, out string deleteError);
+        Assert.That(deleted, Is.True, deleteError);
+
+        ApiResult<UserModel> d = CreateProfile("multi-d");
+
+        Assert.That(d.Success, Is.True, d.Error);
+        Assert.That(d.Value.Userid, Is.GreaterThan(highestDeletedId));
+        Assert.That(d.Value.Userid, Is.Not.EqualTo(highestDeletedId));
+    }
+
+    // ------------------------------------------------------------------
+    // Upgrade high-water: on first use against a database that predates LocalProfileIdSequence, the
+    // sequence must bootstrap from the largest known numeric local-profile scope across User.userid,
+    // CharacterProfile.accountId, and ProgressionResultLedger.accountId (when that table exists) - so
+    // a profile deleted before the sequence table ever existed, whose progression rows still remain,
+    // cannot have its identity recycled.
+    // ------------------------------------------------------------------
+
+    [Test]
+    public void FirstAllocationAgainstAnUpgradedDatabaseBootstrapsFromTheHighestKnownUserid()
+    {
+        SeedUser(10, "upgraded-max-user");
+
+        ApiResult<UserModel> result = CreateProfile("post-upgrade");
+
+        Assert.That(result.Success, Is.True, result.Error);
+        Assert.That(result.Value.Userid, Is.GreaterThan(10));
+    }
+
+    [Test]
+    public void FirstAllocationAgainstAnUpgradedDatabaseBootstrapsFromANumericCharacterProfileAccountIdHigherThanAnyUserid()
+    {
+        // Simulates a profile that was deleted before LocalProfileIdSequence existed: its User row is
+        // gone, but its CharacterProfile rows (accountId "25") are still present - MAX(User.userid) is
+        // only 10, but the new id must still exceed 25.
+        SeedUser(10, "upgraded-max-user");
+        using (IDbCommand cmd = session.Helper.Connection.CreateCommand())
+        {
+            cmd.CommandText =
+                "INSERT INTO CharacterProfile (accountId, charid, playerName, objectName, experience, level) "
+                + "VALUES ('25', 1, 'name', 'object', 0, 0)";
+            cmd.ExecuteNonQuery();
+        }
+
+        ApiResult<UserModel> result = CreateProfile("post-upgrade-orphaned-progress");
+
+        Assert.That(result.Success, Is.True, result.Error);
+        Assert.That(result.Value.Userid, Is.GreaterThan(25));
+    }
+
+    [Test]
+    public void FirstAllocationAgainstAnUpgradedDatabaseBootstrapsFromANumericProgressionResultLedgerAccountIdWhenThatTableExists()
+    {
+        SeedUser(10, "upgraded-max-user-2");
+        using (IDbCommand cmd = session.Helper.Connection.CreateCommand())
+        {
+            cmd.CommandText =
+                "CREATE TABLE IF NOT EXISTS ProgressionResultLedger ("
+                + "resultId TEXT PRIMARY KEY, accountId TEXT NOT NULL, characterId INTEGER NOT NULL, "
+                + "experienceAfter INTEGER NOT NULL, levelAfter INTEGER NOT NULL, "
+                + "projectionApplied INTEGER NOT NULL DEFAULT 0, appliedUtc TEXT NOT NULL)";
+            cmd.ExecuteNonQuery();
+        }
+
+        using (IDbCommand cmd = session.Helper.Connection.CreateCommand())
+        {
+            cmd.CommandText =
+                "INSERT INTO ProgressionResultLedger (resultId, accountId, characterId, experienceAfter, levelAfter, projectionApplied, appliedUtc) "
+                + "VALUES ('orphaned-result', '30', 1, 0, 0, 0, @now)";
+            cmd.Parameters.Add(new SqliteParameter("@now", DateTime.UtcNow.ToString("o")));
+            cmd.ExecuteNonQuery();
+        }
+
+        ApiResult<UserModel> result = CreateProfile("post-upgrade-orphaned-ledger");
+
+        Assert.That(result.Success, Is.True, result.Error);
+        Assert.That(result.Value.Userid, Is.GreaterThan(30));
+    }
 }

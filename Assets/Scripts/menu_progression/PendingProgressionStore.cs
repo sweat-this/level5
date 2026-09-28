@@ -109,6 +109,18 @@ public static class PendingProgressionStore
             AccountsFolderName,
             safeAccountId + "-pending-progression.json");
     }
+
+    /// <summary>
+    /// Removes this account's pending-progression file family (primary/.bak/.tmp) after a local
+    /// profile has been deleted from SQLite. Narrowly owned here so a caller never has to reconstruct
+    /// this store's filename convention itself. Returns false if any file that existed could not be
+    /// removed - SQLite deletion has already committed by the time this runs, so the caller logs a
+    /// warning rather than treating this as a reason to undo the deletion.
+    /// </summary>
+    public static bool DeleteAccountFiles(string accountId)
+    {
+        return AtomicFile.TryDeleteFamily(GetPath(accountId));
+    }
 }
 
 [Serializable]

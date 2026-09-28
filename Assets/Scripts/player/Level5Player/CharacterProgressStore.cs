@@ -129,6 +129,18 @@ public static class CharacterProgressStore
         return Path.Combine(Application.persistentDataPath, AccountsFolderName, safeUserId + "-characters.json");
     }
 
+    /// <summary>
+    /// Removes this account's projection file family (primary/.bak/.tmp) after a local profile has
+    /// been deleted from SQLite. Narrowly owned here so a caller (e.g. account deletion) never has to
+    /// reconstruct this store's filename convention itself. Returns false if any file that existed
+    /// could not be removed - SQLite deletion has already committed by the time this runs, so the
+    /// caller logs a warning rather than treating this as a reason to undo the deletion.
+    /// </summary>
+    public static bool DeleteAccountFiles(string userId)
+    {
+        return AtomicFile.TryDeleteFamily(GetAccountProgressPath(userId));
+    }
+
     private static CharacterProgressSave CreateEmptySave(string userId)
     {
         return new CharacterProgressSave

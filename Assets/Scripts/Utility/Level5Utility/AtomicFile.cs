@@ -77,6 +77,48 @@ public static class AtomicFile
         }
     }
 
+    /// <summary>
+    /// Removes one atomic-file family - the primary path plus its ".bak"/".tmp" siblings - for a
+    /// deleted account/profile. Best-effort per file: a locked/inaccessible file does not stop the
+    /// other two from being attempted, and the return value reports whether every file in the family
+    /// that existed was actually removed, so a caller can log a warning without treating a partial
+    /// filesystem failure as a reason to undo an already-committed SQLite deletion (SQLite stays
+    /// authoritative - see docs/persistence-boundaries.md).
+    /// </summary>
+    public static bool TryDeleteFamily(string path)
+    {
+        if (string.IsNullOrEmpty(path))
+        {
+            return true;
+        }
+
+        bool primaryDeleted = TryDeleteOne(path);
+        bool backupDeleted = TryDeleteOne(GetBackupPath(path));
+        bool temporaryDeleted = TryDeleteOne(path + ".tmp");
+        return primaryDeleted && backupDeleted && temporaryDeleted;
+    }
+
+    private static bool TryDeleteOne(string path)
+    {
+        try
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+
+            return true;
+        }
+        catch (IOException)
+        {
+            return false;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
     private static bool TryRead(string path, out string contents)
     {
         contents = null;
