@@ -127,8 +127,10 @@ public static class GameOptions
     // These forward to the same single owner - every existing caller keeps working unchanged.
     static public string userName { get => LocalAccountIdentity.UserName; set => LocalAccountIdentity.UserName = value; }
     static public int userid { get => LocalAccountIdentity.UserId; set => LocalAccountIdentity.UserId = value; }
-    // The session bearer token deliberately does not live here. It is a credential; it belongs to
-    // APIHelper for the life of the session. Ask APIHelper.HasSession instead.
+    // There is no local session bearer token any more - the V1 bearer-session machinery
+    // (APIHelper.HasSession/BearerToken/ClearSession) was retired along with the rest of the V1
+    // account/auth transport. The only remaining authenticated identity is Backend V2's own
+    // BackendV2SessionStore.IsAuthenticated, which deliberately does not live here either.
     static public int numOfLocalUsers;
 
     static public bool tipDialogueLoadedOnStart;
