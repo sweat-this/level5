@@ -109,6 +109,20 @@ public static class ProgressionResultStore
 
         return value;
     }
+
+    /// <summary>
+    /// Removes this account's progression-result-ledger file family (primary/.bak/.tmp) after a local
+    /// profile has been deleted from SQLite. This store has no production consumer today, but an
+    /// older install can still be carrying its explicitly account-scoped file - cleaning it here on
+    /// profile deletion avoids letting that stale data remain indefinitely, rather than requiring a
+    /// caller to reconstruct this store's filename convention itself. Returns false if any file that
+    /// existed could not be removed; SQLite deletion has already committed by the time this runs, so
+    /// the caller logs a warning rather than treating this as a reason to undo the deletion.
+    /// </summary>
+    public static bool DeleteAccountFiles(string userId)
+    {
+        return AtomicFile.TryDeleteFamily(GetAccountResultPath(userId));
+    }
 }
 
 [Serializable]

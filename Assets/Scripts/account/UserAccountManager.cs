@@ -150,15 +150,41 @@ public class UserAccountManager : MonoBehaviour
                 yield break;
             }
 
-            DBHelper.instance.DatabaseLocked = true;
-            DBHelper.instance.deleteLocalUser(userName);
-
-            bool databaseReady = false;
-            yield return WaitForDatabase(value => databaseReady = value);
-            if (!databaseReady)
+            // Resolve the exact selected profile from the already-loaded local-profile list rather
+            // than trusting the raw row text - this also deterministically rejects an unknown target
+            // and the generated guest row (guest is a fallback scope, never a persisted User row, so
+            // it is never routed into profile deletion).
+            UserModel target = ResolveDeletionTarget(userName);
+            if (target == null)
             {
-                SetMessage("The local account database is busy. Try again.");
+                SetMessage("That profile could not be found.");
                 yield break;
+            }
+
+            // DBHelper owns DatabaseLocked for the whole deletion - this method must never pre-set it
+            // (doing so used to make DBHelper's own deletion guard return immediately without ever
+            // deleting anything or releasing the lock). The deletion result is used directly; there is
+            // no need to poll WaitForDatabase to infer whether it succeeded.
+            bool deleted = DBHelper.instance.DeleteLocalProfile(target, out string error);
+            if (!deleted)
+            {
+                SetMessage(string.IsNullOrEmpty(error) ? "The local account could not be removed." : error);
+                yield break;
+            }
+
+            // SQLite is authoritative and has already committed the deletion at this point - a
+            // partial filesystem cleanup failure only logs a warning, it never re-creates the User
+            // row or blocks the reload below.
+            CleanUpAccountFiles(target);
+
+            if (MatchesCurrentLocalIdentity(target, GameOptions.userid, GameOptions.userName))
+            {
+                // Clear the local selection back to the same "nothing selected" state
+                // CharacterProgressAccountId.Resolve already treats as the guest fallback scope.
+                // Backend V2's session (BackendV2SessionStore) is untouched - local profile deletion
+                // is unrelated to online account authentication.
+                GameOptions.userid = 0;
+                GameOptions.userName = null;
             }
 
             SceneManager.LoadScene(Constants.SCENE_NAME_level_00_account_loginLocal);
@@ -279,6 +305,65 @@ public class UserAccountManager : MonoBehaviour
             //set text
             localAccounsList[index].GetComponentInChildren<Text>().text = u.UserName;
         }
+    }
+
+    /// <summary>
+    /// Resolves the raw selected row text to the exact <see cref="UserModel"/> it names in the
+    /// already-loaded local-profile list. Returns null for an unknown target and, deterministically,
+    /// for the generated guest row - "clear guest save" is explicitly out of scope for profile
+    /// deletion (see docs/persistence-boundaries.md). The guest row is identified by the reserved
+    /// scope itself (<see cref="guestUserid"/>, 74) rather than by display name, so a real,
+    /// differently-scoped profile that also happens to be named "guest" remains deletable; the
+    /// generated guest row's <see cref="UserModel.Userid"/> is never positive, so it never reaches
+    /// this list to begin with (see <see cref="usersLoaded"/>/<see cref="CreateUserButtons"/>).
+    /// </summary>
+    private UserModel ResolveDeletionTarget(string userName)
+    {
+        if (!usersLoaded || userAccountData == null || string.IsNullOrWhiteSpace(userName))
+        {
+            return null;
+        }
+
+        UserModel candidate = userAccountData.SingleOrDefault(x => x.UserName == userName);
+        if (candidate == null || candidate.Userid == guestUserid)
+        {
+            return null;
+        }
+
+        return candidate;
+    }
+
+    /// <summary>
+    /// Cleans up the deleted account's local projection/recovery files after its SQLite rows have
+    /// already committed as deleted. Narrowly delegates filename ownership to each store rather than
+    /// reconstructing their paths here.
+    /// </summary>
+    private static void CleanUpAccountFiles(UserModel profile)
+    {
+        string accountId = CharacterProgressAccountId.Resolve(profile.Userid, profile.UserName);
+
+        bool allRemoved = true;
+        allRemoved &= CharacterProgressStore.DeleteAccountFiles(accountId);
+        allRemoved &= PendingProgressionStore.DeleteAccountFiles(accountId);
+        allRemoved &= ProgressionResultStore.DeleteAccountFiles(accountId);
+
+        if (!allRemoved)
+        {
+            Debug.LogWarning(
+                "Deleted local profile '" + profile.UserName
+                + "' from SQLite, but some account-scoped local files could not be fully removed.");
+        }
+    }
+
+    /// <summary>
+    /// Pure decision extracted from the deletion coroutine so it has a directly testable seam (the
+    /// coroutine itself needs a live DialogueManager/EventSystem to drive): whether the just-deleted
+    /// profile is the one currently selected via <see cref="GameOptions"/>/<see cref="Level5.Core.LocalAccountIdentity"/>,
+    /// in which case the local selection must be cleared. Internal (not private) for EditMode tests.
+    /// </summary>
+    internal static bool MatchesCurrentLocalIdentity(UserModel profile, int currentUserId, string currentUserName)
+    {
+        return profile != null && currentUserId == profile.Userid && currentUserName == profile.UserName;
     }
 
     private static bool IsDatabaseUnlocked()

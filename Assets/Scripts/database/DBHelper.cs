@@ -1410,30 +1410,134 @@ public class DBHelper : MonoBehaviour
         }
     }
 
-    // MAX(userid)+1 within the caller's open transaction, skipping the reserved guest id
-    // (UserAccountManager.GuestUserid) and rejecting anything that would not be a usable positive
-    // id. Never derives from Backend V2, randomness, or the network - purely local SQL.
+    // Durable local-profile id allocation (see docs/persistence-boundaries.md). A one-row
+    // LocalProfileIdSequence table tracks the highest id ever committed, independent of which User
+    // rows currently exist, so deleting a profile (DeleteLocalProfile never touches this table) can
+    // never make its id available again - account-scoped files use this numeric id in their path, so
+    // reuse would let a newly-created profile silently inherit a deleted one's stale files. Allocation
+    // happens inside the caller's already-open transaction alongside the User insert, so a rejected
+    // candidate (duplicate name, exhaustion, ...) never advances the sequence - see
+    // AFailedInsertDoesNotConsumeOrApplyAnIdentity. Skips the reserved guest id
+    // (UserAccountManager.GuestUserid) and rejects anything that would not be a usable positive id.
+    // Never derives from Backend V2, randomness, or the network - purely local SQL.
     private static int AllocateNextUserId(SqliteConnection dbconn, SqliteTransaction transaction)
     {
-        using (IDbCommand maxCmd = dbconn.CreateCommand())
+        EnsureLocalProfileIdSequenceTable(dbconn, transaction);
+
+        long lastAllocatedId;
+        using (SqliteCommand selectCommand = dbconn.CreateCommand())
         {
-            maxCmd.Transaction = transaction;
-            maxCmd.CommandText = "SELECT MAX(userid) FROM " + Constants.LOCAL_DATABASE_tableName_user;
-            object result = maxCmd.ExecuteScalar();
-            long max = (result == null || result == DBNull.Value) ? 0L : Convert.ToInt64(result);
-
-            long candidate = max + 1;
-            if (candidate == UserAccountManager.GuestUserid)
+            selectCommand.Transaction = transaction;
+            selectCommand.CommandText = "SELECT lastAllocatedId FROM LocalProfileIdSequence LIMIT 1";
+            object existing = selectCommand.ExecuteScalar();
+            if (existing != null && existing != DBNull.Value)
             {
-                candidate++;
+                lastAllocatedId = Convert.ToInt64(existing);
             }
-
-            if (candidate <= 0 || candidate > int.MaxValue)
+            else
             {
-                throw new InvalidOperationException("The local profile id space is exhausted.");
+                // First use against this database (fresh install, or an upgraded pre-sequence
+                // database): bootstrap the high-water from every place a numeric local-profile id
+                // could already be recorded, so a previously-deleted profile whose progression rows
+                // still exist cannot have its identity recycled.
+                lastAllocatedId = ComputeLocalProfileIdHighWater(dbconn, transaction);
+                using (SqliteCommand insertCommand = dbconn.CreateCommand())
+                {
+                    insertCommand.Transaction = transaction;
+                    insertCommand.CommandText = "INSERT INTO LocalProfileIdSequence (lastAllocatedId) VALUES (@value)";
+                    insertCommand.Parameters.Add(new SqliteParameter("@value", lastAllocatedId));
+                    insertCommand.ExecuteNonQuery();
+                }
             }
+        }
 
-            return (int)candidate;
+        long candidate = lastAllocatedId + 1;
+        if (candidate == UserAccountManager.GuestUserid)
+        {
+            candidate++;
+        }
+
+        if (candidate <= 0 || candidate > int.MaxValue)
+        {
+            throw new InvalidOperationException("The local profile id space is exhausted.");
+        }
+
+        using (SqliteCommand updateCommand = dbconn.CreateCommand())
+        {
+            updateCommand.Transaction = transaction;
+            updateCommand.CommandText = "UPDATE LocalProfileIdSequence SET lastAllocatedId = @value";
+            updateCommand.Parameters.Add(new SqliteParameter("@value", candidate));
+            updateCommand.ExecuteNonQuery();
+        }
+
+        return (int)candidate;
+    }
+
+    private static void EnsureLocalProfileIdSequenceTable(SqliteConnection dbconn, SqliteTransaction transaction)
+    {
+        using (SqliteCommand command = dbconn.CreateCommand())
+        {
+            command.Transaction = transaction;
+            command.CommandText =
+                "CREATE TABLE IF NOT EXISTS LocalProfileIdSequence (lastAllocatedId INTEGER NOT NULL)";
+            command.ExecuteNonQuery();
+        }
+    }
+
+    // At minimum inspects User.userid and CharacterProfile.accountId, plus ProgressionResultLedger.
+    // accountId when that lazily-created table exists - so a profile deleted before this sequence
+    // table existed (whose progression rows can still be present) never has its id handed out again.
+    private static long ComputeLocalProfileIdHighWater(SqliteConnection dbconn, SqliteTransaction transaction)
+    {
+        long highWater = 0;
+
+        using (SqliteCommand command = dbconn.CreateCommand())
+        {
+            command.Transaction = transaction;
+            command.CommandText = "SELECT MAX(userid) FROM " + Constants.LOCAL_DATABASE_tableName_user;
+            object result = command.ExecuteScalar();
+            if (result != null && result != DBNull.Value)
+            {
+                highWater = Math.Max(highWater, Convert.ToInt64(result));
+            }
+        }
+
+        highWater = Math.Max(highWater, MaxNumericAccountId(dbconn, transaction, Constants.LOCAL_DATABASE_tableName_characterProfile));
+
+        if (TableExists(dbconn, transaction, "ProgressionResultLedger"))
+        {
+            highWater = Math.Max(highWater, MaxNumericAccountId(dbconn, transaction, "ProgressionResultLedger"));
+        }
+
+        return highWater;
+    }
+
+    // accountId is a free-form TEXT scope (a numeric local id, "legacy", "guest", ...) - only rows
+    // whose accountId is purely numeric digits represent a local-profile id and can affect the
+    // high-water mark.
+    private static long MaxNumericAccountId(SqliteConnection dbconn, SqliteTransaction transaction, string tableName)
+    {
+        tableName = RequireSqlIdentifier(tableName, nameof(tableName));
+        using (SqliteCommand command = dbconn.CreateCommand())
+        {
+            command.Transaction = transaction;
+            command.CommandText =
+                "SELECT MAX(CAST(accountId AS INTEGER)) FROM " + tableName
+                + " WHERE accountId GLOB '[0-9]*' AND accountId NOT GLOB '*[^0-9]*'";
+            object result = command.ExecuteScalar();
+            return (result == null || result == DBNull.Value) ? 0L : Convert.ToInt64(result);
+        }
+    }
+
+    private static bool TableExists(SqliteConnection dbconn, SqliteTransaction transaction, string tableName)
+    {
+        using (SqliteCommand command = dbconn.CreateCommand())
+        {
+            command.Transaction = transaction;
+            command.CommandText = "SELECT name FROM sqlite_master WHERE type = 'table' AND name = @name";
+            command.Parameters.Add(new SqliteParameter("@name", tableName));
+            object result = command.ExecuteScalar();
+            return result != null && result != DBNull.Value;
         }
     }
 
@@ -2335,32 +2439,112 @@ public class DBHelper : MonoBehaviour
         }
     }
 
-    public void deleteLocalUser(string username)
+    // Owns full local-profile deletion: the target's account-scoped SQLite rows (CharacterProfile,
+    // and ProgressionResultLedger when that lazily-created table exists) plus the User row itself,
+    // in one transaction. Replaces the old deleteLocalUser(string username), which only ever deleted
+    // the User row - it did not own its lock (the caller, UserAccountManager, pre-set DatabaseLocked
+    // before calling it, so deleteLocalUser's own "if (databaseLocked) return;" guard fired
+    // immediately: nothing was deleted and the lock was never released, so every later database wait
+    // timed out) and left CharacterProfile/ProgressionResultLedger rows orphaned under the deleted
+    // account's id.
+    //
+    // DBHelper owns DatabaseLocked for the whole operation - callers (UserAccountManager) must never
+    // pre-acquire it. Validates the target, runs one transaction, and returns explicit success/
+    // failure via the return value plus `error`; the lock is released in `finally` on every path,
+    // including validation failure and a mid-transaction exception.
+    public bool DeleteLocalProfile(UserModel profile, out string error)
     {
+        error = null;
+
         if (databaseLocked)
         {
-            return;
+            error = "The local account database is busy.";
+            return false;
         }
 
+        databaseLocked = true;
         try
         {
-            databaseLocked = true;
-
+            if (profile == null
+                || string.IsNullOrWhiteSpace(profile.UserName)
+                || profile.Userid <= 0
+                || profile.Userid == UserAccountManager.GuestUserid)
             {
-                IDbConnection dbconn = Connection;
-                using (IDbCommand dbcmd = dbconn.CreateCommand())
-                {
-                    dbcmd.CommandText = "DELETE FROM User Where username = @username";
-                    dbcmd.Parameters.Add(new SqliteParameter("@username", username));
-
-                    dbcmd.ExecuteNonQuery();
-                }
+                // Guest is a fallback scope, not a persistent User row, and is never deleted through
+                // profile deletion. Identified by Userid == GuestUserid (74) - the reserved scope
+                // itself - not by the display name "guest", which a real, differently-scoped profile
+                // (Userid != 74) may also legitimately choose; the generated guest UI row never has a
+                // positive Userid, so it is already caught by the Userid <= 0 check above.
+                error = "A valid local profile is required.";
+                return false;
             }
 
-        }
-        catch (Exception e)
-        {
-            Debug.Log("ERROR : " + e);
+            string accountId = NormalizeAccountId(CharacterProgressAccountId.Resolve(profile.Userid, profile.UserName));
+
+            SqliteConnection dbconn = Connection;
+            using (SqliteTransaction transaction = dbconn.BeginTransaction())
+            {
+                try
+                {
+                    using (SqliteCommand deleteCharacters = dbconn.CreateCommand())
+                    {
+                        deleteCharacters.Transaction = transaction;
+                        deleteCharacters.CommandText =
+                            "DELETE FROM " + Constants.LOCAL_DATABASE_tableName_characterProfile
+                            + " WHERE accountId = @accountId";
+                        deleteCharacters.Parameters.Add(new SqliteParameter("@accountId", accountId));
+                        deleteCharacters.ExecuteNonQuery();
+                    }
+
+                    if (TableExists(dbconn, transaction, "ProgressionResultLedger"))
+                    {
+                        using (SqliteCommand deleteLedger = dbconn.CreateCommand())
+                        {
+                            deleteLedger.Transaction = transaction;
+                            deleteLedger.CommandText = "DELETE FROM ProgressionResultLedger WHERE accountId = @accountId";
+                            deleteLedger.Parameters.Add(new SqliteParameter("@accountId", accountId));
+                            deleteLedger.ExecuteNonQuery();
+                        }
+                    }
+
+                    int usersDeleted;
+                    using (SqliteCommand deleteUser = dbconn.CreateCommand())
+                    {
+                        deleteUser.Transaction = transaction;
+                        deleteUser.CommandText =
+                            "DELETE FROM " + Constants.LOCAL_DATABASE_tableName_user
+                            + " WHERE userid = @userid AND username = @username";
+                        deleteUser.Parameters.Add(new SqliteParameter("@userid", profile.Userid));
+                        deleteUser.Parameters.Add(new SqliteParameter("@username", profile.UserName));
+                        usersDeleted = deleteUser.ExecuteNonQuery();
+                    }
+
+                    if (usersDeleted != 1)
+                    {
+                        transaction.Rollback();
+                        error = "The selected profile no longer matches a local account.";
+                        return false;
+                    }
+
+                    transaction.Commit();
+                    return true;
+                }
+                catch (Exception exception)
+                {
+                    try
+                    {
+                        transaction.Rollback();
+                    }
+                    catch (Exception rollbackException)
+                    {
+                        Debug.LogError("Could not roll back the local profile deletion transaction: " + rollbackException);
+                    }
+
+                    error = exception.Message;
+                    Debug.LogError("Local profile deletion failed: " + exception);
+                    return false;
+                }
+            }
         }
         finally
         {
