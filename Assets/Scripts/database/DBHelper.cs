@@ -598,6 +598,10 @@ public class DBHelper : MonoBehaviour
                             "SELECT accountId, characterId, experienceAfter, levelAfter "
                             + "FROM ProgressionResultLedger WHERE resultId = @resultId";
                         duplicateCommand.Parameters.Add(new SqliteParameter("@resultId", resultId));
+                        // The reader must be closed (end of this using block) before Rollback runs
+                        // below - rolling back while a reader from the same connection is still open
+                        // mid-iteration can surface as "database is locked" / "cannot rollback
+                        // transaction - SQL statements in progress" in Mono.Data.Sqlite.
                         using (SqliteDataReader reader = duplicateCommand.ExecuteReader())
                         {
                             if (reader.Read())
@@ -610,14 +614,19 @@ public class DBHelper : MonoBehaviour
                                     Experience = reader.GetInt32(2),
                                     Level = reader.GetInt32(3)
                                 };
-                                transaction.Rollback();
-                                return ProgressionApplyStatus.Duplicate;
                             }
                         }
                     }
 
+                    if (snapshot != null)
+                    {
+                        transaction.Rollback();
+                        return ProgressionApplyStatus.Duplicate;
+                    }
+
                     int currentExperience;
                     int pointsUsed;
+                    bool profileFound;
                     using (SqliteCommand selectCommand = dbconn.CreateCommand())
                     {
                         selectCommand.Transaction = transaction;
@@ -626,17 +635,20 @@ public class DBHelper : MonoBehaviour
                             + "WHERE accountId = @accountId AND charid = @charid";
                         selectCommand.Parameters.Add(new SqliteParameter("@accountId", normalizedAccountId));
                         selectCommand.Parameters.Add(new SqliteParameter("@charid", characterId));
+                        // Same "close the reader before Rollback" requirement as the duplicate check
+                        // above.
                         using (SqliteDataReader reader = selectCommand.ExecuteReader())
                         {
-                            if (!reader.Read())
-                            {
-                                transaction.Rollback();
-                                return ProgressionApplyStatus.Failed;
-                            }
-
-                            currentExperience = reader.IsDBNull(0) ? 0 : reader.GetInt32(0);
-                            pointsUsed = reader.IsDBNull(1) ? 0 : reader.GetInt32(1);
+                            profileFound = reader.Read();
+                            currentExperience = profileFound && !reader.IsDBNull(0) ? reader.GetInt32(0) : 0;
+                            pointsUsed = profileFound && !reader.IsDBNull(1) ? reader.GetInt32(1) : 0;
                         }
+                    }
+
+                    if (!profileFound)
+                    {
+                        transaction.Rollback();
+                        return ProgressionApplyStatus.Failed;
                     }
 
                     int experienceAfter = Math.Max(0, currentExperience + Mathf.RoundToInt(experienceGained));
@@ -670,7 +682,7 @@ public class DBHelper : MonoBehaviour
                         ledgerCommand.CommandText =
                             "INSERT INTO ProgressionResultLedger "
                             + "(resultId, accountId, characterId, experienceAfter, levelAfter, projectionApplied, appliedUtc) "
-                            + "VALUES (@resultId, @accountId, @characterId, @experience, @level, 0, @appliedUtc)";
+                            + "VALUES (@resultId, @accountId, @characterId, @experience, @level, 1, @appliedUtc)";
                         ledgerCommand.Parameters.Add(new SqliteParameter("@resultId", resultId));
                         ledgerCommand.Parameters.Add(new SqliteParameter("@accountId", normalizedAccountId));
                         ledgerCommand.Parameters.Add(new SqliteParameter("@characterId", characterId));
@@ -697,93 +709,6 @@ public class DBHelper : MonoBehaviour
         {
             Debug.LogError("Progression transaction failed: " + exception);
             return ProgressionApplyStatus.Failed;
-        }
-        finally
-        {
-            databaseLocked = false;
-        }
-    }
-
-    internal List<ProgressionSnapshot> GetPendingProgressionProjections(string accountId)
-    {
-        List<ProgressionSnapshot> pending = new List<ProgressionSnapshot>();
-        if (databaseLocked)
-        {
-            return pending;
-        }
-
-        databaseLocked = true;
-        try
-        {
-            {
-                SqliteConnection dbconn = Connection;
-                using (SqliteTransaction transaction = dbconn.BeginTransaction())
-                {
-                    EnsureProgressionLedgerTable(dbconn, transaction);
-                    using (SqliteCommand command = dbconn.CreateCommand())
-                    {
-                        command.Transaction = transaction;
-                        command.CommandText =
-                            "SELECT resultId, accountId, characterId, experienceAfter, levelAfter "
-                            + "FROM ProgressionResultLedger WHERE accountId = @accountId AND projectionApplied = 0 "
-                            + "ORDER BY appliedUtc";
-                        command.Parameters.Add(new SqliteParameter("@accountId", accountId ?? "guest"));
-                        using (SqliteDataReader reader = command.ExecuteReader())
-                        {
-                            while (reader.Read())
-                            {
-                                pending.Add(new ProgressionSnapshot
-                                {
-                                    ResultId = reader.GetString(0),
-                                    AccountId = reader.GetString(1),
-                                    CharacterId = reader.GetInt32(2),
-                                    Experience = reader.GetInt32(3),
-                                    Level = reader.GetInt32(4)
-                                });
-                            }
-                        }
-                    }
-                    transaction.Commit();
-                }
-            }
-        }
-        catch (Exception exception)
-        {
-            Debug.LogError("Could not read pending progression projections: " + exception);
-        }
-        finally
-        {
-            databaseLocked = false;
-        }
-
-        return pending;
-    }
-
-    internal bool MarkProgressionProjectionApplied(string resultId)
-    {
-        if (string.IsNullOrWhiteSpace(resultId) || databaseLocked)
-        {
-            return false;
-        }
-
-        databaseLocked = true;
-        try
-        {
-            {
-                SqliteConnection dbconn = Connection;
-                using (SqliteCommand command = dbconn.CreateCommand())
-                {
-                    command.CommandText =
-                        "UPDATE ProgressionResultLedger SET projectionApplied = 1 WHERE resultId = @resultId";
-                    command.Parameters.Add(new SqliteParameter("@resultId", resultId));
-                    return command.ExecuteNonQuery() == 1;
-                }
-            }
-        }
-        catch (Exception exception)
-        {
-            Debug.LogError("Could not mark the progression projection complete: " + exception);
-            return false;
         }
         finally
         {

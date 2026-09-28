@@ -543,11 +543,15 @@ public class Level5ProductionAssemblyBoundaryTests
     }
 
     /// <summary>
-    /// AUD-012 Phase 2b, Slice 50: proves the remaining 15 named player-domain targets - the CPU
-    /// actor/defense cluster, the account/character-runtime pair, the participant/ground/collision
+    /// AUD-012 Phase 2b, Slice 50: proves the remaining 14 named player-domain targets - the CPU
+    /// actor/defense cluster, the account-identity type, the participant/ground/collision
     /// cluster and the presentation/animation cluster - actually compile into <c>Level5.Player</c>,
     /// the same identity check <see cref="PlayerAttackBoxCompilesIntoLevel5Player"/> does for
-    /// <c>PlayerAttackBox</c>. Dependency cuts: <c>CharacterProgressAccountId</c> now reads
+    /// <c>PlayerAttackBox</c>. <c>CharacterRuntimeProvider</c>, formerly named alongside
+    /// <c>CharacterProgressAccountId</c> here, was deleted as dependency-closed dead code (zero
+    /// production callers, zero scene/prefab GUID references) once the JSON character-progress
+    /// projection it read was retired - see docs/persistence-boundaries.md. Dependency cuts:
+    /// <c>CharacterProgressAccountId</c> now reads
     /// <c>Level5.Core.LocalAccountIdentity</c> instead of <c>GameOptions.userid</c>/<c>userName</c>;
     /// <c>AutoPlayerController</c>/<c>AutoPlayerDefense</c> take arena context, match runtime and the
     /// moved <c>PlayerRegistry</c> through explicit composition instead of
@@ -569,7 +573,6 @@ public class Level5ProductionAssemblyBoundaryTests
         const string expected = "Level5.Player";
 
         Assert.That(typeof(CharacterProgressAccountId).Assembly.GetName().Name, Is.EqualTo(expected));
-        Assert.That(typeof(CharacterRuntimeProvider).Assembly.GetName().Name, Is.EqualTo(expected));
         Assert.That(typeof(AutoPlayerController).Assembly.GetName().Name, Is.EqualTo(expected));
         Assert.That(typeof(AutoPlayerDamageReactions).Assembly.GetName().Name, Is.EqualTo(expected));
         Assert.That(typeof(AutoPlayerDefense).Assembly.GetName().Name, Is.EqualTo(expected));

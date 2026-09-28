@@ -542,18 +542,6 @@ public class DBConnector : MonoBehaviour
                 out snapshot);
     }
 
-    public List<ProgressionSnapshot> GetPendingProgressionProjections(string accountId)
-    {
-        return dbHelper == null
-            ? new List<ProgressionSnapshot>()
-            : dbHelper.GetPendingProgressionProjections(accountId);
-    }
-
-    public bool MarkProgressionProjectionApplied(string resultId)
-    {
-        return dbHelper != null && dbHelper.MarkProgressionProjectionApplied(resultId);
-    }
-
     public bool savePlayerAllTimeStats(GameStats stats)
     {
         return stats != null && savePlayerAllTimeStats(AllTimeStatsSnapshot.From(MatchSession.EnsureCurrentMatch(), stats));
