@@ -100,6 +100,8 @@ public class Level5VersusLauncherTests
     [Test]
     public void BuildMatchFailsClosedWhenTheSnapshotIsNull()
     {
+        LogAssert.Expect(LogType.Warning, new Regex("no local unlock snapshot was provided"));
+
         MatchConfiguration configuration = VersusLauncher.BuildMatch(
             VersusTestFixtures.ScoreRuleset(),
             EligibleLevelId,

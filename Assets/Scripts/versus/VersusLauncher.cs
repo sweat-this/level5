@@ -126,8 +126,19 @@ public static class VersusLauncher
         UnlockSnapshot unlock,
         MatchModifiers modifiers = null)
     {
-        if (ruleset == null || unlock == null)
+        if (ruleset == null)
         {
+            return null;
+        }
+
+        if (unlock == null)
+        {
+            // Unlike ruleset (an internal, always-supplied value), unlock is a caller-supplied
+            // parameter a direct BuildMatch caller could plausibly forget - so this failure gets the
+            // same diagnostic every other rejection below gets, rather than a silent null.
+            Debug.LogWarning(
+                $"A versus attempt at {ruleset.DisplayName} could not be launched on level {levelId}: "
+                + "no local unlock snapshot was provided - refusing to build a match without a level eligibility check");
             return null;
         }
 
