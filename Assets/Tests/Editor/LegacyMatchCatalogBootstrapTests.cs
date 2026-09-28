@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Level5.Core.Match;
+using Level5.Core.Progression;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEngine;
@@ -94,6 +95,34 @@ public class LegacyMatchCatalogBootstrapTests
             "LegacyMatchCatalogBootstrap.Reset() should clear its own conversion cache, forcing a fresh "
                 + "conversion (and therefore a fresh catalog) even though MatchCatalogs itself was not "
                 + "separately reset and the legacy source-list reference did not change");
+    }
+
+    /// <summary>
+    /// Issue #198/#200: correspondence's remote launch preflight (<see cref="LevelEligibility"/>)
+    /// and <see cref="RemoteAttemptLauncher"/> both gate on whatever
+    /// <c>DefaultLevelId = 1</c> actually resolves to in the real fallback catalog - not on a
+    /// hand-built <c>TestDefinitions.Level(...)</c> stand-in. This proves the production
+    /// composition (<c>level_selected_01_scrapyard.prefab</c> -&gt;
+    /// <see cref="LevelDefinitionFactory"/> -&gt; <see cref="LegacyMatchCatalogBootstrap"/> -&gt;
+    /// <see cref="MatchCatalogs"/>) still resolves level id 1 as selectable and unlocked today, so
+    /// a passing focused/unit suite for #198 cannot be mistaking synthetic fixture data for reality.
+    /// </summary>
+    [Test]
+    public void ProductionFallbackDataResolvesLevelOneAsTheUnlockedSelectableScrapyard()
+    {
+        LegacyMatchCatalogBootstrap.EnsureBuilt(manager.ModeSelectedData, manager.LevelSelectedData);
+
+        LevelDefinition level = MatchCatalogs.Levels.Find(1);
+
+        Assert.That(level, Is.Not.Null, "the production fallback catalog should resolve level id 1");
+        Assert.That(level.DisplayName, Is.EqualTo("The Scrapyard"));
+        Assert.That(level.Selectable, Is.True);
+        Assert.That(level.Locked, Is.False);
+
+        UnlockSnapshot unlock = UnlockSnapshotBuilder.Build(
+            new List<CharacterProfile>(), new List<CharacterProfile>(), MatchCatalogs.Levels);
+
+        Assert.That(unlock.IsLevelUnlocked(1), Is.True);
     }
 
     [Test]
