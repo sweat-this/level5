@@ -1,5 +1,4 @@
 using Assets.Scripts.database;
-using Assets.Scripts.restapi;
 using System.Linq;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -64,13 +63,13 @@ public class LocalAccount : MonoBehaviour
                 return;
             }
 
-            // this is a *selection*, not a session - the login screen below still has to
-            // authenticate. AccountManager reads these to prefill the username field, and
-            // CharacterProgressAccountId uses them to scope local progress. Nothing that talks to
-            // the server may treat them as proof of a session; use APIHelper.HasSession for that.
+            // A local profile is a save/profile selector, not a security principal - selecting one
+            // is the whole operation, with no password screen and no network call. AccountManager
+            // used to read these to prefill a login form's username field; CharacterProgressAccountId
+            // still uses them to scope local progress.
             GameOptions.userName = user.UserName;
             GameOptions.userid = user.Userid;
-            SceneManager.LoadScene(Constants.SCENE_NAME_level_00_account_loginExisting);
+            SceneManager.LoadScene(Constants.SCENE_NAME_level_00_loading);
         }
         else
         {
@@ -80,33 +79,10 @@ public class LocalAccount : MonoBehaviour
 
     private void LoginAsGuest()
     {
-        UserModel user = new UserModel
-        {
-            Userid = UserAccountManager.GuestUserid,
-            UserName = UserAccountManager.GuestUsername,
-            Password = UserAccountManager.GuestPassword
-        };
-
-        StartCoroutine(LoginAsGuestCoroutine(user));
-    }
-
-    private System.Collections.IEnumerator LoginAsGuestCoroutine(UserModel user)
-    {
-        ApiResult<string> result = null;
-        yield return APIHelper.PostToken(user, value => result = value, false);
-        // AUD-078: APIHelper.SendJson's completed callback fires outside its own try/finally, so an
-        // exception mid-request would leave result null here - UserAccountManager.LoginGuestCoroutine
-        // already guards the identical call this way.
-        if (result == null || !result.Success)
-        {
-            // offline guest: drop any stale session, then keep the guest identity locally so saves
-            // and character progress are scoped to "guest" rather than to nothing. Deliberately
-            // leaves no bearer token, so APIHelper.HasSession stays false and nothing uploads.
-            APIHelper.ClearSession();
-            GameOptions.userName = user.UserName;
-            GameOptions.userid = user.Userid;
-        }
-
+        // Fully local: no PostToken call, no ClearSession call. Backend V2's session (if any) is
+        // untouched - only the local profile selection changes.
+        GameOptions.userName = UserAccountManager.GuestUsername;
+        GameOptions.userid = UserAccountManager.GuestUserid;
         SceneManager.LoadScene(Constants.SCENE_NAME_level_00_loading);
     }
 

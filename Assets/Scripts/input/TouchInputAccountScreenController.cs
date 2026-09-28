@@ -170,11 +170,6 @@ public class TouchInputAccountScreenController : MonoBehaviour
         {
             SceneManager.LoadSceneAsync(Constants.SCENE_NAME_level_00_account_createNew);
         }
-        // login existing
-        if (selectedObject.name.Equals(AccountManager.LoginExistingButtonName))
-        {
-            SceneManager.LoadSceneAsync(Constants.SCENE_NAME_level_00_account_loginExisting);
-        }
         // login local
         if (selectedObject.name.Equals(AccountManager.LoginLocalButtonName))
         {

@@ -55,9 +55,11 @@ internal static class AccountTextMeshProMigration
     };
 
     private const int HubExpectedOrdinaryCount = 22;
-    private const int CreateNewExpectedInputFieldCount = 5;
-    private const int CreateNewExpectedOrdinaryCount = 12;
-    private const int CreateNewExpectedTotalTmpTextCount = 22;
+    // Updated for the retired-V1-account local-profile create screen: 1 profile-name TMP_InputField
+    // (2 TMP_Text: content + placeholder) plus its own label/messageDisplay/button text - see
+    // LocalProfileSceneMigration for the scene surgery that produced this shape.
+    private const int CreateNewExpectedInputFieldCount = 1;
+    private const int CreateNewExpectedTotalTmpTextCount = 8;
     private const int LoginExistingExpectedInputFieldCount = 2;
     private const int LoginExistingExpectedOrdinaryCount = 8;
     private const int LoginExistingExpectedTotalTmpTextCount = 12;
@@ -87,10 +89,7 @@ internal static class AccountTextMeshProMigration
     /// </summary>
     private static readonly string[] ObsoletePersistentOnClickMethods =
     {
-        nameof(AccountManager.checkEmailAddressFormat),
-        nameof(AccountManager.checkUserName),
         nameof(AccountManager.createUser),
-        nameof(AccountManager.LoginUser),
     };
 
     // ---------------------------------------------------------------------------------------------
@@ -166,13 +165,11 @@ internal static class AccountTextMeshProMigration
         MenuTextConversion.RunSceneMigration(HubScenePath, "AccountTextMeshProMigration.MigrateHub", MigrateHubInMemory);
     }
 
-    [MenuItem("Level5/Migrate Account Create To TMP")]
-    public static void MigrateCreateNew()
-    {
-        MenuTextConversion.RunSceneMigration(CreateNewScenePath, "AccountTextMeshProMigration.MigrateCreateNew", scene =>
-            MigrateFieldsScreenInMemory(
-                scene, "AccountTextMeshProMigration.MigrateCreateNew", CreateNewExpectedInputFieldCount, CreateNewExpectedOrdinaryCount));
-    }
+    // MigrateCreateNew was retired alongside the V1 account/auth retirement: level_00_account_createNew
+    // no longer has a multi-field legacy-InputField/Text shape to migrate (it collects only a local
+    // profile name now, via LocalProfileSceneMigration's bespoke scene surgery, not this generic
+    // N-field TMP conversion pass). CollectCreateNewContractErrors below still verifies its resulting
+    // TMP shape directly.
 
     [MenuItem("Level5/Migrate Account Login To TMP")]
     public static void MigrateLoginExisting()
@@ -197,9 +194,6 @@ internal static class AccountTextMeshProMigration
         try
         {
             MenuTextConversion.RunSceneMigrationNoRestore(HubScenePath, "AccountTextMeshProMigration.MigrateHub", MigrateHubInMemory);
-            MenuTextConversion.RunSceneMigrationNoRestore(CreateNewScenePath, "AccountTextMeshProMigration.MigrateCreateNew", scene =>
-                MigrateFieldsScreenInMemory(
-                    scene, "AccountTextMeshProMigration.MigrateCreateNew", CreateNewExpectedInputFieldCount, CreateNewExpectedOrdinaryCount));
             MenuTextConversion.RunSceneMigrationNoRestore(LoginExistingScenePath, "AccountTextMeshProMigration.MigrateLoginExisting", scene =>
                 MigrateFieldsScreenInMemory(
                     scene, "AccountTextMeshProMigration.MigrateLoginExisting", LoginExistingExpectedInputFieldCount, LoginExistingExpectedOrdinaryCount));
@@ -1097,7 +1091,12 @@ internal static class AccountTextMeshProMigration
             AccountCreateUiObjects createUi = uiHost as AccountCreateUiObjects;
             AccountLoginUiObjects loginUi = uiHost as AccountLoginUiObjects;
 
+            // The create-local-profile screen has no password field at all (it only ever collects a
+            // profile name) - only level_00_account_loginExisting's editor-template AccountLoginUiObjects
+            // still owns a password field to verify.
             TMP_InputField passwordField = null;
+            bool expectPasswordField = loginUi != null;
+
             if (createUi != null)
             {
                 List<string> missing = new List<string>();
@@ -1106,8 +1105,6 @@ internal static class AccountTextMeshProMigration
                 {
                     errors.Add(scenePath + " : " + field + " is not resolved.");
                 }
-
-                passwordField = createUi.PasswordInputField;
 
                 SerializedObject serialized = new SerializedObject(createUi);
                 SerializedProperty property = serialized.FindProperty("messageDisplay");
@@ -1135,15 +1132,18 @@ internal static class AccountTextMeshProMigration
                 }
             }
 
-            if (passwordField == null)
+            if (expectPasswordField)
             {
-                errors.Add(scenePath + " : could not resolve the password TMP_InputField to verify its ContentType.");
-            }
-            else if (passwordField.contentType != TMP_InputField.ContentType.Password)
-            {
-                errors.Add(
-                    scenePath + " -> " + MenuTextConversion.BuildHierarchyPath(passwordField.gameObject, null)
-                        + " : password field contentType is " + passwordField.contentType + ", expected Password.");
+                if (passwordField == null)
+                {
+                    errors.Add(scenePath + " : could not resolve the password TMP_InputField to verify its ContentType.");
+                }
+                else if (passwordField.contentType != TMP_InputField.ContentType.Password)
+                {
+                    errors.Add(
+                        scenePath + " -> " + MenuTextConversion.BuildHierarchyPath(passwordField.gameObject, null)
+                            + " : password field contentType is " + passwordField.contentType + ", expected Password.");
+                }
             }
 
             List<TextMeshProUGUI> ownedTmpTexts = new List<TextMeshProUGUI>();

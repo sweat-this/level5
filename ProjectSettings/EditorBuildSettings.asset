@@ -21,9 +21,6 @@ EditorBuildSettings:
     path: Assets/Scenes/level_00_account_createNew.unity
     guid: d41a1f3ed9dd4044f92f563d2b7333d1
   - enabled: 1
-    path: Assets/Scenes/level_00_account_loginExisting.unity
-    guid: 60c4825155967724bb275ff3ac919d6b
-  - enabled: 1
     path: Assets/Scenes/level_00_progression.unity
     guid: fe518a7743e54244db7a8c02aa64a449
   - enabled: 1

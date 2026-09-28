@@ -1,4 +1,5 @@
 ﻿using Assets.Scripts.database;
+using Assets.Scripts.restapi;
 using Mono.Data.Sqlite;
 using System;
 using System.Collections;
@@ -170,6 +171,27 @@ public class DBHelper : MonoBehaviour
 
         filepath = Application.persistentDataPath + databaseNamePath;
         connection = "Data source=" + filepath; //Path to database
+    }
+
+    /// <summary>
+    /// Test-only seam: redirects this instance at a caller-supplied database file instead of
+    /// <see cref="Application.persistentDataPath"/>, and drops any connection already opened against
+    /// the old path so <see cref="Connection"/> reopens against the new one on next access. Internal
+    /// for the same reason <see cref="Connection"/> is - EditMode tests under Assets/Tests/Editor have
+    /// no asmdef and compile into this same default assembly, so they can reach it directly without a
+    /// public production API that real gameplay code could also call by mistake.
+    /// </summary>
+    internal void ConfigureForTests(string filePath)
+    {
+        if (sharedConnection != null)
+        {
+            sharedConnection.Close();
+            sharedConnection.Dispose();
+            sharedConnection = null;
+        }
+
+        filepath = filePath;
+        connection = "Data source=" + filepath;
     }
 
     private void Start()
@@ -1278,6 +1300,140 @@ public class DBHelper : MonoBehaviour
         finally
         {
             databaseLocked = false;
+        }
+    }
+
+    // Local profile creation replaces the old "PostUser then PostToken" flow entirely: no email,
+    // password, or name fields are required, and the userid is allocated locally rather than by a
+    // server. Allocation and insertion happen inside one transaction so a failed insert can never
+    // leave an id "consumed" - nothing outside this transaction ever observes the candidate id
+    // before it is committed alongside the row that claims it.
+    public void CreateLocalProfile(string profileName, Action<ApiResult<UserModel>> completed)
+    {
+        StartCoroutine(CreateLocalProfileCoroutine(profileName, completed));
+    }
+
+    // Internal (not private) so EditMode tests can drive it directly via CoroutineTestRunner -
+    // StartCoroutine (what the public CreateLocalProfile wrapper uses) does not advance outside play
+    // mode, matching why DBConnector.createDatabase() takes the same approach.
+    internal IEnumerator CreateLocalProfileCoroutine(string profileName, Action<ApiResult<UserModel>> completed)
+    {
+        yield return new WaitUntil(() => !databaseLocked);
+        databaseLocked = true;
+        try
+        {
+            string trimmedName = (profileName ?? string.Empty).Trim();
+            if (string.IsNullOrEmpty(trimmedName))
+            {
+                completed?.Invoke(ApiResult<UserModel>.Fail("Enter a profile name."));
+                yield break;
+            }
+
+            SqliteConnection dbconn = Connection;
+            using (SqliteTransaction transaction = dbconn.BeginTransaction())
+            {
+                UserModel created = null;
+                string failure = null;
+                try
+                {
+                    using (IDbCommand existsCmd = dbconn.CreateCommand())
+                    {
+                        existsCmd.Transaction = transaction;
+                        existsCmd.CommandText = "SELECT COUNT(*) FROM " + Constants.LOCAL_DATABASE_tableName_user + " WHERE username = @username";
+                        existsCmd.Parameters.Add(new SqliteParameter("@username", trimmedName));
+                        long existing = Convert.ToInt64(existsCmd.ExecuteScalar());
+                        if (existing > 0)
+                        {
+                            failure = "That profile name is already in use.";
+                        }
+                    }
+
+                    if (failure == null)
+                    {
+                        int candidate = AllocateNextUserId(dbconn, transaction);
+                        string nowUtc = DateTime.UtcNow.ToString("o");
+
+                        using (IDbCommand insertCmd = dbconn.CreateCommand())
+                        {
+                            insertCmd.Transaction = transaction;
+                            insertCmd.CommandText =
+                                "INSERT INTO " + Constants.LOCAL_DATABASE_tableName_user
+                                + "(userid, username, firstname, lastname, email, ipaddress, signupdate, lastlogin) "
+                                + "VALUES (@userid, @username, @firstname, @lastname, @email, @ipaddress, @signupdate, @lastlogin)";
+                            insertCmd.Parameters.Add(new SqliteParameter("@userid", candidate));
+                            insertCmd.Parameters.Add(new SqliteParameter("@username", trimmedName));
+                            insertCmd.Parameters.Add(new SqliteParameter("@firstname", string.Empty));
+                            insertCmd.Parameters.Add(new SqliteParameter("@lastname", string.Empty));
+                            insertCmd.Parameters.Add(new SqliteParameter("@email", string.Empty));
+                            insertCmd.Parameters.Add(new SqliteParameter("@ipaddress", string.Empty));
+                            insertCmd.Parameters.Add(new SqliteParameter("@signupdate", nowUtc));
+                            insertCmd.Parameters.Add(new SqliteParameter("@lastlogin", nowUtc));
+                            insertCmd.ExecuteNonQuery();
+                        }
+
+                        created = new UserModel { Userid = candidate, UserName = trimmedName };
+                    }
+                }
+                catch (Exception exception)
+                {
+                    failure = exception.Message;
+                }
+
+                try
+                {
+                    if (created != null)
+                    {
+                        transaction.Commit();
+                    }
+                    else
+                    {
+                        transaction.Rollback();
+                    }
+                }
+                catch (Exception exception)
+                {
+                    // A Commit()/Rollback() failure (e.g. disk I/O) must still reach completed - leaving
+                    // it uninvoked would strand the caller with no result at all rather than a reported
+                    // failure.
+                    created = null;
+                    failure = exception.Message;
+                }
+
+                completed?.Invoke(created != null
+                    ? ApiResult<UserModel>.Ok(created, 0)
+                    : ApiResult<UserModel>.Fail(failure ?? "Could not create the local profile."));
+            }
+        }
+        finally
+        {
+            databaseLocked = false;
+        }
+    }
+
+    // MAX(userid)+1 within the caller's open transaction, skipping the reserved guest id
+    // (UserAccountManager.GuestUserid) and rejecting anything that would not be a usable positive
+    // id. Never derives from Backend V2, randomness, or the network - purely local SQL.
+    private static int AllocateNextUserId(SqliteConnection dbconn, SqliteTransaction transaction)
+    {
+        using (IDbCommand maxCmd = dbconn.CreateCommand())
+        {
+            maxCmd.Transaction = transaction;
+            maxCmd.CommandText = "SELECT MAX(userid) FROM " + Constants.LOCAL_DATABASE_tableName_user;
+            object result = maxCmd.ExecuteScalar();
+            long max = (result == null || result == DBNull.Value) ? 0L : Convert.ToInt64(result);
+
+            long candidate = max + 1;
+            if (candidate == UserAccountManager.GuestUserid)
+            {
+                candidate++;
+            }
+
+            if (candidate <= 0 || candidate > int.MaxValue)
+            {
+                throw new InvalidOperationException("The local profile id space is exhausted.");
+            }
+
+            return (int)candidate;
         }
     }
 

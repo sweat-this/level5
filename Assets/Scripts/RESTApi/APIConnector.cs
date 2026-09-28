@@ -1,48 +1,18 @@
-﻿
+
 using Assets.Scripts.database;
-using Assets.Scripts.restapi;
-using Assets.Scripts.Utility;
 using UnityEngine;
 
 
 public class APIConnector : MonoBehaviour
 {
+    // V1 account registration (APIHelper.UserNameExists/PostUser) was retired along with the rest of
+    // the legacy account/auth transport. This component stays - it is attached via
+    // Assets/Resources/Prefabs/api/restapi.prefab in every menu scene's PrefabInstance, and removing
+    // the script would leave a "missing script" reference in each of them - but CreateNewUser has no
+    // remaining callers (confirmed by repo-wide search) and nothing left for it to do.
     public void CreateNewUser(UserModel user)
     {
-        if (!UtilityFunctions.IsValidEmail(user.Email))
-        {
-            Debug.LogWarning("Account creation rejected because the email address is invalid.");
-            return;
-        }
-
-        StartCoroutine(CreateNewUserCoroutine(user));
-    }
-
-    private System.Collections.IEnumerator CreateNewUserCoroutine(UserModel user)
-    {
-        // AUD-078: same null-result guard UserAccountManager.LoginGuestCoroutine already uses after
-        // the identical APIHelper callback pattern.
-        ApiResult<bool> existsResult = null;
-        yield return APIHelper.UserNameExists(user.UserName, result => existsResult = result);
-        if (existsResult == null || !existsResult.Success)
-        {
-            Debug.LogWarning(existsResult != null ? existsResult.Error : "Could not check the username.");
-            yield break;
-        }
-
-        if (existsResult.Value)
-        {
-            Debug.LogWarning("Account creation rejected because the username already exists.");
-            yield break;
-        }
-
-        ApiResult<UserModel> createResult = null;
-        yield return APIHelper.PostUser(user, result => createResult = result);
-        if (createResult == null || !createResult.Success)
-        {
-            Debug.LogWarning(createResult != null ? createResult.Error : "Could not create the account.");
-        }
+        Debug.LogWarning("APIConnector.CreateNewUser is retired; local profiles are created via DBHelper.CreateLocalProfile instead.");
     }
 }
-
 

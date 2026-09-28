@@ -1,5 +1,4 @@
 using Assets.Scripts.database;
-using Assets.Scripts.restapi;
 using Level5.BackendV2;
 using System;
 using System.Collections;
@@ -19,7 +18,6 @@ public class UserAccountManager : MonoBehaviour
 
     private bool usersLoaded = false;
     const int guestUserid = 74;
-    const string guestPassword = "guest";
     const string guestUsername = "guest";
 
     [SerializeField]
@@ -91,64 +89,24 @@ public class UserAccountManager : MonoBehaviour
 
         if (user != null)
         {
+            // A local profile is a save/profile selector, not a security principal - selecting one
+            // is the whole operation, with no password screen and no network call.
             GameOptions.userName = user.UserName;
             GameOptions.userid = user.Userid;
-            SceneManager.LoadScene(Constants.SCENE_NAME_level_00_account_loginExisting);
+            SceneManager.LoadScene(Constants.SCENE_NAME_level_00_loading);
             return;
         }
 
-        StartCoroutine(LoginGuestCoroutine());
+        ContinueButton();
     }
 
     public void ContinueButton()
     {
-        //GameOptions.userName = "";
-        //GameOptions.userid = 0;
-        //SceneManager.LoadScene(Constants.SCENE_NAME_level_00_loading);
-        UserModel user = CreateGuestUser();
-        APIHelper.ClearSession();
-        ApplyGameOptions(user);
-
+        // Fully local: no PostToken call, no ClearSession call. Backend V2's session (if any) is
+        // untouched - only the local profile selection changes.
+        GameOptions.userid = guestUserid;
+        GameOptions.userName = guestUsername;
         SceneManager.LoadScene(Constants.SCENE_NAME_level_00_loading);
-        // if connected to internet
-        //if (UtilityFunctions.IsConnectedToInternet())
-        //{
-        //    StartCoroutine(APIHelper.PostToken(user));
-        //}
-        //else
-        //{
-        //    SceneManager.LoadScene(Constants.SCENE_NAME_level_00_loading);
-        //}
-    }
-
-    private IEnumerator LoginGuestCoroutine()
-    {
-        UserModel guest = CreateGuestUser();
-        ApiResult<string> result = null;
-        yield return APIHelper.PostToken(guest, value => result = value, false);
-        if (result == null || !result.Success)
-        {
-            APIHelper.ClearSession();
-            ApplyGameOptions(guest);
-        }
-
-        SceneManager.LoadScene(Constants.SCENE_NAME_level_00_loading);
-    }
-
-    private static UserModel CreateGuestUser()
-    {
-        return new UserModel
-        {
-            Userid = guestUserid,
-            UserName = guestUsername,
-            Password = guestPassword
-        };
-    }
-
-    private static void ApplyGameOptions(UserModel user)
-    {
-        GameOptions.userid = user.Userid;
-        GameOptions.userName = user.UserName;
     }
 
     public IEnumerator RemoveUserButton(string userName)
@@ -350,6 +308,5 @@ public class UserAccountManager : MonoBehaviour
     public List<UserModel> UserAccountData { get => userAccountData; }
     public bool UsersLoaded { get => usersLoaded; set => usersLoaded = value; }
     public static int GuestUserid => guestUserid;
-    public static string GuestPassword => guestPassword;
     public static string GuestUsername => guestUsername;
 }

@@ -230,6 +230,6 @@ public class Level5MenuUiObjectsTests
         Assert.That(valid, Is.False);
         Assert.That(
             missing,
-            Contains.Item("AccountManager.hubUi/createUi/loginUi (exactly one must be assigned)"));
+            Contains.Item("AccountManager.hubUi/createUi (exactly one must be assigned)"));
     }
 }

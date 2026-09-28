@@ -1189,15 +1189,11 @@ public class StartManager : MonoBehaviour
             yield break;
         }
 
-        //Debug.Log(GameOptions.userName);
-        if (APIHelper.BearerToken != null && !string.IsNullOrEmpty(GameOptions.userName))
-        {
-            userNameText.text = "username : " + GameOptions.userName + " connected";
-        }
-        if (APIHelper.BearerToken == null || string.IsNullOrEmpty(GameOptions.userName))
-        {
-            userNameText.text = "username : " + GameOptions.userName + " disconnected";
-        }
+        // Local-profile presentation only - this used to combine GameOptions.userName with
+        // APIHelper.BearerToken (a V1 session concept now retired) to show "connected/disconnected",
+        // which conflated local profile identity with online authentication. Backend V2's own
+        // signed-in/out status belongs on the Online Account screen, not here.
+        userNameText.text = "profile : " + GameOptions.userName;
         versionText.text = "current version : " + Application.version;
         ApiResult<string> versionResult = null;
         yield return APIHelper.GetLatestBuildVersion(result => versionResult = result);

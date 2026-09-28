@@ -1,6 +1,5 @@
 ﻿using System;
 using System.IO;
-using Assets.Scripts.restapi;
 using NUnit.Framework;
 
 public class Level5CoreTests
@@ -165,52 +164,11 @@ public class Level5CoreTests
         }
     }
 
-    [Test]
-    public void ClearingTheSessionAlsoClearsTheAuthenticationFlag()
-    {
-        // AUD-045: uploads gate on HasSession, not on GameOptions.userid. A local account
-        // selection or an offline guest fallback sets an identity without a session, and this
-        // is what keeps those from being mistaken for one.
-        string previousName = GameOptions.userName;
-        int previousId = GameOptions.userid;
-        try
-        {
-            GameOptions.userName = "someone";
-            GameOptions.userid = 74;
-
-            APIHelper.ClearSession();
-
-            Assert.That(APIHelper.HasSession, Is.False, "a cleared session must not report as authenticated");
-            Assert.That(GameOptions.userid, Is.EqualTo(0));
-            Assert.That(GameOptions.userName, Is.Empty);
-        }
-        finally
-        {
-            GameOptions.userName = previousName;
-            GameOptions.userid = previousId;
-        }
-    }
-
-    [Test]
-    public void AnIdentityWithoutATokenIsNotASession()
-    {
-        string previousName = GameOptions.userName;
-        int previousId = GameOptions.userid;
-        try
-        {
-            APIHelper.ClearSession();
-
-            // exactly what LocalAccount does for an offline guest: identity set, no token
-            GameOptions.userName = UserAccountManager.GuestUsername;
-            GameOptions.userid = UserAccountManager.GuestUserid;
-
-            Assert.That(GameOptions.userid, Is.Not.EqualTo(0), "guard against the guest id becoming 0");
-            Assert.That(APIHelper.HasSession, Is.False);
-        }
-        finally
-        {
-            GameOptions.userName = previousName;
-            GameOptions.userid = previousId;
-        }
-    }
+    // V1's bearer-session concept (APIHelper.HasSession/ClearSession) was retired along with the rest
+    // of the legacy account/auth transport - LocalAccountIdentity is now the only local identity
+    // concept, and Backend V2's own session is entirely separate from it. The one invariant that
+    // mattered from the old session tests here - the reserved guest id must never be allocated/
+    // collapse to 0 - is covered more meaningfully by Level5LocalProfileAllocationTests
+    // (AllocatedIdSkipsTheReservedGuestId, AllocationWorksWhenExistingIdsSurroundTheReservedValue),
+    // which exercise the actual allocator rather than asserting a constant against 0.
 }

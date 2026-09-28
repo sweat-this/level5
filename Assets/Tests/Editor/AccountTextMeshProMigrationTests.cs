@@ -28,12 +28,15 @@ public class AccountTextMeshProMigrationTests
     private const string LoginLocalScenePath = "Assets/Scenes/level_00_account_loginLocal.unity";
     private const string NeonPixelFontAssetPath = "Assets/Fonts/TMP/Neon Pixel-7 SDF.asset";
 
-    private const int CreateNewExpectedTotalTmpTextCount = 22;
+    // The create-local-profile screen collects only a profile name now (V1 account/auth retirement) -
+    // see AccountTextMeshProMigration.CreateNewExpectedTotalTmpTextCount for the production contract's
+    // matching value.
+    private const int CreateNewExpectedTotalTmpTextCount = 8;
     private const int LoginExistingExpectedTotalTmpTextCount = 12;
 
     private static readonly string[] CreateNewFieldGameObjectNames =
     {
-        "EmailInputField", "UserNameInputField", "PasswordInputField", "FirstNameInputField", "LastNameInputField",
+        "UserNameInputField",
     };
 
     private static readonly string[] LoginExistingFieldGameObjectNames =
@@ -181,12 +184,12 @@ public class AccountTextMeshProMigrationTests
     }
 
     [Test]
-    public void CreateNewHasExactlyFiveTmpInputFieldsAndZeroLegacy()
+    public void CreateNewHasExactlyOneTmpInputFieldAndZeroLegacy()
     {
         Scene scene = OpenScene(CreateNewScenePath);
-        Assert.That(OwnedLegacyInputFields(scene), Is.Empty, "AUD-092 Phase 5B: zero legacy InputField must remain.");
-        Assert.That(OwnedTexts(scene), Is.Empty, "AUD-092 Phase 5B: zero legacy Text must remain.");
-        Assert.That(OwnedTmpInputFields(scene), Has.Count.EqualTo(5));
+        Assert.That(OwnedLegacyInputFields(scene), Is.Empty, "zero legacy InputField must remain.");
+        Assert.That(OwnedTexts(scene), Is.Empty, "zero legacy Text must remain.");
+        Assert.That(OwnedTmpInputFields(scene), Has.Count.EqualTo(1), "the local-profile screen collects only a profile name.");
     }
 
     [Test]
@@ -214,7 +217,7 @@ public class AccountTextMeshProMigrationTests
             }
         }
 
-        Assert.That(count, Is.EqualTo(CreateNewExpectedTotalTmpTextCount), "expected the 12 Phase 5A ordinary labels plus 2 per migrated InputField (5 fields x 2 = 10).");
+        Assert.That(count, Is.EqualTo(CreateNewExpectedTotalTmpTextCount), "expected the profile-name field's own label/messageDisplay/button text plus 2 for its migrated InputField.");
     }
 
     [Test]
@@ -308,7 +311,7 @@ public class AccountTextMeshProMigrationTests
     // ---------------------------------------------------------------------------------------------
 
     [Test]
-    public void AllSevenAccountInputFieldsDisableRichText()
+    public void AllAccountInputFieldsDisableRichText()
     {
         foreach (TMP_InputField field in OwnedTmpInputFields(OpenScene(CreateNewScenePath)))
         {
@@ -326,11 +329,10 @@ public class AccountTextMeshProMigrationTests
     // ---------------------------------------------------------------------------------------------
 
     [Test]
-    public void BothPasswordFieldsUseContentTypePassword()
+    public void LoginExistingPasswordFieldUsesContentTypePassword()
     {
-        TMP_InputField createPassword = OwnedTmpInputFieldsByName(OpenScene(CreateNewScenePath))["PasswordInputField"];
-        Assert.That(createPassword.contentType, Is.EqualTo(TMP_InputField.ContentType.Password));
-
+        // The create-local-profile screen has no password field at all any more - only the retired
+        // (editor-template-only) login-existing screen still has one to verify.
         TMP_InputField loginPassword = OwnedTmpInputFieldsByName(OpenScene(LoginExistingScenePath))["PasswordInputField"];
         Assert.That(loginPassword.contentType, Is.EqualTo(TMP_InputField.ContentType.Password));
     }
@@ -339,7 +341,7 @@ public class AccountTextMeshProMigrationTests
     public void NonPasswordFieldsPreserveStandardContentTypeAndSingleLine()
     {
         Dictionary<string, TMP_InputField> createFields = OwnedTmpInputFieldsByName(OpenScene(CreateNewScenePath));
-        foreach (string name in new[] { "EmailInputField", "UserNameInputField", "FirstNameInputField", "LastNameInputField" })
+        foreach (string name in CreateNewFieldGameObjectNames)
         {
             TMP_InputField field = createFields[name];
             Assert.That(field.contentType, Is.EqualTo(TMP_InputField.ContentType.Standard), name + " must not be affected by the password-only ContentType fix.");
@@ -360,10 +362,6 @@ public class AccountTextMeshProMigrationTests
     public void CreateNewSiblingButtonsNavigationRepairedToTmpInputFields()
     {
         Scene scene = OpenScene(CreateNewScenePath);
-        AssertSiblingNavigationRepaired(scene, "emailText", "EmailInputField");
-        AssertSiblingNavigationRepaired(scene, "passwordText", "PasswordInputField");
-        AssertSiblingNavigationRepaired(scene, "firstNameText", "FirstNameInputField");
-        AssertSiblingNavigationRepaired(scene, "lastNameText", "LastNameInputField");
         AssertSiblingNavigationRepaired(scene, "userNameText", "UserNameInputField");
     }
 
@@ -417,11 +415,8 @@ public class AccountTextMeshProMigrationTests
         List<string> missing = new List<string>();
         Assert.That(ui.Validate(missing), Is.True, string.Join(", ", missing));
 
-        Assert.That(ui.EmailInputField, Is.Not.Null);
         Assert.That(ui.UsernameInputField, Is.Not.Null);
-        Assert.That(ui.PasswordInputField, Is.Not.Null);
-        Assert.That(ui.FirstNameInputField, Is.Not.Null);
-        Assert.That(ui.LastNameInputField, Is.Not.Null);
+        Assert.That(ui.MessageDisplay, Is.Not.Null);
         Assert.That(ui.CreateAccountButton, Is.Not.Null);
         Assert.That(ui.CreateAccountButton.gameObject.name, Is.EqualTo("createUserButton"));
     }
@@ -621,31 +616,14 @@ public class AccountTextMeshProMigrationTests
         AccountCreateUiObjects ui = FindInScene<AccountCreateUiObjects>(scene);
         Assume.That(ui, Is.Not.Null);
 
-        AssertSubmitSelects(fields["EmailInputField"], eventSystem, ui.CheckEmailButton.gameObject, "Email");
-        AssertSubmitSelects(fields["UserNameInputField"], eventSystem, ui.CheckUserNameButton.gameObject, "Username");
-        AssertSubmitSelects(fields["PasswordInputField"], eventSystem, fields["FirstNameInputField"].gameObject, "Password");
-        AssertSubmitSelects(fields["FirstNameInputField"], eventSystem, fields["LastNameInputField"].gameObject, "First Name");
-        AssertSubmitSelects(fields["LastNameInputField"], eventSystem, ui.CreateAccountButton.gameObject, "Last Name");
+        AssertSubmitSelects(fields["UserNameInputField"], eventSystem, ui.CreateAccountButton.gameObject, "Profile Name");
     }
 
-    [Test]
-    public void LoginExistingSubmitDestinationsMatchDefinedProgression()
-    {
-        Scene scene = OpenScene(LoginExistingScenePath);
-        AccountManager manager = FindInScene<AccountManager>(scene);
-        Assume.That(manager, Is.Not.Null);
-
-        EventSystem eventSystem = InstallScratchEventSystem();
-        InvokePrivate(manager, "ResolveUiReferences");
-        InvokePrivate(manager, "RegisterInputSubmitCallbacks");
-
-        Dictionary<string, TMP_InputField> fields = OwnedTmpInputFieldsByName(scene);
-        AccountLoginUiObjects ui = FindInScene<AccountLoginUiObjects>(scene);
-        Assume.That(ui, Is.Not.Null);
-
-        AssertSubmitSelects(fields["UserNameInputField"], eventSystem, ui.CheckUserNameButton.gameObject, "Username");
-        AssertSubmitSelects(fields["PasswordInputField"], eventSystem, ui.LoginButton.gameObject, "Password");
-    }
+    // level_00_account_loginExisting is retired from production - AccountManager no longer has a
+    // loginUi variant at all (ResolveUiReferences only ever resolves hubUi or createUi now), so there
+    // is no submit-progression behavior left to drive through it. AccountLoginUiObjects itself is
+    // still verified directly (see AccountLoginUiObjectsResolvesAllFieldsAndLoginButton) since the
+    // scene/class stay as OnlineAccountSceneBootstrap's editor-only template.
 
     private static void AssertSubmitSelects(TMP_InputField field, EventSystem eventSystem, GameObject expectedTarget, string fieldLabel)
     {
@@ -679,20 +657,20 @@ public class AccountTextMeshProMigrationTests
             InvokePrivate(manager, "RegisterInputSubmitCallbacks");
         }
 
-        TMP_InputField emailField = OwnedTmpInputFieldsByName(scene)["EmailInputField"];
+        TMP_InputField usernameField = OwnedTmpInputFieldsByName(scene)["UserNameInputField"];
         AccountCreateUiObjects ui = FindInScene<AccountCreateUiObjects>(scene);
         Assume.That(ui, Is.Not.Null);
 
-        emailField.onSubmit.Invoke(string.Empty);
+        usernameField.onSubmit.Invoke(string.Empty);
         Assert.That(
             eventSystem.currentSelectedGameObject,
-            Is.SameAs(ui.CheckEmailButton.gameObject),
-            "expected the submit listener to select the Check Email button after 3 Register calls.");
+            Is.SameAs(ui.CreateAccountButton.gameObject),
+            "expected the submit listener to select the Create Profile button after 3 Register calls.");
 
         InvokePrivate(manager, "UnregisterInputSubmitCallbacks");
         eventSystem.SetSelectedGameObject(null);
 
-        emailField.onSubmit.Invoke(string.Empty);
+        usernameField.onSubmit.Invoke(string.Empty);
         Assert.That(
             eventSystem.currentSelectedGameObject,
             Is.Null,
@@ -718,17 +696,9 @@ public class AccountTextMeshProMigrationTests
         Assert.That(GetPrivateField<bool>(manager, "isCreatingAccount"), Is.True, "a second createUser() activation while one is already in flight must not disturb the guard.");
     }
 
-    [Test]
-    public void DuplicateLoginActivationIsGuarded()
-    {
-        Scene scene = OpenScene(LoginExistingScenePath);
-        AccountManager manager = FindInScene<AccountManager>(scene);
-        Assume.That(manager, Is.Not.Null);
-
-        SetPrivateField(manager, "isLoggingIn", true);
-        InvokePublic(manager, "LoginUser");
-        Assert.That(GetPrivateField<bool>(manager, "isLoggingIn"), Is.True, "a second LoginUser() activation while one is already in flight must not disturb the guard.");
-    }
+    // level_00_account_loginExisting is retired from production - AccountManager no longer has a
+    // loginUi variant at all, so there is no LoginUser()/isLoggingIn guard left to test here. See
+    // DuplicateCreateAccountActivationIsGuarded for the still-live createUser()/isCreatingAccount guard.
 
     // ---------------------------------------------------------------------------------------------
     // Idempotency is more than a field-count no-op: a second run must still repair peripheral drift
@@ -741,7 +711,9 @@ public class AccountTextMeshProMigrationTests
     [Test]
     public void SecondMigrationRunRepairsDriftedPasswordContentTypeWithoutReconvertingFields()
     {
-        Scene scene = OpenScene(CreateNewScenePath);
+        // The create-local-profile screen has no password field any more - only the retired
+        // (editor-template-only) login-existing screen still exercises this repair path.
+        Scene scene = OpenScene(LoginExistingScenePath);
         TMP_InputField passwordFieldBefore = OwnedTmpInputFieldsByName(scene)["PasswordInputField"];
         Assume.That(passwordFieldBefore.contentType, Is.EqualTo(TMP_InputField.ContentType.Password));
 
@@ -749,7 +721,7 @@ public class AccountTextMeshProMigrationTests
         // resets it back to Standard.
         passwordFieldBefore.contentType = TMP_InputField.ContentType.Standard;
 
-        List<string> errors = InvokeMigrateFieldsScreenInputFieldsInMemory(scene, 5);
+        List<string> errors = InvokeMigrateFieldsScreenInputFieldsInMemory(scene, 2);
         Assert.That(errors, Is.Empty, string.Join("\n- ", errors));
 
         TMP_InputField passwordFieldAfter = OwnedTmpInputFieldsByName(scene)["PasswordInputField"];
@@ -778,7 +750,7 @@ public class AccountTextMeshProMigrationTests
         UnityEventTools.AddPersistentListener(createAccountButton.onClick, manager.createUser);
         Assume.That(createAccountButton.onClick.GetPersistentEventCount(), Is.GreaterThan(0));
 
-        List<string> errors = InvokeMigrateFieldsScreenInputFieldsInMemory(scene, 5);
+        List<string> errors = InvokeMigrateFieldsScreenInputFieldsInMemory(scene, 1);
         Assert.That(errors, Is.Empty, string.Join("\n- ", errors));
 
         Assert.That(
