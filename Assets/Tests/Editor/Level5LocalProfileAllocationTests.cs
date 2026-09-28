@@ -227,4 +227,42 @@ public class Level5LocalProfileAllocationTests
         Assert.That(users[0].Userid, Is.EqualTo(12345));
         Assert.That(users[0].UserName, Is.EqualTo("legacy-player"));
     }
+
+    /// <summary>
+    /// The in-memory V1 bearer session (<c>APIHelper.ClearSession</c>/<c>BearerToken</c>) is gone
+    /// entirely, so it can no longer carry a stale credential across a local-profile switch - but an
+    /// upgrading install's database file can still be carrying a plaintext password/bearerToken an
+    /// older app version wrote to the User table (see <see cref="DBConnector"/>'s scrub comment). This
+    /// is the surviving equivalent of the retired "stale V1 credential" concern: proves the next launch
+    /// (a second <see cref="DBConnector.createDatabase"/> run, exactly what happens on every app start)
+    /// clears that leftover credential material while leaving the row's identity - the very thing a
+    /// local-profile selection reads - untouched.
+    /// </summary>
+    [Test]
+    public void ReopeningTheDatabaseScrubsAStaleCredentialButPreservesTheProfileIdentity()
+    {
+        using (IDbCommand cmd = session.Helper.Connection.CreateCommand())
+        {
+            cmd.CommandText =
+                "INSERT INTO User(userid, username, firstname, lastname, email, ipaddress, signupdate, lastlogin, password, bearerToken) "
+                + "VALUES (123, 'Patrick', 'Pat', 'Rick', 'patrick@example.com', '10.0.0.2', @now, @now, 'stale-pw', 'stale-token')";
+            cmd.Parameters.Add(new SqliteParameter("@now", DateTime.UtcNow.ToString("o")));
+            cmd.ExecuteNonQuery();
+        }
+
+        CoroutineTestRunner.RunToCompletion(session.Connector.createDatabase());
+
+        using (IDbCommand cmd = session.Helper.Connection.CreateCommand())
+        {
+            cmd.CommandText = "SELECT userid, username, password, bearerToken FROM User WHERE userid = 123";
+            using (IDataReader reader = cmd.ExecuteReader())
+            {
+                Assert.That(reader.Read(), Is.True);
+                Assert.That(Convert.ToInt32(reader["userid"]), Is.EqualTo(123));
+                Assert.That(reader["username"], Is.EqualTo("Patrick"));
+                Assert.That(reader["password"], Is.EqualTo(DBNull.Value));
+                Assert.That(reader["bearerToken"], Is.EqualTo(DBNull.Value));
+            }
+        }
+    }
 }

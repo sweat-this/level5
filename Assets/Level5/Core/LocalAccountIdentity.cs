@@ -8,8 +8,11 @@ namespace Level5.Core
     /// <c>GameOptions.userid</c>/<c>userName</c> are now properties forwarding here, so every existing
     /// caller (login, account switching, high-score upload, ...) keeps working unchanged.
     ///
-    /// A local selection only - it proves nothing about authentication. That test is
-    /// <c>APIHelper.HasSession</c>, over the bearer token, which deliberately does not live here.
+    /// A local selection only - it proves nothing about authentication. There is no local session
+    /// concept any more (the V1 bearer-session machinery, including <c>APIHelper.HasSession</c>, was
+    /// retired along with the rest of the V1 account/auth transport); the only remaining authenticated
+    /// identity is <c>BackendV2SessionStore.IsAuthenticated</c>, which deliberately does not live here
+    /// either - see docs/persistence-boundaries.md.
     /// </summary>
     public static class LocalAccountIdentity
     {
