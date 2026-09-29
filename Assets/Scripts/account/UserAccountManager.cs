@@ -210,49 +210,31 @@ public class UserAccountManager : MonoBehaviour
             yield break;
         }
 
-        try
-        {
-            DBHelper.instance.DatabaseLocked = true;
-            // check if database is empty
-            if (!DBHelper.instance.isTableEmpty(Constants.LOCAL_DATABASE_tableName_user))
-            {
-                // get local users data
-                userAccountData = DBHelper.instance.getUserProfileStats();
-                GameOptions.numOfLocalUsers = userAccountData.Count;
+        RefreshLocalProfiles();
+        StartCoroutine(CreateUserButtons());
+    }
 
-                if (userAccountData.Count > 0)
-                {
-                    usersLoaded = true;
-                    if (messageText != null)
-                    {
-                        messageText.text = "select user to log in";
-                    }
-                }
-            }
-            else
-            {
-                usersLoaded = false;
-                if (messageText != null)
-                {
-                    messageText.text = "no users found";
-                }
-            }
-            DBHelper.instance.DatabaseLocked = false;
-            StartCoroutine(CreateUserButtons());
-        }
-        catch (Exception e)
-        {
-            Debug.Log("ERROR : " + e);
-            usersLoaded = false;
-            DBHelper.instance.DatabaseLocked = false;
-            if (messageText != null)
-            {
-                messageText.text = e.ToString();
-            }
+    /// <summary>
+    /// Loads the local-profile list from SQLite into <see cref="userAccountData"/> and derives
+    /// <see cref="usersLoaded"/>, <see cref="GameOptions.numOfLocalUsers"/> and the status message from
+    /// it. Runs synchronously after <see cref="WaitForDatabase"/> confirmed the database is free, so
+    /// nothing can take the lock between that check and the read.
+    ///
+    /// <see cref="DBHelper.getUserProfileStats"/> owns <see cref="DBHelper.DatabaseLocked"/> for its own
+    /// read and deliberately returns an empty list when another owner holds it - so this caller must
+    /// never pre-acquire the lock (the audited defect: doing so made an existing, non-empty User table
+    /// read as zero profiles), and needs no separate emptiness pre-check either: an empty table is
+    /// simply an empty result. Internal (not private) so EditMode tests can drive this exact logic
+    /// against a real SQLite file without needing the coroutine's scene/UI dependencies.
+    /// </summary>
+    internal void RefreshLocalProfiles()
+    {
+        List<UserModel> profiles = DBHelper.instance.getUserProfileStats();
 
-            StartCoroutine(CreateUserButtons());
-        }
-        DBHelper.instance.DatabaseLocked = false;
+        userAccountData = profiles;
+        GameOptions.numOfLocalUsers = profiles.Count;
+        usersLoaded = profiles.Count > 0;
+        SetMessage(usersLoaded ? "select local profile" : "no local profiles found");
     }
     IEnumerator CreateUserButtons()
     {
@@ -293,8 +275,7 @@ public class UserAccountManager : MonoBehaviour
         else
         {
             UserModel u = new UserModel();
-            u.UserName = "guest";
-            u.Password = "guest";
+            u.UserName = guestUsername;
 
             GameObject prefabClone =
                 Instantiate(localAccountPrefab, localAccountPrefabSpawnLocation.transform.position, Quaternion.identity);

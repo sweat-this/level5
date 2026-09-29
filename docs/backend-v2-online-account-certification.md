@@ -130,3 +130,21 @@ skipped (7 pre-existing live-cert/ignored + this fixture's own 2 new ones).
 - Persisted session state cannot be reloaded afterward.
 - The old refresh token is rejected by Backend V2 after logout.
 - Ordinary EditMode/PlayMode/repository validation remains green.
+
+## Local-profile independence (follow-up to PR #205)
+
+Session2 additionally certifies, against the session restored by the fresh process and a real backend, that
+local-profile operations never touch the Backend V2 identity. After the restoration proof and before the
+online-account screen is reopened, `RunLocalProfileIndependenceCheck`:
+
+1. selects **guest** through the real guest row on `level_00_account_loginLocal`, then
+2. creates a **local profile** through the real Account Hub -> Create Local Profile -> Create Profile flow,
+
+and after each asserts the Backend V2 session is still authenticated, is the *same object* with the same
+access/refresh tokens, and that no `BackendV2SessionStore.Changed` event fired (a refresh, replacement or
+sign-out would each raise one). Both sessions now open a throwaway SQLite file (`LocalProfileTestDatabase`)
+instead of the developer's real `level5.db`.
+
+Run 2026-09-29 against Backend V2 `dev` `8613c05` (local Postgres container), Unity 6000.5.7f1, Unity `dev`
+`d278f4b` + the local-profile list-loading fix: Session1 **PASSED**, Session2 **PASSED** (all pre-existing
+proofs plus the two independence checks above).
