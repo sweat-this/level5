@@ -508,7 +508,7 @@ public class Pause : MonoBehaviour
     public void reloadScene()
     {
         // A restart would be a free retake of a series turn; quitting it forfeits the game instead.
-        if (VersusQuitPolicy.TurnInProgress)
+        if (VersusQuitPolicy.AttemptOutstanding)
         {
             Debug.Log("Restart is unavailable during a series turn. Quit the turn to forfeit the game.");
             return;
@@ -592,6 +592,12 @@ public class Pause : MonoBehaviour
     // quit, which forfeits the game, so it says so; once the result is in it is a plain continue.
     private void RefreshLocalVersusLabel()
     {
+        // Restart is refused while a series attempt is outstanding, so don't offer it.
+        if (loadSceneButton != null)
+        {
+            loadSceneButton.interactable = !VersusQuitPolicy.AttemptOutstanding;
+        }
+
         if (loadStartScreenText != null && LocalVersusNavigationState.ReturnPending)
         {
             loadStartScreenText.text = VersusQuitPolicy.TurnInProgress

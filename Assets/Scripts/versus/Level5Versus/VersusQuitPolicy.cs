@@ -10,8 +10,17 @@ using UnityEngine;
 /// </summary>
 public static class VersusQuitPolicy
 {
-    /// <summary>True while leaving or restarting would abandon a series turn in progress.</summary>
-    public static bool TurnInProgress => ActiveVersusAttempt.IsActive;
+    /// <summary>
+    /// True while the match is still being played for a series turn, so leaving it is a quit.
+    /// False once the match has ended: the run is finished, and if its result is still waiting on a
+    /// save retry the attempt stays outstanding rather than being forfeited.
+    /// </summary>
+    public static bool TurnInProgress => ActiveVersusAttempt.IsActive && !MatchHasEnded;
+
+    /// <summary>True while an unreported series attempt exists, ended or not. A restart would retake it.</summary>
+    public static bool AttemptOutstanding => ActiveVersusAttempt.IsActive;
+
+    private static bool MatchHasEnded => MatchController.instance != null && MatchController.instance.IsOver;
 
     /// <summary>
     /// Gives the active turn's game to the opponent. Returns false if nothing was recorded (no
@@ -19,7 +28,7 @@ public static class VersusQuitPolicy
     /// </summary>
     public static bool ForfeitActiveTurn()
     {
-        if (!ActiveVersusAttempt.IsActive)
+        if (!TurnInProgress)
         {
             return false;
         }
