@@ -91,6 +91,23 @@ public class Level5VersusPersistenceTests
     }
 
     [Test]
+    public void AQuitTurnSurvivesSaveAndLoadAsAForfeitedGameInAnActiveSeries()
+    {
+        VersusSeries original = VersusTestFixtures.Series(SeriesFormat.BestOf3);
+        Attempt issued = original.IssueAttempt(VersusTestFixtures.PatrickId, ids, clock);
+        original.StartAttempt(issued.Id, clock);
+        original.ForfeitCurrentGame(VersusTestFixtures.PatrickId, clock);
+
+        VersusSeries restored = RoundTrip(original);
+
+        Assert.That(restored.Status, Is.EqualTo(SeriesStatus.Active));
+        Assert.That(restored.Games[0].Status, Is.EqualTo(VersusGameStatus.Forfeited));
+        Assert.That(restored.Games[0].Result.WinnerId, Is.EqualTo(VersusTestFixtures.AlexId));
+        Assert.That(restored.Score.WinsFor(1), Is.EqualTo(1));
+        Assert.That(restored.CurrentGame.Index, Is.EqualTo(1));
+    }
+
+    [Test]
     public void ACompletedAttemptAndItsMetricsSurviveIntact()
     {
         VersusSeries original = VersusTestFixtures.Series(SeriesFormat.BestOf3);

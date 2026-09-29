@@ -382,11 +382,6 @@ public class StartManager : MonoBehaviour
             return false;
         }
 
-        if (ui.LocalVersusButton == null)
-        {
-            missing.Add("StartMenuUiObjects.localVersusButton");
-        }
-
         if (ui.TextUi == null)
         {
             missing.Add("StartMenuUiObjects.TextUi");
