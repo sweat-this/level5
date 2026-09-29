@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Text.RegularExpressions;
 using Level5.BackendV2;
 using Level5.Core.Match;
@@ -33,6 +34,7 @@ public class Level5LocalVersusTests
     private string tempRoot;
     private List<string> loadedScenes;
     private Dictionary<int, bool> characterUnlocks;
+    private readonly List<GameObject> hosts = new List<GameObject>();
 
     [SetUp]
     public void SetUp()
@@ -68,11 +70,22 @@ public class Level5LocalVersusTests
         VersusLauncher.OverrideSceneLoader(scene => loadedScenes.Add(scene));
         LocalVersusNavigationState.Clear();
         PlayerSelectionSession.Clear();
+        MatchController.instance = null;
     }
 
     [TearDown]
     public void TearDown()
     {
+        foreach (GameObject host in hosts)
+        {
+            if (host != null)
+            {
+                UnityEngine.Object.DestroyImmediate(host);
+            }
+        }
+
+        hosts.Clear();
+        MatchController.instance = null;
         VersusLauncher.ResetSceneLoader();
         LocalVersusNavigationState.Clear();
         ActiveMatch.Clear();
@@ -607,6 +620,225 @@ public class Level5LocalVersusTests
             "the competitive-attempt marker that keeps a versus match out of POST /api/v2/match-results is set");
     }
 
+    // ---------------------------------------------------------------- explicit exit
+    //
+    // A deliberate exit (pause menu Start/Menu or Quit) is only allowed once nothing is owed to the
+    // stored series: a live turn must have its forfeit durably saved, and a finished run must have its
+    // result durably saved by VersusMatchReporter. The durable side is always read back through a fresh
+    // FileVersusSeriesRepository, so an in-memory change that never reached disk cannot pass.
+
+    [Test]
+    public void ExplicitExitIsAllowedWithNoActiveAttemptAndWritesNothing()
+    {
+        SaveGateRepository gate = UseGatedRepository();
+        LocalVersusScreenModel model = NewModel();
+        model.Open();
+        SeriesId id = model.Create("A", "B").Series.Id;
+        int savesBefore = gate.SaveCount;
+
+        Assert.That(ActiveVersusAttempt.IsActive, Is.False);
+        Assert.That(VersusQuitPolicy.TryPrepareForExplicitExit(), Is.True);
+
+        Assert.That(gate.SaveCount, Is.EqualTo(savesBefore), "leaving an ordinary match touches no series");
+        Assert.That(DurableSeries(id).Games[0].Status, Is.Not.EqualTo(VersusGameStatus.Forfeited));
+    }
+
+    [Test]
+    public void AQuitDuringALiveTurnDurablyForfeitsThatGameThenMayLeave()
+    {
+        UseGatedRepository();
+        StartLiveTurn(3, out SeriesId id, out ParticipantId quitter, out _);
+        Assert.That(VersusQuitPolicy.TurnInProgress, Is.True);
+
+        Assert.That(VersusQuitPolicy.TryPrepareForExplicitExit(), Is.True);
+
+        VersusSeries durable = DurableSeries(id);
+        Assert.That(durable.Games[0].Status, Is.EqualTo(VersusGameStatus.Forfeited));
+        Assert.That(durable.Games[0].Result.WinnerId, Is.EqualTo(durable.Participants.Opponent(quitter).Id),
+            "the opponent is awarded the game");
+        Assert.That(durable.Status, Is.EqualTo(SeriesStatus.Active), "one forfeited game does not end a best of three");
+        Assert.That(durable.CurrentGame.Index, Is.EqualTo(1), "the series advanced through the normal domain rules");
+        Assert.That(ActiveVersusAttempt.IsActive, Is.False, "released once the forfeit is stored");
+    }
+
+    [Test]
+    public void AQuitCanCompleteTheSeriesThroughTheNormalDomainRules()
+    {
+        UseGatedRepository();
+        StartLiveTurn(1, out SeriesId id, out ParticipantId quitter, out _);
+
+        Assert.That(VersusQuitPolicy.TryPrepareForExplicitExit(), Is.True);
+
+        VersusSeries durable = DurableSeries(id);
+        Assert.That(durable.Status, Is.EqualTo(SeriesStatus.Completed), "a single game decides a best of one");
+        Assert.That(durable.Result.WinnerId, Is.EqualTo(durable.Participants.Opponent(quitter).Id));
+        Assert.That(ActiveVersusAttempt.IsActive, Is.False);
+    }
+
+    [Test]
+    public void AFailedForfeitSaveKeepsThePlayerInTheMatchAndTheAttemptOutstanding()
+    {
+        SaveGateRepository gate = UseGatedRepository();
+        StartLiveTurn(3, out SeriesId id, out ParticipantId quitter, out _);
+        AttemptId attemptId = ActiveVersusAttempt.AttemptId;
+
+        gate.FailSaves = true;
+        Assert.That(VersusQuitPolicy.TryPrepareForExplicitExit(), Is.False, "navigation must not start");
+
+        Assert.That(ActiveVersusAttempt.IsActive, Is.True, "the attempt is not cleared on a failed save");
+        Assert.That(ActiveVersusAttempt.AttemptId, Is.EqualTo(attemptId));
+        VersusSeries durable = DurableSeries(id);
+        Assert.That(durable.Games[0].Status, Is.EqualTo(VersusGameStatus.Active), "still the last durable state");
+        Assert.That(durable.ViewFor(quitter).CurrentGame.OwnAttemptState, Is.EqualTo(AttemptState.Started));
+
+        // nothing retried behind the player's back; a later, explicit action does
+        int failedSaves = gate.SaveCount;
+        gate.FailSaves = false;
+        Assert.That(gate.SaveCount, Is.EqualTo(failedSaves));
+        Assert.That(VersusQuitPolicy.TryPrepareForExplicitExit(), Is.True);
+        Assert.That(DurableSeries(id).Games[0].Status, Is.EqualTo(VersusGameStatus.Forfeited));
+        Assert.That(ActiveVersusAttempt.IsActive, Is.False);
+    }
+
+    [Test]
+    public void AnEndedMatchAwaitingItsResultSaveCannotBeLeftAndIsNotForfeited()
+    {
+        SaveGateRepository gate = UseGatedRepository();
+        StartLiveTurn(3, out SeriesId id, out ParticipantId participant, out MatchController match);
+
+        Assert.That(match.RequestEnd(MatchEndReason.TimeExpired), Is.True);
+        Assert.That(match.Phase, Is.EqualTo(MatchPhase.Ending), "ended, but the end work has not completed");
+
+        Assert.That(VersusQuitPolicy.TurnInProgress, Is.False);
+        Assert.That(VersusQuitPolicy.AttemptOutstanding, Is.True);
+        int savesBefore = gate.SaveCount;
+
+        Assert.That(VersusQuitPolicy.TryPrepareForExplicitExit(), Is.False);
+
+        Assert.That(gate.SaveCount, Is.EqualTo(savesBefore), "no forfeit was written for an already-played run");
+        Assert.That(ActiveVersusAttempt.IsActive, Is.True);
+        VersusSeries durable = DurableSeries(id);
+        Assert.That(durable.Games[0].Status, Is.EqualTo(VersusGameStatus.Active));
+        Assert.That(durable.ViewFor(participant).CurrentGame.OwnAttemptState, Is.EqualTo(AttemptState.Started));
+    }
+
+    [Test]
+    public void AFailedResultSaveBlocksLeavingUntilTheReporterRetrySucceeds()
+    {
+        SaveGateRepository gate = UseGatedRepository();
+        StartLiveTurn(3, out SeriesId id, out ParticipantId participant, out MatchController match);
+        match.RequestEnd(MatchEndReason.TimeExpired);
+        GameStats stats = BuildStats(21);
+
+        gate.FailSaves = true;
+        Assert.That(VersusMatchReporter.TryReport(stats, GameModeId.TotalPoints, 60f), Is.False, "GameRules will retry");
+        Assert.That(ActiveVersusAttempt.IsActive, Is.True);
+        Assert.That(VersusQuitPolicy.TryPrepareForExplicitExit(), Is.False, "Continue Series cannot leave yet");
+        Assert.That(DurableSeries(id).Games[0].Status, Is.EqualTo(VersusGameStatus.Active), "and nothing was forfeited");
+
+        gate.FailSaves = false;
+        Assert.That(VersusMatchReporter.TryReport(stats, GameModeId.TotalPoints, 60f), Is.True, "the retry stores the result");
+        Assert.That(ActiveVersusAttempt.IsActive, Is.False);
+        Assert.That(VersusQuitPolicy.TryPrepareForExplicitExit(), Is.True, "now Continue Series can leave");
+
+        VersusSeries durable = DurableSeries(id);
+        Assert.That(durable.Games[0].Status, Is.Not.EqualTo(VersusGameStatus.Forfeited), "the earned result stands");
+        Assert.That(durable.ViewFor(participant).CurrentGame.OwnAttemptState, Is.EqualTo(AttemptState.Completed));
+    }
+
+    [Test]
+    public void ACrashOrLoadInterruptionIsNotAForfeitAndTheTurnIsReissued()
+    {
+        UseGatedRepository();
+        StartLiveTurn(3, out SeriesId id, out ParticipantId participant, out _);
+        AttemptId interrupted = ActiveVersusAttempt.AttemptId;
+
+        // the process dies (or the scene never loads): the quit policy never runs, all transient state is lost
+        ActiveVersusAttempt.Clear();
+        LocalVersusNavigationState.Clear();
+        MatchController.instance = null;
+        VersusRuntime.Override(new FileVersusSeriesRepository(tempRoot), VersusCatalogs.Rulesets);
+
+        Assert.That(DurableSeries(id).Games[0].Status, Is.EqualTo(VersusGameStatus.Active), "nothing was forfeited");
+        AttemptOperation reissued = VersusRuntime.Coordinator.IssueAttempt(id, participant);
+        Assert.That(reissued.Succeeded, Is.True, reissued.Validation?.ToString());
+        Assert.That(reissued.Attempt.Id, Is.EqualTo(interrupted), "the same outstanding attempt comes back");
+    }
+
+    [Test]
+    public void ExplicitExitCoroutinesStopBeforeAnyNavigationWhenTheExitIsNotDurable()
+    {
+        SaveGateRepository gate = UseGatedRepository();
+        StartLiveTurn(3, out SeriesId id, out _, out MatchController match);
+        Pause pause = NewBoundPause();
+
+        // Each coroutine must finish on its first step: no database wait, no scene load, no quit.
+        gate.FailSaves = true;
+        Assert.That(pause.loadstartScreen().MoveNext(), Is.False, "Start/Menu stays put when the forfeit cannot be saved");
+        Assert.That(pause.Quit().MoveNext(), Is.False, "Quit stays put when the forfeit cannot be saved");
+        Assert.That(ActiveVersusAttempt.IsActive, Is.True);
+        Assert.That(DurableSeries(id).Games[0].Status, Is.EqualTo(VersusGameStatus.Active));
+
+        gate.FailSaves = false;
+        match.RequestEnd(MatchEndReason.TimeExpired);
+        int savesBefore = gate.SaveCount;
+        Assert.That(pause.loadstartScreen().MoveNext(), Is.False, "Continue Series waits for the result save");
+        Assert.That(pause.Quit().MoveNext(), Is.False, "so does Quit");
+        Assert.That(gate.SaveCount, Is.EqualTo(savesBefore), "and neither forfeits the finished run");
+        Assert.That(ActiveVersusAttempt.IsActive, Is.True);
+    }
+
+    [Test]
+    public void RestartIsRefusedWhileAnAttemptIsOutstanding()
+    {
+        UseGatedRepository();
+        StartLiveTurn(3, out SeriesId id, out _, out _);
+        Pause pause = NewBoundPause();
+        MatchConfiguration configuration = ActiveMatch.Configuration;
+
+        // a restart that went ahead would begin a new match and load the scene, which cannot happen in EditMode
+        Assert.DoesNotThrow(() => pause.reloadScene());
+
+        Assert.That(ActiveVersusAttempt.IsActive, Is.True);
+        Assert.That(ActiveMatch.Configuration, Is.SameAs(configuration), "no new match was begun");
+        Assert.That(DurableSeries(id).Games[0].Status, Is.EqualTo(VersusGameStatus.Active));
+    }
+
+    [Test]
+    public void ThePauseBindingIsTheRealQuitPolicy()
+    {
+        // Level5.Match cannot reference Level5.Versus, so GameLevelManager is the only place the
+        // policy reaches Pause. If this wiring were dropped, Pause's "no series" defaults would silently
+        // let every deliberate exit skip the durability gate.
+        string source = File.ReadAllText(Path.Combine(
+            Application.dataPath, "Scripts", "game manager", "GameLevelManager.cs"));
+
+        Assert.That(source, Does.Contain("BindVersusContext"));
+        Assert.That(source, Does.Contain("VersusQuitPolicy.TryPrepareForExplicitExit"));
+        Assert.That(source, Does.Contain("VersusQuitPolicy.AttemptOutstanding"));
+        Assert.That(source, Does.Contain("VersusQuitPolicy.TurnInProgress"));
+    }
+
+    [Test]
+    public void TheNavigationHintResetsAtSubsystemRegistration()
+    {
+        LocalVersusNavigationState.Begin(new SeriesId("left-over"));
+        Assert.That(LocalVersusNavigationState.ReturnPending, Is.True);
+
+        MethodInfo reset = typeof(LocalVersusNavigationState).GetMethod(
+            "ResetOnLoad", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.That(reset, Is.Not.Null);
+        RuntimeInitializeOnLoadMethodAttribute hook = reset.GetCustomAttribute<RuntimeInitializeOnLoadMethodAttribute>();
+        Assert.That(hook, Is.Not.Null);
+        Assert.That(hook.loadType, Is.EqualTo(RuntimeInitializeLoadType.SubsystemRegistration),
+            "static state survives with domain reload disabled, so it must be cleared before the first scene");
+
+        reset.Invoke(null, null);
+
+        Assert.That(LocalVersusNavigationState.ReturnPending, Is.False);
+        Assert.That(LocalVersusNavigationState.PreferredSeriesId.HasValue, Is.False);
+    }
+
     // ---------------------------------------------------------------- helpers
 
     private LocalVersusScreenModel NewModel()
@@ -647,6 +879,74 @@ public class Level5LocalVersusTests
         VersusRuntime.Override(new FileVersusSeriesRepository(tempRoot), VersusCatalogs.Rulesets);
     }
 
+    /// <summary>
+    /// Points the game at the same on-disk store, behind a wrapper that can be told to fail saves.
+    /// Loads always come from disk, so a failed save leaves exactly the last durable series behind.
+    /// </summary>
+    private SaveGateRepository UseGatedRepository()
+    {
+        SaveGateRepository gate = new SaveGateRepository(new FileVersusSeriesRepository(tempRoot));
+        VersusRuntime.Override(gate, VersusCatalogs.Rulesets);
+        return gate;
+    }
+
+    /// <summary>The series as a freshly started process would read it from disk.</summary>
+    private VersusSeries DurableSeries(SeriesId id)
+    {
+        VersusSeries series = new FileVersusSeriesRepository(tempRoot).Load(id);
+        Assert.That(series, Is.Not.Null, "the series is not on disk");
+        return series;
+    }
+
+    /// <summary>
+    /// A real local series, launched through <see cref="LocalVersusFlow.LaunchTurn"/> (which issues and
+    /// starts the attempt and begins <see cref="ActiveVersusAttempt"/>), with a match that is playing.
+    /// </summary>
+    private void StartLiveTurn(int gameCount, out SeriesId id, out ParticipantId participant, out MatchController match)
+    {
+        SeriesOperation created = LocalVersusFlow.CreateSeries(
+            VersusRuntime.Coordinator, "A", "B", gameCount, LocalVersusFlow.SelectableRulesets()[0].Id);
+        Assert.That(created.Succeeded, Is.True, created.Validation?.ToString());
+        id = created.Series.Id;
+        participant = LocalVersusFlow.NextParticipant(created.Series);
+
+        VersusLaunch launch = LocalVersusFlow.LaunchTurn(
+            id, participant, EligibleLevelId, Character(UnlockedCharacterId), Snapshot());
+        Assert.That(launch.Succeeded, Is.True, launch.Validation?.ToString());
+        Assert.That(ActiveVersusAttempt.IsActive, Is.True);
+
+        GameObject host = new GameObject("quit-policy-match");
+        hosts.Add(host);
+        match = host.AddComponent<MatchController>();
+        MatchController.instance = match; // what Awake does in play mode
+        match.BeginPlay();
+        Assert.That(match.IsPlaying, Is.True);
+    }
+
+    /// <summary>A <see cref="Pause"/> wired to the quit policy exactly as GameLevelManager wires it.</summary>
+    private Pause NewBoundPause()
+    {
+        GameObject host = new GameObject("quit-policy-pause");
+        hosts.Add(host);
+        Pause pause = host.AddComponent<Pause>();
+        pause.BindVersusContext(
+            () => VersusQuitPolicy.AttemptOutstanding,
+            () => VersusQuitPolicy.TurnInProgress,
+            VersusQuitPolicy.TryPrepareForExplicitExit);
+        return pause;
+    }
+
+    private GameStats BuildStats(int totalPoints)
+    {
+        GameObject host = new GameObject("quit-policy-stats");
+        hosts.Add(host);
+        GameStats stats = host.AddComponent<GameStats>();
+        stats.TotalPoints = totalPoints;
+        stats.ShotMade = 7;
+        stats.ShotAttempt = 10;
+        return stats;
+    }
+
     /// <summary>Submits the outstanding attempt the launcher just started, as the match-end reporter would.</summary>
     private static void SubmitActiveAttempt(SeriesId seriesId, float score)
     {
@@ -684,6 +984,42 @@ public class Level5LocalVersusTests
                 seriesId, issued.Attempt.Id, next, VersusTestFixtures.Result(ruleset, score));
             Assert.That(submitted.Succeeded, Is.True, submitted.Validation?.ToString());
         }
+    }
+
+    /// <summary>Delegates to a real store, but can be told to refuse saves, and counts the saves it accepts.</summary>
+    private sealed class SaveGateRepository : IVersusSeriesRepository
+    {
+        private readonly IVersusSeriesRepository inner;
+
+        public SaveGateRepository(IVersusSeriesRepository inner)
+        {
+            this.inner = inner;
+        }
+
+        public bool FailSaves { get; set; }
+
+        public int SaveCount { get; private set; }
+
+        public bool Save(VersusSeries series)
+        {
+            if (FailSaves)
+            {
+                return false;
+            }
+
+            SaveCount++;
+            return inner.Save(series);
+        }
+
+        public VersusSeries Load(SeriesId id) => inner.Load(id);
+
+        public bool Exists(SeriesId id) => inner.Exists(id);
+
+        public IReadOnlyList<SeriesSummary> ListSummaries() => inner.ListSummaries();
+
+        public bool Delete(SeriesId id) => inner.Delete(id);
+
+        public bool Archive(SeriesId id) => inner.Archive(id);
     }
 
     /// <summary>A store that cannot make anything durable.</summary>

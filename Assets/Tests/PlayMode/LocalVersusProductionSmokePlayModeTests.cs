@@ -1,6 +1,7 @@
 #if UNITY_INCLUDE_TESTS
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
 using Level5.BackendV2;
@@ -138,6 +139,148 @@ public class LocalVersusProductionSmokePlayModeTests
         Assert.That(FindButton("playTurnButton").interactable, Is.True, "and it is resumable");
     }
 
+    [UnityTest]
+    [Timeout(600000)]
+    public IEnumerator AQuitMidTurnForfeitsThatGameAndTheNextGameRendersOnTheSeriesScreen()
+    {
+        yield return OpenLocalVersusFromStart();
+        FindButton("createButton").onClick.Invoke();
+        yield return null;
+
+        SeriesId id = VersusRuntime.Coordinator.ListSeries()[0].Id;
+        VersusSeries created = VersusRuntime.Coordinator.Load(id);
+        ParticipantId quitter = ExpectedNext(created);
+        ParticipantId opponent = created.Participants.Opponent(quitter).Id;
+
+        yield return LaunchTurn(id, quitter);
+        Assert.That(VersusQuitPolicy.TurnInProgress, Is.True, "the match is live, so leaving it is a quit");
+
+        // "Quit Turn (Forfeit)": the same pause action, mid-turn
+        yield return ContinueSeries();
+
+        VersusSeries stored = Durable(root, id);
+        Assert.That(stored.Games[0].Status, Is.EqualTo(VersusGameStatus.Forfeited));
+        Assert.That(stored.Games[0].Result.WinnerId, Is.EqualTo(opponent), "the opponent wins the quit game");
+        Assert.That(stored.Status, Is.EqualTo(SeriesStatus.Active), "one quit game does not end a best of three");
+        Assert.That(stored.CurrentGame.Index, Is.EqualTo(1));
+        Assert.That(ActiveVersusAttempt.IsActive, Is.False);
+
+        string detail = TextOf("seriesDetail");
+        string first = stored.Participants.First.DisplayName;
+        string second = stored.Participants.Second.DisplayName;
+        Assert.That(
+            detail,
+            Does.Contain(first + " " + stored.Score.FirstWins + " - " + stored.Score.SecondWins + " " + second),
+            "the screen shows the score with the forfeited game counted for the opponent");
+        Assert.That(detail, Does.Contain("Game 2 of 3"));
+        Assert.That(
+            detail,
+            Does.Contain(stored.Participants.Find(ExpectedNext(stored)).DisplayName + " is up."),
+            "and the next game's turn");
+        Assert.That(FindButton("playTurnButton").interactable, Is.True, "the series carries on");
+    }
+
+    [UnityTest]
+    [Timeout(600000)]
+    public IEnumerator AForfeitThatCannotBeSavedKeepsGameplayLoadedUntilARetrySucceeds()
+    {
+        FailableRepository repository = new FailableRepository(new FileVersusSeriesRepository(root));
+        VersusRuntime.Override(repository);
+
+        yield return OpenLocalVersusFromStart();
+        FindButton("createButton").onClick.Invoke();
+        yield return null;
+
+        SeriesId id = VersusRuntime.Coordinator.ListSeries()[0].Id;
+        ParticipantId quitter = ExpectedNext(VersusRuntime.Coordinator.Load(id));
+        yield return LaunchTurn(id, quitter);
+        string gameplayScene = SceneManager.GetActiveScene().name;
+
+        repository.FailSaves = true;
+        StartPauseAction("loadstartScreen");
+        yield return AssertStaysInGameplay(gameplayScene, "Start/Menu must not leave when the forfeit cannot be saved");
+        Assert.That(AnyLabelReads(Pause.ExitNotSavedMessage), Is.True, "the refused button says why nothing happened");
+
+        StartPauseAction("Quit");
+        yield return AssertStaysInGameplay(gameplayScene, "Quit must not run the quit sequence when the forfeit cannot be saved");
+
+        MonoBehaviour pause = FindBehaviourByTypeName("Pause");
+        pause.GetType().GetMethod("reloadScene", BindingFlags.Public | BindingFlags.Instance).Invoke(pause, null);
+        yield return AssertStaysInGameplay(gameplayScene, "Restart stays refused while the attempt is outstanding");
+
+        Assert.That(ActiveVersusAttempt.IsActive, Is.True, "the attempt is not cleared by a failed save");
+        VersusSeries stored = Durable(root, id);
+        Assert.That(stored.Games[0].Status, Is.EqualTo(VersusGameStatus.Active), "the series is at its last durable state");
+        Assert.That(stored.ViewFor(quitter).CurrentGame.OwnAttemptState, Is.EqualTo(AttemptState.Started));
+
+        // the player tries again once the disk works
+        repository.FailSaves = false;
+        yield return ContinueSeries();
+
+        stored = Durable(root, id);
+        Assert.That(stored.Games[0].Status, Is.EqualTo(VersusGameStatus.Forfeited));
+        Assert.That(stored.Games[0].Result.WinnerId, Is.EqualTo(stored.Participants.Opponent(quitter).Id));
+        Assert.That(ActiveVersusAttempt.IsActive, Is.False);
+    }
+
+    [UnityTest]
+    [Timeout(600000)]
+    public IEnumerator AFinishedRunAwaitingItsResultSaveCannotContinueUntilTheSaveLands()
+    {
+        FailableRepository repository = new FailableRepository(new FileVersusSeriesRepository(root));
+        VersusRuntime.Override(repository);
+
+        yield return OpenLocalVersusFromStart();
+        FindButton("createButton").onClick.Invoke();
+        yield return null;
+
+        SeriesId id = VersusRuntime.Coordinator.ListSeries()[0].Id;
+        ParticipantId player = ExpectedNext(VersusRuntime.Coordinator.Load(id));
+        yield return LaunchTurn(id, player);
+        string gameplayScene = SceneManager.GetActiveScene().name;
+
+        // The run ends and its result cannot be stored: exactly the state GameRules' match-end retry
+        // loop sits in, with the match Ending and the attempt still outstanding.
+        MatchController match = MatchController.instance;
+        Assert.That(match, Is.Not.Null);
+        Assert.That(match.RequestEnd(MatchEndReason.TimeExpired), Is.True);
+
+        GameStats stats = UnityEngine.Object.FindAnyObjectByType<GameStats>();
+        stats.TotalPoints = 30;
+        stats.ShotMade = 5;
+        stats.ShotAttempt = 10;
+        repository.FailSaves = true;
+        Assert.That(
+            VersusMatchReporter.TryReport(stats, ActiveMatch.Configuration.ModeId, 90f),
+            Is.False,
+            "the result could not be saved, so the reporter asks to be retried");
+        Assert.That(VersusQuitPolicy.TurnInProgress, Is.False);
+        Assert.That(VersusQuitPolicy.AttemptOutstanding, Is.True);
+
+        StartPauseAction("loadstartScreen");
+        yield return AssertStaysInGameplay(gameplayScene, "Continue Series must wait for the result save");
+
+        Assert.That(ActiveVersusAttempt.IsActive, Is.True);
+        Assert.That(
+            Durable(root, id).Games[0].Status,
+            Is.EqualTo(VersusGameStatus.Active),
+            "the already-played run was not forfeited");
+
+        // the existing match-end retry lands the result; Continue Series then works
+        repository.FailSaves = false;
+        Assert.That(VersusMatchReporter.TryReport(stats, ActiveMatch.Configuration.ModeId, 90f), Is.True);
+        Assert.That(ActiveVersusAttempt.IsActive, Is.False);
+
+        yield return ContinueSeries();
+
+        VersusSeries stored = Durable(root, id);
+        Assert.That(stored.Games[0].Status, Is.Not.EqualTo(VersusGameStatus.Forfeited), "the earned result stands");
+        Assert.That(stored.ViewFor(player).CurrentGame.OwnAttemptState, Is.EqualTo(AttemptState.Completed));
+        Assert.That(
+            TextOf("seriesDetail"),
+            Does.Contain(stored.Participants.Find(ExpectedNext(stored)).DisplayName + " is up."));
+    }
+
     // ------------------------------------------------------------------ steps
 
     private IEnumerator OpenLocalVersusFromStart()
@@ -181,6 +324,24 @@ public class LocalVersusProductionSmokePlayModeTests
     /// <summary>One turn played and reported, stopping at the match-end summary (before Continue Series).</summary>
     private IEnumerator PlayTurn(SeriesId id, ParticipantId expected, int score)
     {
+        yield return LaunchTurn(id, expected);
+
+        GameStats stats = UnityEngine.Object.FindAnyObjectByType<GameStats>();
+        Assert.That(stats, Is.Not.Null, "the gameplay scene has no GameStats to report from");
+        stats.TotalPoints = score;
+        stats.ShotMade = 5;
+        stats.ShotAttempt = 10;
+        Assert.That(
+            VersusMatchReporter.TryReport(stats, ActiveMatch.Configuration.ModeId, 90f),
+            Is.True,
+            "the turn's result was not stored");
+        Assert.That(ActiveVersusAttempt.IsActive, Is.False, "a stored result clears the attempt");
+        Assert.That(LocalVersusNavigationState.ReturnPending, Is.True, "the return hint outlives the attempt");
+    }
+
+    /// <summary>Presses Play Turn and waits for the live gameplay scene, with the attempt outstanding.</summary>
+    private IEnumerator LaunchTurn(SeriesId id, ParticipantId expected)
+    {
         Button play = FindButton("playTurnButton");
         Assert.That(play.interactable, Is.True, "Play Turn is not available: " + TextOf("turnMessage"));
         play.onClick.Invoke();
@@ -220,30 +381,21 @@ public class LocalVersusProductionSmokePlayModeTests
         }
 
         Assert.That(relabelled, Is.True, "the pause menu's start-screen action reads the forfeit label while a local-versus turn is in progress");
-
-        GameStats stats = UnityEngine.Object.FindAnyObjectByType<GameStats>();
-        Assert.That(stats, Is.Not.Null, "the gameplay scene has no GameStats to report from");
-        stats.TotalPoints = score;
-        stats.ShotMade = 5;
-        stats.ShotAttempt = 10;
-        Assert.That(
-            VersusMatchReporter.TryReport(stats, ActiveMatch.Configuration.ModeId, 90f),
-            Is.True,
-            "the turn's result was not stored");
-        Assert.That(ActiveVersusAttempt.IsActive, Is.False, "a stored result clears the attempt");
-        Assert.That(LocalVersusNavigationState.ReturnPending, Is.True, "the return hint outlives the attempt");
     }
 
     private IEnumerator PlayTurnAndContinue(SeriesId id, ParticipantId expected, int score)
     {
         yield return PlayTurn(id, expected, score);
+        yield return ContinueSeries();
+    }
 
-        // "Continue Series": the pause menu's start-screen action.
-        MonoBehaviour pause = FindBehaviourByTypeName("Pause");
-        Assert.That(pause, Is.Not.Null, "the gameplay scene has no Pause component");
-        MethodInfo method = pause.GetType().GetMethod("loadstartScreen", BindingFlags.Public | BindingFlags.Instance);
-        Assert.That(method, Is.Not.Null);
-        pause.StartCoroutine((IEnumerator)method.Invoke(pause, null));
+    /// <summary>
+    /// "Continue Series" / "Quit Turn (Forfeit)": the pause menu's start-screen action, run to the
+    /// point the Local Versus screen is showing again.
+    /// </summary>
+    private IEnumerator ContinueSeries()
+    {
+        StartPauseAction("loadstartScreen");
 
         float deadline = Time.realtimeSinceStartup + SceneTimeoutSeconds;
         while (Time.realtimeSinceStartup < deadline
@@ -263,6 +415,50 @@ public class LocalVersusProductionSmokePlayModeTests
         yield return null;
         yield return null;
         Assert.That(LocalVersusNavigationState.ReturnPending, Is.False, "the screen consumed the return hint");
+    }
+
+    /// <summary>
+    /// Runs one of Pause's public exit coroutines the way the pause menu's button does (its handler
+    /// calls <c>StartCoroutine</c> on it). <c>Quit</c> would end the application only if it is allowed to.
+    /// </summary>
+    private static void StartPauseAction(string methodName)
+    {
+        MonoBehaviour pause = FindBehaviourByTypeName("Pause");
+        Assert.That(pause, Is.Not.Null, "the gameplay scene has no Pause component");
+        MethodInfo method = pause.GetType().GetMethod(methodName, BindingFlags.Public | BindingFlags.Instance);
+        Assert.That(method, Is.Not.Null, methodName);
+        pause.StartCoroutine((IEnumerator)method.Invoke(pause, null));
+    }
+
+    /// <summary>Waits long enough for a scene load requested this frame to have shown up, and fails if one did.</summary>
+    private static IEnumerator AssertStaysInGameplay(string gameplayScene, string because)
+    {
+        float until = Time.realtimeSinceStartup + 1.5f;
+        for (int frame = 0; frame < 10 || Time.realtimeSinceStartup < until; frame++)
+        {
+            Assert.That(SceneManager.GetActiveScene().name, Is.EqualTo(gameplayScene), because);
+            yield return null;
+        }
+    }
+
+    private static bool AnyLabelReads(string text)
+    {
+        foreach (Text label in UnityEngine.Object.FindObjectsByType<Text>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+        {
+            if (label.text == text)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static VersusSeries Durable(string root, SeriesId id)
+    {
+        VersusSeries series = new FileVersusSeriesRepository(root).Load(id);
+        Assert.That(series, Is.Not.Null, "the series is not on disk");
+        return series;
     }
 
     // ------------------------------------------------------------------ helpers
@@ -332,6 +528,31 @@ public class LocalVersusProductionSmokePlayModeTests
         }
 
         return null;
+    }
+
+    /// <summary>The real on-disk store, until told to refuse saves. Loads always read the disk.</summary>
+    private sealed class FailableRepository : IVersusSeriesRepository
+    {
+        private readonly IVersusSeriesRepository inner;
+
+        public FailableRepository(IVersusSeriesRepository inner)
+        {
+            this.inner = inner;
+        }
+
+        public bool FailSaves { get; set; }
+
+        public bool Save(VersusSeries series) => !FailSaves && inner.Save(series);
+
+        public VersusSeries Load(SeriesId id) => inner.Load(id);
+
+        public bool Exists(SeriesId id) => inner.Exists(id);
+
+        public IReadOnlyList<SeriesSummary> ListSummaries() => inner.ListSummaries();
+
+        public bool Delete(SeriesId id) => inner.Delete(id);
+
+        public bool Archive(SeriesId id) => inner.Archive(id);
     }
 }
 #endif
