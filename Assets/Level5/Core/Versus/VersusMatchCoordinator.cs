@@ -152,6 +152,39 @@ namespace Level5.Core.Versus
         }
 
         /// <summary>
+        /// Records that a participant quit their turn: the current game goes to the opponent and the
+        /// series moves on. A crash or load error is not this - the interrupted attempt stays
+        /// outstanding so the turn can be retried.
+        /// </summary>
+        public SeriesOperation ForfeitGame(SeriesId seriesId, ParticipantId participantId)
+        {
+            SeriesSubmission submission = null;
+            SeriesOperation operation = Mutate(
+                seriesId,
+                series => submission = series.ForfeitCurrentGame(participantId, clock));
+            if (!operation.Succeeded)
+            {
+                return operation;
+            }
+
+            VersusLog.GameResolved(operation.Series, submission.Game);
+            GameResolved?.Invoke(operation.Series, submission.Game);
+
+            if (operation.Series.IsOver)
+            {
+                VersusLog.SeriesCompleted(operation.Series);
+                SeriesCompleted?.Invoke(operation.Series);
+            }
+            else if (operation.Series.CurrentGame != null)
+            {
+                VersusLog.SeriesAdvanced(operation.Series, operation.Series.CurrentGame);
+                SeriesAdvanced?.Invoke(operation.Series, operation.Series.CurrentGame);
+            }
+
+            return operation;
+        }
+
+        /// <summary>
         /// Issues the next attempt for a participant, or hands back the one already outstanding.
         ///
         /// This is where a series that this build can no longer score is refused. Doing it here

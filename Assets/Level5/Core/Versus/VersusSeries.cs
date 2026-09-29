@@ -406,6 +406,27 @@ namespace Level5.Core.Versus
         }
 
         /// <summary>
+        /// Gives the current game to the opponent because this participant quit their turn, then
+        /// advances the series exactly as a submitted result would. The series carries on.
+        /// </summary>
+        public SeriesSubmission ForfeitCurrentGame(ParticipantId forfeitingParticipantId, IVersusClock clock)
+        {
+            RequireActive("forfeit a game");
+            RequireParticipant(forfeitingParticipantId);
+
+            VersusGame game = CurrentGame;
+            if (game == null)
+            {
+                throw new VersusDomainException($"series {Id} has no active game to forfeit");
+            }
+
+            DateTime now = clock.UtcNow;
+            GameResult gameResult = game.Forfeit(forfeitingParticipantId, Participants, now);
+            SeriesResult seriesResult = Advance(now);
+            return new SeriesSubmission(game, gameResult, seriesResult);
+        }
+
+        /// <summary>
         /// Ends the series in the opponent's favour. The current game is forfeited with it and any
         /// game that had not started is cancelled rather than left looking playable.
         /// </summary>

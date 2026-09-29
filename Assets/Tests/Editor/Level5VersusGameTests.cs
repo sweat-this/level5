@@ -225,6 +225,23 @@ public class Level5VersusGameTests
     }
 
     [Test]
+    public void QuittingATurnGivesThatGameToTheOpponentAndTheSeriesCarriesOn()
+    {
+        FakeVersusClock clock = new FakeVersusClock();
+        SequentialVersusIdSource ids = new SequentialVersusIdSource();
+        VersusSeries series = VersusTestFixtures.Series(SeriesFormat.BestOf3);
+
+        Attempt attempt = series.IssueAttempt(VersusTestFixtures.PatrickId, ids, clock);
+        series.StartAttempt(attempt.Id, clock);
+        SeriesSubmission submission = series.ForfeitCurrentGame(VersusTestFixtures.PatrickId, clock);
+
+        Assert.That(series.Games[0].Status, Is.EqualTo(VersusGameStatus.Forfeited));
+        Assert.That(submission.Game.Result.WinnerId, Is.EqualTo(VersusTestFixtures.AlexId));
+        Assert.That(series.Status, Is.EqualTo(SeriesStatus.Active), "one forfeited game does not end a best of three");
+        Assert.That(series.Score.WinsFor(1), Is.EqualTo(1));
+        Assert.That(series.CurrentGame.Index, Is.EqualTo(1), "the next game is now the current one");
+    }
+    [Test]
     public void AForfeitedSeriesAcceptsNothingFurther()
     {
         FakeVersusClock clock = new FakeVersusClock();

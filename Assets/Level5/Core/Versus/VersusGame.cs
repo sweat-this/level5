@@ -286,9 +286,9 @@ namespace Level5.Core.Versus
                 // and one that is Started was interrupted mid-run (the player left the match, or the
                 // application died): it is handed back as it is. MarkReady would refuse a Started
                 // attempt, which used to make an abandoned turn impossible to take again.
-                // This is only reached through the local VersusMatchCoordinator (hot-seat play);
-                // remote correspondence attempts launch through RemoteAttemptLauncher and never
-                // re-enter here, so the free retake is a local-only allowance.
+                // Reaching here means the run was interrupted by an error or crash, so it may be
+                // retried. A player who deliberately quits forfeits the game instead
+                // (VersusMatchCoordinator.ForfeitGame) and never comes back to this branch.
                 if (existing.State == AttemptState.Created)
                 {
                     existing.MarkReady();

@@ -216,10 +216,10 @@ public class LocalVersusProductionSmokePlayModeTests
         bool relabelled = false;
         foreach (Text label in UnityEngine.Object.FindObjectsByType<Text>(FindObjectsInactive.Include, FindObjectsSortMode.None))
         {
-            relabelled |= label.text == "Continue Series";
+            relabelled |= label.text == Pause.LocalVersusForfeitLabel;
         }
 
-        Assert.That(relabelled, Is.True, "the pause menu's start-screen action reads 'Continue Series' for a local-versus turn");
+        Assert.That(relabelled, Is.True, "the pause menu's start-screen action reads the forfeit label while a local-versus turn is in progress");
 
         GameStats stats = UnityEngine.Object.FindAnyObjectByType<GameStats>();
         Assert.That(stats, Is.Not.Null, "the gameplay scene has no GameStats to report from");

@@ -1,4 +1,4 @@
-﻿
+
 using Assets.Scripts.Utility;
 using System;
 using System.Collections;
@@ -13,6 +13,7 @@ public class Pause : MonoBehaviour
 {
     private const float DatabaseWaitTimeoutSeconds = 8f;
     public const string LocalVersusContinueLabel = "Continue Series";
+    public const string LocalVersusForfeitLabel = "Quit Turn (Forfeit)";
     // main flag
     [SerializeField]
     private bool paused;
@@ -249,12 +250,7 @@ public class Pause : MonoBehaviour
         cancelMenuText = ui.CancelMenuText;
         loadStartScreenText = ui.LoadStartScreenText;
         quitGameText = ui.QuitGameText;
-        if (LocalVersusNavigationState.ReturnPending)
-        {
-            // Same action, same loading-scene hop (which refreshes the profile data the next turn's
-            // unlock check reads); LoadManager.ResolvePostLoadScene sends it on to Local Versus.
-            loadStartScreenText.text = LocalVersusContinueLabel;
-        }
+        RefreshLocalVersusLabel();
         //buttons
         loadSceneButton = ui.LoadSceneButton;
         loadStartScreenButton = ui.LoadStartScreenButton;
@@ -408,6 +404,13 @@ public class Pause : MonoBehaviour
             return;
         }
 
+        // A restart would be a free retake of a series turn; quitting it forfeits the game instead.
+        if (VersusQuitPolicy.TurnInProgress)
+        {
+            Debug.Log("Restart is unavailable during a series turn. Quit the turn to forfeit the game.");
+            return;
+        }
+
         reloadScene();
     }
 
@@ -418,6 +421,8 @@ public class Pause : MonoBehaviour
             return;
         }
 
+        // Leaving a series turn mid-match is a quit: the game goes to the opponent.
+        VersusQuitPolicy.ForfeitActiveTurn();
         StartCoroutine(loadstartScreen());
     }
 
@@ -439,6 +444,7 @@ public class Pause : MonoBehaviour
             return;
         }
 
+        VersusQuitPolicy.ForfeitActiveTurn();
         StartCoroutine(Quit());
     }
 
@@ -579,8 +585,22 @@ public class Pause : MonoBehaviour
         toggleUiStatsText.enabled = value;
     }
 
+    // Same action, same loading-scene hop (which refreshes the profile data the next turn's unlock
+    // check reads); LoadManager.ResolvePostLoadScene sends it on to Local Versus. Mid-turn it is a
+    // quit, which forfeits the game, so it says so; once the result is in it is a plain continue.
+    private void RefreshLocalVersusLabel()
+    {
+        if (loadStartScreenText != null && LocalVersusNavigationState.ReturnPending)
+        {
+            loadStartScreenText.text = VersusQuitPolicy.TurnInProgress
+                ? LocalVersusForfeitLabel
+                : LocalVersusContinueLabel;
+        }
+    }
+
     public bool TogglePause()
     {
+        RefreshLocalVersusLabel();
         //Debug.Log("toggle pause");
         if (Time.timeScale == 0f)
         {
