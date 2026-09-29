@@ -24,6 +24,13 @@ public static class LocalVersusNavigationState
     private static SeriesId preferredSeriesId;
     private static MatchConfiguration launchedFor;
 
+    // Static state survives with domain reload disabled; a return hint must never outlive a session.
+    [UnityEngine.RuntimeInitializeOnLoadMethod(UnityEngine.RuntimeInitializeLoadType.SubsystemRegistration)]
+    private static void ResetOnLoad()
+    {
+        Clear();
+    }
+
     /// <summary>The series the Local Versus screen should open on, or none.</summary>
     public static SeriesId PreferredSeriesId => preferredSeriesId;
 
