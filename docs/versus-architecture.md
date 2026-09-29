@@ -414,7 +414,86 @@ For step-by-step use, see [Versus Dev Console Guide](versus-dev-console-guide.md
   attempt live in the stored series; the next request hands the same turn back. That is deliberate -
   it is the same behaviour that survives a crash - but nothing yet offers the player a way to
   abandon it explicitly from a screen. `AbandonAttempt` exists for when one does.
-- **Production versus UI is follow-up work.**
+- **Local simultaneous play has no production UI or launcher path.** The Local Versus screen only
+  creates `VersusMode.LocalAlternating` series (section 14). `LocalSimultaneous`, realtime and
+  open-target play are not exposed by it, and `VersusLauncher` still starts exactly one local human
+  per match.
+
+---
+
+## 14. Production Local Versus (local alternating)
+
+Two people on one device take separate gameplay attempts in turn. This is the first production
+versus surface, and it is deliberately just a composition and presentation layer over everything
+above; it adds no competition state.
+
+| | Local Versus | Correspondence |
+| --- | --- | --- |
+| Screen | `level_00_local_versus` | `level_00_multiplayer` |
+| Entry | authored **Local Versus** button on the Start screen | Multiplayer footer button |
+| Storage | local file repository (`FileVersusSeriesRepository`) | Backend V2 |
+| Account | none - works signed out and offline | authenticated Backend V2 account |
+| Mode | `VersusMode.LocalAlternating` only | asynchronous remote play |
+
+Local Versus never calls `BackendV2Runtime`, `CorrespondenceApiClient` or `FriendsApiClient` and
+leaves any existing Backend V2 session untouched.
+
+### Flow
+
+```text
+Start -> Local Versus -> create (or select) a series -> pick character + arena -> Play Turn
+      -> gameplay -> ordinary end-of-match summary -> Continue Series
+      -> loading scene (refreshes profile data) -> Local Versus, on the series just played
+```
+
+- **Creation.** `LocalVersusFlow.BuildRequest` builds a normal `SeriesRequest` (display names,
+  ruleset, format) and `VersusRuntime.Coordinator.CreateSeries` creates it. The fixed semantics are
+  `LocalAlternating`, `SealedAttempt`, no invitation, alternating first attempt; the request's
+  `source` is `"local versus UI"` (diagnostic only). Formats are `BestOf1/3/5/7` resolved through
+  `SeriesFormat.FromGameCount`. The selected ruleset is repeated for every game; there is no mixed
+  playlist editor. A persistence failure is shown as the coordinator's validation and nothing is
+  selected.
+- **Identity.** Each new series gets two fresh opaque `ParticipantId`s
+  (`Guid.NewGuid().ToString("N")`); display names live only in `MatchParticipant.DisplayName`.
+  Participants are never derived from `LocalAccountIdentity`, `GameOptions.userid` or a Backend V2
+  player id, and there are no persistent local-player profiles.
+- **Rulesets.** Offered from `VersusCatalogs.Rulesets.Supporting(VersusCapability.LocalAlternating)`
+  and shown by `DisplayName`; the request carries the stable `RulesetId`.
+- **Lists.** `ListSeries()` summaries filtered to `Mode == LocalAlternating` and not archived, active
+  first. Only the selected series is loaded in full.
+- **Next turn.** Read from the loaded series, never stored: the side the current game designates
+  first is checked with `CanIssueAttempt`, then the other (the same rule as `VersusDevConsole`). If
+  neither can attempt, the screen shows the terminal state.
+- **Character and arena belong to the turn.** Characters come from the ordinary player-select
+  projection and are limited to unlocked ones; arenas from the current `UnlockSnapshot`
+  (`UnlockSnapshotBuilder`) filtered to known, selectable, unlocked and compatible with the frozen
+  ruleset's mode, so the normal path never relies on `VersusLauncher`'s issue-then-fail behavior for
+  mode/arena incompatibility. Modifiers are `MatchModifiers.Default`.
+- **Launch.** `VersusLauncher.Launch(seriesId, participantId, levelId, character, unlock, modifiers)`
+  and nothing else: the UI does not issue or start attempts, call `ActiveMatch.Begin`, write
+  `GameOptions` or load scenes. The launcher revalidates level eligibility and character unlock
+  against the snapshot authoritatively, both before `IssueAttempt`, so a locked level or character
+  never spends the turn.
+- **Return navigation.** `LocalVersusNavigationState` (`ReturnPending`, `PreferredSeriesId`) is set
+  immediately around the launch and cleared if the launch fails. It is tied to the launched
+  `MatchConfiguration`, so a later ordinary match is unaffected, and it holds no competition state.
+  `Pause` relabels its return action **Continue Series** while it is pending; the loading scene
+  (`LoadManager.ResolvePostLoadScene`) then routes to `level_00_local_versus` instead of Start. The
+  in-game summary is unchanged and nothing auto-transitions after `VersusMatchReporter`.
+- **Resume.** On open the screen lists stored series, selects `PreferredSeriesId` if it exists and
+  consumes it. If the app restarted the hint is gone and the first unfinished series is shown - the
+  stored series is the only authority. An abandoned turn stays outstanding and is handed back by the
+  idempotent `IssueAttempt` - including an attempt that had already `Started` (`VersusGame.IssueAttempt`
+  used to try to re-ready it, which only a `Created` attempt can be, so a turn left mid-match could
+  not be taken again; pinned by `AnInterruptedStartedAttemptIsHandedBackByIssueAttemptRatherThanRefused`).
+- **No general MatchResult.** A local-versus attempt reports to its local `VersusSeries` through
+  `VersusMatchReporter` and is excluded from `POST /api/v2/match-results`.
+
+Code: `Assets/Scripts/menu_local_versus/` (`LocalVersusFlow`, `LocalVersusScreenModel`,
+`LocalVersusController`, `LocalVersusUiObjects`), `LocalVersusNavigationState` in `Level5.Match`.
+The scene is regenerated with **Tools > Local Versus > Generate Local Versus Scene** and the Start
+button with **Tools > Local Versus > Author Start Screen Button** (`LocalVersusSceneBootstrap`); the
+output is an ordinary serialized scene and nothing is built at runtime.
 
 ---
 
@@ -435,3 +514,4 @@ The versus suite lives in `Assets/Tests/Editor`, with runtime smoke coverage in
 | `Level5VersusCorrespondenceTests` | the whole flow through the coordinator, a new session per turn |
 | `Level5VersusIntegrationTests` | `GameStats` -> result -> resolved series, and the `GameRules` hook |
 | `Level5VersusArchitectureTests` | the boundaries no single file shows |
+| `Level5LocalVersusTests` | the production Local Versus flow: creation contract, ruleset/format, list filtering, resume, turn ownership, character/arena eligibility, launcher composition, return navigation, Backend V2 independence |

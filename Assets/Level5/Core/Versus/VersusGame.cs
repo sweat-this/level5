@@ -282,7 +282,15 @@ namespace Level5.Core.Versus
             Attempt existing = FindLive(participantId);
             if (existing != null)
             {
-                existing.MarkReady();
+                // Only a Created attempt needs readying. One that is already Ready is left alone,
+                // and one that is Started was interrupted mid-run (the player left the match, or the
+                // application died): it is handed back as it is. MarkReady would refuse a Started
+                // attempt, which used to make an abandoned turn impossible to take again.
+                if (existing.State == AttemptState.Created)
+                {
+                    existing.MarkReady();
+                }
+
                 return existing;
             }
 

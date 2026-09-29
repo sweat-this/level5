@@ -51,6 +51,13 @@ public class StartMenuUiObjects : MonoBehaviour
     //[SerializeField] public GameObject column3_player_progression;
     //[SerializeField] public GameObject column3_player_selected_stats_category;
 
+    /// <summary>
+    /// The authored Local Versus entry on the Start screen. Start-specific rather than a footer button:
+    /// Local Versus needs no online account and is not part of the shared footer contract.
+    /// </summary>
+    [SerializeField] private Button localVersusButton;
+    public Button LocalVersusButton => localVersusButton;
+
     [SerializeField] public GameObject column4;
     [SerializeField] public Image column4_cpu1_image;
     [SerializeField] public GameObject column4_cpu1_button;

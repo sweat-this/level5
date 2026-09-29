@@ -94,22 +94,26 @@ public class LoadManager : MonoBehaviour
         LoadAllData();
     }
 
+    /// <summary>
+    /// Where the loading scene sends the player once data is loaded: the Start screen, except right
+    /// after a Local Versus turn, where <see cref="LocalVersusNavigationState.ReturnPending"/> leads
+    /// back to the series screen. The state is read, not consumed - the Local Versus screen
+    /// consumes it when it opens.
+    /// </summary>
+    public static string ResolvePostLoadScene()
+    {
+        return LocalVersusNavigationState.ReturnPending
+            ? Constants.SCENE_NAME_level_00_local_versus
+            : Constants.SCENE_NAME_level_00_start;
+    }
+
     private void Update()
     {
         // load start screen
         if (!sceneLoadRequested && LoadedData.instance != null && LoadedData.instance.DataLoaded)
         {
             sceneLoadRequested = true;
-            // this is all confusing
-            if (String.IsNullOrEmpty(GameOptions.previousSceneName))
-            {
-                SceneManager.LoadScene(Constants.SCENE_NAME_level_00_start);
-            }
-            // go back to update manager
-            else
-            {
-                SceneManager.LoadScene(Constants.SCENE_NAME_level_00_start);
-            }
+            SceneManager.LoadScene(ResolvePostLoadScene());
         }
 
         if (LoadedData.instance != null && LoadedData.instance.LoadFailed)

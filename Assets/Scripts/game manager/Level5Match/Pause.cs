@@ -12,6 +12,7 @@ using Level5.Core.Match;
 public class Pause : MonoBehaviour
 {
     private const float DatabaseWaitTimeoutSeconds = 8f;
+    public const string LocalVersusContinueLabel = "Continue Series";
     // main flag
     [SerializeField]
     private bool paused;
@@ -248,6 +249,12 @@ public class Pause : MonoBehaviour
         cancelMenuText = ui.CancelMenuText;
         loadStartScreenText = ui.LoadStartScreenText;
         quitGameText = ui.QuitGameText;
+        if (LocalVersusNavigationState.ReturnPending)
+        {
+            // Same action, same loading-scene hop (which refreshes the profile data the next turn's
+            // unlock check reads); LoadManager.ResolvePostLoadScene sends it on to Local Versus.
+            loadStartScreenText.text = LocalVersusContinueLabel;
+        }
         //buttons
         loadSceneButton = ui.LoadSceneButton;
         loadStartScreenButton = ui.LoadStartScreenButton;

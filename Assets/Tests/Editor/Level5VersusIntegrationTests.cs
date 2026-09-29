@@ -263,7 +263,7 @@ public class Level5VersusIntegrationTests
 
         try
         {
-            UnlockSnapshot unlock = new UnlockSnapshot(null, new Dictionary<int, bool> { [1] = true });
+            UnlockSnapshot unlock = new UnlockSnapshot(new Dictionary<int, bool> { [1] = true }, new Dictionary<int, bool> { [1] = true });
             MatchConfiguration configuration = VersusLauncher.BuildMatch(
                 ruleset,
                 levelId: 1,
