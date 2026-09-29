@@ -265,6 +265,71 @@ public class Level5LocalVersusTests
         Assert.That(model.ListText, Does.Contain("Ann 2 - 0 Ben | Completed | best of 3"));
     }
 
+    [Test]
+    public void AListThatFitsTheBoxIsShownInFullWithNoHiddenRowNotice()
+    {
+        LocalVersusScreenModel model = NewModel();
+        model.Open();
+        for (int index = 0; index < LocalVersusScreenModel.ListLineBudget - 1; index++)
+        {
+            model.Create("P" + index, "Q" + index);
+        }
+
+        model.Refresh();
+
+        Assert.That(model.ListText, Does.Not.Contain("more above"));
+        Assert.That(model.ListText, Does.Not.Contain("more below"));
+        Assert.That(RowCount(model.ListText), Is.EqualTo(LocalVersusScreenModel.ListLineBudget - 1));
+    }
+
+    [Test]
+    public void AListLongerThanTheBoxIsWindowedAroundTheSelectionAndCountsWhatIsHidden()
+    {
+        // Found in rendered certification: with eight stored series the box showed six rows, cut the
+        // rest off silently, and the selection marker left the screen once the series button cycled past it.
+        LocalVersusScreenModel model = NewModel();
+        model.Open();
+        SeriesId finished = model.Create("Ann", "Ben").Series.Id;
+        PlayWholeSeries(finished, participantOneWinsEveryGame: true);
+        for (int index = 0; index < 9; index++)
+        {
+            model.Create("P" + index, "Q" + index);
+        }
+
+        model.Refresh();
+        int total = model.Summaries.Count;
+        Assert.That(total, Is.EqualTo(10));
+
+        for (int step = 0; step < total; step++)
+        {
+            string text = model.ListText.Replace("\r", string.Empty);
+            string[] lines = text.Split('\n');
+
+            Assert.That(lines.Length, Is.LessThanOrEqualTo(LocalVersusScreenModel.ListLineBudget), "step " + step + ":\n" + text);
+            Assert.That(lines.Count(line => line.StartsWith("> ")), Is.EqualTo(1), "the selected series is always listed, step " + step + ":\n" + text);
+            Assert.That(
+                lines.Single(line => line.StartsWith("> ")),
+                Is.EqualTo("> " + LocalVersusScreenModel.DescribeRow(model.SelectedSummary)));
+
+            int above = Hidden(lines, "more above");
+            int below = Hidden(lines, "more below");
+            Assert.That(RowCount(text) + above + below, Is.EqualTo(total), "every series is either listed or counted, step " + step + ":\n" + text);
+
+            model.CycleSeries();
+        }
+    }
+
+    private static int RowCount(string listText)
+    {
+        return listText.Split('\n').Count(line => line.Contains(" | "));
+    }
+
+    private static int Hidden(string[] lines, string suffix)
+    {
+        string line = lines.FirstOrDefault(candidate => candidate.EndsWith(suffix));
+        return line == null ? 0 : int.Parse(line.Trim().Split(' ')[1]);
+    }
+
     // ---------------------------------------------------------------- restart / resume
 
     [Test]

@@ -1,7 +1,7 @@
 # Versus and Correspondence Multiplayer
 
 Status: implemented, with edit-mode and play-mode coverage
-Last reviewed: 2026-08-11
+Last reviewed: 2026-09-29
 
 Two people can keep a competitive rivalry going without ever being online at the same time. One
 plays their turn tonight; the other answers on Thursday; the game resolves and the series moves on.
@@ -524,6 +524,110 @@ The scene is regenerated with **Tools > Local Versus > Generate Local Versus Sce
 button with **Tools > Local Versus > Author Start Screen Button** (`LocalVersusSceneBootstrap`); the
 output is an ordinary serialized scene and nothing is built at runtime.
 
+### Local Versus certification (2026-09-29)
+
+Certification of the production Local Versus flow against `dev` `d28767bbf8a4c428fd9565166a100e11c67f204f`
+(PR #213 was the head; it does not touch this flow). No open issues or PRs superseded the work.
+Certification-first: production code changed only where a defect was demonstrated (two, below).
+
+| | |
+| --- | --- |
+| Unity | 6000.5.7f1 (`017862109af0`), editor and standalone player |
+| Player | Windows x64, IL2CPP, non-development - built by `LocalVersusCertificationBuild` (Editor-only) |
+| Machine | Windows 10 Pro, one RTX 4060, primary display 2560x1440 |
+| Repository isolation | Editor sessions: an explicit `LEVEL5_LOCAL_VERSUS_CERT_ROOT` temp directory (`VersusRuntime.Override`) plus a temporarily isolated product name so the real `GameRules` path cannot touch a developer's data. Player: its own product name (`level5-local-versus-cert`), so `Application.persistentDataPath/versus` is a private directory. No certification session (process fixture, player or headless render) read or wrote a developer's ordinary `LocalLow/level5/level5`; the ordinary EditMode and PlayMode suites still use it as they always have. |
+| Input devices | Physical keyboard and mouse (real `SendInput` into the standalone player). Gamepad: **virtual only** (Input System test devices). No physical controller was attached. |
+
+**Automated suites (actual totals, final code).** Clean batchmode compile: 0 errors. Focused EditMode
+(`Level5LocalVersusTests`, `Level5VersusLauncherTests`, `Level5VersusPersistenceTests`,
+`Level5VersusIntegrationTests`): `Level5LocalVersusTests` 44/44 (42 existing + 2 new) and the other three classes 45/45. Full EditMode: 1938/1938 passed (includes the 2 new `LocalVersusSceneContractTests`). Full PlayMode: 117 total, 97 passed, 0 failed, 20 skipped (skipped tests are
+opt-in fixtures gated by environment variables, including the process-certification fixture).
+`./scripts/validate-repository.ps1`: passed.
+
+**Process-level persistence** (`LocalVersusProcessCertificationPlayModeTests`, opt-in, each session its own
+`Unity.exe`; only the series files carry state; the handoff file holds a series id, display names and an
+attempt id, never a serialized series):
+
+| Session | Result |
+| --- | --- |
+| 1 | Create Best-of-3 through the real screens, launch and complete one participant's attempt; the series file holds it before the process exits. |
+| 2 (fresh process) | Locates the series from the repository alone, next participant is the other side, screen says so, Play Turn works, game 1 resolves, Continue Series lands on game 2. |
+| C1 | Live turn started from the real screen, attempt confirmed durable as `Started`, process kills itself with no pause action. |
+| C2 (fresh process) | Same game, same `Started` attempt id, same participant up, no forfeit, no game awarded; Play Turn reissues **the same attempt id**; completing it works. |
+| GameRules loop | The production `GameRules.HandleMatchEnded` retry loop, with a repository that refuses saves: it retried (>= 2 refused saves), the attempt stayed outstanding, the series file was untouched, leaving was refused without forfeiting, and the next pass after the disk recovered stored the result and cleared the attempt. No production timing or structure was changed. |
+
+**Standalone player, real input.** Driven through the shipped player with real keyboard and mouse
+events, in windowed 1920x1080 unless stated:
+
+- Start screen exposes **Local Versus** as its own row; the screen opens; both names are typed; Ruleset cycles
+  and wraps (17 rulesets); Best-of selector cycles exactly 1, 3, 5, 7; Create stores exactly one series file;
+  list and detail are readable; the correct participant is up; Character and Arena cycle (19 arenas offered;
+  `isSelectable: 0` Dev and Boneyard are absent); Play Turn launches the ordinary gameplay scene.
+- Pause presentation: mid-turn it reads Play Again (dimmed, refused), **Quit Turn (Forfeit)**, Cancel, Quit;
+  after the match ends it reads **Continue Series**. A real 3-minute attempt ended by the clock, was reported
+  through `GameRules` and `VersusMatchReporter`, and Continue Series returned to the same series with the
+  other participant up. (Both sides scored 0: aimed shots cannot be driven reliably from synthetic input, so a
+  scored win was not produced in the player.)
+- **Successful `Application.Quit` (Q1/Q2):** from the live pause menu, Quit forfeited game 1 (opponent won,
+  series 1-0, advanced to game 2, the quitter's `Started` attempt became `Abandoned`), the series file was
+  written at 18:13:11.756, and the process exited 0.74 s later. A fresh Editor process verified the player's
+  repository (`SessionQ2`), and a relaunched player showed "Alice 1 - 0 Bob | Game 2 | Bob is up."
+- **Process kill (real player):** a live turn was killed with `Stop-Process -Force`; the series file was
+  byte-for-byte unchanged; the relaunched player showed the same game and participant, and reissued the same
+  attempt id with no forfeit recorded.
+- Restart during an outstanding attempt: Play Again was refused in the player (no scene change, series file
+  and attempt unchanged). Quit Turn on the outstanding turn gave the opponent the game and, at 2-0, the series:
+  "Alice wins the series.", Play Turn / Character / Arena dimmed.
+- Keyboard-only: arrow keys reach every control, Enter starts and ends editing a field, Enter on a field does
+  not activate another control, and a Best-of-7 with two 16-character names (`W` / `M`) was created and rendered
+  without clipping alongside a finished series. Back returns to Start.
+
+**Rendered layout** (1920x1080, headless render of the shipped scene; every text and control checked against the
+screen and its own box): empty, fresh, longest names + Best-of-7, Best-of-7 in progress, completed, and eight
+stored series. Also observed in the player at 1280x720 (scales uniformly, legible) and 1024x768 (see limitations).
+
+**Gamepad** (`LocalVersusGamepadNavigationPlayModeTests`, 4 tests, virtual gamepad through the real
+`InputSystemUIInputModule`): every control is reachable, Format / Character / Arena / Create / Play Turn work with
+Submit, all four pause entries are reachable, Start begins the match and Select (Back) pauses it, and pressing
+"Quit Turn (Forfeit)" with Submit forfeits what it says. Back returns to Start. The Start-screen entry itself is submitted directly in these tests (its input routing depends on which fixture ran before); the Start screen was exercised with keyboard and mouse in the player, not with a gamepad.
+
+**Defects found and fixed**
+
+1. *Series list silently truncated.* With more series than the list box holds (seven lines) the rest were cut
+   off with no indication, and the `>` selection marker could leave the screen. `LocalVersusScreenModel.ListText`
+   now shows a window that always contains the selected series and counts the rest ("... N more above/below");
+   when everything fits, the text is unchanged. Regression: `AListLongerThanTheBoxIsWindowedAroundTheSelectionAndCountsWhatIsHidden`
+   (fails without the fix). `LocalVersusSceneContractTests` keeps the scene facts the fix depends on (list box holds `ListLineBudget` lines, name limit, no activate-on-select) in the ordinary EditMode run.
+2. *Name fields trapped a gamepad.* Moving onto a field with the d-pad started editing it (`shouldActivateOnSelect`),
+   and an active field swallowed the d-pad, stick and Cancel - only Submit let go. Both fields now do not activate on
+   selection (scene and `LocalVersusSceneBootstrap`); click, Enter and Submit still edit. Trade-off: a keyboard-only player now presses Enter to start typing in a field (until then WASD navigate, as everywhere else in the menus); there is no on-screen hint. Regression:
+   `AGamepadThatMovesOntoANameFieldIsNotTrappedInIt` (fails without the fix); confirmed with real keyboard input in
+   the player.
+
+**Known limitations and not certified**
+
+- **No physical gamepad was tested.** Gamepad certification is virtual devices only.
+- **Not exercised in the player: a failed forfeit or result save.** A player build has no seam to refuse saves;
+  those paths are certified in PlayMode (`LocalVersusProductionSmokePlayModeTests`, and the GameRules loop above).
+- **No scored win was produced by real play** (see above); win/draw/forfeit logic is covered by the automated suites.
+- **Narrow aspect ratios clip.** The screen is laid out for the project's 16:9 canvas contract (1920x1080 reference,
+  match 0.5). Below about 1.43:1 (4:3, 5:4 - e.g. the project's 1024x768 default window) the outer few percent of
+  both panels are cut off. 16:9, 16:10 and 3:2 are unaffected. Not changed: fixing it means leaving the shared canvas
+  contract or re-authoring the panels, and other menu screens have the same 16:9 assumption.
+- **Navigation is asymmetric** (automatic geometric navigation): Down from Player 1 goes Player 2 -> Format (skipping
+  Ruleset) and Up from Format goes Ruleset -> Player 1 (skipping Player 2). Every control is reachable; it is not a trap.
+- **Selection highlight on the name fields is subtle** (light grey on white); the buttons highlight clearly.
+- Observed and out of scope: the Start footer labels are truncated at these sizes ("ACCOU", "CONTRO", "QUI"); a fresh
+  install logs `no such table: User` once while the local profile screen loads; the shipped scripting backend
+  is IL2CPP and was the backend certified; Windows only (no mobile, console or macOS/Linux).
+- Arenas Crank Zone and the second Rumble Pit are not offered for Most Points; consistent with the mode/arena
+  compatibility gate but not independently traced.
+
+Reproduce: build the player with `LocalVersusCertificationBuild.BuildWindows64` (Editor `-executeMethod`), and run
+each `LocalVersusProcessCertificationPlayModeTests` method as its own process (`SessionC1` kills its own process and additionally needs `LEVEL5_LOCAL_VERSUS_CERT_ALLOW_KILL=1`) - see that fixture's header for the
+environment variables.
+
+
 ---
 
 ## 13. Tests
@@ -544,3 +648,7 @@ The versus suite lives in `Assets/Tests/Editor`, with runtime smoke coverage in
 | `Level5VersusIntegrationTests` | `GameStats` -> result -> resolved series, and the `GameRules` hook |
 | `Level5VersusArchitectureTests` | the boundaries no single file shows |
 | `Level5LocalVersusTests` | the production Local Versus flow: creation contract, ruleset/format, list filtering, resume, turn ownership, character/arena eligibility, launcher composition, return navigation, Backend V2 independence, and the explicit-exit durability gate (live-turn forfeit, failed forfeit save, ended match awaiting its result save, reporter retry, crash reissue, Pause exit coroutines, Restart refusal) |
+| `LocalVersusProductionSmokePlayModeTests` | the production Local Versus loop through the real scenes (in-process restart, live-turn forfeit, failed forfeit save, result awaiting its save) |
+| `LocalVersusGamepadNavigationPlayModeTests` | the Local Versus screen and pause menu driven only by a virtual gamepad: reachability, Format/Character/Arena/Create/Play/Back, no focus trap, Quit Turn (Forfeit) |
+| `LocalVersusSceneContractTests` | the authored scene facts the screen model and input behavior depend on: list box vs `ListLineBudget`, name-field limit, no activate-on-select |
+| `LocalVersusProcessCertificationPlayModeTests` | opt-in (`LEVEL5_LOCAL_VERSUS_CERTIFICATION=1`): genuine process restart, process kill, the real `GameRules` retry loop, player-quit verification and rendered layout - see "Local Versus certification" |

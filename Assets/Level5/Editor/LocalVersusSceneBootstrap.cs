@@ -327,6 +327,10 @@ public static class LocalVersusSceneBootstrap
         input.gameObject.name = rowName.Replace("Field", "NameInputField");
         input.text = string.Empty;
         input.characterLimit = 16;
+        // Selecting a field with the d-pad must not start editing: an active field swallows the d-pad,
+        // stick and Cancel, so a gamepad player who moved onto it could not move off it. Click, Enter
+        // and the gamepad's Submit still activate it deliberately.
+        input.shouldActivateOnSelect = false;
         if (input.placeholder is TMP_Text placeholder)
         {
             placeholder.text = label;
