@@ -1688,6 +1688,14 @@ public class StartManager : MonoBehaviour
             return;
         }
 
+        // Unity-side, not GameModeCompatibility: whether the connected devices can seat every local
+        // human is hardware state, which the pure Core rules must not read. Solo launches always pass.
+        if (!PlayerControlsProvider.TryPreflightGameplayDevices(roster.LocalHumanCount, out string deviceFailure))
+        {
+            ShowLaunchError(deviceFailure);
+            return;
+        }
+
         MatchRequest request = selection.BuildRequest(Compatibility, roster, friendSelectedData);
 
         if (request == null)

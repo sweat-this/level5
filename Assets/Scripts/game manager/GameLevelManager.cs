@@ -68,6 +68,7 @@ public class GameLevelManager : MonoBehaviour, IGroundHeightProvider, IPlayerMat
         if (instance == this)
         {
             instance = null;
+            PlayerControlsProvider.ClearGameplayDevicePlan();
         }
     }
 
@@ -104,6 +105,18 @@ public class GameLevelManager : MonoBehaviour, IGroundHeightProvider, IPlayerMat
         _spawnLocations = SpawnCoordinator.SpawnLocations.FindInScene();
         if (!_spawnLocations.Validate(_roster, _rules))
         {
+            enabled = false;
+            return;
+        }
+
+        // Which physical devices each local human listens to is settled here, once, from the roster this
+        // match was launched with - before any PlayerController.Start() acquires its controls, so the
+        // assignment never depends on component start order. A launch source can (and should) refuse
+        // an unseatable roster earlier with PlayerControlsProvider.TryPreflightGameplayDevices; this is
+        // the authoritative check, and it fails closed like the spawn-location check above.
+        if (!PlayerControlsProvider.TryConfigureGameplayDevicePlan(_roster.LocalHumanCount, out string deviceFailure))
+        {
+            Debug.LogError($"GameLevelManager cannot seat this match's local players: {deviceFailure}");
             enabled = false;
             return;
         }
