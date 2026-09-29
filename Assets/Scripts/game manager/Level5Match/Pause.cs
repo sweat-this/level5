@@ -404,13 +404,6 @@ public class Pause : MonoBehaviour
             return;
         }
 
-        // A restart would be a free retake of a series turn; quitting it forfeits the game instead.
-        if (VersusQuitPolicy.TurnInProgress)
-        {
-            Debug.Log("Restart is unavailable during a series turn. Quit the turn to forfeit the game.");
-            return;
-        }
-
         reloadScene();
     }
 
@@ -421,8 +414,6 @@ public class Pause : MonoBehaviour
             return;
         }
 
-        // Leaving a series turn mid-match is a quit: the game goes to the opponent.
-        VersusQuitPolicy.ForfeitActiveTurn();
         StartCoroutine(loadstartScreen());
     }
 
@@ -444,7 +435,6 @@ public class Pause : MonoBehaviour
             return;
         }
 
-        VersusQuitPolicy.ForfeitActiveTurn();
         StartCoroutine(Quit());
     }
 
@@ -479,6 +469,9 @@ public class Pause : MonoBehaviour
 
     public IEnumerator Quit()
     {
+        // Every exit goes through here or loadstartScreen/reloadScene (the touch double-tap calls
+        // them directly), so the series-turn policy lives in these methods, not the button handlers.
+        VersusQuitPolicy.ForfeitActiveTurn();
         // update all time stats
         if (hasDatabaseReader() &&
            (MatchRuntime.ModeDisplayName.ToLower().Contains("free") || MatchRuntime.RawModeId == 99))
@@ -491,6 +484,8 @@ public class Pause : MonoBehaviour
 
     public IEnumerator loadstartScreen()
     {
+        // Leaving a series turn mid-match is a quit: the game goes to the opponent.
+        VersusQuitPolicy.ForfeitActiveTurn();
         // update all time stats
         if (hasDatabaseReader() &&
            (MatchRuntime.ModeDisplayName.ToLower().Contains("free") || MatchRuntime.RawModeId == 99))
@@ -512,6 +507,13 @@ public class Pause : MonoBehaviour
 
     public void reloadScene()
     {
+        // A restart would be a free retake of a series turn; quitting it forfeits the game instead.
+        if (VersusQuitPolicy.TurnInProgress)
+        {
+            Debug.Log("Restart is unavailable during a series turn. Quit the turn to forfeit the game.");
+            return;
+        }
+
         // update all time stats
         if (hasDatabaseReader()
             && (MatchRuntime.ModeDisplayName.ToLower().Contains("free") || MatchRuntime.RawModeId == 99))
