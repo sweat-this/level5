@@ -686,6 +686,13 @@ public class GameLevelManager : MonoBehaviour, IGroundHeightProvider, IPlayerMat
                 HasPlayerDataForPause,
                 ReloadPlayerDataForPause,
                 PersistFreePlayStatsForPause);
+
+            // Series-turn exit policy. Level5.Match cannot reference Level5.Versus (it depends on
+            // Level5.Match), so the quit policy is handed in here, where both are visible.
+            Pause.instance.BindVersusContext(
+                () => VersusQuitPolicy.AttemptOutstanding,
+                () => VersusQuitPolicy.TurnInProgress,
+                VersusQuitPolicy.TryPrepareForExplicitExit);
         }
     }
 

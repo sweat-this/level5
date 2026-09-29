@@ -410,10 +410,11 @@ For step-by-step use, see [Versus Dev Console Guide](versus-dev-console-guide.md
   `AttemptCompleted`, `GameResolved`, `SeriesAdvanced` and `SeriesCompleted` so an inbox can be
   built as a projection later. Deliberately not built now, and notification delivery must stay
   separate from the series domain when it is.
-- **An abandoned turn stays outstanding.** Quitting a competitive match to the menu leaves the
-  attempt live in the stored series; the next request hands the same turn back. That is deliberate -
-  it is the same behaviour that survives a crash - but nothing yet offers the player a way to
-  abandon it explicitly from a screen. `AbandonAttempt` exists for when one does.
+- **An interrupted turn stays outstanding.** A crash, a process kill or a load error leaves the
+  attempt live in the stored series; the next request hands the same turn back. A *deliberate* exit
+  from the pause menu is different for local versus: it forfeits the game, but only once the forfeit
+  is durable (section 14, "Leaving a turn"). `AbandonAttempt` still exists for a screen that wants to
+  abandon a turn without forfeiting it.
 - **Local simultaneous play has no production UI or launcher path.** The Local Versus screen only
   creates `VersusMode.LocalAlternating` series (section 14). `LocalSimultaneous`, realtime and
   open-target play are not exposed by it, and `VersusLauncher` still starts exactly one local human
@@ -486,6 +487,25 @@ Start -> Local Versus -> create (or select) a series -> pick character + arena -
   idempotent `IssueAttempt` - including an attempt that had already `Started` (`VersusGame.IssueAttempt`
   used to try to re-ready it, which only a `Created` attempt can be, so a turn left mid-match could
   not be taken again; pinned by `AnInterruptedStartedAttemptIsHandedBackByIssueAttemptRatherThanRefused`).
+- **Leaving a turn.** Every deliberate exit from gameplay - the pause menu's Start/Menu (**Continue
+  Series** / **Quit Turn (Forfeit)**) and **Quit** - goes through `VersusQuitPolicy.TryPrepareForExplicitExit()`
+  before any database wait, scene load or `Application.Quit`. It says "leave" only when nothing is
+  owed to the stored series:
+
+  | State when the player leaves | Result |
+  |---|---|
+  | no series attempt active (an ordinary match) | leave; nothing is written |
+  | turn still being played | the current game is forfeited to the opponent (`ForfeitGame` -> `VersusSeries.ForfeitCurrentGame` -> `repository.Save`); the player leaves **only if that save succeeded**, and `ActiveVersusAttempt` is then cleared |
+  | forfeit save failed | the player **stays in the match**, `ActiveVersusAttempt` stays, the stored series is unchanged, and a later press retries (nothing loops behind the player's back) |
+  | match ended but the result is not saved yet (`MatchController` is `Ending` and the attempt is still active) | the player **cannot leave**, and nothing is forfeited - the run is earned and `VersusMatchReporter` owns saving it through `GameRules`' existing match-end retry loop; once it succeeds and clears the attempt, the same action leaves normally |
+  | crash, process kill or load error | not a quit: no policy runs, the `Started` attempt stays outstanding in the stored series and `IssueAttempt` hands it back |
+
+  An in-memory forfeit is never enough - a forfeit that could not be saved would leave the stored
+  series with the original `Started` attempt, i.e. a free retake. A refused exit is not silent: the
+  pressed pause button reads "Couldn't save - try again" for a few seconds. Restart is refused while an attempt
+  is outstanding (and its button is disabled), for the same reason. `Pause` cannot reference
+  `Level5.Versus` (`Level5.Versus` depends on `Level5.Match`), so `GameLevelManager` binds the policy
+  through `Pause.BindVersusContext`; an unbound `Pause` behaves as an ordinary match.
 - **No general MatchResult.** A local-versus attempt reports to its local `VersusSeries` through
   `VersusMatchReporter` and is excluded from `POST /api/v2/match-results`.
 
@@ -514,4 +534,4 @@ The versus suite lives in `Assets/Tests/Editor`, with runtime smoke coverage in
 | `Level5VersusCorrespondenceTests` | the whole flow through the coordinator, a new session per turn |
 | `Level5VersusIntegrationTests` | `GameStats` -> result -> resolved series, and the `GameRules` hook |
 | `Level5VersusArchitectureTests` | the boundaries no single file shows |
-| `Level5LocalVersusTests` | the production Local Versus flow: creation contract, ruleset/format, list filtering, resume, turn ownership, character/arena eligibility, launcher composition, return navigation, Backend V2 independence |
+| `Level5LocalVersusTests` | the production Local Versus flow: creation contract, ruleset/format, list filtering, resume, turn ownership, character/arena eligibility, launcher composition, return navigation, Backend V2 independence, and the explicit-exit durability gate (live-turn forfeit, failed forfeit save, ended match awaiting its result save, reporter retry, crash reissue, Pause exit coroutines, Restart refusal) |

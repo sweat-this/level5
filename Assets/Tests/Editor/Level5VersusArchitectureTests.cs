@@ -199,6 +199,28 @@ public class Level5VersusArchitectureTests
     }
 
     [Test]
+    public void TheMatchEndRetryLoopStillGatesOnTheVersusReportAndRunsWhilePaused()
+    {
+        // Pause's explicit-exit gate (VersusQuitPolicy.TryPrepareForExplicitExit) refuses to leave a
+        // finished run until VersusMatchReporter has saved it, and relies on GameRules to keep retrying
+        // meanwhile. Two properties make that true: the reporter's result is part of what decides the
+        // match end is handled (so a failed save is retried), and the retry clock is unscaled (so it
+        // keeps ticking under the pause menu's timeScale 0). Driving the real loop needs the whole
+        // profile persistence stack, so the contract is pinned here instead.
+        string gameRules = StripComments(
+            File.ReadAllText(Path.Combine(ScriptsRoot, "game manager", "GameRules.cs")));
+
+        Assert.That(gameRules, Does.Contain("bool versusComplete = VersusMatchReporter.TryReport("));
+        Assert.That(
+            Regex.IsMatch(gameRules, @"matchEndHandled\s*=[^;]*&&\s*versusComplete\s*;"),
+            Is.True,
+            "the versus result must gate matchEndHandled so a failed save is retried");
+        Assert.That(gameRules, Does.Contain("nextMatchEndRetryTime = Time.unscaledTime"));
+        Assert.That(gameRules, Does.Contain("Time.unscaledTime >= nextMatchEndRetryTime"));
+        Assert.That(gameRules, Does.Not.Contain("Time.time >= nextMatchEndRetryTime"));
+    }
+
+    [Test]
     public void NoModeSpecificBranchingLivesInTheDomain()
     {
         // Adding a versus-capable mode must never mean editing a switch in the coordinator. The one

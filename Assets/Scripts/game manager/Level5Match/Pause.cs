@@ -14,6 +14,8 @@ public class Pause : MonoBehaviour
     private const float DatabaseWaitTimeoutSeconds = 8f;
     public const string LocalVersusContinueLabel = "Continue Series";
     public const string LocalVersusForfeitLabel = "Quit Turn (Forfeit)";
+    public const string ExitNotSavedMessage = "Couldn't save - try again";
+    private const float ExitNotSavedMessageSeconds = 3f;
     // main flag
     [SerializeField]
     private bool paused;
@@ -174,6 +176,37 @@ public class Pause : MonoBehaviour
         this.hasPlayerDataReader = hasPlayerDataReader;
         this.reloadPlayerData = reloadPlayerData;
         this.persistFreePlayStats = persistFreePlayStats;
+    }
+
+    /// <summary>
+    /// Series-turn dependency-cut fields - see <see cref="BindVersusContext"/>. Default to "no series
+    /// attempt exists" so a scene that never binds them behaves exactly like an ordinary match.
+    /// </summary>
+    private Func<bool> attemptOutstandingReader = () => false;
+    private Func<bool> turnInProgressReader = () => false;
+    private Func<bool> tryPrepareForExplicitExit = () => true;
+
+    /// <summary>
+    /// Binds the versus quit policy. It cannot be referenced directly: <c>Level5.Versus</c> depends on
+    /// <c>Level5.Match</c> (it reads <see cref="MatchController"/>), so <c>Level5.Match</c> reaching back
+    /// would be a cycle. Bound from <c>GameLevelManager.Start()</c> next to the other pause contexts.
+    ///
+    /// <paramref name="tryPrepareForExplicitExit"/> is the durability gate for every deliberate exit
+    /// (<see cref="Quit"/>, <see cref="loadstartScreen"/>): false means stay in the match - either the
+    /// forfeit could not be saved or a finished result is still waiting on its save retry.
+    /// </summary>
+    public void BindVersusContext(
+        Func<bool> attemptOutstandingReader,
+        Func<bool> turnInProgressReader,
+        Func<bool> tryPrepareForExplicitExit)
+    {
+        this.attemptOutstandingReader = attemptOutstandingReader;
+        this.turnInProgressReader = turnInProgressReader;
+        this.tryPrepareForExplicitExit = tryPrepareForExplicitExit;
+
+        // Awake ran the first label refresh before this binding existed, against the "no series"
+        // defaults; redo it now that the real policy is readable.
+        RefreshLocalVersusLabel();
     }
 
     /// <summary>
@@ -471,7 +504,12 @@ public class Pause : MonoBehaviour
     {
         // Every exit goes through here or loadstartScreen/reloadScene (the touch double-tap calls
         // them directly), so the series-turn policy lives in these methods, not the button handlers.
-        VersusQuitPolicy.ForfeitActiveTurn();
+        // A deliberate quit forfeits a live series turn, and only leaves once that is durable.
+        if (!TryLeaveMatch(quitGameText))
+        {
+            yield break;
+        }
+
         // update all time stats
         if (hasDatabaseReader() &&
            (MatchRuntime.ModeDisplayName.ToLower().Contains("free") || MatchRuntime.RawModeId == 99))
@@ -484,8 +522,13 @@ public class Pause : MonoBehaviour
 
     public IEnumerator loadstartScreen()
     {
-        // Leaving a series turn mid-match is a quit: the game goes to the opponent.
-        VersusQuitPolicy.ForfeitActiveTurn();
+        // Leaving a series turn mid-match is a quit: the game goes to the opponent, once that is
+        // durable. A finished run still waiting on its result save cannot be left either.
+        if (!TryLeaveMatch(loadStartScreenText))
+        {
+            yield break;
+        }
+
         // update all time stats
         if (hasDatabaseReader() &&
            (MatchRuntime.ModeDisplayName.ToLower().Contains("free") || MatchRuntime.RawModeId == 99))
@@ -508,7 +551,7 @@ public class Pause : MonoBehaviour
     public void reloadScene()
     {
         // A restart would be a free retake of a series turn; quitting it forfeits the game instead.
-        if (VersusQuitPolicy.AttemptOutstanding)
+        if (attemptOutstandingReader())
         {
             Debug.Log("Restart is unavailable during a series turn. Quit the turn to forfeit the game.");
             return;
@@ -542,6 +585,44 @@ public class Pause : MonoBehaviour
         }
         MatchSession.BeginNewMatch();
         SceneTransition.LoadScene(SceneManager.GetActiveScene().name);
+    }
+
+    /// <summary>
+    /// The durability gate for a deliberate exit. When it refuses, the button that was pressed says so
+    /// for a few seconds instead of silently doing nothing.
+    /// </summary>
+    private bool TryLeaveMatch(Text feedback)
+    {
+        if (tryPrepareForExplicitExit())
+        {
+            return true;
+        }
+
+        Debug.LogWarning(
+            "Cannot leave the match yet: a series turn's forfeit or result has not been saved. Try again.");
+        if (feedback != null)
+        {
+            StartCoroutine(ShowExitNotSaved(feedback));
+        }
+
+        return false;
+    }
+
+    // Real time: the pause menu runs at timeScale 0.
+    private static IEnumerator ShowExitNotSaved(Text target)
+    {
+        string original = target.text;
+        if (original == ExitNotSavedMessage)
+        {
+            yield break;
+        }
+
+        target.text = ExitNotSavedMessage;
+        yield return new WaitForSecondsRealtime(ExitNotSavedMessageSeconds);
+        if (target != null && target.text == ExitNotSavedMessage)
+        {
+            target.text = original;
+        }
     }
 
     private void updateFreePlayStats()
@@ -595,12 +676,12 @@ public class Pause : MonoBehaviour
         // Restart is refused while a series attempt is outstanding, so don't offer it.
         if (loadSceneButton != null)
         {
-            loadSceneButton.interactable = !VersusQuitPolicy.AttemptOutstanding;
+            loadSceneButton.interactable = !attemptOutstandingReader();
         }
 
         if (loadStartScreenText != null && LocalVersusNavigationState.ReturnPending)
         {
-            loadStartScreenText.text = VersusQuitPolicy.TurnInProgress
+            loadStartScreenText.text = turnInProgressReader()
                 ? LocalVersusForfeitLabel
                 : LocalVersusContinueLabel;
         }
