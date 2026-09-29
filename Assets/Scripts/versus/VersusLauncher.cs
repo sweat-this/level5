@@ -43,8 +43,9 @@ public static class VersusLauncher
     /// path must never silently fall back to permissive null-unlock behavior. The local level
     /// eligibility check runs before <c>IssueAttempt</c> - unlike an incompatible mode/arena
     /// combination (which is deliberately only caught afterward, at <see cref="BuildMatch"/>, and
-    /// leaves the attempt outstanding for retry), an unknown, non-selectable or locked level is known
-    /// without spending anything on the attempt, so it must never reach <c>IssueAttempt</c> at all.
+    /// leaves the attempt outstanding for retry), an unknown, non-selectable or locked level - and a
+    /// locked or missing character - is known without spending anything on the attempt, so it must
+    /// never reach <c>IssueAttempt</c> at all.
     /// </summary>
     public static VersusLaunch Launch(
         SeriesId seriesId,
@@ -67,6 +68,16 @@ public static class VersusLauncher
         {
             return VersusLaunch.Failure(VersusValidationResult.Invalid(
                 VersusValidationCode.SeriesNotPlayable, levelValidation.ToString()));
+        }
+
+        // Same reasoning as the level check: a locked (or missing) character is known before anything
+        // is spent on the attempt, and neither the builder nor anything downstream checks it - player
+        // select is the only other place character unlock is enforced.
+        if (character == null || character.IsEmpty || !unlock.IsCharacterUnlocked(character.CharacterId))
+        {
+            return VersusLaunch.Failure(VersusValidationResult.Invalid(
+                VersusValidationCode.SeriesNotPlayable,
+                "that character is not unlocked, so the turn was not started"));
         }
 
         VersusMatchCoordinator coordinator = VersusRuntime.Coordinator;

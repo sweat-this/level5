@@ -44,7 +44,6 @@ public class Level5MatchArchitectureTests
         "EndRoundMenuManager.cs",
         "AccountManager.cs",
         "LoadGame.cs",
-        "LoadManager.cs",
 
         // account, api and persistence: their own owners, plan phase 11
         "APIHelper.cs",

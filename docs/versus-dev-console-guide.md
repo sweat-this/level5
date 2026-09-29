@@ -2,8 +2,10 @@
 
 Last updated: 2026-08-11
 
-There is no production versus menu yet. `VersusDevConsole` is the development-only way to create,
-resume and play a versus series through the same coordinator and launcher a real menu will use.
+Local alternating play now has a production screen (Start > **Local Versus**, see
+[Versus architecture](versus-architecture.md) section 14). `VersusDevConsole` remains the
+development-only way to create, resume and play any versus series without menus, through the same
+coordinator and launcher the production screen uses.
 
 Use this guide when you want to actually play the current local-alternating or correspondence flow
 inside Unity.
@@ -43,8 +45,7 @@ Recommended first run:
 | `Mode` | `LocalAlternating` |
 | `Information Policy` | `SealedAttempt` |
 | `Playlist` | `most-points` |
-| `Level Id` | `1` |
-| `Character Object Name` | `drblood` |
+| `Level Id` | `1` (the character is your current primary selection; it must be unlocked) |
 | `Use In Memory Store` | off |
 
 Leave `Use In Memory Store` off when you want the series to survive scene loads or editor play-mode

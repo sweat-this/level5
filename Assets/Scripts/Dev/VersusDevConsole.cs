@@ -41,7 +41,6 @@ public class VersusDevConsole : MonoBehaviour
     [Header("Match")]
     [Tooltip("Arena to play every game on.")]
     [SerializeField] private int levelId = 1;
-    [SerializeField] private string characterObjectName = "drblood";
 
     [Header("State")]
     [Tooltip("The series being driven. Set by Create, or paste an id to resume one.")]
@@ -177,36 +176,21 @@ public class VersusDevConsole : MonoBehaviour
             return;
         }
 
-        CharacterSelection character = new CharacterSelection(
-            0,
-            characterObjectName,
-            characterObjectName,
-            true,
-            true);
+        // The launcher refuses a locked or unknown character, so use the current account's real
+        // primary selection (the same resolver remote correspondence uses) rather than a made-up id.
+        RemoteCharacterSelectionResult resolved = RemoteCharacterSelectionResolver.ResolveCurrentPrimary(out UnlockSnapshot unlock);
+        if (!resolved.Succeeded)
+        {
+            Debug.LogError($"Could not start {participantId}'s turn: {resolved.Error}", this);
+            return;
+        }
 
-        UnlockSnapshot unlock = CurrentUnlockSnapshot();
+        CharacterSelection character = resolved.Character;
         VersusLaunch launch = VersusLauncher.Launch(series.Id, participantId, levelId, character, unlock);
         if (!launch.Succeeded)
         {
             Debug.LogError($"Could not start {participantId}'s turn: {launch.Validation}", this);
         }
-    }
-
-    /// <summary>
-    /// The same current-account <see cref="UnlockSnapshot"/> a real menu would build
-    /// (<see cref="RemoteCharacterSelectionResolver"/> does the equivalent for remote correspondence):
-    /// whatever primary/CPU character profile lists are currently loaded, plus the live level
-    /// catalog. There is no second unlock authority here - this reuses the same
-    /// <see cref="UnlockSnapshotBuilder"/> every other launch path does.
-    /// </summary>
-    private static UnlockSnapshot CurrentUnlockSnapshot()
-    {
-        IReadOnlyList<CharacterProfile> primaryProfiles =
-            LoadedData.instance != null ? LoadedData.instance.PlayerSelectedData : null;
-        IReadOnlyList<CharacterProfile> cpuProfiles =
-            LoadedData.instance != null ? LoadedData.instance.CpuPlayerSelectedData : null;
-
-        return UnlockSnapshotBuilder.Build(primaryProfiles, cpuProfiles, MatchCatalogs.Levels);
     }
 
     private VersusSeries LoadCurrent()

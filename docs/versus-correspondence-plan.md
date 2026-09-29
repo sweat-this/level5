@@ -308,7 +308,7 @@ G real-mode integration. Tests alongside each slice.
 | 9 | Reusing `MatchValidationCode` for versus errors | couples the two domains and grows one enum with unrelated members | separate `VersusValidationCode` mirroring the existing shape | Added to the file list |
 | 10 | `VersusMatchCoordinator` drifting into a God object | it is the obvious place for everything to accumulate | it may only: load, call one domain operation, save, raise one event. No rules, no comparison, no scene knowledge | Constraint written into 2.6 and enforced by review |
 | 11 | Turn inbox in scope | not in the brief's Required list; would be speculative infrastructure | domain events are raised so an inbox projection is buildable; the projection itself is deferred | Moved to remaining work |
-| 12 | Building production versus menus | cannot be authored without the Unity editor, and would put competitive state next to UI | a Dev-only driver component exercises the flow; production UI is follow-up | `VersusDevConsole` added to the file list |
+| 12 | Building production versus menus | cannot be authored without the Unity editor, and would put competitive state next to UI | a Dev-only driver component exercised the flow first; the production local-alternating screen has since landed (`versus-architecture.md` section 14) | `VersusDevConsole` added to the file list |
 
 ---
 
@@ -373,5 +373,11 @@ No unrelated problems were introduced. Pre-existing findings are recorded in sec
 
 Deferred, per section 49: cloud backend, matchmaking, friends, push notifications, online accounts,
 tournaments, rankings, seasons, real-time multiplayer, server simulation, anti-cheat, ghost replays,
-challenge links, series drafting, rivalry UI, and the turn-inbox projection. Production versus menus
-are follow-up work; the Dev console exists so the architecture is exercisable without them.
+challenge links, series drafting, rivalry UI, and the turn-inbox projection.
+
+Production versus UI has since landed for **local alternating play only**: the Start screen's
+**Local Versus** entry opens `level_00_local_versus`, backed by the local file repository and
+requiring no online account (`versus-architecture.md` section 14). It is distinct from
+**Correspondence**, which is Backend V2, authenticated remote play. `LocalSimultaneous` remains
+unsupported by the production launcher and UI. The Dev console remains for exercising either flow
+without menus.

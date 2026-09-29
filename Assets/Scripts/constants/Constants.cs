@@ -23,6 +23,7 @@ public static class Constants
     public const string SCENE_NAME_level_00_account_online = "level_00_account_online";
     public const string SCENE_NAME_level_00_credits = "level_00_credits";
     public const string SCENE_NAME_level_00_loading = "level_00_loading";
+    public const string SCENE_NAME_level_00_local_versus = "level_00_local_versus";
     public const string SCENE_NAME_level_00_multiplayer = "level_00_multiplayer";
     public const string SCENE_NAME_level_00_options = "level_00_options";
     public const string SCENE_NAME_level_00_progression = "level_00_progression";

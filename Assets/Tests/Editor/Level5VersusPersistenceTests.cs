@@ -72,6 +72,25 @@ public class Level5VersusPersistenceTests
     }
 
     [Test]
+    public void AnInterruptedStartedAttemptIsHandedBackByIssueAttemptRatherThanRefused()
+    {
+        // A player who leaves a match after it began (or an application that died mid-run) must be
+        // able to take the same turn again. Issuing is idempotent for a Started attempt too: it is
+        // returned as it is, not re-readied (which only a Created attempt can be) and not replaced.
+        VersusSeries original = VersusTestFixtures.Series(SeriesFormat.BestOf3);
+        Attempt issued = original.IssueAttempt(VersusTestFixtures.PatrickId, ids, clock);
+        original.StartAttempt(issued.Id, clock);
+
+        VersusSeries restored = RoundTrip(original);
+        Attempt again = null;
+        Assert.DoesNotThrow(() => again = restored.IssueAttempt(VersusTestFixtures.PatrickId, ids, clock));
+
+        Assert.That(again.Id, Is.EqualTo(issued.Id), "the same turn, not a second one");
+        Assert.That(again.State, Is.EqualTo(AttemptState.Started));
+        Assert.That(again.IssuedAtUtc, Is.EqualTo(issued.IssuedAtUtc));
+    }
+
+    [Test]
     public void ACompletedAttemptAndItsMetricsSurviveIntact()
     {
         VersusSeries original = VersusTestFixtures.Series(SeriesFormat.BestOf3);

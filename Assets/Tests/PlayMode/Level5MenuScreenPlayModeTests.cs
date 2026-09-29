@@ -142,5 +142,58 @@ public class Level5MenuScreenPlayModeTests
         Assert.That(EventSystem.current, Is.Not.Null);
         Assert.That(EventSystem.current.currentSelectedGameObject, Is.Not.Null);
     }
+
+    [UnityTest]
+    public IEnumerator LocalVersusScreenLoadsCreatesASeriesAndNeedsNoOnlineSession()
+    {
+        // never touch the player's real save folder from a test
+        VersusRuntime.Override(new Level5.Core.Versus.Persistence.InMemoryVersusSeriesRepository());
+        Level5.BackendV2.BackendV2SessionStore.Clear();
+        try
+        {
+            yield return LoadMenuScene(Constants.SCENE_NAME_level_00_local_versus);
+
+            MonoBehaviour controller =
+                RealScenePlayModeTestSupport.FindActiveBehaviourInScene(loadedScene, "LocalVersusController");
+            Assert.That(controller, Is.Not.Null, "LocalVersusController was not found in the loaded scene.");
+            Assert.That(
+                controller.enabled,
+                Is.True,
+                "LocalVersusController disabled itself - a required UI reference is missing.");
+            Assert.That(EventSystem.current, Is.Not.Null);
+            Assert.That(EventSystem.current.currentSelectedGameObject, Is.Not.Null);
+            Assert.That(VersusRuntime.Coordinator.ListSeries(), Is.Empty);
+
+            UnityEngine.UI.Button create = FindButton("createButton");
+            Assert.That(create, Is.Not.Null);
+            Assert.That(create.interactable, Is.True);
+            create.onClick.Invoke();
+            yield return null;
+
+            Assert.That(VersusRuntime.Coordinator.ListSeries(), Has.Count.EqualTo(1), "Create Series stored one local series");
+            Assert.That(VersusRuntime.Coordinator.ListSeries()[0].Mode, Is.EqualTo(Level5.Core.Versus.VersusMode.LocalAlternating));
+            Assert.That(Level5.BackendV2.BackendV2SessionStore.Current, Is.Null, "no Backend V2 session was needed or created");
+        }
+        finally
+        {
+            VersusRuntime.Reset();
+        }
+    }
+
+    private UnityEngine.UI.Button FindButton(string objectName)
+    {
+        foreach (GameObject root in loadedScene.GetRootGameObjects())
+        {
+            foreach (UnityEngine.UI.Button button in root.GetComponentsInChildren<UnityEngine.UI.Button>(true))
+            {
+                if (button.gameObject.name == objectName)
+                {
+                    return button;
+                }
+            }
+        }
+
+        return null;
+    }
 }
 #endif

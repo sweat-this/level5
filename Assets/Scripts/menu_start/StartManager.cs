@@ -61,6 +61,7 @@ public class StartManager : MonoBehaviour
     Button updateMenuButton;
     Button accountMenuButton;
     Button multiplayerMenuButton;
+    Button localVersusMenuButton;
 
     // player select rendering/state - owned by playerSelectCoordinator, not this class.
     // cpuSlotButtonObjects is the one array CPU slot 0/1/2 map to: TouchInputStartScreenController
@@ -381,6 +382,11 @@ public class StartManager : MonoBehaviour
             return false;
         }
 
+        if (ui.LocalVersusButton == null)
+        {
+            missing.Add("StartMenuUiObjects.localVersusButton");
+        }
+
         if (ui.TextUi == null)
         {
             missing.Add("StartMenuUiObjects.TextUi");
@@ -580,6 +586,7 @@ public class StartManager : MonoBehaviour
         updateMenuButton = footer.ProgressionButton;
         accountMenuButton = footer.AccountButton;
         multiplayerMenuButton = footer.MultiplayerButton;
+        localVersusMenuButton = StartMenuUiObjects.instance != null ? StartMenuUiObjects.instance.LocalVersusButton : null;
         EnsureMultiplayerButton();
     }
 
@@ -673,6 +680,7 @@ public class StartManager : MonoBehaviour
         UiSelectionAdapter.RegisterButton(creditsMenuButton, LoadCreditsMenu);
         UiSelectionAdapter.RegisterButton(accountMenuButton, LoadAccountMenu);
         UiSelectionAdapter.RegisterButton(multiplayerMenuButton, LoadMultiplayerMenu);
+        UiSelectionAdapter.RegisterButton(localVersusMenuButton, LoadLocalVersusMenu);
         UiSelectionAdapter.RegisterButton(playerSelectButton, SelectNextPlayer);
         UiSelectionAdapter.RegisterButton(friendSelectButton, SelectNextFriend);
         UiSelectionAdapter.RegisterButton(levelSelectButton, SelectNextLevel);
@@ -698,6 +706,7 @@ public class StartManager : MonoBehaviour
         UiSelectionAdapter.UnregisterButton(creditsMenuButton, LoadCreditsMenu);
         UiSelectionAdapter.UnregisterButton(accountMenuButton, LoadAccountMenu);
         UiSelectionAdapter.UnregisterButton(multiplayerMenuButton, LoadMultiplayerMenu);
+        UiSelectionAdapter.UnregisterButton(localVersusMenuButton, LoadLocalVersusMenu);
         UiSelectionAdapter.UnregisterButton(playerSelectButton, SelectNextPlayer);
         UiSelectionAdapter.UnregisterButton(friendSelectButton, SelectNextFriend);
         UiSelectionAdapter.UnregisterButton(levelSelectButton, SelectNextLevel);
@@ -906,6 +915,13 @@ public class StartManager : MonoBehaviour
     public void LoadAccountMenu()
     {
         RunCommand(() => loadMenu(Constants.SCENE_NAME_level_00_account));
+    }
+
+    /// <summary>Local Versus needs no online account, so it is a Start-screen command of its own rather than
+    /// part of the Multiplayer/correspondence flow.</summary>
+    public void LoadLocalVersusMenu()
+    {
+        RunCommand(() => loadMenu(Constants.SCENE_NAME_level_00_local_versus));
     }
 
     public void LoadMultiplayerMenu()

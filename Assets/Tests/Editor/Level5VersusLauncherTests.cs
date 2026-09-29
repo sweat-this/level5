@@ -160,6 +160,38 @@ public class Level5VersusLauncherTests
     }
 
     [Test]
+    public void ALockedCharacterFailsBeforeIssueAttempt()
+    {
+        SeriesId seriesId = CreateSeries();
+
+        VersusLaunch launch = VersusLauncher.Launch(
+            seriesId,
+            VersusTestFixtures.PatrickId,
+            EligibleLevelId,
+            TestCharacter(),
+            new UnlockSnapshot(
+                new Dictionary<int, bool> { [1] = false },
+                new Dictionary<int, bool> { [EligibleLevelId] = true }));
+
+        AssertNoAttemptWasIssued(seriesId, launch);
+    }
+
+    [Test]
+    public void AnEmptyOrUnknownCharacterFailsBeforeIssueAttempt()
+    {
+        SeriesId seriesId = CreateSeries();
+
+        VersusLaunch empty = VersusLauncher.Launch(
+            seriesId, VersusTestFixtures.PatrickId, EligibleLevelId, CharacterSelection.None, Unlocked(EligibleLevelId));
+        AssertNoAttemptWasIssued(seriesId, empty);
+
+        VersusLaunch unknown = VersusLauncher.Launch(
+            seriesId, VersusTestFixtures.PatrickId, EligibleLevelId,
+            new CharacterSelection(99, "ghost", "Ghost", true, true), Unlocked(EligibleLevelId));
+        AssertNoAttemptWasIssued(seriesId, unknown);
+    }
+
+    [Test]
     public void AMissingUnlockSnapshotFailsBeforeIssueAttemptRatherThanFallingBackToPermissiveBehavior()
     {
         SeriesId seriesId = CreateSeries();
@@ -237,7 +269,7 @@ public class Level5VersusLauncherTests
 
     private static UnlockSnapshot Unlocked(int levelId)
     {
-        return new UnlockSnapshot(null, new Dictionary<int, bool> { [levelId] = true });
+        return new UnlockSnapshot(new Dictionary<int, bool> { [1] = true }, new Dictionary<int, bool> { [levelId] = true });
     }
 
     private static CharacterSelection TestCharacter()
