@@ -158,7 +158,7 @@ namespace Level5.Core.Versus
         /// </summary>
         public SeriesOperation ForfeitGame(SeriesId seriesId, ParticipantId participantId)
         {
-            SeriesSubmission submission = null;
+            SeriesSubmission submission = default;
             SeriesOperation operation = Mutate(
                 seriesId,
                 series => submission = series.ForfeitCurrentGame(participantId, clock));
