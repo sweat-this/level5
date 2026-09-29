@@ -1495,16 +1495,25 @@ public class DBHelper : MonoBehaviour
                     {
                         while (reader.Read())
                         {
+                            // A row without an id or name is not a usable profile; skip it rather than let it
+                            // throw and hide every other profile.
+                            if (reader.IsDBNull(0) || reader.IsDBNull(1))
+                            {
+                                continue;
+                            }
+
                             UserModel temp = new UserModel();
 
                             temp.Userid = reader.GetInt32(0);
                             temp.UserName = reader.GetString(1);
-                            temp.FirstName = reader.GetString(2);
-                            temp.LastName = reader.GetString(3);
-                            temp.Email = reader.GetString(4);
-                            temp.IpAddress = reader.GetString(5);
-                            temp.SignUpDate = reader.GetString(6);
-                            temp.LastLogin = reader.GetString(7);
+                            // V1-era rows may hold NULL in any of these text columns (only userid/username are
+                            // guaranteed); one unguarded GetString used to throw and empty the whole profile list.
+                            temp.FirstName = reader.IsDBNull(2) ? "" : reader.GetString(2);
+                            temp.LastName = reader.IsDBNull(3) ? "" : reader.GetString(3);
+                            temp.Email = reader.IsDBNull(4) ? "" : reader.GetString(4);
+                            temp.IpAddress = reader.IsDBNull(5) ? "" : reader.GetString(5);
+                            temp.SignUpDate = reader.IsDBNull(6) ? "" : reader.GetString(6);
+                            temp.LastLogin = reader.IsDBNull(7) ? "" : reader.GetString(7);
                             // password is no longer persisted locally (see InsertUserCoroutine) - column is
                             // kept for schema stability but will typically be NULL going forward.
                             temp.Password = reader.IsDBNull(8) ? "" : reader.GetString(8);

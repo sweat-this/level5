@@ -507,7 +507,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: 'login saved local account
+  m_text: 'select local profile
 
 '
   m_isRightToLeft: 0
@@ -1343,7 +1343,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: login to account saved locally on device
+  m_text: select a profile saved locally on device
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 74a0dc148f327ca4491635883c473243, type: 2}
   m_sharedMaterial: {fileID: 3882694694198536109, guid: 74a0dc148f327ca4491635883c473243,

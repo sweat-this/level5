@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.IO;
 using Level5.BackendV2;
 using NUnit.Framework;
@@ -79,6 +80,22 @@ public class BackendV2LiveOnlineAccountCertificationTests
         RequireLiveCertificationOptIn();
         ApplyConfig(ResolveConfig());
 
+        // The account scenes open a local SQLite profile database. Point them at a throwaway file so a
+        // certification run never opens or migrates the developer's real level5.db.
+        LocalProfileTestDatabase localDatabase = new LocalProfileTestDatabase();
+        yield return localDatabase.Open();
+        try
+        {
+            yield return RunSession1();
+        }
+        finally
+        {
+            localDatabase.Dispose();
+        }
+    }
+
+    private static IEnumerator RunSession1()
+    {
         // Certification-owned local state only - never touches unrelated save/profile data. A prior
         // local run of this same test may have left a persisted session or handoff file on disk; clear
         // both so this run genuinely starts from the unauthenticated state it asserts next, matching a
@@ -216,12 +233,15 @@ public class BackendV2LiveOnlineAccountCertificationTests
         // Cleanup (handoff file, local session state, config override) runs in `finally` so a failed
         // assertion anywhere below still leaves this process's local certification state clean - e.g.
         // a stale handoff file must never survive to confuse a later, independent Session2-only rerun.
+        LocalProfileTestDatabase localDatabase = new LocalProfileTestDatabase();
+        yield return localDatabase.Open();
         try
         {
-            yield return RunSession2();
+            yield return RunSession2(localDatabase);
         }
         finally
         {
+            localDatabase.Dispose();
             DeleteHandoffFileIfPresent();
             BackendV2SessionPersistenceStore.Clear();
             BackendV2SessionStore.Clear();
@@ -230,7 +250,7 @@ public class BackendV2LiveOnlineAccountCertificationTests
         }
     }
 
-    private static IEnumerator RunSession2()
+    private static IEnumerator RunSession2(LocalProfileTestDatabase localDatabase)
     {
         Assert.That(BackendV2SessionStore.IsAuthenticated, Is.False,
             "this test must run as a fresh Unity process with no in-memory session - if this fails, " +
@@ -254,6 +274,9 @@ public class BackendV2LiveOnlineAccountCertificationTests
         Log("Phase D PASSING: a genuinely fresh Unity process restored the persisted Backend V2 session " +
             "through UserAccountManager.Awake -> BackendV2SessionPersistenceBootstrap.EnsureInitialized " +
             "(local-only, zero network requests) and its PlayerId matches Session1's.");
+
+        // ---- Local profile changes must never touch the restored online session ----
+        yield return RunLocalProfileIndependenceCheck(localDatabase);
 
         // ---- Navigate through Account hub again ----
         yield return LoadSceneAndSettle(Constants.SCENE_NAME_level_00_account);
@@ -347,6 +370,79 @@ public class BackendV2LiveOnlineAccountCertificationTests
         Log("Refresh-token revocation PASSING (live): POST api/v2/auth/logout -> LogoutUseCase -> " +
             "AuthSession.Revoke rejected the old refresh token with Unauthenticated.");
         Log("Session2 complete.");
+    }
+
+    /// <summary>
+    /// The identity-independence half of the certification: with a Backend V2 session restored by a
+    /// genuinely fresh process, every local-profile operation a player can perform - continuing as guest
+    /// through the real guest row, then creating a local profile through the real Create Local Profile
+    /// flow - must leave that session exactly as it was: same object, same tokens, still authenticated,
+    /// and no <see cref="BackendV2SessionStore.Changed"/> event (a refresh, replacement or sign-out would
+    /// each raise one). The local database is the throwaway one this session opened, never the real one.
+    /// </summary>
+    private static IEnumerator RunLocalProfileIndependenceCheck(LocalProfileTestDatabase localDatabase)
+    {
+        BackendV2Session restored = BackendV2SessionStore.Current;
+        Assert.That(restored, Is.Not.Null, "the independence check needs the restored online session");
+        string accessTokenBefore = restored.AccessToken;
+        string refreshTokenBefore = restored.RefreshToken;
+
+        int changes = 0;
+        Action<BackendV2Session> onChanged = session => changes++;
+        BackendV2SessionStore.Changed += onChanged;
+        int previousUserId = Level5.Core.LocalAccountIdentity.UserId;
+        string previousUserName = Level5.Core.LocalAccountIdentity.UserName;
+
+        // The loading scenes a local selection proceeds into log unrelated noise.
+        LogAssert.ignoreFailingMessages = true;
+        try
+        {
+            // ---- guest, through the real guest row ----
+            List<Button> rows = null;
+            yield return LocalProfileUiFlow.WaitForProfileRows(1, r => rows = r);
+            Assert.That(LocalProfileUiFlow.RowName(rows[0]), Is.EqualTo("guest"),
+                "an empty local database must offer the guest row");
+            yield return LocalProfileUiFlow.SelectProfileRow(rows[0]);
+            Assert.That(Level5.Core.LocalAccountIdentity.UserId, Is.EqualTo(74));
+            Assert.That(Level5.Core.LocalAccountIdentity.UserName, Is.EqualTo("guest"));
+            AssertRestoredSessionUntouched(restored, accessTokenBefore, refreshTokenBefore, changes, "selecting guest");
+            yield return LocalProfileUiFlow.WaitUntil(
+                () => SceneManager.GetActiveScene().name == Constants.SCENE_NAME_level_00_start, 60f,
+                "loading did not finish after selecting guest");
+            Log("Independence PASSING (live): selecting guest through the real guest row left the restored " +
+                "Backend V2 session untouched (same object, same tokens, no Changed event).");
+
+            // ---- a new local profile, through the real Create Local Profile flow ----
+            int createdUserId = 0;
+            string profileName = "liveCert" + Guid.NewGuid().ToString("N").Substring(0, 8);
+            yield return LocalProfileUiFlow.CreateProfileThroughHub(localDatabase, profileName, id => createdUserId = id);
+            Assert.That(createdUserId, Is.GreaterThan(0));
+            Assert.That(Level5.Core.LocalAccountIdentity.UserId, Is.EqualTo(createdUserId));
+            Assert.That(Level5.Core.LocalAccountIdentity.UserName, Is.EqualTo(profileName));
+            AssertRestoredSessionUntouched(restored, accessTokenBefore, refreshTokenBefore, changes, "creating a local profile");
+            yield return LocalProfileUiFlow.WaitUntil(
+                () => SceneManager.GetActiveScene().name == Constants.SCENE_NAME_level_00_start, 60f,
+                "loading did not finish after creating a local profile");
+            Log("Independence PASSING (live): creating and selecting a local profile through the real UI left " +
+                "the restored Backend V2 session untouched (same object, same tokens, no Changed event).");
+        }
+        finally
+        {
+            BackendV2SessionStore.Changed -= onChanged;
+            LogAssert.ignoreFailingMessages = false;
+            Level5.Core.LocalAccountIdentity.UserId = previousUserId;
+            Level5.Core.LocalAccountIdentity.UserName = previousUserName;
+        }
+    }
+
+    private static void AssertRestoredSessionUntouched(
+        BackendV2Session restored, string accessTokenBefore, string refreshTokenBefore, int changeCount, string operation)
+    {
+        Assert.That(BackendV2SessionStore.IsAuthenticated, Is.True, operation + " signed the online player out");
+        Assert.That(BackendV2SessionStore.Current, Is.SameAs(restored), operation + " replaced the Backend V2 session");
+        Assert.That(BackendV2SessionStore.Current.AccessToken, Is.EqualTo(accessTokenBefore));
+        Assert.That(BackendV2SessionStore.Current.RefreshToken, Is.EqualTo(refreshTokenBefore));
+        Assert.That(changeCount, Is.EqualTo(0), operation + " changed the Backend V2 session");
     }
 
     // ================================================================= shared helpers

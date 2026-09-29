@@ -28,6 +28,12 @@ now zero-network. `level_00_account_loginExisting` (the old "log in to an existi
 account" screen) is no longer reachable from production navigation, but its scene/`AccountLoginUiObjects`
 stay as `OnlineAccountSceneBootstrap`'s editor-only template - see `docs/persistence-boundaries.md`.
 
+The independence is certified in both directions against the real UI: `Level5LocalProfileCertificationPlayModeTests`
+(ordinary suite) creates, restarts into, and selects local profiles and guest with a signed-in Backend V2
+session present and asserts it is never replaced, refreshed, signed out or used for a request; the opt-in live
+certification's Session2 repeats that against a session restored by a fresh process and a real backend
+(see `docs/backend-v2-online-account-certification.md`).
+
 ## Where it lives
 
 | Piece | Path | Assembly |

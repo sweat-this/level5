@@ -138,6 +138,25 @@ nothing to scope). `MatchPersistenceLedger` and all Backend V2 data (`BackendV2S
 correspondence, MatchResults, leaderboards) are likewise untouched - local profile deletion is local-
 only and never affects the online session/identity boundary described above.
 
+### Local profile list
+
+`UserAccountManager.loadUserData` (the `level_00_account_loginLocal` profile list) waits for the
+database to be free, then calls `UserAccountManager.RefreshLocalProfiles()`, which is one
+`DBHelper.getUserProfileStats()` call and nothing else: that method owns `DatabaseLocked` for its own
+read, and - deliberately, to protect the shared SQLite connection - returns an empty list when another
+owner holds it. The caller therefore must never pre-acquire the lock, and needs no `isTableEmpty`
+pre-check either (an empty `User` table is simply an empty result, and a separate count-then-read
+would be a needless second query). This was the root cause of a defect where `loadUserData` set
+`DatabaseLocked = true` itself before calling `getUserProfileStats()`, so an existing, non-empty
+profile database was read as zero profiles and the player saw only the guest row - the same
+caller-owned-lock mistake the deletion path above already fixed.
+`Level5UserAccountManagerProfileLoadingTests` (real SQLite) and the source guards beside it keep it
+fixed; `Level5LocalProfileCertificationPlayModeTests` drives the whole create -> restart -> select flow
+through the real scenes and buttons against a throwaway database.
+
+The screen describes selection, not authentication: its status line reads "select local profile" /
+"no local profiles found", and the row and hub buttons say "select".
+
 ### Guest account
 
 `UserAccountManager` hardcodes `guestUserid = 74`, `guestUsername = "guest"`. A shared, well-known
