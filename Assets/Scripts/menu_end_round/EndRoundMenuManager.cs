@@ -270,6 +270,18 @@ public class EndRoundMenuManager : MonoBehaviour
             return;
         }
 
+        // The next round reuses this match's roster, and a gamepad may have gone away since it began.
+        // Refuse here, on a screen the player can act on, rather than letting the gameplay scene fail
+        // closed when it composes its device plan. Nothing has been spent yet, so pressing Next again
+        // after reconnecting simply retries.
+        MatchConfiguration current = ActiveMatch.Configuration;
+        if (current != null
+            && !PlayerControlsProvider.TryPreflightGameplayDevices(current.Roster.LocalHumanCount, out string deviceFailure))
+        {
+            Debug.LogError("The next round cannot start: " + deviceFailure);
+            return;
+        }
+
         if (nextAction == CampaignNextAction.Retry && currentWinnerisCpu && !tieGame)
         {
             EndRoundData.numberOfContinues--;

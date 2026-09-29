@@ -9,6 +9,7 @@ public static class PlayerControlsProvider
     private static int playerUsers;
     private static int uiNavigationUsers;
     private static int otherUsers;
+    private static LocalGameplayDevicePlan gameplayDevicePlan;
 
     public static PlayerControls Controls
     {
@@ -76,6 +77,85 @@ public static class PlayerControlsProvider
             controls = null;
         }
 
+        DisposeGameplayControls();
+        gameplayDevicePlan = null;
+
+        playerUsers = 0;
+        uiNavigationUsers = 0;
+        otherUsers = 0;
+    }
+
+    /// <summary>
+    /// The match-local device assignment gameplay controls are paired from, or null before a match (or
+    /// the first gameplay acquisition) has established one.
+    /// </summary>
+    public static LocalGameplayDevicePlan GameplayDevicePlan
+    {
+        get { return gameplayDevicePlan; }
+    }
+
+    /// <summary>
+    /// Whether the devices connected right now can seat <paramref name="localHumanCount"/> local humans.
+    /// Side-effect free, so a launch source can refuse a two-human launch before it loads a scene.
+    /// <see cref="TryConfigureGameplayDevicePlan(int, out string)"/> repeats the same check
+    /// authoritatively when the gameplay scene composes the match.
+    /// </summary>
+    public static bool TryPreflightGameplayDevices(int localHumanCount, out string failureReason)
+    {
+        return LocalGameplayDevicePlan.TryCreate(localHumanCount, out _, out failureReason);
+    }
+
+    /// <summary>
+    /// Captures the connected devices into a plan for this match and makes it the active one. Called
+    /// once by the gameplay composition owner, after the roster is known and before any human
+    /// <c>PlayerController</c> acquires its controls.
+    /// </summary>
+    public static bool TryConfigureGameplayDevicePlan(int localHumanCount, out string failureReason)
+    {
+        if (!LocalGameplayDevicePlan.TryCreate(localHumanCount, out LocalGameplayDevicePlan plan, out failureReason))
+        {
+            return false;
+        }
+
+        return TryConfigureGameplayDevicePlan(plan, out failureReason);
+    }
+
+    /// <summary>
+    /// Makes <paramref name="plan"/> the active assignment for a new match. Gameplay controls still
+    /// cached at this point belong to the previous match (a scene reload can compose the next match
+    /// before the old owners have finished releasing), and they are paired to the previous plan, so
+    /// they are disposed rather than left to be handed to the new match. Their owners' later
+    /// <see cref="ReleaseGameplayControls"/> calls find nothing and do nothing.
+    /// </summary>
+    public static bool TryConfigureGameplayDevicePlan(LocalGameplayDevicePlan plan, out string failureReason)
+    {
+        failureReason = null;
+        if (plan == null)
+        {
+            failureReason = "no gameplay device plan was provided";
+            return false;
+        }
+
+        if (gameplayControls.Count > 0)
+        {
+            Debug.LogWarning(
+                $"Configuring a new gameplay device plan while {gameplayControls.Count} gameplay controls from the "
+                + "previous match are still held; disposing them so they are not reused with the new assignment.");
+            DisposeGameplayControls();
+        }
+
+        gameplayDevicePlan = plan;
+        return true;
+    }
+
+    /// <summary>Forgets the active plan. The gameplay composition owner calls this when its match ends.</summary>
+    public static void ClearGameplayDevicePlan()
+    {
+        gameplayDevicePlan = null;
+    }
+
+    private static void DisposeGameplayControls()
+    {
         foreach (PlayerControls playerControls in gameplayControls.Values)
         {
             playerControls.Disable();
@@ -83,12 +163,13 @@ public static class PlayerControlsProvider
         }
 
         gameplayControls.Clear();
-
-        playerUsers = 0;
-        uiNavigationUsers = 0;
-        otherUsers = 0;
     }
 
+    /// <summary>
+    /// Gameplay controls for a local input slot, paired to that slot's devices from the active
+    /// <see cref="LocalGameplayDevicePlan"/>. <paramref name="playerId"/> is a local input slot
+    /// (<c>PlayerSlot.LocalInputSlot</c>), not a roster slot.
+    /// </summary>
     public static PlayerControls AcquireGameplayControls(int playerId)
     {
         if (gameplayControls.TryGetValue(playerId, out PlayerControls playerControls))
@@ -98,8 +179,7 @@ public static class PlayerControlsProvider
         }
 
         playerControls = new PlayerControls();
-        InputDevice[] devices = GetDevicesForPlayer(playerId);
-        playerControls.devices = devices;
+        playerControls.devices = GetDevicesForPlayer(playerId);
         playerControls.Player.Enable();
         gameplayControls.Add(playerId, playerControls);
         return playerControls;
@@ -119,28 +199,41 @@ public static class PlayerControlsProvider
 
     private static InputDevice[] GetDevicesForPlayer(int playerId)
     {
-        List<InputDevice> devices = new List<InputDevice>();
-        if (playerId == 0)
+        if (gameplayDevicePlan == null)
         {
-            AddDevice(devices, Keyboard.current);
-            AddDevice(devices, Mouse.current);
-            AddDevice(devices, Touchscreen.current);
+            // No match composed a plan: a directly constructed player, or a test. Capture the same
+            // single-human layout once and keep it, so this path also stops re-reading Gamepad.all.
+            LocalGameplayDevicePlan.TryCreate(1, out gameplayDevicePlan, out _);
         }
 
-        if (Gamepad.all.Count > playerId)
+        if (!gameplayDevicePlan.HasSlot(playerId))
         {
-            AddDevice(devices, Gamepad.all[playerId]);
+            Debug.LogWarning(
+                $"Local input slot {playerId} has no device assignment in the active gameplay device plan "
+                + $"({gameplayDevicePlan.Layout}); that player will receive no input.");
         }
 
-        return devices.ToArray();
-    }
-
-    private static void AddDevice(List<InputDevice> devices, InputDevice device)
-    {
-        if (device != null)
+        InputDevice[] devices = gameplayDevicePlan.CopyDevicesFor(playerId);
+        if (playerId != 0 || gameplayDevicePlan.Layout != LocalGameplayDeviceLayout.SingleHuman)
         {
-            devices.Add(device);
+            return devices;
         }
+
+        // A single human also owns the on-screen gamepad(s) touch UI drives (the OnScreenStick pilot in
+        // touch_joystick.prefab is bound to <Gamepad>/leftStick). They are not physical devices, so the
+        // plan never counts them, but the one local player is the only possible holder. Resolved here,
+        // at acquisition, because the scene creates them in its own OnEnable - which may not have run
+        // yet when the plan was configured from GameLevelManager.Awake.
+        List<InputDevice> withOnScreen = new List<InputDevice>(devices);
+        foreach (Gamepad onScreen in LocalGameplayDeviceAvailability.CaptureOnScreenGamepads())
+        {
+            if (!withOnScreen.Contains(onScreen))
+            {
+                withOnScreen.Add(onScreen);
+            }
+        }
+
+        return withOnScreen.ToArray();
     }
 
     public static void EnableGameplayMaps()

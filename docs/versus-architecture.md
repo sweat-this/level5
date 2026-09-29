@@ -406,6 +406,15 @@ For step-by-step use, see [Versus Dev Console Guide](versus-dev-console-guide.md
   declare local capabilities only.
 - **Local simultaneous play is not implemented.** The attempt model is one participant per match, so
   modes that need both sides in one match have no ruleset at all rather than a half-working one.
+  The generic two-human *runtime* prerequisite is now certified (2026-09-29): a normal gameplay match
+  with two `LocalHuman` roster slots spawns two actors with independent `GameStats` and basketballs, and
+  each is driven by its own device through the match-local device plan. That is input, roster and spawn
+  plumbing only - it adds no versus capability, ruleset, series reporting or dual-attempt handling, and
+  `VersusMode.LocalSimultaneous` stays unimplemented. It was verified with virtual devices; physical
+  keyboard + gamepad and two-gamepad certification is still outstanding. Open blockers for the versus work
+  (shared camera follows slot 0 only, modes and arenas do not declare two-human support, three or more
+  local players refused) are listed in [`player-input-architecture.md`](player-input-architecture.md)
+  under "Match-Local Gameplay Device Plan".
 - **No turn inbox.** The coordinator raises `SeriesCreated`, `AttemptIssued`, `AttemptStarted`,
   `AttemptCompleted`, `GameResolved`, `SeriesAdvanced` and `SeriesCompleted` so an inbox can be
   built as a projection later. Deliberately not built now, and notification delivery must stay

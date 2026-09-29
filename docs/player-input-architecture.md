@@ -1,6 +1,14 @@
 # Player Input Architecture
 
-Last updated: 2026-09-17
+Last updated: 2026-09-29
+
+2026-09-29 (two-human local input foundation): gameplay controls are now paired to physical devices
+through a match-local `LocalGameplayDevicePlan` instead of `PlayerControlsProvider` resolving
+`Gamepad.all[localInputSlot]` on every acquisition. See "Match-Local Gameplay Device Plan" below. This is
+the input/roster prerequisite for a future `VersusMode.LocalSimultaneous`; it does not implement
+simultaneous versus, split-screen, a join lobby, remapping or hot-plug reassignment, and it does not
+adopt `PlayerInput`/`PlayerInputManager` (migration plan step 7 is unchanged). Single-player assignment
+is unchanged. Physical-device certification has **not** been run (see "Physical certification").
 
 2026-09-17: the racing minigame and `RacingInputReader` have been retired and removed. References to
 racing input ownership below have been removed accordingly; this was a subsystem deletion, not an input
@@ -116,12 +124,166 @@ This document tracks the player input modernization plan. The project already us
 | Area | Current Owner | Notes |
 | --- | --- | --- |
 | Input actions | `PlayerControls.inputactions`, generated `PlayerControls.cs` | Source for keyboard/gamepad gameplay, UI navigation, and debug actions (`Player`, `UINavigation`, `Other`). The unused `PlayerTouch` action map was retired in AUD-012 Phase 5 Slice 76. |
-| Action lifecycle | `PlayerControlsProvider` | Reference-counted static provider for gameplay, menu, and debug maps. Kept as the compatibility bridge. |
+| Action lifecycle | `PlayerControlsProvider` | Reference-counted static provider for gameplay, menu, and debug maps. Kept as the compatibility bridge. Per-slot gameplay controls are paired to devices from the match-local `LocalGameplayDevicePlan` (see below). |
+| Local input slot -> physical devices | `LocalGameplayDevicePlan` (`Level5.Input`), configured by `GameLevelManager.Awake` | Match-local, immutable, device-exclusive. `PlayerSlot.LocalInputSlot` (Core) only names the slot; it never names a device. |
 | Player gameplay input | `PlayerInputReader`, `PlayerTouchInputState`, `PlayerController` | `PlayerInputReader` owns the player's movement/action reads and lives in the `Level5.Input` assembly (AUD-012 Phase 2b Slice 26). `TouchInputController` queues touch gameplay intents through `PlayerTouchInputState`, and `PlayerController` consumes them in the normal gameplay path. `TouchBlockHeld` reads `PlayerTouchInputState.BlockHeld` alone; it no longer also consults `TouchInputController.instance.HoldDetected`, which was written in lockstep with it. Gameplay reads (`movement`, `run`, `jump`, `shoot`, `callball`, `attack`, `block`, `special`) come from the per-player `Player` map on the controls instance `PlayerController` was constructed with. `DebugChangeHeld`/`DebugLightningPressed` instead read the shared `Other` owner through `PlayerControlsProvider.DevChangeHeld`/`DevChangeControlEnabled` (AUD-012 Phase 5 Slice 77) - the per-player instance never has `Other` enabled. Both remain Editor/Development-only (`#if UNITY_EDITOR \|\| DEVELOPMENT_BUILD`). `Other/change`'s keyboard binding previously collided with `Player/run`'s (`shift`) via `leftShift`/`rightShift`; Slice 78 moved it to `<Keyboard>/backquote`, so the two actions no longer share a keyboard binding, though the gate itself was left in place. |
 | Mobile movement | `PlayerInputReader` with Input System movement first and legacy `FloatingJoystick` fallback | Unchanged in behaviour, but the fallback's axes now arrive by composition rather than by the reader reaching for `GameLevelManager.instance.Joystick` - see "Legacy Joystick Composition" below. AUD-012 Phase 5 Slice 81 added a pilot Unity Input System `OnScreenStick` (`touch_joystick.prefab` -> `Canvas/OnScreenStickMovement`, bound to `<Gamepad>/leftStick`) alongside the old joystick, which remains as fallback until it is playtested on device and removed. |
 | Mobile gestures/actions | `TouchInputController`, `PlayerTouchInputState` | Gameplay gestures now queue input intents instead of directly calling player combat/basketball methods. Target is still `OnScreenButton` bindings where the UI/UX allows it. |
 | Menu touch input | `TouchInput*Controller` scripts, `UiSelectionAdapter` | Duplicated per-screen touch scripts still exist. `UiSelectionAdapter` is the shared bridge for screens as they move to standard Unity UI events. |
 | UI input modules | `UiSelectionAdapter`, `PlatformCheck` | `UiSelectionAdapter` can bootstrap/configure `InputSystemUIInputModule` for migrated UI screens. `PlatformCheck` uses the same path when present. Scene assets still need a permanent EventSystem migration. |
+
+## Match-Local Gameplay Device Plan
+
+`PlayerSlot.LocalInputSlot` (`Level5.Core`) says which participant uses local input slot N. It says
+nothing about hardware, and must not: `PlayerRoster`, `PlayerSlot`, `MatchConfiguration`,
+`MatchConfigurationBuilder` and `GameModeCompatibility` stay framework-independent, and a guard test
+fails if `Level5.Core` ever names an Input System type. Which `InputDevice` instances belong to slot N is
+decided in the Unity input layer, once per match, by `LocalGameplayDevicePlan`
+(`Assets/Scripts/input/Level5Input/LocalGameplayDevicePlan.cs`).
+
+| Piece | Owner | Notes |
+| --- | --- | --- |
+| Roster -> "N local humans" | `PlayerRoster.LocalHumanCount` | Core, no devices. |
+| Device snapshot | `LocalGameplayDeviceAvailability.Capture()` | One consistent read of `Keyboard.current`, `Mouse.current`, `Touchscreen.current`, `Gamepad.all`. |
+| Slot -> devices | `LocalGameplayDevicePlan.TryCreate` | Plain C# object. Immutable, exclusive, never persisted, not a ScriptableObject, no service container. |
+| Active plan for this match | `PlayerControlsProvider.GameplayDevicePlan` | Static, reset at `SubsystemRegistration` with the rest of the provider. |
+| Composition point | `GameLevelManager.Awake` -> `PlayerControlsProvider.TryConfigureGameplayDevicePlan(_roster.LocalHumanCount, ...)` | After the roster exists, before `SpawnPlayers`, so no `PlayerController.Start()` order is involved. Fails closed (logs, disables the manager) like a missing spawn point. `OnDestroy` clears it. |
+| Launch preflight | `PlayerControlsProvider.TryPreflightGameplayDevices(localHumanCount, out reason)` | Side-effect free. `StartManager.loadGame` asks it before `ActiveMatch.Begin`, and `EndRoundMenuManager.pressNext` asks it before a campaign round reuses the roster (a pad may have been unplugged since; the player stays on the end-round screen and can retry). Any future launch source that can build a multi-human roster must too. Physical availability is deliberately not in `GameModeCompatibility` (pure Core). |
+| Consumers | `AcquireGameplayControls(localInputSlot)` / `ReleaseGameplayControls(localInputSlot)` | API unchanged. Controls are still cached per slot; a slot's `PlayerControls.devices` comes from the plan. |
+
+Configuring a plan while gameplay controls from a previous match are still cached (a scene reload can
+compose the next match before the old owners release) disposes those controls and logs a warning, rather than
+handing the new match controls paired by the old plan. An acquisition with no configured plan (a directly
+constructed player, or a test) captures a single-human plan once and keeps it.
+
+### Layouts
+
+| Local humans | Layout | Slot 0 | Slot 1 |
+| --- | --- | --- | --- |
+| 0 | `None` | - | - |
+| 1 | `SingleHuman` | keyboard, mouse, touchscreen, first gamepad (each where present) | - |
+| 2, two or more gamepads | `TwoGamepads` | gamepad 0 | gamepad 1 |
+| 2, one gamepad and a keyboard | `KeyboardMouseAndGamepad` | keyboard (+ mouse if present) | gamepad 0 |
+| 2, anything else | refused | - | - |
+| 3+ | refused | - | - |
+
+- **Single human is unchanged.** One local human always gets a plan, even with no device attached, exactly
+  as before.
+- **Two gamepads means no keyboard/mouse for anyone.** Keyboard and mouse are not given to slot 0 in that
+  layout.
+- **The keyboard layout requires a keyboard.** A mouse alone plus a gamepad is not a layout. Touchscreen
+  never counts as a second player's device and is never assigned in a two-human layout; mobile two-player is
+  out of scope.
+- **Refusals carry a deterministic reason**, for example `Two local players need two gamepads, or a
+  keyboard plus one gamepad. Detected: keyboard, 0 gamepad(s).` A second human is never launched with an
+  empty device list.
+- **Exclusivity.** No `InputDevice` instance appears under more than one slot. This holds by construction
+  and is asserted for every layout.
+- **Capture, not re-resolution.** The devices are held by the plan, so re-ordering of `Gamepad.all`, or a
+  gamepad being unplugged and another plugged in, cannot silently hand one player's device to the other
+  mid-match. Re-acquiring controls (pause, `OnDisable`/`OnEnable`) reuses the captured devices.
+
+### Limitations
+
+- **No hot-plug handling.** A paired device that disappears simply stops producing input for its player.
+  A reconnected or replacement device is not adopted, and there is no reassignment, pairing screen or
+  remapping UI. That is a future issue.
+- **Generic HID joysticks are not included.** `Player/movement` also binds `<Joystick>/stick`, but the
+  plan only pairs `Gamepad`-derived devices, as `PlayerControlsProvider` always did.
+- **Shared controls are unrestricted.** `PlayerControlsProvider.Controls` (menu navigation, pause/start
+  compatibility, the `Other` debug map) is not device-scoped, so pause and menu input work from any device
+  regardless of the plan.
+- **Three or four local humans are refused** until a layout for them is designed.
+
+### On-screen gamepads are not gamepads
+
+`OnScreenStick` (the AUD-012 Slice 81 pilot in `touch_joystick.prefab`, bound to `<Gamepad>/leftStick`)
+makes `OnScreenControl` create a real `Gamepad`-layout device tagged with the `OnScreen` usage.
+`touch_joystick.prefab` is nested into every menu and gameplay scene, so `Gamepad.all` contains this
+phantom pad on desktop too whenever such a scene is loaded (the two-human PlayMode fixture found exactly one
+in a real gameplay scene). Consequences:
+
+- `LocalGameplayDeviceAvailability.Capture()` leaves it out of `Gamepads`, so it can never satisfy "two
+  gamepads" or "keyboard plus one gamepad". Without this, a keyboard-only desktop passed the two-player
+  preflight and P2 would have been paired to the touch stick.
+- A **single human** still owns it: `PlayerControlsProvider` adds the on-screen gamepad(s) to slot 0 when
+  the controls are acquired (not when the plan is configured, because the scene's `OnScreenControl` may
+  enable after `GameLevelManager.Awake`). This preserves the mobile pilot, whose movement rides that device.
+- In a two-human match no player receives it.
+
+### Relationship to `PlayerInput`/`PlayerInputManager`
+
+Not adopted. The device plan is the smallest explicit ownership boundary at the existing provider; migration
+plan step 7 (evaluate `PlayerInput`/`PlayerInputManager`) remains a later evaluation, and would replace this
+plan rather than sit on top of it.
+
+### Two-human runtime findings
+
+Certifying a two-human match (`Level5TwoHumanLocalInputPlayModeTests`) surfaced runtime gaps that the input
+plan alone does not cover. Two were fixed because a two-human match cannot run without them; the rest are
+recorded for the `LocalSimultaneous` work.
+
+- **Fixed: a second human was never spawned in most modes.** `SpawnCoordinator.SpawnPlayers` and
+  `SpawnBasketballs` returned early when `rules.AllowsCpuShooters` was false, which also dropped every human
+  past the first. In authored data only ThreePointContest, VersusCpu, BeatThaComputahs and Lockdown allow CPU
+  shooters, while every mode but Lockdown declares `MaxPlayers` 4 - so `GameModeCompatibility` accepted a
+  two-human Total Points roster and the runtime silently spawned one player. The gate now applies to CPU
+  slots only; one-human-plus-CPU rosters behave exactly as before.
+- **Fixed: `BasketBall.Start` threw on the second human's ball.** The debug stats overlay binding assumed a
+  single human ball; the first ball deactivates `textBackground`, so the second ball's `GameObject.Find`
+  returned null. The overlay is now bound by the primary ball only, the rule `displayUiStats` already used.
+- **Open: mode data does not say which modes are meaningful for two humans.** Compatibility accepts two
+  humans in any mode with `GameModeDefinition.MaxPlayers >= 2` on any arena with the multiplayer capability;
+  authored `MaxPlayers` is 4 for nearly every mode.
+- **Open: `ArenaCapability.Multiplayer` is granted to every arena** (`LevelDefinitionFactory`: "No level
+  authors a multiplayer flag today"), so the capability is not a reliable statement of support. A scene
+  audit of the authored YAML found: every basketball arena that instances `basketball_goal.prefab`,
+  `basketball_goal_circlek`, `_slab`, `_snow` or `_sudan` gets `player_spawn_location1..4` from that prefab
+  (this is the arena family the Total Points certification ran on); `level_21_shore` authors all four spawns
+  directly in the scene; `level_17_rumble_pit` and `level_18_aveb2` author only `player_spawn_location1`
+  directly. `SpawnLocations.Validate` fails a two-human roster on an arena missing `player_spawn_location2`
+  with a named error at scene load, which is why the flag was left permissive - but that failure happens
+  after the launch, not in compatibility. Only The Scrapyard was exercised at runtime; other arenas were
+  audited from authored data, not played.
+- **Open: the shared camera follows slot 0 only** (below).
+
+### Camera and HUD characterization
+
+Measured in the PlayMode fixture on Total Points at The Scrapyard (`Camera.main`, both actors driven by
+virtual gamepads):
+
+- At spawn both humans are inside the frame (viewport P1 = (0.47, 0.52), P2 = (0.32, 0.40)). The initial
+  shared-camera presentation is usable for a local multiplayer match.
+- `cameraUpdater` follows the pid-0 participant. With P1 standing still, holding P2's stick for 3 seconds
+  walked P2 to viewport x = 1.86 - fully off screen - while the camera barely moved. P2 is playable only
+  while it stays near P1.
+- The match HUD, health bar, stats overlay and `BasketBall.instance` are primary-player-centric by design;
+  they were not redesigned.
+
+Conclusion: the shared camera is an acceptable initial presentation for input and spawn certification, but a
+production `LocalSimultaneous` match needs a camera decision (frame both players, or split-screen) before it
+ships. That is reported as a blocker for the versus work, not implemented here.
+
+### Automated evidence
+
+| Fixture | Covers |
+| --- | --- |
+| `Level5LocalGameplayDevicePlanPlayModeTests` | Every layout, refusals and their reasons, exclusivity, immutability; virtual devices under `InputTestFixture`. |
+| `Level5TwoHumanLocalRosterTests` (EditMode) | Two-human `PlayerRoster.Build` shape; `ArenaLacksMultiplayer` rejection and acceptance in `GameModeCompatibility`. |
+| `Level5GameplayDevicePlanCompositionGuardTests` (EditMode) | Plan configured before spawn, preflight before `ActiveMatch.Begin` (start menu) and before the campaign round advance, no `Gamepad.all[` in the provider, no Input System in `Level5.Core`. |
+| `Level5GameplayDeviceProviderPlayModeTests` | Per-slot pairing, capture across gamepad re-ordering, provider semantics, release, reset, on-screen handling. Runs under `InputTestFixture`. |
+| `Level5TwoHumanLocalInputPlayModeTests` | A real two-human match on virtual gamepads and on keyboard + gamepad: two actors, two `GameStats`, distinct balls, input isolation, keyboard-only refusal, unchanged CPU gating, camera measurements. |
+
+### Physical certification
+
+**Not run.** The automated evidence above uses virtual `InputTestFixture` devices only and does not certify
+simultaneous-versus readiness. Before this foundation is called production-ready, run on desktop, with a
+two-human match composed through the test/dev seam, and record the result here:
+
+| Setup | Each player controls only their own actor | No device controls both | Both actors spawn | Shared camera playable enough | Pause/menu input stable | Result |
+| --- | --- | --- | --- | --- | --- | --- |
+| Keyboard/mouse + 1 real gamepad | not run | not run | not run | not run | not run | not run |
+| 2 real gamepads | not run | not run | not run | not run | not run | not run |
 
 ## Implemented First Slice
 

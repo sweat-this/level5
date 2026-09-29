@@ -183,7 +183,10 @@ public class BasketBall : MonoBehaviour, IBasketballRuntime
         // cap ball speed
         maxBasketballSpeed = 25f;
         // check for ui stats ON/OFF. i know this is sloppy. its just a quick test
-        if (GameObject.Find("ui_stats") != null)
+        // the overlay is one shared set of scene objects, so only the primary ball binds it - the same
+        // rule displayUiStats applies. the first ball to bind it may deactivate textBackground, which a
+        // second human ball's GameObject.Find could then no longer see, leaving a null to dereference.
+        if (instance == this && GameObject.Find("ui_stats") != null)
         {
             shootProfileText = GameObject.Find("shooterProfileTextObject").GetComponent<Text>();
             scoreText = GameObject.Find("shootStatsTextObject").GetComponent<Text>();

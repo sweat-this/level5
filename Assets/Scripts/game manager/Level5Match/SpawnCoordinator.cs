@@ -265,18 +265,21 @@ public sealed class SpawnCoordinator
             pid++;
         }
 
-        // CPU shooters are gated by the mode, exactly as they were: a mode that does not allow
-        // them spawns nobody past the first slot.
-        if (!rules.AllowsCpuShooters)
-        {
-            return;
-        }
-
         for (int slotId = 1; slotId < roster.Count; slotId++)
         {
             PlayerSlot slot = roster.GetBySlotId(slotId);
             GameObject spawnPoint = locations.ForSlot(slotId);
             if (slot == null || spawnPoint == null)
+            {
+                continue;
+            }
+
+            // CPU shooters are gated by the mode, exactly as they were: a mode that does not allow them
+            // spawns no CPU past the first slot. The gate is about CPUs. It used to be an early return
+            // ahead of this loop, which also dropped every human past the first - unreachable while the
+            // menu only ever produced one human, but it made a two-human roster in a mode such as Total
+            // Points spawn one player while the input plan had already reserved devices for two.
+            if (slot.IsCpu && !rules.AllowsCpuShooters)
             {
                 continue;
             }
@@ -326,11 +329,6 @@ public sealed class SpawnCoordinator
         // Slot 0 always gets a ball; it is the one the HUD and the stats read.
         GiveBall(0, humanBallPrefab, spawnPosition, false);
 
-        if (!rules.AllowsCpuShooters)
-        {
-            return;
-        }
-
         int balls = Mathf.Min(rules.BasketballCount, registry.Count);
         for (int slotId = 1; slotId < balls; slotId++)
         {
@@ -339,6 +337,13 @@ public sealed class SpawnCoordinator
             // spawned thing that needs the CPU ball.
             PlayerIdentifier participant = registry.GetBySlot(slotId);
             bool isCpu = participant != null && participant.isCpu;
+
+            // CPU balls stay gated by the mode; a human participant always gets their own ball.
+            if (isCpu && !rules.AllowsCpuShooters)
+            {
+                continue;
+            }
+
             GiveBall(slotId, isCpu ? cpuBallPrefab : humanBallPrefab, spawnPosition, isCpu);
         }
     }

@@ -8,6 +8,8 @@
     "Level5.Player",
     "Level5.Constants",
     "Level5.Input",
+    "Unity.InputSystem",
+    "Unity.InputSystem.TestFramework",
     "Level5.BackendV2"
   ],
   "optionalUnityReferences": [

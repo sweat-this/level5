@@ -73,6 +73,39 @@ public static class GameplayScenePlayModeHarness
     }
 
     /// <summary>
+    /// Loads a gameplay scene for a match the fixture has already made current with
+    /// <c>ActiveMatch.Begin</c> - the path for a launch shape the start menu cannot produce yet, such
+    /// as two local humans - then applies the same settle, pause suppression and player wait as
+    /// <see cref="EnterPlayableGameplayScene"/>. Nothing here builds or validates the match.
+    /// </summary>
+    public static IEnumerator LoadConfiguredGameplayScene(string sceneName, Action<PlayerController> onReady)
+    {
+        SceneManager.LoadScene(sceneName);
+        for (int frame = 0; frame < SettleFramesAfterLeavingStartScene; frame++)
+        {
+            yield return null;
+        }
+
+        SuppressPauseComponent();
+        Time.timeScale = 1f;
+        yield return null;
+
+        float deadline = Time.realtimeSinceStartup + MinimumGameplayReadySeconds;
+        PlayerController player = null;
+        while (player == null && Time.realtimeSinceStartup < deadline)
+        {
+            player = UnityEngine.Object.FindAnyObjectByType<PlayerController>();
+            if (player == null)
+            {
+                yield return null;
+            }
+        }
+
+        Assert.That(player, Is.Not.Null, "gameplay scene '" + sceneName + "' never produced a PlayerController");
+        onReady(player);
+    }
+
+    /// <summary>
     /// Shared launch/retry state machine behind both public entry points. <paramref name="suppressInitialPause"/>
     /// is the only behavioural difference between them: whether the incidental start-on-pause screen is
     /// dismissed and <see cref="Time.timeScale"/> restored once gameplay is reached, or left exactly as
