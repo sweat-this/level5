@@ -123,6 +123,56 @@ public class LocalVersusSceneContractTests
     }
 
     [Test]
+    public void ARefusedTwoPlayerLaunchIsReadableInTheTurnMessageBox()
+    {
+        // A launch the two-human device preflight refuses is reported as "Could not start the game: " plus the
+        // preflight's own sentence, which is three lines at the message's normal 30pt - one more than its
+        // 60px box holds, and the panel cannot grow it. The rendered check found the second half of the
+        // sentence (the devices actually detected) truncated. The label shrinks to fit instead; this pins that
+        // and measures the longest sentence (a touchscreen adds a clause) at the smallest size it may shrink to.
+        LocalVersusUiObjects ui = OpenUi();
+        TMP_Text message = ui.TurnMessageText;
+        Assert.That(message.enableAutoSizing, Is.True, "the turn message must shrink to fit rather than truncate");
+
+        RectTransform panel = (RectTransform)message.transform.parent;
+        LayoutRebuilder.ForceRebuildLayoutImmediate(panel);
+        float boxWidth = ((RectTransform)message.transform).rect.width;
+        float boxHeight = message.GetComponent<LayoutElement>().preferredHeight;
+
+        Assert.That(
+            LocalGameplayDevicePlan.TryCreate(2, new LocalGameplayDeviceAvailability(null, null, null, null), out _, out string shortfall),
+            Is.False);
+        string[] sentences =
+        {
+            "Could not start the game: " + shortfall,
+            "Could not start the game: " + shortfall.TrimEnd('.') + ", touchscreen (cannot seat a second player)."
+        };
+
+        // Measure at the smallest size it may shrink to, then put the label back: OpenUi reuses a scene the
+        // developer already has open, and leaving auto-sizing off there would reintroduce the defect on their next save.
+        bool autoSizing = message.enableAutoSizing;
+        float fontSize = message.fontSize;
+        try
+        {
+            message.enableAutoSizing = false;
+            message.fontSize = message.fontSizeMin;
+            foreach (string sentence in sentences)
+            {
+                float needed = message.GetPreferredValues(sentence, boxWidth, 0f).y;
+                Assert.That(
+                    needed,
+                    Is.LessThanOrEqualTo(boxHeight),
+                    $"even at {message.fontSizeMin}pt the launch error needs {needed:0}px in a {boxHeight}px box: \"{sentence}\"");
+            }
+        }
+        finally
+        {
+            message.enableAutoSizing = autoSizing;
+            message.fontSize = fontSize;
+        }
+    }
+
+    [Test]
     public void SelectingANameFieldDoesNotStartEditingIt()
     {
         // An active field swallows the d-pad, the stick and Cancel, so a gamepad that moved onto one could

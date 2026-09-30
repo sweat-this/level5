@@ -149,6 +149,63 @@ public class LocalVersusGamepadNavigationPlayModeTests
 
     [UnityTest]
     [Timeout(600000)]
+    public IEnumerator TheSimultaneousControlsAreReachableAndWorkFromTheGamepad()
+    {
+        // The Mode selector, Player 2's selector and Play Game belong to the same-time series only. They
+        // must be d-pad stops, respond to Submit, and Play Game must seat both humans - all through the
+        // real UI input module. A second virtual gamepad stands in for the second human (the launch's own
+        // two-human device preflight requires it).
+        InputSystem.AddDevice<Gamepad>();
+        yield return OpenLocalVersusWithTheGamepad();
+
+        Assert.That(ReachableFromSelection(), Does.Contain("modeButton"), "the Mode selector is a d-pad stop");
+        yield return NavigateTo("modeButton");
+        Assert.That(TextOf("modeButton"), Does.Contain("Local Alternating"));
+        yield return Tap(pad.buttonSouth);
+        Assert.That(TextOf("modeButton"), Does.Contain("Local Simultaneous"), "Submit on Mode did not switch it");
+
+        yield return NavigateTo("createButton");
+        yield return Tap(pad.buttonSouth);
+        Assert.That(new FileVersusSeriesRepository(root).ListSummaries(), Has.Count.EqualTo(1));
+        SeriesId id = new FileVersusSeriesRepository(root).ListSummaries()[0].Id;
+        Assert.That(new FileVersusSeriesRepository(root).Load(id).Mode, Is.EqualTo(VersusMode.LocalSimultaneous));
+
+        HashSet<string> reachable = ReachableFromSelection();
+        Debug.Log("[LV-PAD] reachable with a simultaneous series: " + string.Join(", ", reachable));
+        foreach (string name in new[] { "characterButton", "character2Button", "playTurnButton", "createButton", "modeButton", "backButton" })
+        {
+            Assert.That(reachable, Does.Contain(name), name + " is unreachable with the d-pad for a simultaneous series");
+        }
+
+        // The Scrapyard is the only multiplayer arena, so there is nothing to choose: the selector is disabled
+        // (and so not a navigation stop) rather than offering an arena the launch would refuse.
+        Assert.That(TextOf("levelButton"), Does.Contain("Scrapyard"));
+        Assert.That(reachable, Does.Not.Contain("levelButton"), "a disabled Arena selector must not be a navigation stop");
+
+        // each participant's selector cycles on its own
+        yield return NavigateTo("character2Button");
+        string second = TextOf("character2Button");
+        string firstBefore = TextOf("characterButton");
+        yield return Tap(pad.buttonSouth);
+        Assert.That(TextOf("character2Button"), Is.Not.EqualTo(second), "Submit on Player 2's selector did not cycle it");
+        Assert.That(TextOf("characterButton"), Is.EqualTo(firstBefore), "Player 2's selector moved Player 1's");
+        yield return NavigateTo("characterButton");
+        yield return Tap(pad.buttonSouth);
+        Assert.That(TextOf("characterButton"), Is.Not.EqualTo(firstBefore), "Submit on Player 1's selector did not cycle it");
+
+        // Play Game seats both humans
+        yield return NavigateTo("playTurnButton");
+        Assert.That(TextOf("playTurnButton"), Is.EqualTo("Play Game"));
+        yield return Tap(pad.buttonSouth);
+        yield return WaitForGameplay();
+        Assert.That(ActiveVersusAttempt.IsActive, Is.True);
+        Assert.That(ActiveVersusAttempt.IsSimultaneous, Is.True);
+        Assert.That(ActiveVersusAttempt.SeriesId, Is.EqualTo(id));
+        Assert.That(ActiveMatch.Configuration.Roster.LocalHumanCount, Is.EqualTo(2));
+    }
+
+    [UnityTest]
+    [Timeout(600000)]
     public IEnumerator AGamepadThatMovesOntoANameFieldIsNotTrappedInIt()
     {
         // Found in certification: selecting a field with the d-pad started editing it, and an active

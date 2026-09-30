@@ -34,6 +34,8 @@ public static class LocalVersusSceneBootstrap
     // single selector, simply has room to spare.
     private const float PanelButtonHeight = 64f;
     private const float PanelSpacing = 8f;
+    private const float TurnMessageMinFontSize = 18f;
+    private const float TurnMessageMaxFontSize = 30f;
 
     [MenuItem("Tools/Local Versus/Generate Local Versus Scene")]
     public static void GenerateScene()
@@ -100,6 +102,7 @@ public static class LocalVersusSceneBootstrap
         Button levelButton = MakeButton(buttonTemplate, seriesPanel, "levelButton", "Arena", out TMP_Text levelText);
         Button playTurnButton = MakeButton(buttonTemplate, seriesPanel, "playTurnButton", "Play Turn", out TMP_Text playTurnText);
         TMP_Text turnMessage = MakeText(textTemplate, seriesPanel, "turnMessage", string.Empty, 30, TextAlignmentOptions.TopLeft, 60f);
+        FitTurnMessage(turnMessage);
 
         // ---- back
         Button backButton = MakeButton(buttonTemplate, canvas, "backButton", "Back", out _);
@@ -183,9 +186,20 @@ public static class LocalVersusSceneBootstrap
         }
 
         SerializedObject uiSo = new SerializedObject(ui);
+        // Part of the same end state as GenerateScene, so a scene upgraded in place gets it too.
+        bool turnMessageFitted = FitTurnMessage(ui.TurnMessageText);
+
         if (uiSo.FindProperty("modeButton").objectReferenceValue != null
             && uiSo.FindProperty("character2Button").objectReferenceValue != null)
         {
+            if (turnMessageFitted)
+            {
+                EditorSceneManager.MarkSceneDirty(scene);
+                EditorSceneManager.SaveScene(scene);
+                Debug.Log("LocalVersusSceneBootstrap: the scene already has the simultaneous controls; fitted its turn message.");
+                return;
+            }
+
             Debug.Log("LocalVersusSceneBootstrap: the scene already has the simultaneous controls.");
             return;
         }
@@ -342,6 +356,28 @@ public static class LocalVersusSceneBootstrap
         rt.pivot = new Vector2(0.5f, anchor.y);
         rt.anchoredPosition = position;
         rt.sizeDelta = size;
+    }
+
+    /// <summary>
+    /// A refused launch reports the device preflight's sentence ("Two local players need two gamepads, or a
+    /// keyboard plus one gamepad. Detected: ..."), which is three lines at 30pt in a box that holds two, and
+    /// the panel has no room to grow the box. Shrink to fit instead of truncating what the player must read.
+    /// Returns whether anything changed.
+    /// </summary>
+    private static bool FitTurnMessage(TMP_Text turnMessage)
+    {
+        if (turnMessage.enableAutoSizing
+            && Mathf.Approximately(turnMessage.fontSizeMin, TurnMessageMinFontSize)
+            && Mathf.Approximately(turnMessage.fontSizeMax, TurnMessageMaxFontSize))
+        {
+            return false;
+        }
+
+        turnMessage.enableAutoSizing = true;
+        turnMessage.fontSizeMin = TurnMessageMinFontSize;
+        turnMessage.fontSizeMax = TurnMessageMaxFontSize;
+        EditorUtility.SetDirty(turnMessage);
+        return true;
     }
 
     private static TMP_Text MakeText(
