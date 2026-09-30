@@ -20,6 +20,15 @@ using Level5.Core.Versus;
 /// </summary>
 public sealed class LocalVersusScreenModel
 {
+    /// <summary>
+    /// How many lines of the series list fit the scene's list box (<c>seriesList</c> in
+    /// <c>level_00_local_versus</c>: 28pt text in a 210px box). Measured against the rendered screen: even a finished Best-of-7 row between two
+    /// 16-character names of the widest glyphs stays on one line (about 23px to spare), so a row is one line.
+    /// The opt-in layout fixture (<c>LocalVersusProcessCertificationPlayModeTests</c>) re-measures this; change
+    /// the list box, its font size or the name limit and it must be rerun.
+    /// </summary>
+    public const int ListLineBudget = 7;
+
     private readonly Func<UnlockSnapshot> unlockProvider;
     private readonly Func<UnlockSnapshot, IReadOnlyList<CharacterSelectOption>> characterProvider;
 
@@ -266,11 +275,40 @@ public sealed class LocalVersusScreenModel
                 return "No local series yet. Create one to start.";
             }
 
+            // The scene's list box holds ListLineBudget lines. What does not fit is windowed around the
+            // selected series rather than cut off, so the selection marker is always on screen and the
+            // hidden rows are counted.
+            int selected = Math.Max(seriesIndex, 0);
+            int first = selected;
+            int last = selected;
+            bool grew = true;
+            while (grew)
+            {
+                grew = false;
+                if (last + 1 < summaries.Count && ListLines(first, last + 1) <= ListLineBudget)
+                {
+                    last++;
+                    grew = true;
+                }
+
+                if (first > 0 && ListLines(first - 1, last) <= ListLineBudget)
+                {
+                    first--;
+                    grew = true;
+                }
+            }
+
             StringBuilder builder = new StringBuilder();
             bool wroteActive = false;
             bool wroteFinished = false;
-            foreach (SeriesSummary summary in summaries)
+            if (first > 0)
             {
+                builder.AppendLine("  ... " + first + " more above");
+            }
+
+            for (int index = first; index <= last; index++)
+            {
+                SeriesSummary summary = summaries[index];
                 bool unfinished = LocalVersusFlow.IsUnfinished(summary);
                 if (unfinished && !wroteActive)
                 {
@@ -292,8 +330,40 @@ public sealed class LocalVersusScreenModel
                     .AppendLine(DescribeRow(summary));
             }
 
+            if (last < summaries.Count - 1)
+            {
+                builder.AppendLine("  ... " + (summaries.Count - 1 - last) + " more below");
+            }
+
             return builder.ToString().TrimEnd();
         }
+    }
+
+    /// <summary>
+    /// Lines <see cref="ListText"/> takes to show rows <paramref name="first"/>..<paramref name="last"/>:
+    /// the rows, a heading per group present, the blank line between two groups, and one line for each
+    /// side that has rows left out.
+    /// </summary>
+    private int ListLines(int first, int last)
+    {
+        bool active = false;
+        bool finished = false;
+        for (int index = first; index <= last; index++)
+        {
+            if (LocalVersusFlow.IsUnfinished(summaries[index]))
+            {
+                active = true;
+            }
+            else
+            {
+                finished = true;
+            }
+        }
+
+        int lines = last - first + 1;
+        lines += (active ? 1 : 0) + (finished ? 1 : 0) + (active && finished ? 1 : 0);
+        lines += (first > 0 ? 1 : 0) + (last < summaries.Count - 1 ? 1 : 0);
+        return lines;
     }
 
     /// <summary>The selected series read from the loaded domain object.</summary>
