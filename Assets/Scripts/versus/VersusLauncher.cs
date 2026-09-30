@@ -30,6 +30,7 @@ using UnityEngine;
 public static class VersusLauncher
 {
     private static Action<string> sceneLoaderOverride;
+    private static Func<int, string> devicePreflightOverride;
 
     /// <summary>
     /// Issues the participant's attempt and loads the match for it.
@@ -121,6 +122,207 @@ public static class VersusLauncher
     }
 
     /// <summary>
+    /// Starts one simultaneous game: both series participants, two local humans, one match.
+    ///
+    /// The simultaneous counterpart of <see cref="Launch"/>, which it leaves untouched. The roster is
+    /// two <c>LocalHuman</c> slots in series order - slot 0 carries <c>Participants.First</c> and
+    /// slot 1 carries <c>Participants.Second</c> - and the match is built through the same
+    /// <see cref="MatchConfigurationBuilder"/> every launch path uses, so the ordinary checks
+    /// (<see cref="ArenaCapability.Multiplayer"/>, character/mode compatibility, level lock state)
+    /// are the gate rather than a parallel copy of them. Nothing here spawns a player or assigns a
+    /// device: that stays with the gameplay scene, which composes the match from this roster.
+    ///
+    /// Everything that can be refused without spending anything is checked before the pair of
+    /// attempts is issued - the series, the level, both characters, the connected devices, and the
+    /// match itself, which is built first. Unlike the alternating path, a mode/arena that cannot be
+    /// played therefore never consumes attempt state. The issue step is still idempotent, so a retry
+    /// after a failed save or a crash before the scene loaded gets the same two attempts back.
+    /// </summary>
+    public static VersusLaunch LaunchSimultaneous(
+        SeriesId seriesId,
+        CharacterSelection firstCharacter,
+        CharacterSelection secondCharacter,
+        int levelId,
+        UnlockSnapshot unlock,
+        MatchModifiers modifiers = null)
+    {
+        if (unlock == null)
+        {
+            return VersusLaunch.Failure(VersusValidationResult.Invalid(
+                VersusValidationCode.SeriesNotPlayable,
+                "no local unlock snapshot was provided - refusing to start a game without a level eligibility check"));
+        }
+
+        VersusMatchCoordinator coordinator = VersusRuntime.Coordinator;
+
+        VersusSeries loaded = coordinator.Load(seriesId);
+        if (loaded == null)
+        {
+            return VersusLaunch.Failure(VersusValidationResult.Invalid(
+                VersusValidationCode.SeriesNotFound,
+                $"there is no series '{seriesId}'"));
+        }
+
+        if (!loaded.CanIssueSimultaneousAttempts(out string unavailable))
+        {
+            return VersusLaunch.Failure(VersusValidationResult.Invalid(
+                loaded.IsActive ? VersusValidationCode.AttemptNotAvailable : VersusValidationCode.SeriesNotPlayable,
+                unavailable));
+        }
+
+        LevelDefinition level = MatchCatalogs.Levels.Find(levelId);
+        ValidationResult levelValidation = LevelEligibility.ValidateForLaunch(level, levelId, unlock);
+        if (!levelValidation.IsValid)
+        {
+            return VersusLaunch.Failure(VersusValidationResult.Invalid(
+                VersusValidationCode.SeriesNotPlayable, levelValidation.ToString()));
+        }
+
+        // Neither the builder nor anything downstream checks character unlock, so both sides are
+        // checked here, before anything is spent.
+        if (!CharacterIsUsable(firstCharacter, unlock) || !CharacterIsUsable(secondCharacter, unlock))
+        {
+            return VersusLaunch.Failure(VersusValidationResult.Invalid(
+                VersusValidationCode.SeriesNotPlayable,
+                "a chosen character is not unlocked, so the game was not started"));
+        }
+
+        // Hardware state, which the pure Core rules must not read - the same Unity-side preflight
+        // StartManager runs before it launches a two-human match.
+        if (!TryPreflightDevices(SimultaneousHumanCount, out string deviceFailure))
+        {
+            return VersusLaunch.Failure(VersusValidationResult.Invalid(
+                VersusValidationCode.SeriesNotPlayable, deviceFailure));
+        }
+
+        CompetitiveRuleset ruleset = loaded.CurrentGame.Ruleset;
+        MatchConfiguration configuration = BuildSimultaneousMatch(
+            ruleset,
+            levelId,
+            loaded.Participants.First.Id,
+            firstCharacter,
+            loaded.Participants.Second.Id,
+            secondCharacter,
+            unlock,
+            modifiers);
+        if (configuration == null)
+        {
+            return VersusLaunch.Failure(VersusValidationResult.Invalid(
+                VersusValidationCode.SeriesNotPlayable,
+                $"{ruleset.DisplayName} cannot be played by two local players on the chosen arena"));
+        }
+
+        SimultaneousAttemptOperation issued = coordinator.IssueSimultaneousAttempts(seriesId);
+        if (!issued.Succeeded)
+        {
+            return VersusLaunch.Failure(issued.Validation);
+        }
+
+        VersusSeries series = issued.Series;
+        Attempt first = issued.Attempts.First;
+        Attempt second = issued.Attempts.Second;
+
+        ActiveMatch.Begin(configuration);
+
+        // Tied to this configuration, like the single-attempt context: abandoning this match to the
+        // menu must not let the next ordinary match be submitted as this game.
+        ActiveVersusAttempt.BeginSimultaneous(seriesId, first, second, configuration);
+
+        LegacyGameOptionsBridge.Apply(configuration);
+
+        SimultaneousAttemptOperation started = coordinator.StartSimultaneousAttempts(seriesId, first.Id, second.Id);
+        if (!started.Succeeded)
+        {
+            // Not fatal, as for a single attempt: both attempts are issued and durable, and a Ready
+            // attempt can be completed just as a Started one can.
+            Debug.LogWarning($"Could not record that simultaneous game attempts started: {started.Validation}");
+        }
+
+        (sceneLoaderOverride ?? SceneTransition.LoadScene)(configuration.SceneName);
+        return VersusLaunch.SuccessSimultaneous(series, first, second, configuration);
+    }
+
+    /// <summary>Two local humans, which is the whole of what a simultaneous launch supports.</summary>
+    public const int SimultaneousHumanCount = 2;
+
+    /// <summary>
+    /// Builds the two-human match for a simultaneous game without launching it. Slot 0 is the first
+    /// participant and slot 1 the second, each carrying their own <see cref="ParticipantId"/>; the
+    /// order is the identity mapping the rest of the runtime relies on. Returns null when the builder
+    /// refuses it (and logs why), exactly as <see cref="BuildMatch"/> does.
+    /// </summary>
+    public static MatchConfiguration BuildSimultaneousMatch(
+        CompetitiveRuleset ruleset,
+        int levelId,
+        ParticipantId firstParticipantId,
+        CharacterSelection firstCharacter,
+        ParticipantId secondParticipantId,
+        CharacterSelection secondCharacter,
+        UnlockSnapshot unlock,
+        MatchModifiers modifiers = null)
+    {
+        if (ruleset == null)
+        {
+            return null;
+        }
+
+        if (unlock == null)
+        {
+            Debug.LogWarning(
+                $"A simultaneous versus game at {ruleset.DisplayName} could not be launched on level {levelId}: "
+                + "no local unlock snapshot was provided - refusing to build a match without a level eligibility check");
+            return null;
+        }
+
+        PlayerRoster roster = PlayerRoster.Build(new[]
+        {
+            new PlayerRosterEntry(
+                PlayerControlType.LocalHuman,
+                firstCharacter ?? CharacterSelection.None,
+                firstParticipantId.Value),
+            new PlayerRosterEntry(
+                PlayerControlType.LocalHuman,
+                secondCharacter ?? CharacterSelection.None,
+                secondParticipantId.Value)
+        });
+
+        MatchRequest request = new MatchRequest(
+            ruleset.ModeId,
+            levelId,
+            roster,
+            modifiers ?? MatchModifiers.Default,
+            CheerleaderSelection.None,
+            "versus series");
+
+        MatchBuildResult result = MatchCatalogs.Builder.Build(request, unlock);
+        if (result.Succeeded)
+        {
+            return result.Configuration;
+        }
+
+        Debug.LogWarning(
+            $"A simultaneous versus game at {ruleset.DisplayName} could not be launched on level {levelId}: "
+            + result.Validation);
+        return null;
+    }
+
+    private static bool CharacterIsUsable(CharacterSelection character, UnlockSnapshot unlock)
+    {
+        return character != null && !character.IsEmpty && unlock.IsCharacterUnlocked(character.CharacterId);
+    }
+
+    private static bool TryPreflightDevices(int localHumanCount, out string failureReason)
+    {
+        if (devicePreflightOverride != null)
+        {
+            failureReason = devicePreflightOverride(localHumanCount);
+            return string.IsNullOrEmpty(failureReason);
+        }
+
+        return PlayerControlsProvider.TryPreflightGameplayDevices(localHumanCount, out failureReason);
+    }
+
+    /// <summary>
     /// Builds the match for a ruleset without launching it.
     ///
     /// Separate so a screen can find out whether a turn is playable on a given arena before
@@ -193,6 +395,21 @@ public static class VersusLauncher
     {
         sceneLoaderOverride = null;
     }
+
+    /// <summary>
+    /// Test-only seam for the connected-device check a simultaneous launch runs. The real one reads
+    /// whatever the Input System reports, which an EditMode test machine cannot be relied on to have.
+    /// The override returns a failure reason, or null when the devices can seat the humans.
+    /// </summary>
+    public static void OverrideDevicePreflight(Func<int, string> preflight)
+    {
+        devicePreflightOverride = preflight;
+    }
+
+    public static void ResetDevicePreflight()
+    {
+        devicePreflightOverride = null;
+    }
 }
 
 /// <summary>The outcome of trying to start a competitive attempt.</summary>
@@ -201,18 +418,24 @@ public readonly struct VersusLaunch
     private VersusLaunch(
         VersusSeries series,
         Attempt attempt,
+        Attempt secondAttempt,
         MatchConfiguration configuration,
         VersusValidationResult validation)
     {
         Series = series;
         Attempt = attempt;
+        SecondAttempt = secondAttempt;
         Configuration = configuration;
         Validation = validation;
     }
 
     public VersusSeries Series { get; }
 
+    /// <summary>The attempt launched; for a simultaneous game, the first participant's (roster slot 0).</summary>
     public Attempt Attempt { get; }
+
+    /// <summary>The second participant's attempt (roster slot 1) of a simultaneous game; null otherwise.</summary>
+    public Attempt SecondAttempt { get; }
 
     public MatchConfiguration Configuration { get; }
 
@@ -222,11 +445,20 @@ public readonly struct VersusLaunch
 
     public static VersusLaunch Success(VersusSeries series, Attempt attempt, MatchConfiguration configuration)
     {
-        return new VersusLaunch(series, attempt, configuration, VersusValidationResult.Valid());
+        return new VersusLaunch(series, attempt, null, configuration, VersusValidationResult.Valid());
+    }
+
+    public static VersusLaunch SuccessSimultaneous(
+        VersusSeries series,
+        Attempt first,
+        Attempt second,
+        MatchConfiguration configuration)
+    {
+        return new VersusLaunch(series, first, second, configuration, VersusValidationResult.Valid());
     }
 
     public static VersusLaunch Failure(VersusValidationResult validation)
     {
-        return new VersusLaunch(null, null, null, validation);
+        return new VersusLaunch(null, null, null, null, validation);
     }
 }

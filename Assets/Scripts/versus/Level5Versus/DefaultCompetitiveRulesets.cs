@@ -33,6 +33,16 @@ public static class DefaultCompetitiveRulesets
     private const VersusCapability Anytime =
         VersusCapability.LocalAlternating | VersusCapability.Asynchronous;
 
+    /// <summary>
+    /// Added on top of <see cref="Anytime"/> for the one ruleset certified for two humans playing the
+    /// same match at once (<c>most-points</c>: Total Points, Scrapyard, two local humans). Kept a
+    /// separate constant rather than folded into <see cref="Anytime"/> because every score,
+    /// make-count and contest ruleset shares that one, and none of the others has been certified:
+    /// a simultaneous game needs the mode itself to be fair with two humans in it, not merely the
+    /// scoring to be comparable.
+    /// </summary>
+    private const VersusCapability SimultaneousCertified = VersusCapability.LocalSimultaneous;
+
     /// <summary>Modes that work turn by turn on one device but are not fair across a delay.</summary>
     private const VersusCapability LocalOnly = VersusCapability.LocalAlternating;
 
@@ -42,7 +52,7 @@ public static class DefaultCompetitiveRulesets
         return new List<CompetitiveRuleset>
         {
             // ---- score attacks: most of something before the clock runs out --------------------
-            Score("most-points", GameModeId.TotalPoints, "Most Points"),
+            Score("most-points", GameModeId.TotalPoints, "Most Points", Anytime | SimultaneousCertified),
             Score("points-by-distance", GameModeId.PointsByDistance, "Points by Distance"),
             Score("in-the-pocket", GameModeId.InThePocket, "In the Pocket"),
 
@@ -103,13 +113,17 @@ public static class DefaultCompetitiveRulesets
     /// Accuracy before attempts because two players level on points where one needed fewer shots is
     /// the more interesting distinction, and attempts alone would reward not shooting.
     /// </summary>
-    private static CompetitiveRuleset Score(string id, GameModeId modeId, string displayName)
+    private static CompetitiveRuleset Score(
+        string id,
+        GameModeId modeId,
+        string displayName,
+        VersusCapability capabilities = Anytime)
     {
         return new CompetitiveRuleset(
             new RulesetId(id),
             1,
             modeId,
-            Anytime,
+            capabilities,
             new[]
             {
                 ComparisonKey.Highest(AttemptMetric.Score),

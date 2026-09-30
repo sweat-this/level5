@@ -1,7 +1,8 @@
 # Versus and Correspondence Multiplayer
 
-Status: implemented, with edit-mode and play-mode coverage
-Last reviewed: 2026-09-29
+Status: implemented, with edit-mode and play-mode coverage (the local simultaneous slice in section 15 is
+see its "Verification status" for what was and was not run)
+Last reviewed: 2026-09-30
 
 Two people can keep a competitive rivalry going without ever being online at the same time. One
 plays their turn tonight; the other answers on Thursday; the game resolves and the series moves on.
@@ -404,17 +405,15 @@ For step-by-step use, see [Versus Dev Console Guide](versus-dev-console-guide.md
   leaderboard.
 - **No shared seed for randomness.** Modes that would need one to be fair across a delay should
   declare local capabilities only.
-- **Local simultaneous play is not implemented.** The attempt model is one participant per match, so
-  modes that need both sides in one match have no ruleset at all rather than a half-working one.
-  The generic two-human *runtime* prerequisite is now certified (2026-09-29): a normal gameplay match
-  with two `LocalHuman` roster slots spawns two actors with independent `GameStats` and basketballs, and
-  each is driven by its own device through the match-local device plan. That is input, roster and spawn
-  plumbing only - it adds no versus capability, ruleset, series reporting or dual-attempt handling, and
-  `VersusMode.LocalSimultaneous` stays unimplemented. It was verified with virtual devices; physical
-  keyboard + gamepad and two-gamepad certification is still outstanding. Open blockers for the versus work
-  (shared camera follows slot 0 only, modes and arenas do not declare two-human support, three or more
-  local players refused) are listed in [`player-input-architecture.md`](player-input-architecture.md)
-  under "Match-Local Gameplay Device Plan".
+- **Local simultaneous play exists for exactly one combination.** Most Points, two local humans, The
+  Scrapyard (section 15). Every other ruleset still has no `LocalSimultaneous` capability: modes that need
+  both sides in one match (battle royal, cage match, versus CPU, lockdown) have no ruleset at all rather
+  than a half-working one, and the score/make-count/contest rulesets have not been certified for two
+  humans in one match. The generic two-human *runtime* prerequisite (certified 2026-09-29) is input, roster,
+  spawn and camera plumbing only; it is verified with virtual devices, and physical keyboard + gamepad and
+  two-gamepad certification is still outstanding. Open blockers for wider two-human work (modes and arenas
+  mostly do not declare two-human support, three or more local players refused) are listed in
+  [`player-input-architecture.md`](player-input-architecture.md) under "Match-Local Gameplay Device Plan".
 - **No turn inbox.** The coordinator raises `SeriesCreated`, `AttemptIssued`, `AttemptStarted`,
   `AttemptCompleted`, `GameResolved`, `SeriesAdvanced` and `SeriesCompleted` so an inbox can be
   built as a projection later. Deliberately not built now, and notification delivery must stay
@@ -424,10 +423,10 @@ For step-by-step use, see [Versus Dev Console Guide](versus-dev-console-guide.md
   from the pause menu is different for local versus: it forfeits the game, but only once the forfeit
   is durable (section 14, "Leaving a turn"). `AbandonAttempt` still exists for a screen that wants to
   abandon a turn without forfeiting it.
-- **Local simultaneous play has no production UI or launcher path.** The Local Versus screen only
-  creates `VersusMode.LocalAlternating` series (section 14). `LocalSimultaneous`, realtime and
-  open-target play are not exposed by it, and `VersusLauncher` still starts exactly one local human
-  per match.
+- **Realtime and open-target play are still not exposed, and simultaneous play is one ruleset.** The
+  Local Versus screen creates `LocalAlternating` series for every alternating-capable ruleset and
+  `LocalSimultaneous` series for Most Points only (section 15). `VersusLauncher.Launch` still starts
+  exactly one local human; `VersusLauncher.LaunchSimultaneous` starts two.
 
 ---
 
@@ -443,7 +442,7 @@ above; it adds no competition state.
 | Entry | authored **Local Versus** button on the Start screen | Multiplayer footer button |
 | Storage | local file repository (`FileVersusSeriesRepository`) | Backend V2 |
 | Account | none - works signed out and offline | authenticated Backend V2 account |
-| Mode | `VersusMode.LocalAlternating` only | asynchronous remote play |
+| Mode | `VersusMode.LocalAlternating` (and `LocalSimultaneous` for Most Points only - section 15) | asynchronous remote play |
 
 Local Versus never calls `BackendV2Runtime`, `CorrespondenceApiClient` or `FriendsApiClient` and
 leaves any existing Backend V2 session untouched.
@@ -630,6 +629,209 @@ environment variables.
 
 ---
 
+## 15. Local simultaneous play (Most Points / The Scrapyard)
+
+Two people on one device play the **same** gameplay match at the same time. Their separate results
+resolve the existing `VersusGame`, and the existing series advances normally. This is one production
+vertical slice, not general local-simultaneous support:
+
+```text
+Most Points (most-points / GameModeId.TotalPoints) + VersusMode.LocalSimultaneous
+  + two local humans + The Scrapyard (the only ArenaCapability.Multiplayer arena) + Best of 1/3/5/7
+```
+
+There is no second versus domain. `VersusMode.LocalSimultaneous`, `VersusCapability.LocalSimultaneous`,
+capability validation, `AttemptResult`, the ruleset's comparison keys, `GameResult`,
+`VersusSeries.Advance` and persistence are the existing ones; this slice adds the operations that keep
+a *pair* of attempts together.
+
+### What is enabled, and what deliberately is not
+
+`DefaultCompetitiveRulesets` gives `most-points` `Anytime | SimultaneousCertified` - a separate constant,
+because every score, make-count and contest ruleset shares `Anytime` and none of the others has been
+certified. `most-points` keeps ruleset version 1 and its comparison keys (score, accuracy, fewer
+attempts): this is a new competition topology, not a scoring change, and series frozen before this change
+keep their own snapshot (capabilities are stored per ruleset in the document). A simultaneous series must
+be sealed: `VersusSeriesValidator` refuses `LocalSimultaneous` with `OpenTarget`, which needs one side to
+finish before the other starts.
+
+Not enabled: marker contests, distance, streak, Bash Up Some Nerds, Battle Royal, Cage Match, Lockdown,
+Versus CPU, three or four local players, split screen.
+
+### Domain operations (all existing types, one save per pair)
+
+| Operation | Does |
+| --- | --- |
+| `VersusSeries.IssueSimultaneousAttempts` / `VersusMatchCoordinator.IssueSimultaneousAttempts(seriesId)` | series active, `Mode == LocalSimultaneous`, current game exists and its frozen ruleset supports the capability, both participants eligible; issues one attempt each for the *same current game*, both checked before either is issued. Idempotent per participant (a retry, double tap or crash before the scene loaded returns the same two attempts). One save. |
+| `StartSimultaneousAttempts(seriesId, first, second)` | marks both attempts started; one save. |
+| `VersusSeries.SubmitSimultaneousResults` / `VersusMatchCoordinator.SubmitSimultaneousResults(seriesId, AttemptSubmission, AttemptSubmission)` | see below. |
+
+The single-participant `IssueAttempt` and `SubmitResult` **refuse** a simultaneous series (and
+`CanIssueAttempt` says why): a same-time game has no turn, and recording one side alone is exactly the
+half-played state the pair operations exist to prevent. Alternating and asynchronous series are untouched.
+
+### Atomic result submission
+
+A pair is applied to one loaded series and saved once; it is never two durable operations.
+
+1. Series active, simultaneous; both participants are series participants and *different* ones (so exactly
+   the two); both attempt ids are valid, distinct and **in the current game** (an attempt from another game
+   is refused, not completed out of order).
+2. `VersusGame.SubmitSimultaneousResults` validates *everything* before changing anything: each attempt
+   belongs to the participant it is submitted for, each can still be completed (not completed - a completed
+   attempt is never silently overwritten - and not abandoned), each result matches its attempt's ruleset id
+   and version, and `Ruleset.Compare` accepts the pair. Only then are both attempts completed, and the game
+   resolves through the ruleset's own comparison (draws included).
+3. `VersusSeries.Advance` decides the series exactly as after any resolved game (Best-of-N completion, early
+   termination, next game activation).
+4. The coordinator saves once. If the domain refuses or the save fails, neither result is durable - nothing
+   caches the mutated series, so the next load is the last saved one with both attempts still outstanding -
+   and the same pair can be resubmitted. `AttemptCompleted` (both), `GameResolved`, `SeriesAdvanced` and
+   `SeriesCompleted` fire only after the save succeeds.
+
+### Launch
+
+`VersusLauncher.LaunchSimultaneous(seriesId, firstCharacter, secondCharacter, levelId, unlock, modifiers)`;
+`Launch` is unchanged. It checks everything that costs nothing before anything is spent, then:
+
+```text
+load series -> CanIssueSimultaneousAttempts -> level eligibility (LevelEligibility) -> both characters unlocked
+  -> device preflight for two humans (PlayerControlsProvider.TryPreflightGameplayDevices, as StartManager does)
+  -> build an ordinary MatchRequest:  slot 0 = LocalHuman / Participants.First, slot 1 = LocalHuman / Participants.Second
+  -> MatchConfigurationBuilder.Build  (ArenaCapability.Multiplayer, character/mode compatibility, lock state: the gate)
+  -> IssueSimultaneousAttempts -> ActiveMatch.Begin -> ActiveVersusAttempt.BeginSimultaneous
+  -> LegacyGameOptionsBridge.Apply -> StartSimultaneousAttempts -> scene load
+```
+
+It never spawns a player or assigns a device: the gameplay scene composes the match from the roster and
+the match-local device plan (`player-input-architecture.md`). Unlike the alternating path, the match is
+*built before the attempts are issued*, so an arena/mode/character the builder refuses consumes nothing.
+(`OverrideDevicePreflight` is the test seam: a test machine cannot be assumed to have two gamepads.)
+
+### Participant identity
+
+Never inferred from score order:
+
+```text
+Participants.First  -> roster slot 0 -> runtime Player1 (GameLevelManager.Player1) -> GameStats for First
+Participants.Second -> roster slot 1 -> runtime Player2 (GameLevelManager.Player2) -> GameStats for Second
+```
+
+`ActiveVersusAttempt` keeps its existing `AttemptId`/`ParticipantId` (the first participant's) and gains
+`SecondAttemptId`, `SecondParticipantId`, `IsSimultaneous` and `BeginSimultaneous`. `IsActive` is still bound
+to the exact `ActiveMatch.Configuration`. At match end `GameRules` passes slot 0's stats and
+`GetSecondaryGameStats()` (runtime `Player2`, not an entry of the sorted list) to
+`VersusMatchReporter.TryReport(first, second, ...)`; `GameStatsAttemptResults.Build` is still the only
+mapping from stats to metrics, and both attempts use the common match completion time (not a
+`most-points` key). The three-argument `TryReport` still reports an alternating turn.
+
+### Persistence and progression: competition-only
+
+There is no player-specific local identity or progression contract for two humans yet, so a simultaneous
+match is competition-only. `GameRules` latches `matchIsCompetitionOnly` when the match first ends and, for
+such a match, skips: the ordinary high-score save, the all-time stats save, the Backend V2 `/match-results`
+queue, and primary-player character/account progression. The series document is the only record. LocalAlternating and
+ordinary matches are unchanged (an alternating turn still persists as an ordinary single-player match, as
+before). If a two-player local identity contract is introduced, this is the place that changes.
+
+### Leaving and restarting
+
+Fails closed rather than guessing who conceded.
+
+- **Restart** is refused while a simultaneous attempt is active (`Pause.reloadScene` already refuses while
+  any attempt is outstanding).
+- **Menu / Quit** are refused mid-game: `VersusQuitPolicy.TryPrepareForExplicitExit` returns false for a
+  simultaneous game and forfeits nobody (`ForfeitActiveTurn` also refuses - slot 0 is never assumed to be the
+  forfeiting player). The pause menu reads `SimultaneousGameInProgress` to show "Exit unavailable during a
+  game" and, when pressed, "Unavailable until the game ends" instead of the single-player forfeit wording.
+- After the pair is durably recorded `ActiveVersusAttempt` is cleared and leaving is ordinary. A match that
+  has ended but whose pair is still waiting on a save retry cannot be left either (same as alternating).
+- A crash or process exit is an interruption, not a forfeit: both attempts stay outstanding and the next
+  launch returns the same two.
+- No participant-owned pause, concede button, no-contest or consensual restart exists.
+
+### Screen
+
+The existing Local Versus screen, not a new one. The create form gains a **Mode** selector (Local
+Alternating / Local Simultaneous); the ruleset list is re-read through `VersusCapability` for the chosen mode
+(only Most Points for simultaneous). An alternating series keeps `NextParticipant`, one character selector
+and **Play Turn**. A simultaneous series has no next participant: it shows **Player 1 (name)** and
+**Player 2 (name)** character selectors, the arena selector (only `Multiplayer` arenas) and **Play Game**.
+Nothing designates one side as "the turn". The list shows both kinds of local series; the series remains the
+only authority, so the detail text, score and resume all read the loaded series (a finished game returns to
+the series on the next game; a restart between games resumes it; a completed series and its history survive a
+restart). The screen is rebuilt after every gameplay scene, so the two character picks are kept in
+`LocalVersusSimultaneousPicks` (character ids keyed by series; selection only, one series remembered, forgotten
+on a process restart) and recalled when the series is next selected; a recalled character that is no longer
+offered falls back to the default. The authored scene gained the `modeButton` and `character2Button` controls (the latter hidden
+unless a simultaneous series is selected), and the panels' buttons were compacted from 80 to 64px with 8px
+spacing so the taller simultaneous state fits the 1080px canvas; `LocalVersusSceneBootstrap` produces the
+same layout from scratch (`Add Simultaneous Controls` upgrades an existing scene in place).
+
+### HUD
+
+Total Points with a second human now shows both scores: the clock-side score reads "P1 - P2", each player has
+a panel in roster order ("Player 1" is always slot 0, never re-sorted by who leads), the ordinary high
+score line is blank (a two-human match does not update it), and the end summary lists both players. This
+applies to any two-human Total Points match, competitive or not; single-player HUDs are unchanged.
+`MatchHudPresenter.BindSecondHumanContext` supplies slot 1; unbound it is the single-player HUD.
+
+### Certified combinations
+
+| Ruleset | Mode | Arena | Humans | Status |
+| --- | --- | --- | --- | --- |
+| `most-points` (Total Points) | `LocalSimultaneous`, Best of 1/3/5/7 | The Scrapyard | two | the only enabled combination |
+
+### Verification status
+
+Run on 2026-09-30 against Unity 6000.5.7f1 in batch mode:
+
+- **Compile:** clean. **EditMode (full):** 2032 / 2032 passed (includes 28 `Level5VersusSimultaneousDomainTests`,
+  42 `Level5LocalSimultaneousVersusTests`, 44 existing `Level5LocalVersusTests`, `LocalVersusSceneContractTests`
+  with the new canvas-fit measurement, `Level5VersusArchitectureTests`). **PlayMode (full, with graphics):**
+  106 passed, 0 failed, 20 skipped - the skips are the opt-in tests that need a live backend or
+  `LEVEL5_LOCAL_VERSUS_CERTIFICATION=1`. This includes the 3 `LocalSimultaneousVersusProductionPlayModeTests`, the
+  existing two-human input/shared-camera fixtures (12), Local Versus production smoke (5), gamepad navigation
+  (4) and menu screens (7). `Level5ProjectValidator.ValidateOrThrow` and `scripts/validate-repository.ps1`
+  pass.
+- **End to end:** `ABestOf3SimultaneousSeriesIsPlayedToCompletionThroughTheProductionScreens` drives the real
+  Start -> Local Versus -> Mode -> Create -> Play Game (two humans, The Scrapyard, real `GameRules` match end) ->
+  Continue Series loop for a whole Best of 3 and restarts between series and history. This is automated
+  (virtual gamepads, scores set by the test); nobody played it by hand.
+- **Layout:** the tallest series state ends at 1064 of the 1080 reference canvas and the create panel at 862,
+  clear of Back at 930 (`TheTallestPanelStatesStillFitTheReferenceCanvasAndClearBack`). The opt-in rendered
+  certification (`Layout_RenderedStatesStayOnScreenAndUntruncated`) refuses to run outside a player built with an
+  isolated product name and was **not** run, so text truncation in the new states is unchecked.
+- **Not done:** keyboard + physical gamepad and two physical gamepads (separate, hardware); the process-kill and
+  fresh-process restart certification sessions (opt-in, player build); a hand-played run.
+- The scene was edited as YAML (the simultaneous controls were cloned from the existing buttons) rather than in the
+  editor; the suites above load and use it.
+
+### Limitations
+
+- One ruleset and one arena. `points-by-distance`, `in-the-pocket`, make-count, distance, streak and contests
+  need their own certification (for example: contests and marker modes need a shared marker/ball contract for
+  two players, distance/streak need per-player state audited) - none is implied by this.
+- Two humans only; no hot-plug reassignment, remapping, persistent local profiles, dual-player progression or
+  player-owned pause/concede.
+- Both participants always share the same arena, modifiers (default) and the match clock.
+- Both humans may pick the same character; this is exercised in PlayMode (separate actors, stats and results).
+- `GameRules` has one other versus touchpoint besides the reporter call: the single latch that makes a
+  simultaneous match competition-only. `Level5VersusArchitectureTests.TheGameplayFootprintIsOneCall` pins both.
+- The Local Versus panels now lay out 64px buttons (was 80px). The opt-in rendered layout certification
+  (`LocalVersusProcessCertificationPlayModeTests.Layout_RenderedStatesStayOnScreenAndUntruncated`, player build
+  only) has not been re-run against the new layout and should be, at 1920x1080, with both an alternating and a
+  simultaneous series selected.
+- The dual-score HUD exists for Total Points only; any other ruleset made simultaneous needs its own
+  two-player score presentation.
+
+**Recommended next ruleset to certify:** `most-3-pointers`. The stats-to-metric mapping for it already exists
+(`GameStatsAttemptResults` reads `ThreePointerMade`), and it needs no shared shot markers or ball-call state,
+so it adds the least new per-player state. It still needs its HUD presentation and its own two-human
+PlayMode fixture; certify one ruleset at a time.
+
+---
+
 ## 13. Tests
 
 The versus suite lives in `Assets/Tests/Editor`, with runtime smoke coverage in
@@ -648,6 +850,9 @@ The versus suite lives in `Assets/Tests/Editor`, with runtime smoke coverage in
 | `Level5VersusIntegrationTests` | `GameStats` -> result -> resolved series, and the `GameRules` hook |
 | `Level5VersusArchitectureTests` | the boundaries no single file shows |
 | `Level5LocalVersusTests` | the production Local Versus flow: creation contract, ruleset/format, list filtering, resume, turn ownership, character/arena eligibility, launcher composition, return navigation, Backend V2 independence, and the explicit-exit durability gate (live-turn forfeit, failed forfeit save, ended match awaiting its result save, reporter retry, crash reissue, Pause exit coroutines, Restart refusal) |
+| `Level5VersusSimultaneousDomainTests` | the simultaneous domain operations: capability and validation (most-points only, sealed only), paired issue (same game, one attempt each, idempotent, retry after interruption), paired results (either side wins, tie-breaks, draw, Best-of-3 and Best-of-7 early termination), pairing validation (swapped/duplicated/unknown/foreign/earlier-game attempts, overwrite, rules mismatch), atomicity (nothing completed on refusal, persistence failure leaves neither durable and the retry is safe, events only after save), single-participant issue/submit refused |
+| `Level5LocalSimultaneousVersusTests` | `VersusLauncher.LaunchSimultaneous` (two `LocalHuman` slots in series order, both characters, non-multiplayer/locked arena, locked/missing character on either side, device preflight, nothing spent on refusal, bound to the exact match), match-end reporting by slot (winner mapping with scores arranged against sort order, tie keys, draw, retry after a save failure), exit/restart policy (no forfeit, crash recoverable, exit after the pair is durable), persistence separation (GameRules guard), and the Local Versus screen model (mode selector, capability-filtered rulesets, two selectors, multiplayer arenas only, series resume and restart) |
+| `LocalSimultaneousVersusProductionPlayModeTests` | the production Most Points slice through the real scenes on two virtual gamepads: Best of 3 played to completion and surviving a restart, roster/device-plan/HUD checks, refused exit and restart, and the real `GameRules` loop saving the pair atomically under a failing disk |
 | `LocalVersusProductionSmokePlayModeTests` | the production Local Versus loop through the real scenes (in-process restart, live-turn forfeit, failed forfeit save, result awaiting its save) |
 | `LocalVersusGamepadNavigationPlayModeTests` | the Local Versus screen and pause menu driven only by a virtual gamepad: reachability, Format/Character/Arena/Create/Play/Back, no focus trap, Quit Turn (Forfeit) |
 | `LocalVersusSceneContractTests` | the authored scene facts the screen model and input behavior depend on: list box vs `ListLineBudget`, name-field limit, no activate-on-select |

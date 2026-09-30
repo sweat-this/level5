@@ -35,6 +35,22 @@ public static class ActiveVersusAttempt
     public static int RulesetVersion { get; private set; }
 
     /// <summary>
+    /// The second participant's attempt, for a simultaneous game; none otherwise. The existing
+    /// <see cref="AttemptId"/>/<see cref="ParticipantId"/> are the first participant's (roster slot 0),
+    /// so every consumer written for a single attempt keeps reading what it always read.
+    /// </summary>
+    public static AttemptId SecondAttemptId { get; private set; }
+
+    /// <summary>The second participant (roster slot 1) of a simultaneous game; none otherwise.</summary>
+    public static ParticipantId SecondParticipantId { get; private set; }
+
+    /// <summary>
+    /// True when the match being played now is a simultaneous game: two participants, two attempts,
+    /// one match. Only meaningful while <see cref="IsActive"/>.
+    /// </summary>
+    public static bool IsSimultaneous { get; private set; }
+
+    /// <summary>
     /// True when the match being played now is part of a series.
     ///
     /// "Now" is the important word. If another match has begun since this attempt was set up, the
@@ -42,6 +58,7 @@ public static class ActiveVersusAttempt
     /// </summary>
     public static bool IsActive => SeriesId.HasValue
         && AttemptId.HasValue
+        && (!IsSimultaneous || SecondAttemptId.HasValue)
         && IsStillTheLaunchedMatch;
 
     /// <summary>
@@ -65,6 +82,43 @@ public static class ActiveVersusAttempt
         ParticipantId = attempt.ParticipantId;
         RulesetId = attempt.RulesetId;
         RulesetVersion = attempt.RulesetVersion;
+        SecondAttemptId = default;
+        SecondParticipantId = default;
+        IsSimultaneous = false;
+        launchedFor = launchedMatch;
+    }
+
+    /// <summary>
+    /// Records that the next match is a simultaneous game: both participants' attempts at once.
+    /// The first attempt's participant is roster slot 0 (runtime Player1) and the second's is slot 1
+    /// (runtime Player2) - the launcher builds the roster in exactly that order, and this is the
+    /// only record of which attempt belongs to which slot.
+    /// </summary>
+    /// <param name="launchedMatch">
+    /// The exact configuration both attempts were launched for. Unlike <see cref="Begin"/>, it is
+    /// required: a simultaneous game must never stay current for whatever match happens to run.
+    /// </param>
+    public static void BeginSimultaneous(
+        SeriesId seriesId,
+        Attempt firstAttempt,
+        Attempt secondAttempt,
+        MatchConfiguration launchedMatch)
+    {
+        if (!seriesId.HasValue || firstAttempt == null || secondAttempt == null || launchedMatch == null)
+        {
+            Debug.LogError(
+                "ActiveVersusAttempt.BeginSimultaneous needs a series, both attempts and the launched match; nothing was set.");
+            return;
+        }
+
+        SeriesId = seriesId;
+        AttemptId = firstAttempt.Id;
+        ParticipantId = firstAttempt.ParticipantId;
+        RulesetId = firstAttempt.RulesetId;
+        RulesetVersion = firstAttempt.RulesetVersion;
+        SecondAttemptId = secondAttempt.Id;
+        SecondParticipantId = secondAttempt.ParticipantId;
+        IsSimultaneous = true;
         launchedFor = launchedMatch;
     }
 
@@ -92,6 +146,9 @@ public static class ActiveVersusAttempt
         ParticipantId = default;
         RulesetId = default;
         RulesetVersion = 0;
+        SecondAttemptId = default;
+        SecondParticipantId = default;
+        IsSimultaneous = false;
         launchedFor = null;
     }
 }

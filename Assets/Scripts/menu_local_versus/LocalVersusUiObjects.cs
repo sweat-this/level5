@@ -13,6 +13,8 @@ public class LocalVersusUiObjects : MonoBehaviour
 {
     [SerializeField] private TMP_InputField player1NameInputField;
     [SerializeField] private TMP_InputField player2NameInputField;
+    [SerializeField] private Button modeButton;
+    [SerializeField] private TMP_Text modeText;
     [SerializeField] private Button rulesetButton;
     [SerializeField] private TMP_Text rulesetText;
     [SerializeField] private Button formatButton;
@@ -27,6 +29,8 @@ public class LocalVersusUiObjects : MonoBehaviour
 
     [SerializeField] private Button characterButton;
     [SerializeField] private TMP_Text characterText;
+    [SerializeField] private Button character2Button;
+    [SerializeField] private TMP_Text character2Text;
     [SerializeField] private Button levelButton;
     [SerializeField] private TMP_Text levelText;
     [SerializeField] private Button playTurnButton;
@@ -37,6 +41,8 @@ public class LocalVersusUiObjects : MonoBehaviour
 
     public TMP_InputField Player1NameInputField => player1NameInputField;
     public TMP_InputField Player2NameInputField => player2NameInputField;
+    public Button ModeButton => modeButton;
+    public TMP_Text ModeText => modeText;
     public Button RulesetButton => rulesetButton;
     public TMP_Text RulesetText => rulesetText;
     public Button FormatButton => formatButton;
@@ -51,6 +57,8 @@ public class LocalVersusUiObjects : MonoBehaviour
 
     public Button CharacterButton => characterButton;
     public TMP_Text CharacterText => characterText;
+    public Button Character2Button => character2Button;
+    public TMP_Text Character2Text => character2Text;
     public Button LevelButton => levelButton;
     public TMP_Text LevelText => levelText;
     public Button PlayTurnButton => playTurnButton;
@@ -64,6 +72,8 @@ public class LocalVersusUiObjects : MonoBehaviour
         int before = missing.Count;
         if (player1NameInputField == null) missing.Add("LocalVersusUiObjects.player1NameInputField");
         if (player2NameInputField == null) missing.Add("LocalVersusUiObjects.player2NameInputField");
+        if (modeButton == null) missing.Add("LocalVersusUiObjects.modeButton");
+        if (modeText == null) missing.Add("LocalVersusUiObjects.modeText");
         if (rulesetButton == null) missing.Add("LocalVersusUiObjects.rulesetButton");
         if (rulesetText == null) missing.Add("LocalVersusUiObjects.rulesetText");
         if (formatButton == null) missing.Add("LocalVersusUiObjects.formatButton");
@@ -76,6 +86,8 @@ public class LocalVersusUiObjects : MonoBehaviour
         if (seriesDetailText == null) missing.Add("LocalVersusUiObjects.seriesDetailText");
         if (characterButton == null) missing.Add("LocalVersusUiObjects.characterButton");
         if (characterText == null) missing.Add("LocalVersusUiObjects.characterText");
+        if (character2Button == null) missing.Add("LocalVersusUiObjects.character2Button");
+        if (character2Text == null) missing.Add("LocalVersusUiObjects.character2Text");
         if (levelButton == null) missing.Add("LocalVersusUiObjects.levelButton");
         if (levelText == null) missing.Add("LocalVersusUiObjects.levelText");
         if (playTurnButton == null) missing.Add("LocalVersusUiObjects.playTurnButton");

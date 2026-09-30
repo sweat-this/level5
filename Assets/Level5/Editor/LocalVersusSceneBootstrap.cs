@@ -29,6 +29,12 @@ public static class LocalVersusSceneBootstrap
 
     private const float PanelWidth = 820f;
 
+    // Compact enough for the series panel to hold its tallest state - a simultaneous series, which
+    // adds Player 2's character selector - inside the 1080px canvas. Alternating play, which keeps the
+    // single selector, simply has room to spare.
+    private const float PanelButtonHeight = 64f;
+    private const float PanelSpacing = 8f;
+
     [MenuItem("Tools/Local Versus/Generate Local Versus Scene")]
     public static void GenerateScene()
     {
@@ -75,6 +81,7 @@ public static class LocalVersusSceneBootstrap
         MakeText(textTemplate, createPanel, "createHeader", "New Series", 44, TextAlignmentOptions.MidlineLeft, 60f);
         TMP_InputField player1 = MakeNameField(nameFieldTemplate, createPanel, "player1Field", "Player 1");
         TMP_InputField player2 = MakeNameField(nameFieldTemplate, createPanel, "player2Field", "Player 2");
+        Button modeButton = MakeButton(buttonTemplate, createPanel, "modeButton", "Mode", out TMP_Text modeText);
         Button rulesetButton = MakeButton(buttonTemplate, createPanel, "rulesetButton", "Ruleset", out TMP_Text rulesetText);
         Button formatButton = MakeButton(buttonTemplate, createPanel, "formatButton", "Format", out TMP_Text formatText);
         Button createButton = MakeButton(buttonTemplate, createPanel, "createButton", "Create Series", out _);
@@ -87,6 +94,9 @@ public static class LocalVersusSceneBootstrap
         Button seriesSelectButton = MakeButton(buttonTemplate, seriesPanel, "seriesSelectButton", "Series", out TMP_Text seriesSelectText);
         TMP_Text seriesDetail = MakeText(textTemplate, seriesPanel, "seriesDetail", string.Empty, 30, TextAlignmentOptions.TopLeft, 120f);
         Button characterButton = MakeButton(buttonTemplate, seriesPanel, "characterButton", "Character", out TMP_Text characterText);
+        Button character2Button = MakeButton(buttonTemplate, seriesPanel, "character2Button", "Player 2", out TMP_Text character2Text);
+        // Shown by the controller only while a simultaneous series is selected.
+        character2Button.gameObject.SetActive(false);
         Button levelButton = MakeButton(buttonTemplate, seriesPanel, "levelButton", "Arena", out TMP_Text levelText);
         Button playTurnButton = MakeButton(buttonTemplate, seriesPanel, "playTurnButton", "Play Turn", out TMP_Text playTurnText);
         TMP_Text turnMessage = MakeText(textTemplate, seriesPanel, "turnMessage", string.Empty, 30, TextAlignmentOptions.TopLeft, 60f);
@@ -106,6 +116,8 @@ public static class LocalVersusSceneBootstrap
         SerializedObject uiSo = new SerializedObject(ui);
         SetRef(uiSo, "player1NameInputField", player1);
         SetRef(uiSo, "player2NameInputField", player2);
+        SetRef(uiSo, "modeButton", modeButton);
+        SetRef(uiSo, "modeText", modeText);
         SetRef(uiSo, "rulesetButton", rulesetButton);
         SetRef(uiSo, "rulesetText", rulesetText);
         SetRef(uiSo, "formatButton", formatButton);
@@ -118,6 +130,8 @@ public static class LocalVersusSceneBootstrap
         SetRef(uiSo, "seriesDetailText", seriesDetail);
         SetRef(uiSo, "characterButton", characterButton);
         SetRef(uiSo, "characterText", characterText);
+        SetRef(uiSo, "character2Button", character2Button);
+        SetRef(uiSo, "character2Text", character2Text);
         SetRef(uiSo, "levelButton", levelButton);
         SetRef(uiSo, "levelText", levelText);
         SetRef(uiSo, "playTurnButton", playTurnButton);
@@ -146,6 +160,81 @@ public static class LocalVersusSceneBootstrap
 
         AddSceneToBuildSettings(ScenePath);
         Debug.Log("LocalVersusSceneBootstrap: generated " + ScenePath);
+    }
+
+    /// <summary>
+    /// Upgrades the already-authored Local Versus scene in place with the simultaneous-play controls:
+    /// a Mode selector at the top of the create panel and Player 2's character selector under Player
+    /// 1's, each cloned from a sibling so it keeps that control's theming, and the panels' buttons
+    /// compacted to <see cref="PanelButtonHeight"/> so the taller simultaneous state still fits the
+    /// canvas. The same end state <see cref="GenerateScene"/> produces from scratch, reached without
+    /// regenerating (and so re-identifying) every object in the scene. Idempotent.
+    /// </summary>
+    [MenuItem("Tools/Local Versus/Add Simultaneous Controls")]
+    public static void AddSimultaneousControls()
+    {
+        Scene scene = EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single);
+
+        LocalVersusUiObjects ui = Object.FindAnyObjectByType<LocalVersusUiObjects>(FindObjectsInactive.Include);
+        if (ui == null)
+        {
+            Debug.LogError("LocalVersusSceneBootstrap: no LocalVersusUiObjects in " + ScenePath);
+            return;
+        }
+
+        SerializedObject uiSo = new SerializedObject(ui);
+        if (uiSo.FindProperty("modeButton").objectReferenceValue != null
+            && uiSo.FindProperty("character2Button").objectReferenceValue != null)
+        {
+            Debug.Log("LocalVersusSceneBootstrap: the scene already has the simultaneous controls.");
+            return;
+        }
+
+        Transform createPanel = ui.RulesetButton.transform.parent;
+        Transform seriesPanel = ui.CharacterButton.transform.parent;
+
+        Button modeButton = CloneButton(ui.FormatButton, createPanel, "modeButton", "Mode", out TMP_Text modeText);
+        modeButton.transform.SetSiblingIndex(ui.RulesetButton.transform.GetSiblingIndex());
+
+        Button character2Button = CloneButton(ui.CharacterButton, seriesPanel, "character2Button", "Player 2", out TMP_Text character2Text);
+        character2Button.transform.SetSiblingIndex(ui.CharacterButton.transform.GetSiblingIndex() + 1);
+
+        // Shown by the controller only while a simultaneous series is selected.
+        character2Button.gameObject.SetActive(false);
+
+        foreach (Transform panel in new[] { createPanel, seriesPanel })
+        {
+            panel.GetComponent<VerticalLayoutGroup>().spacing = PanelSpacing;
+            foreach (Button button in panel.GetComponentsInChildren<Button>(true))
+            {
+                SetPreferred(button.gameObject, PanelButtonHeight);
+            }
+        }
+
+        SetRef(uiSo, "modeButton", modeButton);
+        SetRef(uiSo, "modeText", modeText);
+        SetRef(uiSo, "character2Button", character2Button);
+        SetRef(uiSo, "character2Text", character2Text);
+        uiSo.ApplyModifiedPropertiesWithoutUndo();
+
+        EditorSceneManager.MarkSceneDirty(scene);
+        if (!EditorSceneManager.SaveScene(scene))
+        {
+            Debug.LogError("LocalVersusSceneBootstrap: failed to save " + ScenePath);
+            return;
+        }
+
+        Debug.Log("LocalVersusSceneBootstrap: added the simultaneous controls to " + ScenePath);
+    }
+
+    private static Button CloneButton(Button template, Transform parent, string name, string label, out TMP_Text text)
+    {
+        GameObject go = Object.Instantiate(template.gameObject, parent);
+        go.name = name;
+        go.SetActive(true);
+        text = go.GetComponent<TMP_Text>();
+        text.text = label;
+        return go.GetComponent<Button>();
     }
 
     [MenuItem("Tools/Local Versus/Author Start Screen Button")]
@@ -240,7 +329,7 @@ public static class LocalVersusSceneBootstrap
         layout.childControlHeight = true;
         layout.childForceExpandWidth = true;
         layout.childForceExpandHeight = false;
-        layout.spacing = 12f;
+        layout.spacing = PanelSpacing;
 
         ContentSizeFitter fitter = go.AddComponent<ContentSizeFitter>();
         fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
@@ -295,7 +384,7 @@ public static class LocalVersusSceneBootstrap
         text.alignment = TextAlignmentOptions.MidlineLeft;
         text.textWrappingMode = TextWrappingModes.Normal;
         text.overflowMode = TextOverflowModes.Ellipsis;
-        SetPreferred(go, 80f);
+        SetPreferred(go, PanelButtonHeight);
 
         Button button = go.GetComponent<Button>();
         Navigation navigation = button.navigation;

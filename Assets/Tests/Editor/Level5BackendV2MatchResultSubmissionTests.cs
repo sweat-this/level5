@@ -205,6 +205,29 @@ namespace Level5.BackendV2.Tests
         }
 
         [Test]
+        public void AnActiveSimultaneousVersusGameKeepsTheScoreOutOfTheGeneralPipeline()
+        {
+            Guid playerId = SetSession();
+            MatchConfiguration match = BuildAnyMatch();
+            ActiveMatch.Begin(match);
+            Attempt second = Attempt.Issue(
+                new AttemptId("attempt-2"),
+                new ParticipantId("alex"),
+                0,
+                new RulesetId("most-points"),
+                1,
+                DateTime.UtcNow);
+            ActiveVersusAttempt.BeginSimultaneous(new SeriesId("series-1"), AnyVersusAttempt(), second, match);
+            Assert.That(ActiveVersusAttempt.IsActive, Is.True);
+            Assert.That(ActiveVersusAttempt.IsSimultaneous, Is.True);
+
+            BackendV2MatchResultSubmission.TryQueue(ValidScore());
+
+            Assert.That(PendingMatchResultStore.GetRetryable(playerId), Is.Empty,
+                "a simultaneous game's slot-0 score is not an ordinary primary-player result; only the series records it");
+        }
+
+        [Test]
         public void AStaleRemoteAttemptDoesNotSuppressTheNextOrdinaryMatch()
         {
             // The attempt was bound to a match the player walked away from - a different

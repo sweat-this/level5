@@ -112,6 +112,31 @@ public class MatchHudPresenter : MonoBehaviour
     }
 
     /// <summary>
+    /// The roster slot 1 participant, for a Total Points match with two humans. Kept apart from
+    /// <see cref="BindGameLevelManagerContext"/> (whose shape existing callers and tests rely on) and
+    /// unbound by default, so a presenter nobody bound this on is exactly the single-player HUD.
+    /// Resolved by roster slot, never from the score-sorted list, so "Player 2" is always slot 1.
+    /// </summary>
+    public void BindSecondHumanContext(Func<PlayerIdentifier> secondHumanReader)
+    {
+        this.secondHumanReader = secondHumanReader;
+    }
+
+    private Func<PlayerIdentifier> secondHumanReader;
+
+    /// <summary>The second human of this match, or null when the HUD should be the single-player one.</summary>
+    private PlayerIdentifier SecondHuman()
+    {
+        if (secondHumanReader == null)
+        {
+            return null;
+        }
+
+        PlayerIdentifier second = secondHumanReader();
+        return second != null && !second.isCpu && second.gameStats != null ? second : null;
+    }
+
+    /// <summary>
     /// AUD-012 Phase 2b Slice 64: the immutable HUD-specific projection of the persisted high-score
     /// values <see cref="SetScoreDisplayText"/> reads, in place of a direct <c>PlayerData.instance</c>
     /// read. Contains exactly the properties executable HUD code consumes - no unused/commented-out
@@ -546,6 +571,13 @@ public class MatchHudPresenter : MonoBehaviour
                 ? ProgressionPersistenceWarning
                 : "";
         }
+
+        if (gameModeId == Modes.TotalPoints && SecondHuman() != null)
+        {
+            // The end summary carries both players' scores; the live panels would only repeat them.
+            ClearText(displayP1ScoreText);
+            ClearText(displayP2ScoreText);
+        }
     }
 
     public void updatePlayerScore()
@@ -615,6 +647,54 @@ public class MatchHudPresenter : MonoBehaviour
         }
     }
 
+    /// <summary>
+    /// Live Total Points readout for two humans: the clock-side score reads "P1 - P2", and each
+    /// player gets their own panel. Slot 0 is always "Player 1" and slot 1 always "Player 2" - the
+    /// panels are never reordered by score - and the ordinary high score is left blank because a
+    /// two-human match does not update it.
+    /// </summary>
+    private void ShowTwoHumanTotalPoints(PlayerIdentifier second)
+    {
+        PlayerIdentifier first = primaryPlayerReader();
+        MatchStats firstStats = gameStats1.Stats;
+        MatchStats secondStats = second.gameStats.Stats;
+
+        scoreClockTextReader().text = firstStats.TotalPoints + " - " + secondStats.TotalPoints;
+        displayCurrentScoreText.text = "";
+        displayHighScoreText.text = "";
+
+        WriteHumanScore(displayP1ScoreText, "Player 1", first, firstStats);
+        WriteHumanScore(displayP2ScoreText, "Player 2", second, secondStats);
+        displayP3ScoreText.gameObject.SetActive(false);
+        displayP4ScoreText.gameObject.SetActive(false);
+    }
+
+    private static void WriteHumanScore(Text target, string label, PlayerIdentifier player, MatchStats stats)
+    {
+        string characterName = player != null && player.characterProfile != null
+            ? player.characterProfile.PlayerDisplayName
+            : string.Empty;
+        target.gameObject.SetActive(true);
+        target.color = Color.green;
+        target.text = label
+            + "\n" + characterName
+            + "\n" + "points : " + stats.TotalPoints
+            + "\n" + stats.ShotMade + "/" + stats.ShotAttempt
+            + " " + stats.TotalPointAccuracy.ToString("0.00") + "%";
+    }
+
+    private string TwoHumanTotalPointsSummary(PlayerIdentifier second)
+    {
+        MatchStats firstStats = gameStats1.Stats;
+        MatchStats secondStats = second.gameStats.Stats;
+        return "Player 1 scored " + firstStats.TotalPoints + " total points\n"
+            + "Player 2 scored " + secondStats.TotalPoints + " total points\n\n"
+            + "Player 1: " + firstStats.ShotMade + "/" + firstStats.ShotAttempt
+            + " " + firstStats.TotalPointAccuracy.ToString("0.00") + "%\n"
+            + "Player 2: " + secondStats.ShotMade + "/" + secondStats.ShotAttempt
+            + " " + secondStats.TotalPointAccuracy.ToString("0.00") + "%";
+    }
+
     // ================================================ set score display ============================================
     public void SetScoreDisplayText()
     {
@@ -663,6 +743,15 @@ public class MatchHudPresenter : MonoBehaviour
         //}
         if (gameModeId == Modes.TotalPoints)
         {
+            // Two humans: the primary-only readout below would hide the other player's score, which
+            // a same-screen contest cannot do. Both are shown, in roster order.
+            PlayerIdentifier secondHuman = SecondHuman();
+            if (secondHuman != null)
+            {
+                ShowTwoHumanTotalPoints(secondHuman);
+                return;
+            }
+
             displayCurrentScoreText.text = "total points : " + stats.TotalPoints
                 + "\ncurrent shot : " + BasketBall.instance.BasketBallState.CurrentShotType;
             scoreClockTextReader().text = stats.TotalPoints.ToString();
@@ -941,7 +1030,10 @@ public class MatchHudPresenter : MonoBehaviour
 
         if (gameModeId == Modes.TotalPoints)
         {
-            displayText = "You scored " + stats.TotalPoints + " total points\n\n" + GetStatsTotals();
+            PlayerIdentifier secondHuman = SecondHuman();
+            displayText = secondHuman != null
+                ? TwoHumanTotalPointsSummary(secondHuman)
+                : "You scored " + stats.TotalPoints + " total points\n\n" + GetStatsTotals();
         }
         if (gameModeId == Modes.Total3Pointers)
         {

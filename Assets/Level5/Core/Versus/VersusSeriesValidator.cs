@@ -46,6 +46,16 @@ namespace Level5.Core.Versus
                     "real-time online series are not implemented yet");
             }
 
+            if (request.Mode == VersusMode.LocalSimultaneous
+                && request.InformationPolicy != InformationPolicy.SealedAttempt)
+            {
+                // An open target needs one side to finish before the other starts, which is the
+                // opposite of both playing the same game at the same time.
+                errors.Add(
+                    VersusValidationCode.CapabilityNotSupported,
+                    "a same-time local game is sealed: neither side can see a target before both have played");
+            }
+
             if (request.Playlist.Count != request.Format.GameCount)
             {
                 errors.Add(

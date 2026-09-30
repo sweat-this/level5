@@ -37,11 +37,14 @@ public sealed class LocalVersusScreenModel
     private List<CharacterSelectOption> characters = new List<CharacterSelectOption>();
     private List<LevelDefinition> levels = new List<LevelDefinition>();
     private int rulesetIndex;
+    private int modeIndex;
     private int formatIndex = 1;
     private int seriesIndex = -1;
     private int characterIndex;
+    private int secondCharacterIndex;
     private int levelIndex;
     private ParticipantId characterFor;
+    private SeriesId secondCharacterFor;
 
     /// <param name="unlockProvider">Builds the current account's snapshot (see <c>UnlockSnapshotBuilder</c>).</param>
     /// <param name="characterProvider">Projects the loaded profiles into selectable characters.</param>
@@ -75,6 +78,24 @@ public sealed class LocalVersusScreenModel
 
     public CharacterSelectOption SelectedCharacter => characterIndex >= 0 && characterIndex < characters.Count ? characters[characterIndex] : null;
 
+    /// <summary>Which kind of series the create form is set to make. Not the selected series' mode.</summary>
+    public VersusMode CreateMode => LocalVersusFlow.OfferedModes[modeIndex];
+
+    /// <summary>
+    /// True when the loaded series is a simultaneous one: no next participant, two character
+    /// selections, and a game to play rather than a turn.
+    /// </summary>
+    public bool IsSimultaneousSelected => SelectedSeries != null
+        && SelectedSeries.Mode == VersusMode.LocalSimultaneous;
+
+    /// <summary>
+    /// Player 2's character for a simultaneous game. <see cref="SelectedCharacter"/> is Player 1's
+    /// (roster slot 0, the series' first participant); this is slot 1, the second participant's.
+    /// </summary>
+    public CharacterSelectOption SelectedSecondCharacter => secondCharacterIndex >= 0 && secondCharacterIndex < characters.Count
+        ? characters[secondCharacterIndex]
+        : null;
+
     public LevelDefinition SelectedLevel => levelIndex >= 0 && levelIndex < levels.Count ? levels[levelIndex] : null;
 
     /// <summary>The last create/launch outcome, for the screen to show.</summary>
@@ -83,10 +104,24 @@ public sealed class LocalVersusScreenModel
     /// <summary>The last launch outcome, for the screen to show under the turn controls.</summary>
     public string TurnMessage { get; private set; } = string.Empty;
 
-    public bool CanPlayTurn => SelectedSeries != null
-        && NextParticipant.HasValue
-        && SelectedCharacter != null
-        && SelectedLevel != null;
+    /// <summary>
+    /// Whether the selected series can be played right now: a next participant with a character and
+    /// an arena for alternating play, or both characters and an arena for a simultaneous game.
+    /// </summary>
+    public bool CanPlayTurn => IsSimultaneousSelected
+        ? simultaneousPlayable && SelectedCharacter != null && SelectedSecondCharacter != null && SelectedLevel != null
+        : SelectedSeries != null
+            && NextParticipant.HasValue
+            && SelectedCharacter != null
+            && SelectedLevel != null;
+
+    private bool simultaneousPlayable;
+
+    /// <summary>
+    /// Whether the selected series has something to play and choose for: a next participant for
+    /// alternating play, a playable game for simultaneous play. Gates the character and arena selectors.
+    /// </summary>
+    public bool HasPlayableTurn => IsSimultaneousSelected ? simultaneousPlayable : NextParticipant.HasValue;
 
     // ------------------------------------------------------------------ opening
 
@@ -96,7 +131,7 @@ public sealed class LocalVersusScreenModel
     /// </summary>
     public void Open()
     {
-        rulesets = LocalVersusFlow.SelectableRulesets();
+        rulesets = LocalVersusFlow.SelectableRulesets(mode: CreateMode);
         rulesetIndex = 0;
 
         SeriesId preferred = LocalVersusNavigationState.Consume();
@@ -137,13 +172,28 @@ public sealed class LocalVersusScreenModel
         formatIndex = (formatIndex + 1) % LocalVersusFlow.OfferedGameCounts.Length;
     }
 
+    /// <summary>
+    /// Switches the create form between alternating and simultaneous play. The offered rulesets are
+    /// re-read through <see cref="VersusCapability"/> for the new mode, so the list only ever holds
+    /// rulesets that can actually be created as it.
+    /// </summary>
+    public void CycleMode()
+    {
+        modeIndex = (modeIndex + 1) % LocalVersusFlow.OfferedModes.Length;
+        rulesets = LocalVersusFlow.SelectableRulesets(mode: CreateMode);
+        rulesetIndex = 0;
+        CreateMessage = string.Empty;
+    }
+
     /// <summary>Creates a series through the coordinator and, on success, selects it.</summary>
     public SeriesOperation Create(string firstName, string secondName)
     {
         CompetitiveRuleset ruleset = SelectedRuleset;
         if (ruleset == null)
         {
-            CreateMessage = "No ruleset supports local alternating play.";
+            CreateMessage = LocalVersusFlow.IsSimultaneous(CreateMode)
+                ? "No ruleset supports local simultaneous play."
+                : "No ruleset supports local alternating play.";
             return SeriesOperation.Failure(VersusValidationResult.Invalid(
                 VersusValidationCode.SeriesNotPlayable, CreateMessage));
         }
@@ -153,7 +203,8 @@ public sealed class LocalVersusScreenModel
             string.IsNullOrWhiteSpace(firstName) ? "Player 1" : firstName.Trim(),
             string.IsNullOrWhiteSpace(secondName) ? "Player 2" : secondName.Trim(),
             SelectedGameCount,
-            ruleset.Id);
+            ruleset.Id,
+            CreateMode);
 
         if (!created.Succeeded)
         {
@@ -198,6 +249,17 @@ public sealed class LocalVersusScreenModel
         if (characters.Count > 0)
         {
             characterIndex = (characterIndex + 1) % characters.Count;
+            RememberSimultaneousPicks();
+        }
+    }
+
+    /// <summary>Cycles Player 2's character for a simultaneous game.</summary>
+    public void CycleSecondCharacter()
+    {
+        if (characters.Count > 0)
+        {
+            secondCharacterIndex = (secondCharacterIndex + 1) % characters.Count;
+            RememberSimultaneousPicks();
         }
     }
 
@@ -219,11 +281,19 @@ public sealed class LocalVersusScreenModel
         if (!CanPlayTurn)
         {
             TurnMessage = SelectedSeries == null ? "Select or create a series first."
-                : !NextParticipant.HasValue ? "No turn is available in this series."
-                : SelectedCharacter == null ? "No unlocked character is available."
+                : IsSimultaneousSelected && !simultaneousPlayable ? "No game is available in this series."
+                : !IsSimultaneousSelected && !NextParticipant.HasValue ? "No turn is available in this series."
+                : SelectedCharacter == null || (IsSimultaneousSelected && SelectedSecondCharacter == null)
+                    ? "No unlocked character is available."
+                : IsSimultaneousSelected ? "No eligible arena is available for this two-player game."
                 : "No eligible arena is available for this game.";
             return VersusLaunch.Failure(VersusValidationResult.Invalid(
                 VersusValidationCode.SeriesNotPlayable, TurnMessage));
+        }
+
+        if (IsSimultaneousSelected)
+        {
+            return PlayGame();
         }
 
         UnlockSnapshot unlock = unlockProvider();
@@ -238,6 +308,26 @@ public sealed class LocalVersusScreenModel
         return launch;
     }
 
+    /// <summary>
+    /// Launches the selected simultaneous game: Player 1's character (series first participant,
+    /// roster slot 0) and Player 2's (second participant, slot 1). No participant is chosen here -
+    /// there is no turn - and nothing but <see cref="LocalVersusFlow.LaunchGame"/> starts it.
+    /// </summary>
+    private VersusLaunch PlayGame()
+    {
+        RememberSimultaneousPicks();
+        UnlockSnapshot unlock = unlockProvider();
+        VersusLaunch launch = LocalVersusFlow.LaunchGame(
+            SelectedSeries.Id,
+            SelectedCharacter.ToSelection(LegacyCharacterVariantResolver.ResolveObjectName(SelectedCharacter)),
+            SelectedSecondCharacter.ToSelection(LegacyCharacterVariantResolver.ResolveObjectName(SelectedSecondCharacter)),
+            SelectedLevel.LevelId,
+            unlock);
+
+        TurnMessage = launch.Succeeded ? string.Empty : "Could not start the game: " + launch.Validation;
+        return launch;
+    }
+
     // ------------------------------------------------------------------ text
 
     public string RulesetText => SelectedRuleset == null ? "No ruleset" : "Ruleset: " + SelectedRuleset.DisplayName;
@@ -248,7 +338,34 @@ public sealed class LocalVersusScreenModel
         ? "No series yet"
         : $"Series {seriesIndex + 1} of {summaries.Count}: {DescribeRow(summaries[seriesIndex])}";
 
-    public string CharacterText => SelectedCharacter == null ? "No character" : "Character: " + SelectedCharacter.DisplayName;
+    public string ModeText => "Mode: " + (LocalVersusFlow.IsSimultaneous(CreateMode) ? "Local Simultaneous" : "Local Alternating");
+
+    /// <summary>
+    /// The character selector's label: "Character:" for alternating play (one selector, whoever is up),
+    /// "Player 1:" when a simultaneous series is selected (this selector is slot 0's).
+    /// </summary>
+    public string CharacterText
+    {
+        get
+        {
+            string label = IsSimultaneousSelected
+                ? "Player 1 (" + SelectedSeries.Participants.First.DisplayName + "): "
+                : "Character: ";
+            return SelectedCharacter == null ? "No character" : label + SelectedCharacter.DisplayName;
+        }
+    }
+
+    /// <summary>Player 2's selector label. Only meaningful for a simultaneous series.</summary>
+    public string SecondCharacterText
+    {
+        get
+        {
+            string label = IsSimultaneousSelected
+                ? "Player 2 (" + SelectedSeries.Participants.Second.DisplayName + "): "
+                : "Player 2: ";
+            return SelectedSecondCharacter == null ? "No character" : label + SelectedSecondCharacter.DisplayName;
+        }
+    }
 
     public string LevelText => SelectedLevel == null ? "No arena" : "Arena: " + SelectedLevel.DisplayName;
 
@@ -256,6 +373,11 @@ public sealed class LocalVersusScreenModel
     {
         get
         {
+            if (IsSimultaneousSelected)
+            {
+                return "Play Game";
+            }
+
             if (SelectedSeries == null || !NextParticipant.HasValue)
             {
                 return "Play Turn";
@@ -398,6 +520,14 @@ public sealed class LocalVersusScreenModel
                     .Append(": ").AppendLine(game.Ruleset.DisplayName);
             }
 
+            if (IsSimultaneousSelected)
+            {
+                builder.Append(simultaneousPlayable
+                    ? "Both players play at once."
+                    : "No game is available right now.");
+                return builder.ToString();
+            }
+
             builder.Append(NextParticipant.HasValue
                 ? series.Participants.Find(NextParticipant).DisplayName + " is up."
                 : "No turn is available right now.");
@@ -460,16 +590,33 @@ public sealed class LocalVersusScreenModel
             return;
         }
 
-        NextParticipant = LocalVersusFlow.NextParticipant(SelectedSeries);
-        if (!NextParticipant.HasValue)
+        simultaneousPlayable = false;
+        bool simultaneous = SelectedSeries.Mode == VersusMode.LocalSimultaneous;
+        if (simultaneous)
         {
-            return;
+            // No next participant exists for a same-time series; what matters is whether both
+            // participants can attempt the current game together.
+            simultaneousPlayable = SelectedSeries.CanIssueSimultaneousAttempts(out _);
+            if (!simultaneousPlayable)
+            {
+                return;
+            }
+        }
+        else
+        {
+            NextParticipant = LocalVersusFlow.NextParticipant(SelectedSeries);
+            if (!NextParticipant.HasValue)
+            {
+                return;
+            }
         }
 
         UnlockSnapshot unlock = unlockProvider();
         CompetitiveRuleset ruleset = SelectedSeries.CurrentGame.Ruleset;
 
-        levels = LocalVersusFlow.EligibleLevels(ruleset, unlock);
+        // A two-human game is only offered arenas that declare Multiplayer; the builder would refuse
+        // the others at launch.
+        levels = LocalVersusFlow.EligibleLevels(ruleset, unlock, requiresMultiplayerArena: simultaneous);
         levelIndex = 0;
 
         GameModeDefinition mode = MatchCatalogs.Modes.Find(ruleset.ModeId);
@@ -485,6 +632,12 @@ public sealed class LocalVersusScreenModel
                     characters.Add(option);
                 }
             }
+        }
+
+        if (simultaneous)
+        {
+            SelectSimultaneousCharacters();
+            return;
         }
 
         // The character belongs to the turn, not the series: a new participant starts from the
@@ -506,10 +659,78 @@ public sealed class LocalVersusScreenModel
             }
 
             characterFor = NextParticipant;
+            secondCharacterFor = default;
         }
         else if (characterIndex >= characters.Count)
         {
             characterIndex = 0;
+        }
+    }
+
+    /// <summary>
+    /// Chooses the two characters a simultaneous game starts from. Both belong to the series rather
+    /// than to a turn. For a series the model has not chosen for yet they are recalled from
+    /// <see cref="LocalVersusSimultaneousPicks"/> - the screen is rebuilt after every game, so the model
+    /// alone cannot carry them - and otherwise default: Player 1 to the remembered primary (if eligible),
+    /// Player 2 to the next character along, so a fresh series is not two of the same one. After that they
+    /// stay as the players cycled them.
+    /// </summary>
+    private void SelectSimultaneousCharacters()
+    {
+        if (!SelectedSeries.Id.Equals(secondCharacterFor))
+        {
+            characterIndex = 0;
+            int? remembered = PlayerSelectionSession.PrimaryCharacterId;
+            if (remembered.HasValue)
+            {
+                characterIndex = IndexOfCharacter(remembered.Value, characterIndex);
+            }
+
+            secondCharacterIndex = characters.Count > 1 ? (characterIndex + 1) % characters.Count : characterIndex;
+
+            if (LocalVersusSimultaneousPicks.TryRecall(SelectedSeries.Id, out int firstId, out int secondId))
+            {
+                // A recalled character that is no longer offered (locked, or cannot play the mode) keeps
+                // the default rather than failing.
+                characterIndex = IndexOfCharacter(firstId, characterIndex);
+                secondCharacterIndex = IndexOfCharacter(secondId, secondCharacterIndex);
+            }
+
+            secondCharacterFor = SelectedSeries.Id;
+            characterFor = default;
+            return;
+        }
+
+        if (characterIndex >= characters.Count)
+        {
+            characterIndex = 0;
+        }
+
+        if (secondCharacterIndex >= characters.Count)
+        {
+            secondCharacterIndex = 0;
+        }
+    }
+
+    private int IndexOfCharacter(int characterId, int fallback)
+    {
+        for (int index = 0; index < characters.Count; index++)
+        {
+            if (characters[index].CharacterId == characterId)
+            {
+                return index;
+            }
+        }
+
+        return fallback;
+    }
+
+    private void RememberSimultaneousPicks()
+    {
+        if (IsSimultaneousSelected && SelectedCharacter != null && SelectedSecondCharacter != null)
+        {
+            LocalVersusSimultaneousPicks.Remember(
+                SelectedSeries.Id, SelectedCharacter.CharacterId, SelectedSecondCharacter.CharacterId);
         }
     }
 }

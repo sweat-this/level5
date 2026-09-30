@@ -238,6 +238,105 @@ namespace Level5.Core.Versus
             return AttemptOperation.Success(series, attempt);
         }
 
+        /// <summary>
+        /// Issues both participants' attempts for the current game of a local-simultaneous series,
+        /// or hands back the pair already outstanding, saving once.
+        ///
+        /// The simultaneous counterpart of <see cref="IssueAttempt"/>: same playability check, same
+        /// retry-safety, but one load, one domain operation and one save for the pair. Both attempts
+        /// are durable before this returns, which is what lets the caller load the gameplay scene.
+        /// </summary>
+        public SimultaneousAttemptOperation IssueSimultaneousAttempts(SeriesId seriesId)
+        {
+            VersusSeries series = repository.Load(seriesId);
+            if (series == null)
+            {
+                return SimultaneousAttemptOperation.Failure(VersusValidationResult.Invalid(
+                    VersusValidationCode.SeriesNotFound,
+                    $"there is no series '{seriesId}'"));
+            }
+
+            VersusValidationResult playable = validator.ValidatePlayable(series.Snapshot);
+            if (!playable.IsValid)
+            {
+                return SimultaneousAttemptOperation.Failure(playable);
+            }
+
+            if (!series.CanIssueSimultaneousAttempts(out string reason))
+            {
+                return SimultaneousAttemptOperation.Failure(VersusValidationResult.Invalid(
+                    series.IsActive ? VersusValidationCode.AttemptNotAvailable : VersusValidationCode.SeriesNotPlayable,
+                    reason));
+            }
+
+            SimultaneousAttempts attempts;
+            try
+            {
+                attempts = series.IssueSimultaneousAttempts(ids, clock);
+            }
+            catch (VersusDomainException exception)
+            {
+                return SimultaneousAttemptOperation.Failure(VersusValidationResult.Invalid(
+                    VersusValidationCode.AttemptNotAvailable,
+                    exception.Message));
+            }
+
+            if (!repository.Save(series))
+            {
+                return SimultaneousAttemptOperation.Failure(VersusValidationResult.Invalid(
+                    VersusValidationCode.PersistenceFailed,
+                    "the attempts could not be saved, so the game was not started"));
+            }
+
+            VersusLog.AttemptIssued(series, attempts.First);
+            VersusLog.AttemptIssued(series, attempts.Second);
+            AttemptIssued?.Invoke(series, attempts.First);
+            AttemptIssued?.Invoke(series, attempts.Second);
+            return SimultaneousAttemptOperation.Success(series, attempts);
+        }
+
+        /// <summary>Records that gameplay has begun for both attempts of a simultaneous game, saving once.</summary>
+        public SimultaneousAttemptOperation StartSimultaneousAttempts(
+            SeriesId seriesId,
+            AttemptId firstAttemptId,
+            AttemptId secondAttemptId)
+        {
+            VersusSeries series = repository.Load(seriesId);
+            if (series == null)
+            {
+                return SimultaneousAttemptOperation.Failure(VersusValidationResult.Invalid(
+                    VersusValidationCode.SeriesNotFound,
+                    $"there is no series '{seriesId}'"));
+            }
+
+            try
+            {
+                series.StartSimultaneousAttempts(firstAttemptId, secondAttemptId, clock);
+            }
+            catch (VersusDomainException exception)
+            {
+                return SimultaneousAttemptOperation.Failure(VersusValidationResult.Invalid(
+                    VersusValidationCode.AttemptNotAvailable,
+                    exception.Message));
+            }
+
+            if (!repository.Save(series))
+            {
+                return SimultaneousAttemptOperation.Failure(VersusValidationResult.Invalid(
+                    VersusValidationCode.PersistenceFailed,
+                    "the attempts could not be saved"));
+            }
+
+            SimultaneousAttempts attempts = new SimultaneousAttempts(
+                FindAttempt(series, firstAttemptId),
+                FindAttempt(series, secondAttemptId));
+            VersusLog.AttemptStarted(series, attempts.First);
+            VersusLog.AttemptStarted(series, attempts.Second);
+            AttemptStarted?.Invoke(series, attempts.First);
+            AttemptStarted?.Invoke(series, attempts.Second);
+            return SimultaneousAttemptOperation.Success(series, attempts);
+        }
+
         /// <summary>Records that gameplay for an attempt has begun.</summary>
         public AttemptOperation StartAttempt(SeriesId seriesId, AttemptId attemptId)
         {
@@ -340,6 +439,74 @@ namespace Level5.Core.Versus
                 SeriesCompleted?.Invoke(series);
             }
             else if (submission.ResolvedGame && series.CurrentGame != null)
+            {
+                VersusLog.SeriesAdvanced(series, series.CurrentGame);
+                SeriesAdvanced?.Invoke(series, series.CurrentGame);
+            }
+
+            return SubmissionOperation.Success(series, submission);
+        }
+
+        /// <summary>
+        /// Submits both participants' finished runs for a simultaneous game as one durable write.
+        ///
+        /// The atomic counterpart of <see cref="SubmitResult"/>: one load, one domain operation that
+        /// validates and applies both results, and one <see cref="IVersusSeriesRepository.Save"/>.
+        /// If the domain refuses, or the save fails, neither result is durable - the next load is the
+        /// last saved series, both attempts still outstanding - so the caller can retry the same pair.
+        /// Nothing is announced until the save has succeeded.
+        /// </summary>
+        public SubmissionOperation SubmitSimultaneousResults(
+            SeriesId seriesId,
+            AttemptSubmission first,
+            AttemptSubmission second)
+        {
+            VersusSeries series = repository.Load(seriesId);
+            if (series == null)
+            {
+                return SubmissionOperation.Failure(VersusValidationResult.Invalid(
+                    VersusValidationCode.SeriesNotFound,
+                    $"there is no series '{seriesId}'"));
+            }
+
+            SeriesSubmission submission;
+            try
+            {
+                submission = series.SubmitSimultaneousResults(first, second, clock);
+            }
+            catch (VersusDomainException exception)
+            {
+                VersusLog.SubmissionRejected(seriesId, first.AttemptId, exception.Message);
+                return SubmissionOperation.Failure(VersusValidationResult.Invalid(
+                    VersusValidationCode.AttemptNotAvailable,
+                    exception.Message));
+            }
+
+            if (!repository.Save(series))
+            {
+                // Both results were applied to the in-memory series only. Nothing caches it, so
+                // the next load is the last durable version and the pair can simply be submitted again.
+                return SubmissionOperation.Failure(VersusValidationResult.Invalid(
+                    VersusValidationCode.PersistenceFailed,
+                    "the results could not be saved"));
+            }
+
+            Attempt firstAttempt = FindAttempt(series, first.AttemptId);
+            Attempt secondAttempt = FindAttempt(series, second.AttemptId);
+            VersusLog.AttemptCompleted(series, firstAttempt);
+            VersusLog.AttemptCompleted(series, secondAttempt);
+            AttemptCompleted?.Invoke(series, firstAttempt);
+            AttemptCompleted?.Invoke(series, secondAttempt);
+
+            VersusLog.GameResolved(series, submission.Game);
+            GameResolved?.Invoke(series, submission.Game);
+
+            if (submission.CompletedSeries)
+            {
+                VersusLog.SeriesCompleted(series);
+                SeriesCompleted?.Invoke(series);
+            }
+            else if (series.CurrentGame != null)
             {
                 VersusLog.SeriesAdvanced(series, series.CurrentGame);
                 SeriesAdvanced?.Invoke(series, series.CurrentGame);
@@ -484,6 +651,38 @@ namespace Level5.Core.Versus
         public static AttemptOperation Failure(VersusValidationResult validation)
         {
             return new AttemptOperation(null, null, validation);
+        }
+    }
+
+    /// <summary>The outcome of issuing or starting both attempts of a simultaneous game.</summary>
+    public readonly struct SimultaneousAttemptOperation
+    {
+        private SimultaneousAttemptOperation(
+            VersusSeries series,
+            SimultaneousAttempts attempts,
+            VersusValidationResult validation)
+        {
+            Series = series;
+            Attempts = attempts;
+            Validation = validation;
+        }
+
+        public VersusSeries Series { get; }
+
+        public SimultaneousAttempts Attempts { get; }
+
+        public VersusValidationResult Validation { get; }
+
+        public bool Succeeded => Series != null;
+
+        public static SimultaneousAttemptOperation Success(VersusSeries series, SimultaneousAttempts attempts)
+        {
+            return new SimultaneousAttemptOperation(series, attempts, VersusValidationResult.Valid());
+        }
+
+        public static SimultaneousAttemptOperation Failure(VersusValidationResult validation)
+        {
+            return new SimultaneousAttemptOperation(null, default, validation);
         }
     }
 

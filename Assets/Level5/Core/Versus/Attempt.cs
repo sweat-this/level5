@@ -220,6 +220,22 @@ namespace Level5.Core.Versus
         /// </summary>
         public void Complete(AttemptResult result, DateTime completedAtUtc)
         {
+            ValidateCompletion(result);
+
+            State = AttemptState.Completed;
+            Result = result;
+            CompletedAtUtc = completedAtUtc;
+            StartedAtUtc ??= completedAtUtc;
+        }
+
+        /// <summary>
+        /// Throws unless <paramref name="result"/> could complete this attempt right now, changing
+        /// nothing. <see cref="Complete"/> runs it first, and an aggregate that completes several
+        /// attempts together runs it on every one of them before completing any, so a refusal never
+        /// leaves some attempts completed and others not.
+        /// </summary>
+        internal void ValidateCompletion(AttemptResult result)
+        {
             if (result == null)
             {
                 throw new VersusDomainException($"attempt {Id} cannot be completed without a result");
@@ -249,11 +265,6 @@ namespace Level5.Core.Versus
                     $"attempt {Id} is played under '{RulesetId.Value}' version {RulesetVersion} but the "
                     + $"submitted result was produced under version {result.RulesetVersion}");
             }
-
-            State = AttemptState.Completed;
-            Result = result;
-            CompletedAtUtc = completedAtUtc;
-            StartedAtUtc ??= completedAtUtc;
         }
 
         /// <summary>

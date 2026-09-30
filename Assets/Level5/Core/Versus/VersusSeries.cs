@@ -325,6 +325,7 @@ namespace Level5.Core.Versus
         public Attempt IssueAttempt(ParticipantId participantId, IVersusIdSource ids, IVersusClock clock)
         {
             RequireActive("issue an attempt");
+            RequireNotSimultaneous("issue an attempt to one participant");
             RequireParticipant(participantId);
 
             VersusGame game = CurrentGame;
@@ -336,12 +337,66 @@ namespace Level5.Core.Versus
             return game.IssueAttempt(participantId, Participants, ids, clock.UtcNow);
         }
 
+        /// <summary>
+        /// Issues both participants' attempts for the current game of a local-simultaneous series,
+        /// or returns the pair already outstanding.
+        ///
+        /// The simultaneous counterpart of <see cref="IssueAttempt"/>, which a simultaneous series
+        /// refuses: there is no "whose turn" here, and issuing one side alone would invite exactly
+        /// the half-played game the paired operations exist to prevent. Both attempts belong to the
+        /// same current game and the pair is checked before either is issued.
+        /// </summary>
+        public SimultaneousAttempts IssueSimultaneousAttempts(IVersusIdSource ids, IVersusClock clock)
+        {
+            RequireActive("issue simultaneous attempts");
+            VersusGame game = RequireSimultaneousGame("issue simultaneous attempts");
+            return game.IssueSimultaneousAttempts(Participants, ids, clock.UtcNow);
+        }
+
+        /// <summary>Whether both participants can attempt the current game together, and why not if they cannot.</summary>
+        public bool CanIssueSimultaneousAttempts(out string reason)
+        {
+            if (Mode != VersusMode.LocalSimultaneous)
+            {
+                reason = $"series {Id} is {Mode}, not {VersusMode.LocalSimultaneous}";
+                return false;
+            }
+
+            if (Status != SeriesStatus.Active)
+            {
+                reason = $"series {Id} is {Status}";
+                return false;
+            }
+
+            VersusGame game = CurrentGame;
+            if (game == null)
+            {
+                reason = $"series {Id} has no active game";
+                return false;
+            }
+
+            if (!game.Ruleset.Supports(VersusCapability.LocalSimultaneous))
+            {
+                reason = $"{game.Ruleset.DisplayName} cannot be played as a same-time local game";
+                return false;
+            }
+
+            return game.CanIssueTo(Participants.First.Id, Participants, out reason)
+                && game.CanIssueTo(Participants.Second.Id, Participants, out reason);
+        }
+
         /// <summary>Whether this participant can attempt right now, and the reason when they cannot.</summary>
         public bool CanIssueAttempt(ParticipantId participantId, out string reason)
         {
             if (Status != SeriesStatus.Active)
             {
                 reason = $"series {Id} is {Status}";
+                return false;
+            }
+
+            if (Mode == VersusMode.LocalSimultaneous)
+            {
+                reason = $"series {Id} is a same-time game; both participants attempt it together";
                 return false;
             }
 
@@ -369,6 +424,23 @@ namespace Level5.Core.Versus
             return game.StartAttempt(attemptId, clock.UtcNow);
         }
 
+        /// <summary>
+        /// Records that gameplay has begun for both attempts of a simultaneous game. Both must be
+        /// this series' current game's attempts, one per participant.
+        /// </summary>
+        public void StartSimultaneousAttempts(AttemptId firstAttemptId, AttemptId secondAttemptId, IVersusClock clock)
+        {
+            RequireActive("start simultaneous attempts");
+            VersusGame game = RequireSimultaneousGame("start simultaneous attempts");
+            Attempt first = RequireCurrentGameAttempt(game, firstAttemptId);
+            Attempt second = RequireCurrentGameAttempt(game, secondAttemptId);
+            RequireOnePerParticipant(first.ParticipantId, second.ParticipantId);
+
+            DateTime now = clock.UtcNow;
+            game.StartAttempt(first.Id, now);
+            game.StartAttempt(second.Id, now);
+        }
+
         /// <summary>Gives an outstanding attempt up without forfeiting the game.</summary>
         public bool AbandonAttempt(AttemptId attemptId)
         {
@@ -390,6 +462,7 @@ namespace Level5.Core.Versus
             IVersusClock clock)
         {
             RequireActive("submit a result");
+            RequireNotSimultaneous("submit one participant's result");
             RequireParticipant(participantId);
 
             VersusGame game = FindGameHolding(attemptId);
@@ -401,6 +474,46 @@ namespace Level5.Core.Versus
                 return new SeriesSubmission(game, null, null);
             }
 
+            SeriesResult seriesResult = Advance(now);
+            return new SeriesSubmission(game, gameResult, seriesResult);
+        }
+
+        /// <summary>
+        /// Submits both participants' results for a simultaneous game and advances the series,
+        /// as one operation.
+        ///
+        /// The atomic counterpart of <see cref="SubmitResult"/>. Both results are validated against
+        /// the series first (mode, participants, attempts, the current game, the frozen rules) and
+        /// applied to this one in-memory series together; the caller saves it once. Nothing is
+        /// completed if anything is refused, so neither side can be left completed while the other
+        /// is still replayable. The game always resolves, through the ruleset's own comparison, and
+        /// the series then advances exactly as it does after any resolved game.
+        /// </summary>
+        public SeriesSubmission SubmitSimultaneousResults(
+            AttemptSubmission first,
+            AttemptSubmission second,
+            IVersusClock clock)
+        {
+            RequireActive("submit simultaneous results");
+            VersusGame game = RequireSimultaneousGame("submit simultaneous results");
+
+            RequireParticipant(first.ParticipantId);
+            RequireParticipant(second.ParticipantId);
+            RequireOnePerParticipant(first.ParticipantId, second.ParticipantId);
+
+            if (!first.AttemptId.HasValue || !second.AttemptId.HasValue || first.AttemptId == second.AttemptId)
+            {
+                throw new VersusDomainException(
+                    $"series {Id} needs two different attempts to submit a simultaneous game");
+            }
+
+            // Both attempts have to be the current game's: an attempt from another game would
+            // otherwise be found by FindGameHolding and quietly completed out of order.
+            RequireCurrentGameAttempt(game, first.AttemptId);
+            RequireCurrentGameAttempt(game, second.AttemptId);
+
+            DateTime now = clock.UtcNow;
+            GameResult gameResult = game.SubmitSimultaneousResults(first, second, Participants, now);
             SeriesResult seriesResult = Advance(now);
             return new SeriesSubmission(game, gameResult, seriesResult);
         }
@@ -571,6 +684,61 @@ namespace Level5.Core.Versus
             {
                 throw new VersusDomainException(
                     $"series {Id} is {Status} and cannot {operation}");
+            }
+        }
+
+        private void RequireNotSimultaneous(string operation)
+        {
+            if (Mode == VersusMode.LocalSimultaneous)
+            {
+                throw new VersusDomainException(
+                    $"series {Id} is a same-time game and cannot {operation}; its attempts are issued, "
+                    + "started and submitted as a pair");
+            }
+        }
+
+        /// <summary>The current game of a simultaneous series whose ruleset allows same-time play.</summary>
+        private VersusGame RequireSimultaneousGame(string operation)
+        {
+            if (Mode != VersusMode.LocalSimultaneous)
+            {
+                throw new VersusDomainException(
+                    $"series {Id} is {Mode} and cannot {operation}; only a {VersusMode.LocalSimultaneous} series can");
+            }
+
+            VersusGame game = CurrentGame;
+            if (game == null)
+            {
+                throw new VersusDomainException($"series {Id} has no active game to {operation}");
+            }
+
+            if (!game.Ruleset.Supports(VersusCapability.LocalSimultaneous))
+            {
+                throw new VersusDomainException(
+                    $"{game.Ruleset.DisplayName} cannot be played as a same-time local game");
+            }
+
+            return game;
+        }
+
+        private Attempt RequireCurrentGameAttempt(VersusGame game, AttemptId attemptId)
+        {
+            Attempt attempt = game.Find(attemptId);
+            if (attempt == null)
+            {
+                throw new VersusDomainException(
+                    $"attempt {attemptId} is not an attempt at the current game ({game.Number}) of series {Id}");
+            }
+
+            return attempt;
+        }
+
+        private void RequireOnePerParticipant(ParticipantId first, ParticipantId second)
+        {
+            if (first == second)
+            {
+                throw new VersusDomainException(
+                    $"series {Id} needs one attempt from each participant, but both are {first}");
             }
         }
 
