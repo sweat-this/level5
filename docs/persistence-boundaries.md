@@ -289,7 +289,19 @@ behavior. `VersusDevConsole` (`Assets/Scripts/Dev/VersusDevConsole.cs`), still t
 still development-only, builds its snapshot through the same `UnlockSnapshotBuilder` every other
 launch path uses - there is no second unlock authority.
 
-Mode/arena compatibility is deliberately *not* part of this preflight: an otherwise
+**Local simultaneous versus is competition-only.** A `VersusMode.LocalSimultaneous` game has two
+participants in one match, but every ordinary persistence and progression path below reads the primary
+player (roster slot 0) alone, and no player-specific local identity contract exists for slot 1. So
+`GameRules` treats such a match as competition-only: it does not save the ordinary high score or all-time
+stats, does not queue the Backend V2 `/match-results` submission, and does not award primary-only
+character/account progression. The only durable record is the series document, written as one atomic pair
+(`VersusMatchCoordinator.SubmitSimultaneousResults`; see `versus-architecture.md` section 15).
+`LocalAlternating` and ordinary matches are unchanged. The general-pipeline exclusion for competitive
+attempts (`BackendV2MatchResultSubmission.TryQueue`) covers a simultaneous game's attempt context too.
+`VersusLauncher.LaunchSimultaneous` applies the same unlock-snapshot gate as `Launch`, for both characters
+and the arena, before any attempt is issued.
+
+Mode/arena compatibility is deliberately *not* part of the alternating preflight: an otherwise
 selectable/unlocked level that the series' frozen ruleset cannot use is still only caught afterward,
 inside `BuildMatch`'s builder revalidation - by then the attempt has already been issued and
 persisted, and it is left outstanding so the same turn can be retried on a compatible arena. Local

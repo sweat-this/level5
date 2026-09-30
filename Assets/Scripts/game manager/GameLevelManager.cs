@@ -705,7 +705,8 @@ public class GameLevelManager : MonoBehaviour, IGroundHeightProvider, IPlayerMat
             Pause.instance.BindVersusContext(
                 () => VersusQuitPolicy.AttemptOutstanding,
                 () => VersusQuitPolicy.TurnInProgress,
-                VersusQuitPolicy.TryPrepareForExplicitExit);
+                VersusQuitPolicy.TryPrepareForExplicitExit,
+                () => VersusQuitPolicy.SimultaneousGameInProgress);
         }
     }
 

@@ -84,6 +84,45 @@ public class LocalVersusSceneContractTests
     }
 
     [Test]
+    public void TheTallestPanelStatesStillFitTheReferenceCanvasAndClearBack()
+    {
+        // The simultaneous state adds Player 2's selector to the series panel, and the Mode selector
+        // makes the create panel taller than it was. Both are measured in canvas units after a layout
+        // rebuild (the authored panels hang from the top edge), so a future control or a larger font
+        // cannot silently push Play or Create off the 1080 reference canvas or under the Back button.
+        LocalVersusUiObjects ui = OpenUi();
+        CanvasScaler scaler = ui.GetComponentInChildren<CanvasScaler>(true);
+        Assert.That(scaler, Is.Not.Null);
+        float canvasHeight = scaler.referenceResolution.y;
+
+        ui.Character2Button.gameObject.SetActive(true);
+        RectTransform seriesPanel = (RectTransform)ui.CharacterButton.transform.parent;
+        RectTransform createPanel = (RectTransform)ui.RulesetButton.transform.parent;
+        LayoutRebuilder.ForceRebuildLayoutImmediate(seriesPanel);
+        LayoutRebuilder.ForceRebuildLayoutImmediate(createPanel);
+
+        float seriesBottom = -seriesPanel.anchoredPosition.y + seriesPanel.rect.height;
+        float createBottom = -createPanel.anchoredPosition.y + createPanel.rect.height;
+        RectTransform back = (RectTransform)ui.BackButton.transform;
+        float backTop = canvasHeight - back.anchoredPosition.y - back.rect.height;
+        TestContext.WriteLine($"series panel bottom {seriesBottom}, create panel bottom {createBottom}, back top {backTop}, canvas {canvasHeight}");
+
+        Assert.That(seriesBottom, Is.LessThanOrEqualTo(canvasHeight), "the simultaneous series panel runs off the canvas");
+        Assert.That(createBottom, Is.LessThanOrEqualTo(backTop), "the create panel overlaps the Back button");
+        Assert.That(ui.Character2Button.GetComponent<LayoutElement>().preferredHeight,
+            Is.EqualTo(ui.CharacterButton.GetComponent<LayoutElement>().preferredHeight),
+            "Player 2's selector is laid out like Player 1's");
+    }
+
+    [Test]
+    public void PlayerTwosSelectorIsAuthoredHiddenUntilASimultaneousSeriesIsSelected()
+    {
+        LocalVersusUiObjects ui = OpenUi();
+        Assert.That(ui.Character2Button.gameObject.activeSelf, Is.False);
+        Assert.That(ui.ModeButton.gameObject.activeSelf, Is.True);
+    }
+
+    [Test]
     public void SelectingANameFieldDoesNotStartEditingIt()
     {
         // An active field swallows the d-pad, the stick and Cancel, so a gamepad that moved onto one could

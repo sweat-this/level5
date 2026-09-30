@@ -98,11 +98,13 @@ public class LocalVersusController : MonoBehaviour
             return;
         }
 
+        UiSelectionAdapter.RegisterButton(ui.ModeButton, OnModeClicked);
         UiSelectionAdapter.RegisterButton(ui.RulesetButton, OnRulesetClicked);
         UiSelectionAdapter.RegisterButton(ui.FormatButton, OnFormatClicked);
         UiSelectionAdapter.RegisterButton(ui.CreateButton, OnCreateClicked);
         UiSelectionAdapter.RegisterButton(ui.SeriesSelectButton, OnSeriesSelectClicked);
         UiSelectionAdapter.RegisterButton(ui.CharacterButton, OnCharacterClicked);
+        UiSelectionAdapter.RegisterButton(ui.Character2Button, OnCharacter2Clicked);
         UiSelectionAdapter.RegisterButton(ui.LevelButton, OnLevelClicked);
         UiSelectionAdapter.RegisterButton(ui.PlayTurnButton, OnPlayTurnClicked);
         UiSelectionAdapter.RegisterButton(ui.BackButton, OnBackClicked);
@@ -115,14 +117,22 @@ public class LocalVersusController : MonoBehaviour
             return;
         }
 
+        UiSelectionAdapter.UnregisterButton(ui.ModeButton, OnModeClicked);
         UiSelectionAdapter.UnregisterButton(ui.RulesetButton, OnRulesetClicked);
         UiSelectionAdapter.UnregisterButton(ui.FormatButton, OnFormatClicked);
         UiSelectionAdapter.UnregisterButton(ui.CreateButton, OnCreateClicked);
         UiSelectionAdapter.UnregisterButton(ui.SeriesSelectButton, OnSeriesSelectClicked);
         UiSelectionAdapter.UnregisterButton(ui.CharacterButton, OnCharacterClicked);
+        UiSelectionAdapter.UnregisterButton(ui.Character2Button, OnCharacter2Clicked);
         UiSelectionAdapter.UnregisterButton(ui.LevelButton, OnLevelClicked);
         UiSelectionAdapter.UnregisterButton(ui.PlayTurnButton, OnPlayTurnClicked);
         UiSelectionAdapter.UnregisterButton(ui.BackButton, OnBackClicked);
+    }
+
+    private void OnModeClicked()
+    {
+        model.CycleMode();
+        Render();
     }
 
     private void OnRulesetClicked()
@@ -155,6 +165,12 @@ public class LocalVersusController : MonoBehaviour
         Render();
     }
 
+    private void OnCharacter2Clicked()
+    {
+        model.CycleSecondCharacter();
+        Render();
+    }
+
     private void OnLevelClicked()
     {
         model.CycleLevel();
@@ -163,8 +179,8 @@ public class LocalVersusController : MonoBehaviour
 
     private void OnPlayTurnClicked()
     {
-        // On success the launcher has already loaded the gameplay scene; on failure the model holds
-        // the reason and the screen stays put.
+        // On success the launcher has already loaded the gameplay scene (for a simultaneous series,
+        // one two-human match); on failure the model holds the reason and the screen stays put.
         model.PlayTurn();
         Render();
     }
@@ -176,6 +192,7 @@ public class LocalVersusController : MonoBehaviour
 
     private void Render()
     {
+        ui.ModeText.text = model.ModeText;
         ui.RulesetText.text = model.RulesetText;
         ui.FormatText.text = model.FormatText;
         ui.CreateMessageText.text = model.CreateMessage;
@@ -183,13 +200,18 @@ public class LocalVersusController : MonoBehaviour
         ui.SeriesSelectText.text = model.SeriesSelectText;
         ui.SeriesDetailText.text = model.DetailText;
         ui.CharacterText.text = model.CharacterText;
+        ui.Character2Text.text = model.SecondCharacterText;
         ui.LevelText.text = model.LevelText;
         ui.PlayTurnText.text = model.PlayTurnText;
         ui.TurnMessageText.text = model.TurnMessage;
 
         ui.SeriesSelectButton.interactable = model.Summaries.Count > 1;
-        ui.CharacterButton.interactable = model.NextParticipant.HasValue && model.Characters.Count > 1;
-        ui.LevelButton.interactable = model.NextParticipant.HasValue && model.Levels.Count > 1;
+        // Player 2's selector exists only for a simultaneous series; an alternating series keeps the
+        // single character selector and the screen it always had.
+        ui.Character2Button.gameObject.SetActive(model.IsSimultaneousSelected);
+        ui.Character2Button.interactable = model.HasPlayableTurn && model.Characters.Count > 1;
+        ui.CharacterButton.interactable = model.HasPlayableTurn && model.Characters.Count > 1;
+        ui.LevelButton.interactable = model.HasPlayableTurn && model.Levels.Count > 1;
         ui.PlayTurnButton.interactable = model.CanPlayTurn;
         ui.RulesetButton.interactable = model.Rulesets.Count > 1;
         ui.CreateButton.interactable = model.SelectedRuleset != null;

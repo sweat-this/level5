@@ -194,6 +194,18 @@ public class Level5VersusArchitectureTests
             "GameRules should touch the versus system exactly once, through VersusMatchReporter");
 
         Assert.That(gameRules, Does.Contain("VersusMatchReporter.TryReport"));
+
+        // The one other sanctioned touchpoint: a simultaneous versus game is competition-only, so the
+        // ordinary primary-player persistence and progression stand down. It is a single latched
+        // statement reading the runtime context - not a call into the versus domain - and it is pinned
+        // here exactly because the regex above cannot see "ActiveVersusAttempt" (no word boundary).
+        Assert.That(
+            gameRules,
+            Does.Contain("matchIsCompetitionOnly = ActiveVersusAttempt.IsActive && ActiveVersusAttempt.IsSimultaneous;"));
+        Assert.That(
+            Regex.Matches(gameRules, @"ActiveVersusAttempt\.").Count,
+            Is.EqualTo(2),
+            "GameRules may read the simultaneous context only in that one latch");
         Assert.That(gameRules, Does.Not.Contain("VersusSeries"), "gameplay must not know what a series is");
         Assert.That(gameRules, Does.Not.Contain("SeriesId"));
     }

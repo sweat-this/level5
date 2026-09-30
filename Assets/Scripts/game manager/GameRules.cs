@@ -27,6 +27,16 @@ public class GameRules : MonoBehaviour, IMoneyBallState, IShotMarkerSession
     private GameStats gameStats1;
 
     /// <summary>
+    /// True when this match is a simultaneous versus game, decided once when the match first ends.
+    /// Such a match is competition-only: its result belongs to the series, not to the ordinary
+    /// primary-player high-score, all-time-stats, progression and Backend V2 pipelines, all of which
+    /// read slot 0 alone and would misrepresent a two-player match. Latched rather than re-read so the
+    /// answer cannot flip between retry passes once the series has cleared its active attempt.
+    /// </summary>
+    private bool matchIsCompetitionOnly;
+    private bool competitionOnlyResolved;
+
+    /// <summary>
     /// The score display. GameRules tells it what the match is; it decides how that looks.
     /// Nothing about ending or saving a match depends on it being complete.
     /// </summary>
@@ -236,6 +246,8 @@ public class GameRules : MonoBehaviour, IMoneyBallState, IShotMarkerSession
         progressionSaveAttempts = 0;
         campaignStatsUpdated = false;
         campaignTransitionStarted = false;
+        matchIsCompetitionOnly = false;
+        competitionOnlyResolved = false;
 
         gameModeId = GameModeIds.ToInt(MatchRuntime.ModeId);
 
@@ -257,6 +269,9 @@ public class GameRules : MonoBehaviour, IMoneyBallState, IShotMarkerSession
             ReadPrimaryPlayerForHud,
             ReadFirstRegisteredPlayerForHud,
             ReadScoreClockTextForHud);
+
+        // Roster slot 1, for the two-human Total Points readout. Null for every solo roster.
+        hud.BindSecondHumanContext(ReadSecondPlayerForHud);
 
         // AUD-012 Phase 2b Slice 64: replaces MatchHudPresenter's former direct PlayerData.instance/
         // DBHelper.instance reads - the persistence-layer coupling Slice 62 explicitly deferred. A
@@ -400,6 +415,12 @@ public class GameRules : MonoBehaviour, IMoneyBallState, IShotMarkerSession
         matchEndHandling = true;
         RequestEnd(new MatchEndReason(IsPlayerDead() ? MatchEndCause.PlayerDied : MatchEndCause.ObjectiveComplete));
 
+        if (!competitionOnlyResolved)
+        {
+            matchIsCompetitionOnly = ActiveVersusAttempt.IsActive && ActiveVersusAttempt.IsSimultaneous;
+            competitionOnlyResolved = true;
+        }
+
         try
         {
             TryShowMatchEndPresentation();
@@ -420,8 +441,12 @@ public class GameRules : MonoBehaviour, IMoneyBallState, IShotMarkerSession
             // If this match was one participant's turn in a versus series, hand the numbers over.
             // No-ops for every ordinary match, and joins the same retry loop as the saves above so a
             // turn is never lost to a write that failed once.
+            //
+            // A simultaneous game hands over both slots' stats - slot 0 for the first participant,
+            // slot 1 for the second, resolved by roster slot rather than by any sorted order.
             bool versusComplete = VersusMatchReporter.TryReport(
                 primaryGameStats,
+                GetSecondaryGameStats(),
                 MatchRuntime.ModeId,
                 timePlayedEnd - timePlayedStart);
 
@@ -539,6 +564,16 @@ public class GameRules : MonoBehaviour, IMoneyBallState, IShotMarkerSession
 
     private bool SaveMatchResults(HighScoreModel user, GameStats primaryGameStats)
     {
+        if (matchIsCompetitionOnly)
+        {
+            // No local player-specific identity or progression contract exists for two humans yet, so
+            // slot 0's numbers must not be saved, queued for Backend V2 or awarded as if they were the
+            // whole match. The series document is the only record of a simultaneous game.
+            matchScoreSaveCompleted = true;
+            matchAllTimeStatsSaved = true;
+            return true;
+        }
+
         // dont save free play game score
         if (!matchScoreSaveCompleted && gameModeId != Modes.FreePlay && gameModeId != Modes.BeatThaComputahs)
         {
@@ -600,10 +635,34 @@ public class GameRules : MonoBehaviour, IMoneyBallState, IShotMarkerSession
         return gameStats1;
     }
 
+    /// <summary>
+    /// Roster slot 1's stats - runtime Player2 - or null when the match has no second participant.
+    /// Only the simultaneous versus result reads it; resolved by slot, never from the sorted list.
+    /// </summary>
+    private GameStats GetSecondaryGameStats()
+    {
+        if (GameLevelManager.instance != null
+            && GameLevelManager.instance.Player2 != null
+            && GameLevelManager.instance.Player2.gameStats != null)
+        {
+            return GameLevelManager.instance.Player2.gameStats;
+        }
+
+        return null;
+    }
+
     private bool ApplyMatchProgressionResult(GameStats primaryGameStats)
     {
         if (matchProgressionApplied)
         {
+            return true;
+        }
+
+        if (matchIsCompetitionOnly)
+        {
+            // See SaveMatchResults: no primary-only character or account progression for a
+            // two-human competitive match.
+            matchProgressionApplied = true;
             return true;
         }
 
@@ -874,6 +933,12 @@ public class GameRules : MonoBehaviour, IMoneyBallState, IShotMarkerSession
     private static PlayerIdentifier ReadPrimaryPlayerForHud()
     {
         return GameLevelManager.instance.Player1;
+    }
+
+    /// <summary>Roster slot 1 (<c>Player2</c>), or null. Read live so a scene without one is unaffected.</summary>
+    private static PlayerIdentifier ReadSecondPlayerForHud()
+    {
+        return GameLevelManager.instance != null ? GameLevelManager.instance.Player2 : null;
     }
 
     /// <summary>

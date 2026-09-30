@@ -222,6 +222,17 @@ Not adopted. The device plan is the smallest explicit ownership boundary at the 
 plan step 7 (evaluate `PlayerInput`/`PlayerInputManager`) remains a later evaluation, and would replace this
 plan rather than sit on top of it.
 
+### First production launch source for two humans
+
+`VersusLauncher.LaunchSimultaneous` (Most Points / The Scrapyard; `versus-architecture.md` section 15) is
+the first production launch source that builds a two-`LocalHuman` roster. It runs
+`PlayerControlsProvider.TryPreflightGameplayDevices(2, ...)` before issuing anything, as `StartManager`
+does, and leaves device assignment to `GameLevelManager` and the match-local plan exactly as above; it
+spawns nothing and assigns no device itself. Its EditMode tests override the preflight
+(`VersusLauncher.OverrideDevicePreflight`) because a test machine cannot be assumed to have two gamepads;
+`LocalSimultaneousVersusProductionPlayModeTests` exercises the real preflight and plan on two virtual
+gamepads. Physical two-gamepad and keyboard + gamepad certification is still outstanding.
+
 ### Two-human runtime findings
 
 Certifying a two-human match (`Level5TwoHumanLocalInputPlayModeTests`) surfaced runtime gaps that the input

@@ -13,15 +13,22 @@ using Level5.Core.Versus;
 /// index - a screen calls these with whatever it just loaded, so a series restored from disk behaves
 /// exactly like one created a moment ago.
 ///
-/// Only <see cref="VersusMode.LocalAlternating"/> is exposed. Local simultaneous play needs a launcher
-/// that starts two humans in one match, which <see cref="VersusLauncher"/> deliberately does not do.
+/// Two kinds of local series are exposed. <see cref="VersusMode.LocalAlternating"/> is the default
+/// everywhere a mode is not named: one participant plays per turn, through
+/// <see cref="VersusLauncher.Launch"/>. <see cref="VersusMode.LocalSimultaneous"/> has no turns -
+/// both participants play one two-human match, through <see cref="VersusLauncher.LaunchSimultaneous"/>
+/// - and only rulesets that declare that capability can be created as one (today, Most Points).
 /// </summary>
 public static class LocalVersusFlow
 {
     /// <summary>Diagnostic label on the request; never a behavioral authority.</summary>
     public const string RequestSource = "local versus UI";
 
+    /// <summary>The default kind of local series: the one every call that does not name a mode means.</summary>
     public const VersusMode Mode = VersusMode.LocalAlternating;
+
+    /// <summary>The local kinds of series the screen can create, in the order its mode button cycles them.</summary>
+    public static readonly VersusMode[] OfferedModes = { VersusMode.LocalAlternating, VersusMode.LocalSimultaneous };
 
     /// <summary>Fixed semantics of a production local series.</summary>
     public const InformationPolicy Policy = InformationPolicy.SealedAttempt;
@@ -33,10 +40,21 @@ public static class LocalVersusFlow
     /// <summary>The formats the screen offers, ascending. Which lengths are valid stays with <see cref="SeriesFormat"/>.</summary>
     public static readonly int[] OfferedGameCounts = { 1, 3, 5, 7 };
 
-    /// <summary>Rulesets that can be played alternating on one device, in catalog order.</summary>
-    public static List<CompetitiveRuleset> SelectableRulesets(CompetitiveRulesetCatalog catalog = null)
+    /// <summary>
+    /// Rulesets that can be played as <paramref name="mode"/> (alternating unless named), in catalog
+    /// order, filtered through <see cref="VersusCapability"/> so a ruleset never offered the
+    /// capability is never offered the mode.
+    /// </summary>
+    public static List<CompetitiveRuleset> SelectableRulesets(
+        CompetitiveRulesetCatalog catalog = null,
+        VersusMode mode = Mode)
     {
-        return (catalog ?? VersusCatalogs.Rulesets).Supporting(VersusModes.RequiredCapability(Mode));
+        return (catalog ?? VersusCatalogs.Rulesets).Supporting(VersusModes.RequiredCapability(mode));
+    }
+
+    public static bool IsSimultaneous(VersusMode mode)
+    {
+        return mode == VersusMode.LocalSimultaneous;
     }
 
     /// <summary>
@@ -56,7 +74,8 @@ public static class LocalVersusFlow
         string firstDisplayName,
         string secondDisplayName,
         int gameCount,
-        RulesetId rulesetId)
+        RulesetId rulesetId,
+        VersusMode mode = Mode)
     {
         SeriesFormat format = SeriesFormat.FromGameCount(gameCount);
 
@@ -71,7 +90,7 @@ public static class LocalVersusFlow
             new MatchParticipant(NewParticipantId(), secondDisplayName),
             format,
             playlist,
-            Mode,
+            mode,
             Policy,
             RequiresInvitation,
             AlternatesFirstAttempt,
@@ -84,12 +103,13 @@ public static class LocalVersusFlow
         string firstDisplayName,
         string secondDisplayName,
         int gameCount,
-        RulesetId rulesetId)
+        RulesetId rulesetId,
+        VersusMode mode = Mode)
     {
         SeriesRequest request;
         try
         {
-            request = BuildRequest(firstDisplayName, secondDisplayName, gameCount, rulesetId);
+            request = BuildRequest(firstDisplayName, secondDisplayName, gameCount, rulesetId, mode);
         }
         catch (VersusDomainException exception)
         {
@@ -102,14 +122,15 @@ public static class LocalVersusFlow
 
     /// <summary>
     /// The stored local series without loading any of them: unfinished series first, then finished
-    /// ones, newest first within each. Archived series and other modes are not this screen's.
+    /// ones, newest first within each. Archived series and the non-local modes (correspondence) are
+    /// not this screen's.
     /// </summary>
     public static List<SeriesSummary> ListLocal(VersusMatchCoordinator coordinator)
     {
         List<SeriesSummary> local = new List<SeriesSummary>();
         foreach (SeriesSummary summary in coordinator.ListSeries())
         {
-            if (summary.Mode == Mode && !summary.Archived)
+            if (Array.IndexOf(OfferedModes, summary.Mode) >= 0 && !summary.Archived)
             {
                 local.Add(summary);
             }
@@ -135,8 +156,9 @@ public static class LocalVersusFlow
     public static ParticipantId NextParticipant(VersusSeries series)
     {
         VersusGame game = series?.CurrentGame;
-        if (game == null)
+        if (game == null || series.Mode == VersusMode.LocalSimultaneous)
         {
+            // A simultaneous series has no turn order: both participants play every game together.
             return default;
         }
 
@@ -157,6 +179,20 @@ public static class LocalVersusFlow
     /// </summary>
     public static List<LevelDefinition> EligibleLevels(CompetitiveRuleset ruleset, UnlockSnapshot unlock)
     {
+        return EligibleLevels(ruleset, unlock, requiresMultiplayerArena: false);
+    }
+
+    /// <summary>
+    /// As above; <paramref name="requiresMultiplayerArena"/> additionally keeps only arenas that
+    /// declare <see cref="ArenaCapability.Multiplayer"/>, which is what a two-human game needs. It is
+    /// the same capability <see cref="MatchConfigurationBuilder"/> enforces for a two-human roster, read
+    /// here only so the screen does not offer an arena the builder would then refuse.
+    /// </summary>
+    public static List<LevelDefinition> EligibleLevels(
+        CompetitiveRuleset ruleset,
+        UnlockSnapshot unlock,
+        bool requiresMultiplayerArena)
+    {
         List<LevelDefinition> eligible = new List<LevelDefinition>();
         if (ruleset == null || unlock == null)
         {
@@ -171,6 +207,11 @@ public static class LocalVersusFlow
 
         foreach (LevelDefinition level in MatchCatalogs.Levels.Definitions)
         {
+            if (requiresMultiplayerArena && !level.Supports(ArenaCapability.Multiplayer))
+            {
+                continue;
+            }
+
             if (LevelEligibility.CanSelect(level, mode, MatchCatalogs.Compatibility, unlock))
             {
                 eligible.Add(level);
@@ -203,6 +244,41 @@ public static class LocalVersusFlow
             participantId,
             levelId,
             character,
+            unlock,
+            modifiers ?? MatchModifiers.Default);
+
+        if (launch.Succeeded)
+        {
+            LocalVersusNavigationState.Bind(launch.Configuration);
+        }
+        else
+        {
+            LocalVersusNavigationState.Clear();
+        }
+
+        return launch;
+    }
+
+    /// <summary>
+    /// Launches one simultaneous game through <see cref="VersusLauncher.LaunchSimultaneous"/> and
+    /// nothing else, with the same return-hint handling as <see cref="LaunchTurn"/>: set just before
+    /// the launcher's scene transition, cleared again if the launch fails.
+    /// </summary>
+    public static VersusLaunch LaunchGame(
+        SeriesId seriesId,
+        CharacterSelection firstCharacter,
+        CharacterSelection secondCharacter,
+        int levelId,
+        UnlockSnapshot unlock,
+        MatchModifiers modifiers = null)
+    {
+        LocalVersusNavigationState.Begin(seriesId);
+
+        VersusLaunch launch = VersusLauncher.LaunchSimultaneous(
+            seriesId,
+            firstCharacter,
+            secondCharacter,
+            levelId,
             unlock,
             modifiers ?? MatchModifiers.Default);
 

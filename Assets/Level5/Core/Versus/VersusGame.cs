@@ -347,6 +347,98 @@ namespace Level5.Core.Versus
             return TryResolve(participants, nowUtc);
         }
 
+        /// <summary>
+        /// Issues one attempt to each participant for this game, or hands back the pair already
+        /// outstanding. Both are checked before either is issued, so a refusal never leaves one
+        /// participant holding an attempt the other was denied.
+        ///
+        /// Idempotent the same way <see cref="IssueAttempt"/> is, per participant: a retry after a
+        /// failed save, a double-tapped button or a crash between "issued" and "scene loaded" returns
+        /// the two live attempts rather than minting second ones.
+        /// </summary>
+        internal SimultaneousAttempts IssueSimultaneousAttempts(
+            VersusParticipants participants,
+            IVersusIdSource ids,
+            DateTime nowUtc)
+        {
+            if (!CanIssueTo(participants.First.Id, participants, out string firstReason))
+            {
+                throw new VersusDomainException(firstReason);
+            }
+
+            if (!CanIssueTo(participants.Second.Id, participants, out string secondReason))
+            {
+                throw new VersusDomainException(secondReason);
+            }
+
+            Attempt first = IssueAttempt(participants.First.Id, participants, ids, nowUtc);
+            Attempt second = IssueAttempt(participants.Second.Id, participants, ids, nowUtc);
+            return new SimultaneousAttempts(first, second);
+        }
+
+        /// <summary>
+        /// Records both participants' results together and resolves the game.
+        ///
+        /// Everything that can be refused is checked before anything is changed: the game is
+        /// active, each attempt is in this game and belongs to the participant it is submitted for,
+        /// each can still be completed under the result's rules, and the two results can be compared.
+        /// Only then are both attempts completed, so a refusal leaves both exactly as they were and
+        /// a retry is safe. Resolution always happens, because both attempts are in by construction.
+        /// </summary>
+        internal GameResult SubmitSimultaneousResults(
+            AttemptSubmission first,
+            AttemptSubmission second,
+            VersusParticipants participants,
+            DateTime nowUtc)
+        {
+            if (Status != VersusGameStatus.Active)
+            {
+                throw new VersusDomainException(
+                    $"game {Number} is {Status} and cannot accept a result");
+            }
+
+            Attempt firstAttempt = FindSubmittable(first, participants);
+            Attempt secondAttempt = FindSubmittable(second, participants);
+
+            if (first.ParticipantId == second.ParticipantId)
+            {
+                throw new VersusDomainException(
+                    $"game {Number} needs one result from each participant, but both are for {first.ParticipantId}");
+            }
+
+            // Pure; throws when the results were produced under different rules or versions, which
+            // would otherwise only surface after the first attempt had already been completed.
+            Ruleset.Compare(first.Result, second.Result);
+
+            firstAttempt.Complete(first.Result, nowUtc);
+            secondAttempt.Complete(second.Result, nowUtc);
+
+            return TryResolve(participants, nowUtc);
+        }
+
+        private Attempt FindSubmittable(AttemptSubmission submission, VersusParticipants participants)
+        {
+            Attempt attempt = Find(submission.AttemptId);
+            if (attempt == null)
+            {
+                throw new VersusDomainException($"game {Number} has no attempt {submission.AttemptId}");
+            }
+
+            if (attempt.ParticipantId != submission.ParticipantId)
+            {
+                throw new VersusDomainException(
+                    $"attempt {submission.AttemptId} belongs to {attempt.ParticipantId}, not {submission.ParticipantId}");
+            }
+
+            if (!participants.Contains(submission.ParticipantId))
+            {
+                throw new VersusDomainException($"'{submission.ParticipantId}' is not a participant in this series");
+            }
+
+            attempt.ValidateCompletion(submission.Result);
+            return attempt;
+        }
+
         /// <summary>Marks the run started, so an interrupted attempt is distinguishable from an untouched one.</summary>
         internal bool StartAttempt(AttemptId attemptId, DateTime nowUtc)
         {

@@ -14,7 +14,9 @@ public class Pause : MonoBehaviour
     private const float DatabaseWaitTimeoutSeconds = 8f;
     public const string LocalVersusContinueLabel = "Continue Series";
     public const string LocalVersusForfeitLabel = "Quit Turn (Forfeit)";
+    public const string LocalVersusSimultaneousExitLabel = "Exit unavailable during a game";
     public const string ExitNotSavedMessage = "Couldn't save - try again";
+    public const string ExitUnavailableSimultaneousMessage = "Unavailable until the game ends";
     private const float ExitNotSavedMessageSeconds = 3f;
     // main flag
     [SerializeField]
@@ -185,6 +187,7 @@ public class Pause : MonoBehaviour
     private Func<bool> attemptOutstandingReader = () => false;
     private Func<bool> turnInProgressReader = () => false;
     private Func<bool> tryPrepareForExplicitExit = () => true;
+    private Func<bool> simultaneousGameInProgressReader = () => false;
 
     /// <summary>
     /// Binds the versus quit policy. It cannot be referenced directly: <c>Level5.Versus</c> depends on
@@ -198,11 +201,15 @@ public class Pause : MonoBehaviour
     public void BindVersusContext(
         Func<bool> attemptOutstandingReader,
         Func<bool> turnInProgressReader,
-        Func<bool> tryPrepareForExplicitExit)
+        Func<bool> tryPrepareForExplicitExit,
+        Func<bool> simultaneousGameInProgressReader = null)
     {
         this.attemptOutstandingReader = attemptOutstandingReader;
         this.turnInProgressReader = turnInProgressReader;
         this.tryPrepareForExplicitExit = tryPrepareForExplicitExit;
+        // A simultaneous game has two players, so exit is refused rather than forfeited; this only
+        // changes what the menu says about it. Unbound, the single-participant wording applies.
+        this.simultaneousGameInProgressReader = simultaneousGameInProgressReader ?? (() => false);
 
         // Awake ran the first label refresh before this binding existed, against the "no series"
         // defaults; redo it now that the real policy is readable.
@@ -553,7 +560,9 @@ public class Pause : MonoBehaviour
         // A restart would be a free retake of a series turn; quitting it forfeits the game instead.
         if (attemptOutstandingReader())
         {
-            Debug.Log("Restart is unavailable during a series turn. Quit the turn to forfeit the game.");
+            Debug.Log(simultaneousGameInProgressReader()
+                ? "Restart is unavailable during a simultaneous versus game."
+                : "Restart is unavailable during a series turn. Quit the turn to forfeit the game.");
             return;
         }
 
@@ -598,28 +607,34 @@ public class Pause : MonoBehaviour
             return true;
         }
 
-        Debug.LogWarning(
-            "Cannot leave the match yet: a series turn's forfeit or result has not been saved. Try again.");
+        // A simultaneous game in progress is refused outright - no one is forfeited and nothing is
+        // waiting on a save - so it must not say "couldn't save".
+        string message = simultaneousGameInProgressReader()
+            ? ExitUnavailableSimultaneousMessage
+            : ExitNotSavedMessage;
+        Debug.LogWarning(message == ExitUnavailableSimultaneousMessage
+            ? "Cannot leave a simultaneous versus game before it ends; nobody is forfeited."
+            : "Cannot leave the match yet: a series turn's forfeit or result has not been saved. Try again.");
         if (feedback != null)
         {
-            StartCoroutine(ShowExitNotSaved(feedback));
+            StartCoroutine(ShowExitNotSaved(feedback, message));
         }
 
         return false;
     }
 
     // Real time: the pause menu runs at timeScale 0.
-    private static IEnumerator ShowExitNotSaved(Text target)
+    private static IEnumerator ShowExitNotSaved(Text target, string message)
     {
         string original = target.text;
-        if (original == ExitNotSavedMessage)
+        if (original == ExitNotSavedMessage || original == ExitUnavailableSimultaneousMessage)
         {
             yield break;
         }
 
-        target.text = ExitNotSavedMessage;
+        target.text = message;
         yield return new WaitForSecondsRealtime(ExitNotSavedMessageSeconds);
-        if (target != null && target.text == ExitNotSavedMessage)
+        if (target != null && target.text == message)
         {
             target.text = original;
         }
@@ -681,9 +696,11 @@ public class Pause : MonoBehaviour
 
         if (loadStartScreenText != null && LocalVersusNavigationState.ReturnPending)
         {
-            loadStartScreenText.text = turnInProgressReader()
-                ? LocalVersusForfeitLabel
-                : LocalVersusContinueLabel;
+            loadStartScreenText.text = simultaneousGameInProgressReader()
+                ? LocalVersusSimultaneousExitLabel
+                : turnInProgressReader()
+                    ? LocalVersusForfeitLabel
+                    : LocalVersusContinueLabel;
         }
     }
 
