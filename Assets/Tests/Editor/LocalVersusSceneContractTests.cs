@@ -148,15 +148,27 @@ public class LocalVersusSceneContractTests
             "Could not start the game: " + shortfall.TrimEnd('.') + ", touchscreen (cannot seat a second player)."
         };
 
-        message.enableAutoSizing = false;
-        message.fontSize = message.fontSizeMin;
-        foreach (string sentence in sentences)
+        // Measure at the smallest size it may shrink to, then put the label back: OpenUi reuses a scene the
+        // developer already has open, and leaving auto-sizing off there would reintroduce the defect on their next save.
+        bool autoSizing = message.enableAutoSizing;
+        float fontSize = message.fontSize;
+        try
         {
-            float needed = message.GetPreferredValues(sentence, boxWidth, 0f).y;
-            Assert.That(
-                needed,
-                Is.LessThanOrEqualTo(boxHeight),
-                $"even at {message.fontSizeMin}pt the launch error needs {needed:0}px in a {boxHeight}px box: \"{sentence}\"");
+            message.enableAutoSizing = false;
+            message.fontSize = message.fontSizeMin;
+            foreach (string sentence in sentences)
+            {
+                float needed = message.GetPreferredValues(sentence, boxWidth, 0f).y;
+                Assert.That(
+                    needed,
+                    Is.LessThanOrEqualTo(boxHeight),
+                    $"even at {message.fontSizeMin}pt the launch error needs {needed:0}px in a {boxHeight}px box: \"{sentence}\"");
+            }
+        }
+        finally
+        {
+            message.enableAutoSizing = autoSizing;
+            message.fontSize = fontSize;
         }
     }
 

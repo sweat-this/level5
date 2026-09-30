@@ -694,8 +694,9 @@ public class LocalVersusProcessCertificationPlayModeTests
     /// The real <c>GameRules</c> match-end path for a simultaneous game, in an isolated persistence directory:
     /// a refused save leaves both attempts outstanding and the game unadvanced, the retry after the disk
     /// recovers records the pair once and advances the game once, and - unlike an ordinary alternating turn,
-    /// which is run first as the positive control - nothing outside the series document is written (no local
-    /// high score, all-time stats, pending result or character progression).
+    /// which is run first as the positive control - no file under the persistent data path is written (no local
+    /// high score, all-time stats, pending result file or character progression). Anything that does not persist
+    /// through a file there (PlayerPrefs) is not observed; Backend V2 pending results are covered separately.
     /// The existing suites pin the exclusion by reading <c>GameRules</c>'s source; this observes it.
     /// </summary>
     [UnityTest]
@@ -825,7 +826,7 @@ public class LocalVersusProcessCertificationPlayModeTests
         {
             if (!before.TryGetValue(now.Key, out string then) || then != now.Value)
             {
-                changed.Add(Path.GetFileName(now.Key));
+                changed.Add(Path.GetRelativePath(Application.persistentDataPath, now.Key));
             }
         }
 

@@ -819,8 +819,8 @@ identifiers and display names only. Two virtual gamepads stand in for the two hu
 attached to the machine** (see "Not certified").
 
 **Final suites on the certified tree.** Full EditMode 2040/2040. Full PlayMode (graphics enabled): 135 tests, 108 passed,
-0 failed, 27 skipped - the skips are the opt-in fixtures (12 live-backend, 8 process-certification, plus the 7 added
-here), all of which were then run individually (below). `./scripts/validate-repository.ps1` and
+0 failed, 27 skipped - the skips are the opt-in fixtures (13 live-backend, 14 process-certification of which 7 are
+added here), all of which were then run individually (below). `./scripts/validate-repository.ps1` and
 `Level5ProjectValidator.ValidateFromMenu` pass. The pre-change baseline was 2039/2039 and 127/107/0/20, which also
 closes the gap #216 reported (its last same-character selection-test fix had no full run after it: it passes).
 
@@ -832,7 +832,7 @@ closes the gap #216 reported (its last same-character selection-test fix had no 
 | Fresh-process restoration | S1 (create Best-of-3 through the real screens, one shared game through the real `GameRules`, both results durable) -> S2 (fresh process: series found from the repository, game 1 verified incl. attempt ids, games 2-3 played, series complete 2-1) -> S3 (third process: completed series and history intact, no game offered). |
 | Forced process kill | SC1 (shared game live, both attempts durably `Started`, ids recorded, process killed with no pause action) -> SC2 (fresh process: same game, neither forfeited, score 0, both original attempts reused on relaunch, completes with exactly one durable result). |
 | Atomic recovery | the real `GameRules` loop with a repository that refuses saves: retried (>= 2 refused saves), both attempts and the competitive context stay outstanding, the game does not advance, leaving is refused; after recovery the pair is recorded once and the game advances once; winner by roster slot. Domain events-after-save, slot identity against score order and single-attempt refusal were already pinned by `Level5VersusSimultaneousDomainTests` / `Level5LocalSimultaneousVersusTests` and were not duplicated. |
-| Competition-only persistence | `ASimultaneousMatchEndRetriesAtomicallyAndWritesOnlyTheSeries` snapshots the isolated persistent data path around the match end: an alternating control turn wrote `level5.db` and `guest-pending-progression.json(.bak)`; the simultaneous match wrote **nothing** outside the series. Mutation check: with the latch in `GameRules` disabled, the test fails on exactly those files. |
+| Competition-only persistence | `ASimultaneousMatchEndRetriesAtomicallyAndWritesOnlyTheSeries` snapshots the isolated persistent data path around the match end: an alternating control turn wrote `level5.db` and `guest-pending-progression.json(.bak)`; the simultaneous match wrote **no file** under the persistent data path (`PlayerPrefs` are not observed). Mutation check: with the latch in `GameRules` disabled, the test fails on exactly those files. |
 | Gamepad navigation, simultaneous | Mode, Create, Player 1 and Player 2 selectors (independent), Play Game seating two humans, by real d-pad/Submit through `InputSystemUIInputModule`. The Arena selector is disabled (one multiplayer arena) and correctly not a navigation stop. |
 | Alternating regression | Session1/2 (restart), C1/C2 (kill), the `GameRules` retry loop and the alternating layout all pass again. |
 
