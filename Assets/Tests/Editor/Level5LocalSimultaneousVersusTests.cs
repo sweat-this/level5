@@ -432,6 +432,35 @@ public class Level5LocalSimultaneousVersusTests
         Assert.That(VersusRuntime.Coordinator.Load(id).Score.FirstWins, Is.EqualTo(1), "counted exactly once");
     }
 
+    [TestCase(false)]
+    [TestCase(true)]
+    public void AMissingSlotsStatsSubmitsNothingAndLeavesBothAttemptsReplayable(bool firstMissing)
+    {
+        SeriesId id = LaunchGame(3, out VersusSeries created);
+        AttemptId first = ActiveVersusAttempt.AttemptId;
+        AttemptId second = ActiveVersusAttempt.SecondAttemptId;
+
+        LogAssert.Expect(LogType.Error, new Regex("were not reported: no stats were available for roster slot " + (firstMissing ? "0" : "1")));
+        Assert.That(VersusMatchReporter.TryReport(
+            firstMissing ? null : BuildStats(40),
+            firstMissing ? BuildStats(25) : null,
+            GameModeId.TotalPoints,
+            60f), Is.True, "the match must still be able to finish");
+
+        Assert.That(ActiveVersusAttempt.IsActive, Is.False);
+        VersusSeries stored = VersusRuntime.Coordinator.Load(id);
+        Assert.That(stored.Games[0].Status, Is.EqualTo(VersusGameStatus.Active), "no winner was invented for the missing slot");
+        Assert.That(stored.Score.FirstWins, Is.Zero);
+        Assert.That(stored.Score.SecondWins, Is.Zero);
+        Assert.That(stored.ViewFor(created.Participants.First.Id).CurrentGame.OwnAttemptState, Is.Not.EqualTo(AttemptState.Completed));
+        Assert.That(stored.ViewFor(created.Participants.Second.Id).CurrentGame.OwnAttemptState, Is.Not.EqualTo(AttemptState.Completed));
+
+        SimultaneousAttemptOperation reissued = VersusRuntime.Coordinator.IssueSimultaneousAttempts(id);
+        Assert.That(reissued.Succeeded, Is.True);
+        Assert.That(reissued.Attempts.First.Id, Is.EqualTo(first), "the same pair comes back");
+        Assert.That(reissued.Attempts.Second.Id, Is.EqualTo(second));
+    }
+
     [Test]
     public void AnOrdinaryMatchIsNotReported()
     {

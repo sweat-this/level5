@@ -117,6 +117,20 @@ public static class VersusMatchReporter
         AttemptSubmission first = default;
         AttemptSubmission second = default;
 
+        if (firstStats == null || secondStats == null)
+        {
+            // GameStatsAttemptResults turns missing stats into an empty result, which is right for a
+            // single attempt (the series must be able to move on) but wrong for a pair: it would
+            // durably award the game to whichever slot did have stats. Submit nothing; both attempts
+            // stay outstanding, so nobody is forfeited and the same pair is reissued on the next launch.
+            Debug.LogError(
+                $"Simultaneous versus attempts {ActiveVersusAttempt.AttemptId}/{ActiveVersusAttempt.SecondAttemptId} "
+                + $"were not reported: no stats were available for {(firstStats == null ? "roster slot 0" : "roster slot 1")}. "
+                + "Both attempts remain outstanding.");
+            ActiveVersusAttempt.Clear();
+            return true;
+        }
+
         try
         {
             // The same completion time for both: the simultaneous slice is Most Points, where time is
