@@ -10,6 +10,11 @@ simultaneous versus, split-screen, a join lobby, remapping or hot-plug reassignm
 adopt `PlayerInput`/`PlayerInputManager` (migration plan step 7 is unchanged). Single-player assignment
 is unchanged. Physical-device certification has **not** been run (see "Physical certification").
 
+2026-09-29 (shared camera and truthful arena multiplayer capability): a match whose roster seats more than one local
+human is now framed by one shared camera, and `ArenaCapability.Multiplayer` is authored per arena instead of
+granted to all of them. See "Shared camera for two local humans" below. Physical-device certification of the
+camera is still outstanding.
+
 2026-09-17: the racing minigame and `RacingInputReader` have been retired and removed. References to
 racing input ownership below have been removed accordingly; this was a subsystem deletion, not an input
 redesign.
@@ -235,8 +240,9 @@ recorded for the `LocalSimultaneous` work.
 - **Open: mode data does not say which modes are meaningful for two humans.** Compatibility accepts two
   humans in any mode with `GameModeDefinition.MaxPlayers >= 2` on any arena with the multiplayer capability;
   authored `MaxPlayers` is 4 for nearly every mode.
-- **Open: `ArenaCapability.Multiplayer` is granted to every arena** (`LevelDefinitionFactory`: "No level
-  authors a multiplayer flag today"), so the capability is not a reliable statement of support. A scene
+- **Fixed: `ArenaCapability.Multiplayer` was granted to every arena.** It is now authored per arena
+  (`LevelSelected.LevelSupportsMultiplayer`) and defaults to unsupported; see "Arena multiplayer capability"
+  below. The audit that found the problem: a scene
   audit of the authored YAML found: every basketball arena that instances `basketball_goal.prefab`,
   `basketball_goal_circlek`, `_slab`, `_snow` or `_sudan` gets `player_spawn_location1..4` from that prefab
   (this is the arena family the Total Points certification ran on); `level_21_shore` authors all four spawns
@@ -245,12 +251,12 @@ recorded for the `LocalSimultaneous` work.
   with a named error at scene load, which is why the flag was left permissive - but that failure happens
   after the launch, not in compatibility. Only The Scrapyard was exercised at runtime; other arenas were
   audited from authored data, not played.
-- **Open: the shared camera follows slot 0 only** (below).
+- **Fixed: the shared camera followed slot 0 only** (see "Shared camera for two local humans").
 
-### Camera and HUD characterization
+### Camera and HUD characterization (before the shared camera)
 
 Measured in the PlayMode fixture on Total Points at The Scrapyard (`Camera.main`, both actors driven by
-virtual gamepads):
+virtual gamepads), on `dev` b0af8f7c7, before the shared camera existed:
 
 - At spawn both humans are inside the frame (viewport P1 = (0.47, 0.52), P2 = (0.32, 0.40)). The initial
   shared-camera presentation is usable for a local multiplayer match.
@@ -260,23 +266,111 @@ virtual gamepads):
 - The match HUD, health bar, stats overlay and `BasketBall.instance` are primary-player-centric by design;
   they were not redesigned.
 
-Conclusion: the shared camera is an acceptable initial presentation for input and spawn certification, but a
-production `LocalSimultaneous` match needs a camera decision (frame both players, or split-screen) before it
-ships. That is reported as a blocker for the versus work, not implemented here.
+That measurement is what the shared camera below replaces.
+
+### Arena multiplayer capability
+
+`ArenaCapability.Multiplayer` means "this arena has the player spawn points a local multiplayer roster needs
+and has been verified to play with more than one local human". The authored source is unchanged in kind:
+`LevelSelected` prefabs (no `Resources/Match` definition assets exist on `dev`, so they remain the source of
+truth) carry a new `levelSupportsMultiplayer` field, `LevelPreset` carries it, and
+`LevelDefinitionFactory.ResolveCapabilities` turns it into the capability. Nothing else grants it, and
+`LevelDefinitionData.Default` no longer includes it.
+
+- Authored `true` only for The Scrapyard (level id 1), the arena the two-human PlayMode certification ran on.
+  Every other arena is unsupported until someone certifies it. A missing field deserializes to `false`, so no
+  other prefab needed editing.
+- `Level5AuthoredMatchDataTests.OnlyArenasThatHaveBeenCertifiedForTwoLocalHumansAuthorMultiplayer` holds the
+  certified id list; adding an arena means adding its two-human certification and its id there.
+- `GameModeCompatibility` is unchanged and remains the launch authority
+  (`roster.LocalHumanCount > 1 && !level.Supports(ArenaCapability.Multiplayer)` -> `ArenaLacksMultiplayer`).
+  Nothing in the camera, controllers or spawning re-checks it.
+- The per-arena spawn audit above is a starting point for certifying more arenas, not a certification.
+
+### Shared camera for two local humans
+
+`cameraUpdater` chooses its behavior from roster topology, not from a versus flag: when
+`MatchRuntime.Roster.LocalHumanCount > 1` it takes an explicit second branch and never enters the
+single-target code, which is untouched for every one-human match.
+
+**Targets.** Each tick the branch reads `GameLevelManager.players`, keeps the non-CPU participants and drops
+any whose actor is null (destroyed) or inactive. CPUs and basketballs are never targets (remote and replay
+participants cannot be seated at all: compatibility rejects them). Two live humans -> shared framing; one -> the same framing over one point
+(centred on that human, no zoom); none -> the camera holds where it is. The arithmetic lives in
+`SharedCameraFraming` (plain static, tested in EditMode); `cameraUpdater` only smooths and applies it.
+
+**Framing.** The authored gameplay camera is a perspective camera pitched down 13.6 degrees. The camera's base
+position follows the midpoint of the humans (x from the midpoint, y by the same `addToCameraPosY` rule as the
+single path, z at its authored rest depth), and it zooms by dollying back along its own optical axis, which
+keeps the ground point at the middle of the screen fixed. The distance is solved per human in camera space:
+`(|lateral| + padding) <= (depth + extra) * tan(horizontal half-FOV)`, largest wins, clamped to
+`[0, sharedFramingMaxExtraDistance]`. Measuring in camera space is what makes a player standing close to the
+lens (small depth) correctly need more room than one far away. It is measured from where the camera actually is,
+not where it is heading, so a fast walker is never left out while smoothing catches up: zooming out is
+immediate, zooming back in eases with the camera's existing `smoothSpeed`. The far plane grows by the same
+distance. Tunables (serialized on `cameraUpdater`, so prefab-overridable): `sharedFramingPadding` 1.5,
+`sharedFramingMaxExtraDistance` 7.
+
+**Characterization of the certified camera** (Total Points at The Scrapyard, `camera_perspective_1`):
+perspective, vertical FOV 50, near 0.3, far 40, pitch 13.6 degrees, yaw 0, rest position (-0.9, 1.9, -12.8);
+normal movement is world X only (y follows the player at `addToCameraPosY` 1.835, z fixed); `xMin/xMax` are
+only applied on the orthographic path, so the perspective camera has no horizontal bounds; `customCamera` is
+false; there was no zoom. Spawns: P1 (-1.23, 0, -4.31), P2 (-2.17, 0, -7.16); the playable ground band is
+roughly z -10.6 .. -2.6 (depth 2.2 .. 10.2 from the camera); walking speed is about 3.3 units/second; the
+court's three-point arc reaches roughly 8 units either side of the rim (x 0.9), estimated from a rendered frame.
+
+**Capacity.** The bound exists because the ground plane ends a few units behind the authored camera: dollying
+back much further shows the void under the arena at the bottom of the frame. At the clamp (7) the void is a
+strip of roughly the bottom 8% of the frame, and it appears only when the humans are already past what
+the framing can hold. The separation the framing keeps both humans in frame for:
+
+| Aspect | Both at ordinary play depth (~6-9 from the lens) | One hugging the near sideline (depth ~2) |
+| --- | --- | --- |
+| 4:3 (measured; batch mode) | about 12-13 units (test asserts >= 10) | about 8 units |
+| 16:9 | about 18 units (computed from the same geometry, not run) | about 12 units |
+
+Beyond that the humans can separate past the frame: the zoom is bounded on purpose, and there is no tether or
+push-back. Player 2 can no longer walk off-screen while player 1 stands still *inside that certified
+separation*, which covers the court's three-point range at 16:9 (computed, not run).
+
+**Special cameras.**
+
+- *Goal inset* (`camera_perspective_on_goal`, a picture-in-picture toggled by player 0's distance from the
+  rim): held closed for the whole two-human match, because the trigger says nothing about the second human.
+- *Follow-ball, orthographic, sniper*: single-target (they read the `BasketBall.instance` singleton or one
+  player). Not extended. None is reachable from a normal two-human match: `CameraManager` starts on the
+  perspective camera and only deactivates the others, `switchCamera()` is not called from any live code path
+  and now refuses to cycle when more than one local human is seated, and `cameraUpdater.Start` forces
+  `sniperCamera` false. If one of them is ever the active camera in a two-human match it holds still and logs
+  a warning once.
+- *Custom cameras* (`customCamera`): the same base rule as the single path (height held) is used, plus the
+  zoom; no arena authoring `customCamera` is certified for two humans.
+- Weather is untouched.
+
+**Known limits.** The HUD, health bar, stats overlay and `BasketBall.instance` remain primary-player-centric.
+`GameRules` persists only the primary human's (slot 0) score and all-time stats at match end; slot 1's stats
+live and finish correctly in memory but are not saved anywhere. That is result semantics, deliberately left to
+the `LocalSimultaneous`/versus work. Three or four local humans are not supported by this branch.
 
 ### Automated evidence
 
 | Fixture | Covers |
 | --- | --- |
 | `Level5LocalGameplayDevicePlanPlayModeTests` | Every layout, refusals and their reasons, exclusivity, immutability; virtual devices under `InputTestFixture`. |
-| `Level5TwoHumanLocalRosterTests` (EditMode) | Two-human `PlayerRoster.Build` shape; `ArenaLacksMultiplayer` rejection and acceptance in `GameModeCompatibility`. |
+| `Level5TwoHumanLocalRosterTests` (EditMode) | Two-human `PlayerRoster.Build` shape; `ArenaLacksMultiplayer` rejection and acceptance in `GameModeCompatibility`; `MaxPlayers == 1` roster rejection; one human + CPU is not local multiplayer. |
+| `Level5ArenaMultiplayerCapabilityTests` (EditMode) | The capability comes only from the authored flag through `LevelSelected` -> `LevelPreset` -> `LevelDefinitionFactory`; nothing grants it by default; compatibility refuses/accepts accordingly. |
+| `Level5AuthoredMatchDataTests` (EditMode) | Parity of the authored flag with the resolved capability on every shipped arena; only certified arenas author multiplayer. |
+| `Level5SharedCameraFramingTests` (EditMode) | The pure framing math: midpoint/bounds, separation growth, min/max clamp, depth handling, degenerate input, destroyed/disabled/missing targets. |
 | `Level5GameplayDevicePlanCompositionGuardTests` (EditMode) | Plan configured before spawn, preflight before `ActiveMatch.Begin` (start menu) and before the campaign round advance, no `Gamepad.all[` in the provider, no Input System in `Level5.Core`. |
 | `Level5GameplayDeviceProviderPlayModeTests` | Per-slot pairing, capture across gamepad re-ordering, provider semantics, release, reset, on-screen handling. Runs under `InputTestFixture`. |
-| `Level5TwoHumanLocalInputPlayModeTests` | A real two-human match on virtual gamepads and on keyboard + gamepad: two actors, two `GameStats`, distinct balls, input isolation, keyboard-only refusal, unchanged CPU gating, camera measurements. |
+| `Level5TwoHumanLocalInputPlayModeTests` | A real two-human match on virtual gamepads and on keyboard + gamepad: two actors, two `GameStats`, distinct balls, input isolation, keyboard-only refusal, unchanged CPU gating. Shared camera on Total Points at The Scrapyard: both humans stay in frame as P2 walks away, crosses P1 and reconverges (per frame), P1 walking away is framed too, camera centred on the pair rather than slot 0, goal inset held closed, zoom bounded under pathological separation, degradation two -> one -> none -> two, a CPU participant never a target, and a two-human match played to its normal `TimeExpired` end and `MatchPhase.Completed` against a throwaway database. |
 
 ### Physical certification
 
-**Not run.** The automated evidence above uses virtual `InputTestFixture` devices only and does not certify
+**Not run - outstanding manual certification.** No physical gamepad was available where the shared camera
+work was done (2026-09-29), so none of the rows below has been exercised on hardware; the shared camera was
+checked with virtual devices only, which say nothing about physical-device ownership, pause/resume or scene-load
+slot stability. The automated evidence above uses virtual `InputTestFixture` devices only and does not certify
 simultaneous-versus readiness. Before this foundation is called production-ready, run on desktop, with a
 two-human match composed through the test/dev seam, and record the result here:
 

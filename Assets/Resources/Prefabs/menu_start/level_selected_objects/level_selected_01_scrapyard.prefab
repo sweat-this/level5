@@ -57,6 +57,7 @@ MonoBehaviour:
   isShootingLevel: 1
   isBattleRoyalLevel: 0
   isCageMatchLevel: 0
+  levelSupportsMultiplayer: 1
   customCamera: 0
   isSelectable: 1
   isLocked: 0

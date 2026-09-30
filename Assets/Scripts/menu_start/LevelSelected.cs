@@ -16,6 +16,7 @@ public class LevelSelected : MonoBehaviour
     [SerializeField] private bool isShootingLevel;
     [SerializeField] private bool isBattleRoyalLevel;
     [SerializeField] private bool isCageMatchLevel;
+    [SerializeField] private bool levelSupportsMultiplayer;
     [SerializeField] private bool customCamera;
     [SerializeField] private bool isSelectable;
     [SerializeField] private bool isLocked;
@@ -53,6 +54,12 @@ public class LevelSelected : MonoBehaviour
     public bool IsShootingLevel { get => isShootingLevel;  }
     public bool IsBattleRoyalLevel { get => isBattleRoyalLevel; }
     public bool IsCageMatchLevel { get => isCageMatchLevel;  }
+    /// <summary>
+    /// Authored: this arena has the player spawn points a local multiplayer roster needs and has been
+    /// verified to play with more than one local human. Defaults to false, so an arena is unsupported
+    /// until someone certifies it.
+    /// </summary>
+    public bool LevelSupportsMultiplayer { get => levelSupportsMultiplayer; }
     public bool CustomCamera { get => customCamera; set => customCamera = value; }
     public bool LevelHasSevenPointers { get => levelHasSevenPointers; set => levelHasSevenPointers = value; }
     public string LevelInfo { get => levelInfo; set => levelInfo = value; }

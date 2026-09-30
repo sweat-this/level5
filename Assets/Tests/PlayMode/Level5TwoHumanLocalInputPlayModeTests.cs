@@ -45,6 +45,7 @@ public class Level5TwoHumanLocalInputPlayModeTests
     // OnScreenControls touch the Input System in OnDisable) are unloaded first, and only then is the
     // Input System restored.
     private InputTestFixture input;
+    private LocalProfileTestDatabase matchDatabase;
 
     [SetUp]
     public void SetUpInput()
@@ -59,6 +60,8 @@ public class Level5TwoHumanLocalInputPlayModeTests
     {
         ActiveMatch.Clear();
         yield return RealScenePlayModeTestSupport.UnloadAllLoadedScenes("two-human-input-blank");
+        matchDatabase?.Dispose();
+        matchDatabase = null;
         input.TearDown();
         input = null;
     }
@@ -379,13 +382,57 @@ public class Level5TwoHumanLocalInputPlayModeTests
         Assert.That(PlayerControlsProvider.TryPreflightGameplayDevices(1, out _), Is.True, "a solo launch is never refused");
     }
 
-    // ==================== camera / HUD characterization ====================
+    // ==================== shared camera ====================
+    //
+    // The camera is observed black-box (Camera.main and viewport positions): cameraUpdater lives in the
+    // game assembly, which these tests do not reference. The certified configuration is Total Points at
+    // The Scrapyard, which is what the production launch selects by default.
+
+    // Certified separation. The shared camera can only dolly back a bounded distance, so how far apart
+    // two humans can be depends on the aspect ratio and on how close to the lens they stand. Ten world
+    // units apart at ordinary depth fits at every aspect from 4:3 up (batch mode runs at 4:3, the
+    // narrowest case); see docs/player-input-architecture.md for the wider numbers.
+    private const float CertifiedSeparation = 10f;
+    private const float CameraSettleSeconds = 2.5f;
+
+    private static bool InFrameX(Vector3 viewport)
+    {
+        return viewport.z > 0f && viewport.x >= 0f && viewport.x <= 1f;
+    }
+
+    private static void AssertBothInFrame(Camera camera, Scenario scenario, string when)
+    {
+        Vector3 first = camera.WorldToViewportPoint(scenario.First.player.transform.position);
+        Vector3 second = camera.WorldToViewportPoint(scenario.Second.player.transform.position);
+
+        Assert.That(InFrameX(first), Is.True, $"player 1 left the frame ({when}): viewport {first}");
+        Assert.That(InFrameX(second), Is.True, $"player 2 left the frame ({when}): viewport {second}");
+    }
+
+    /// <summary>Holds a stick for a time, asserting on every frame that both humans stay in frame.</summary>
+    private IEnumerator MoveWatchingBoth(Gamepad pad, Vector2 direction, float seconds, Camera camera, Scenario scenario, string label)
+    {
+        Set(pad.leftStick, direction);
+        float end = Time.realtimeSinceStartup + seconds;
+        while (Time.realtimeSinceStartup < end)
+        {
+            yield return null;
+            AssertBothInFrame(camera, scenario, label);
+        }
+
+        Set(pad.leftStick, Vector2.zero);
+    }
+
+    private static Vector3 Middle(Scenario scenario)
+    {
+        return (scenario.First.player.transform.position + scenario.Second.player.transform.position) * 0.5f;
+    }
 
     [UnityTest]
     [Timeout(300000)]
-    public IEnumerator BothHumansAreVisibleToTheSharedCameraAtSpawnAndItsFollowBehaviourIsRecorded()
+    public IEnumerator TheSharedCameraFollowsThePairAsPlayerTwoWalksAwayCrossesPlayerOneAndReconverges()
     {
-        Gamepad padA = InputSystem.AddDevice<Gamepad>();
+        InputSystem.AddDevice<Gamepad>();
         Gamepad padB = InputSystem.AddDevice<Gamepad>();
 
         Scenario scenario = null;
@@ -394,30 +441,266 @@ public class Level5TwoHumanLocalInputPlayModeTests
 
         Camera camera = Camera.main;
         Assert.That(camera, Is.Not.Null, "the scene has a main camera");
+        Vector3 restCamera = camera.transform.position;
+        Vector3 firstStart = scenario.First.player.transform.position;
+        TestContext.WriteLine($"[two-human camera] level={scenario.Match.Level.DisplayName} mode={scenario.Match.Mode.DisplayName} rest camera={restCamera} fov={camera.fieldOfView} aspect={camera.aspect}");
 
-        Vector3 first = camera.WorldToViewportPoint(scenario.First.player.transform.position);
-        Vector3 second = camera.WorldToViewportPoint(scenario.Second.player.transform.position);
-        TestContext.WriteLine($"[two-human camera] level={scenario.Match.Level.DisplayName} mode={scenario.Match.Mode.DisplayName}");
-        TestContext.WriteLine($"[two-human camera] spawn viewport P1={first} P2={second}");
+        Assert.That(scenario.Second.player.transform.position.x, Is.LessThan(firstStart.x), "player 2 spawns to the left of player 1");
+        AssertBothInFrame(camera, scenario, "spawn");
 
-        Assert.That(InFrame(first), Is.True, "player 1 is on screen at spawn: " + first);
-        Assert.That(InFrame(second), Is.True, "player 2 is on screen at spawn: " + second);
+        // Player 2 walks right, past player 1 (who stands still), to a meaningful separation.
+        yield return MoveWatchingBoth(padB, Vector2.right, 3.3f, camera, scenario, "player 2 walking away");
+        yield return Hold(CameraSettleSeconds);
 
-        // The camera follows slot 0 only (cameraUpdater reads the pid-0 participant). Walk player 2 away
-        // while player 1 stands still and record where player 2 ends up in frame.
-        Set(padB.leftStick, Vector2.right);
-        yield return Hold(3f);
-        Set(padB.leftStick, Vector2.zero);
-        yield return null;
+        float separation = scenario.Second.player.transform.position.x - scenario.First.player.transform.position.x;
+        TestContext.WriteLine($"[two-human camera] apart: separation={separation:0.0} camera={camera.transform.position}");
+        Assert.That(separation, Is.GreaterThanOrEqualTo(CertifiedSeparation - 1f), "the walk must reach a meaningful separation");
+        AssertBothInFrame(camera, scenario, "apart, settled");
+        Assert.That(Travelled(scenario.First, firstStart), Is.LessThan(StayedWithin), "player 1 stood still throughout");
+        Assert.That(
+            Mathf.Abs(camera.transform.position.x - Middle(scenario).x),
+            Is.LessThan(0.75f),
+            "the camera is centred on the pair, not on slot 0");
+        Assert.That(
+            Mathf.Abs(camera.transform.position.x - scenario.First.player.transform.position.x),
+            Is.GreaterThan(2f),
+            "the camera did not stay on player 1");
+        Assert.That(camera.transform.position.z, Is.LessThan(restCamera.z - 0.5f), "the camera pulled back to fit both");
 
-        Vector3 secondAfter = camera.WorldToViewportPoint(scenario.Second.player.transform.position);
-        Vector3 firstAfter = camera.WorldToViewportPoint(scenario.First.player.transform.position);
-        TestContext.WriteLine($"[two-human camera] after P2 walks: viewport P1={firstAfter} P2={secondAfter} (P1 stood still)");
+        // ...and back again, crossing player 1 a second time.
+        yield return MoveWatchingBoth(padB, Vector2.left, 3.6f, camera, scenario, "player 2 reconverging");
+        yield return Hold(CameraSettleSeconds);
+
+        TestContext.WriteLine($"[two-human camera] reconverged: camera={camera.transform.position}");
+        AssertBothInFrame(camera, scenario, "reconverged");
+        Assert.That(camera.transform.position.z, Is.EqualTo(restCamera.z).Within(0.6f), "the camera returned to its authored depth");
+        Assert.That(Mathf.Abs(camera.transform.position.x - Middle(scenario).x), Is.LessThan(0.75f));
+        Assert.That(Travelled(scenario.First, firstStart), Is.LessThan(StayedWithin), "player 1 still has not moved");
     }
 
-    private static bool InFrame(Vector3 viewport)
+    [UnityTest]
+    [Timeout(300000)]
+    public IEnumerator PlayerOneWalkingAwayIsFramedToo()
     {
-        return viewport.z > 0f && viewport.x >= 0f && viewport.x <= 1f && viewport.y >= 0f && viewport.y <= 1f;
+        // The mirror of the walk above: nothing about the camera may favour a slot.
+        Gamepad padA = InputSystem.AddDevice<Gamepad>();
+        InputSystem.AddDevice<Gamepad>();
+
+        Scenario scenario = null;
+        yield return LaunchTwoHumanMatch(s => scenario = s);
+        yield return Hold(0.5f);
+
+        Camera camera = Camera.main;
+        Vector3 secondStart = scenario.Second.player.transform.position;
+
+        yield return MoveWatchingBoth(padA, Vector2.left, 3f, camera, scenario, "player 1 walking away");
+        yield return Hold(CameraSettleSeconds);
+
+        AssertBothInFrame(camera, scenario, "player 1 apart, settled");
+        Assert.That(Travelled(scenario.Second, secondStart), Is.LessThan(StayedWithin), "player 2 stood still throughout");
+        Assert.That(Mathf.Abs(camera.transform.position.x - Middle(scenario).x), Is.LessThan(0.75f));
     }
+
+    [UnityTest]
+    [Timeout(300000)]
+    public IEnumerator TheGoalInsetIsHeldClosedForTwoHumansEvenWhenPlayerOneIsFarFromTheRim()
+    {
+        // The goal inset is opened by player 0's distance from the rim, which says nothing about the
+        // second human, so a two-human match never opens it.
+        Gamepad padA = InputSystem.AddDevice<Gamepad>();
+        InputSystem.AddDevice<Gamepad>();
+
+        Scenario scenario = null;
+        yield return LaunchTwoHumanMatch(s => scenario = s);
+        yield return Hold(0.5f);
+
+        Camera camera = Camera.main;
+        Camera goal = null;
+        foreach (Camera candidate in Resources.FindObjectsOfTypeAll<Camera>())
+        {
+            if (candidate.gameObject.scene.IsValid() && candidate.name.Contains("on_goal"))
+            {
+                goal = candidate;
+            }
+        }
+
+        Assert.That(goal, Is.Not.Null, "the certified arena has a goal camera to hold closed");
+
+        Set(padA.leftStick, Vector2.left);
+        float end = Time.realtimeSinceStartup + 3f;
+        while (Time.realtimeSinceStartup < end)
+        {
+            yield return null;
+            Assert.That(goal.gameObject.activeInHierarchy, Is.False, "the goal inset opened during a two-human match");
+        }
+
+        Set(padA.leftStick, Vector2.zero);
+        Assert.That(scenario.First.player.transform.position.x, Is.LessThan(-8f), "player 1 is far enough from the rim to open the inset in a one-human match");
+        AssertBothInFrame(camera, scenario, "player 1 far from the rim");
+    }
+
+    [UnityTest]
+    [Timeout(300000)]
+    public IEnumerator PathologicalSeparationBoundsTheZoomInsteadOfFollowingWithoutLimit()
+    {
+        InputSystem.AddDevice<Gamepad>();
+        Gamepad padB = InputSystem.AddDevice<Gamepad>();
+
+        Scenario scenario = null;
+        yield return LaunchTwoHumanMatch(s => scenario = s);
+        yield return Hold(0.5f);
+
+        Camera camera = Camera.main;
+        Vector3 restCamera = camera.transform.position;
+
+        // Far past anything the framing can hold: well over thirty world units.
+        Set(padB.leftStick, Vector2.right);
+        yield return Hold(9f);
+        Set(padB.leftStick, Vector2.zero);
+        yield return Hold(CameraSettleSeconds);
+
+        Vector3 cameraPosition = camera.transform.position;
+        float pulledBack = restCamera.z - cameraPosition.z;
+        TestContext.WriteLine($"[two-human camera] pathological: separation={scenario.Second.player.transform.position.x - scenario.First.player.transform.position.x:0.0} camera={cameraPosition} pulledBack={pulledBack:0.0}");
+
+        Assert.That(float.IsFinite(cameraPosition.x) && float.IsFinite(cameraPosition.y) && float.IsFinite(cameraPosition.z), Is.True);
+        Assert.That(pulledBack, Is.GreaterThan(3f), "the camera did zoom out");
+        Assert.That(pulledBack, Is.LessThan(8f), "the zoom stopped at its bound instead of following the separation");
+        Assert.That(Mathf.Abs(cameraPosition.x - Middle(scenario).x), Is.LessThan(1.5f), "the camera still tracks the pair's centre");
+    }
+
+    [UnityTest]
+    [Timeout(300000)]
+    public IEnumerator TheCameraDegradesFromTwoHumansToOneToNoneWithoutThrowing()
+    {
+        InputSystem.AddDevice<Gamepad>();
+        InputSystem.AddDevice<Gamepad>();
+
+        Scenario scenario = null;
+        yield return LaunchTwoHumanMatch(s => scenario = s);
+        yield return Hold(0.5f);
+
+        Camera camera = Camera.main;
+        Vector3 restCamera = camera.transform.position;
+        GameObject firstActor = scenario.First.player;
+        GameObject secondActor = scenario.Second.player;
+
+        // Two -> one: player 2's actor becomes unavailable and the camera settles on player 1.
+        secondActor.SetActive(false);
+        yield return Hold(CameraSettleSeconds);
+        Assert.That(
+            Mathf.Abs(camera.transform.position.x - firstActor.transform.position.x),
+            Is.LessThan(0.75f),
+            "one live human: the camera frames that human");
+        Assert.That(camera.transform.position.z, Is.EqualTo(restCamera.z).Within(0.6f));
+        Assert.That(InFrameX(camera.WorldToViewportPoint(firstActor.transform.position)), Is.True);
+
+        // One -> none: nothing to follow, so the camera holds still.
+        firstActor.SetActive(false);
+        Vector3 held = camera.transform.position;
+        yield return Hold(1f);
+        Assert.That(Vector3.Distance(camera.transform.position, held), Is.LessThan(0.01f), "no live human: the camera holds");
+
+        // Both actors are available again: the pair is framed once more.
+        firstActor.SetActive(true);
+        secondActor.SetActive(true);
+        yield return Hold(CameraSettleSeconds);
+        AssertBothInFrame(camera, scenario, "both humans restored");
+    }
+
+    [UnityTest]
+    [Timeout(300000)]
+    public IEnumerator TwoHumansPlayTheMatchToItsNormalEndWithTheirOwnStatsIntact()
+    {
+        // The match ends through GameRules' own clock, so its end-of-match work (which saves the
+        // primary human's score) runs for real - against a throwaway database, never the developer's.
+        // The database is swapped in only once gameplay is up: an empty profile database would change
+        // which character the production launch picks by default.
+        Gamepad padA = InputSystem.AddDevice<Gamepad>();
+        Gamepad padB = InputSystem.AddDevice<Gamepad>();
+
+        Scenario scenario = null;
+        yield return LaunchTwoHumanMatch(s => scenario = s);
+        matchDatabase = new LocalProfileTestDatabase();
+        yield return matchDatabase.Open();
+        yield return Hold(0.5f);
+
+        Camera camera = Camera.main;
+        MatchController match = MatchController.instance;
+        Assert.That(match, Is.Not.Null);
+        Assert.That(match.IsPlaying, Is.True, "the two-human match is live");
+
+        scenario.First.gameStats.TotalPoints = 12;
+        scenario.Second.gameStats.TotalPoints = 7;
+
+        // Play the pair apart and back so the shared camera works while the clock runs down.
+        yield return MoveWatchingBoth(padB, Vector2.right, 2f, camera, scenario, "playing out the match");
+        yield return MoveWatchingBoth(padA, Vector2.left, 1f, camera, scenario, "playing out the match");
+
+        // Let the clock run out quickly rather than sit through a full round.
+        Time.timeScale = 30f;
+        float deadline = Time.realtimeSinceStartup + 90f;
+        while (!match.IsOver && Time.realtimeSinceStartup < deadline)
+        {
+            yield return null;
+        }
+
+        Time.timeScale = 1f;
+        Assert.That(match.IsOver, Is.True, "the match reached its end on its own clock");
+        TestContext.WriteLine($"[two-human match] ended: reason={match.EndReason} phase={match.Phase}");
+
+        deadline = Time.realtimeSinceStartup + 30f;
+        while (match.Phase != MatchPhase.Completed && Time.realtimeSinceStartup < deadline)
+        {
+            yield return null;
+        }
+
+        TestContext.WriteLine($"[two-human match] phase after end work: {match.Phase}");
+        Assert.That(match.Phase, Is.EqualTo(MatchPhase.Completed), "the end-of-match work finished for a two-human match");
+        Assert.That(scenario.First.gameStats.TotalPoints, Is.EqualTo(12), "player 1 kept its own score");
+        Assert.That(scenario.Second.gameStats.TotalPoints, Is.EqualTo(7), "player 2 kept its own score");
+    }
+
+    [UnityTest]
+    [Timeout(300000)]
+    public IEnumerator ACpuParticipantIsNeverAFramingTarget()
+    {
+        InputSystem.AddDevice<Gamepad>();
+        InputSystem.AddDevice<Gamepad>();
+
+        Scenario scenario = null;
+        yield return LaunchTwoHumanMatch(s => scenario = s);
+        yield return Hold(0.5f);
+
+        Camera camera = Camera.main;
+        Vector3 restCamera = camera.transform.position;
+        float expectedX = Middle(scenario).x;
+
+        // A CPU participant registered far away. If the camera counted it, the pair's framing would
+        // swing toward it and pull back; it must not.
+        GameObject decoyActor = new GameObject("cpu-framing-decoy");
+        decoyActor.transform.position = new Vector3(expectedX + 60f, 0f, scenario.First.player.transform.position.z);
+        PlayerIdentifier decoy = decoyActor.AddComponent<PlayerIdentifier>();
+        decoy.isCpu = true;
+        decoy.pid = 2;
+        decoy.player = decoyActor;
+        decoy.autoPlayer = decoyActor;
+        scenario.Registry.Add(decoy);
+
+        try
+        {
+            yield return Hold(CameraSettleSeconds);
+
+            Assert.That(Mathf.Abs(camera.transform.position.x - expectedX), Is.LessThan(0.75f), "the camera stayed on the two humans");
+            Assert.That(camera.transform.position.z, Is.EqualTo(restCamera.z).Within(0.6f), "the CPU did not widen the framing");
+            AssertBothInFrame(camera, scenario, "with a distant CPU registered");
+        }
+        finally
+        {
+            scenario.Registry.MutableParticipants.Remove(decoy);
+            UnityEngine.Object.Destroy(decoyActor);
+        }
+    }
+
 }
 #endif

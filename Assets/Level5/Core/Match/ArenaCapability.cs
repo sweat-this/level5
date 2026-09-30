@@ -38,7 +38,11 @@ namespace Level5.Core.Match
         /// <summary>Supports weather.</summary>
         Weather = 1 << 7,
 
-        /// <summary>Has enough player spawn points for a local multiplayer roster.</summary>
+        /// <summary>
+        /// Has enough player spawn points for a local multiplayer roster, and has been verified to play
+        /// with more than one local human. Authored per arena (<c>LevelSelected.LevelSupportsMultiplayer</c>);
+        /// an arena that has not been verified does not have it.
+        /// </summary>
         Multiplayer = 1 << 8
     }
 }

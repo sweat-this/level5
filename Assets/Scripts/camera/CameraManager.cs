@@ -117,6 +117,13 @@ public class CameraManager : MonoBehaviour
 
     public void switchCamera()
     {
+        // The other cameras (orthographic, follow-ball) follow one player or one basketball, so a
+        // match with more than one local human stays on the shared perspective camera.
+        if (MatchRuntime.Roster != null && MatchRuntime.Roster.LocalHumanCount > 1)
+        {
+            return;
+        }
+
         //Debug.Log("**************************************************** switch camera :   current cam : " + cameras[currentCameraIndex].name);
         // if not last camera, go to next
         if (currentCameraIndex < numberOfCameras)

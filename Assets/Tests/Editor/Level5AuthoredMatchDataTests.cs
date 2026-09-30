@@ -141,6 +141,7 @@ public class Level5AuthoredMatchDataTests
             Compare(differences, label, "levelHasWeather", source.LevelHasWeather, level.HasWeather);
             Compare(differences, label, "levelRequiresTimeOfDay", source.LevelRequiresTimeOfDay, level.RequiresTimeOfDay);
             Compare(differences, label, "customCamera", source.CustomCamera, level.CustomCamera);
+            Compare(differences, label, "levelSupportsMultiplayer", source.LevelSupportsMultiplayer, level.Supports(ArenaCapability.Multiplayer));
 
             string expectedScene = source.LevelObjectName + "_" + source.LevelDescription;
             if (!string.IsNullOrEmpty(source.LevelDescription) && level.SceneName != expectedScene)
@@ -150,6 +151,33 @@ public class Level5AuthoredMatchDataTests
         }
 
         Assert.That(differences.ToString(), Is.Empty, "authored level data the capability flags cannot reproduce:\n" + differences);
+    }
+
+    [Test]
+    public void OnlyArenasThatHaveBeenCertifiedForTwoLocalHumansAuthorMultiplayer()
+    {
+        // Multiplayer claims a spawn topology and a camera that frames it. Adding an arena to this
+        // list is a decision that needs the same two-human PlayMode certification the Scrapyard has
+        // (Level5TwoHumanLocalInputPlayModeTests) - not a convenience edit to make a menu entry appear.
+        HashSet<int> certified = new HashSet<int> { 1 };
+
+        List<string> uncertified = new List<string>();
+        foreach (LevelSelected source in authoredLevels)
+        {
+            if (source.LevelSupportsMultiplayer && !certified.Contains(source.LevelId))
+            {
+                uncertified.Add($"{source.LevelDisplayName} (id {source.LevelId}) authors multiplayer without a two-human certification");
+            }
+        }
+
+        Assert.That(uncertified, Is.Empty, string.Join("\n", uncertified));
+
+        foreach (int id in certified)
+        {
+            LevelSelected source = authoredLevels.Find(level => level.LevelId == id);
+            Assert.That(source, Is.Not.Null, $"certified arena {id} is not authored");
+            Assert.That(source.LevelSupportsMultiplayer, Is.True, $"certified arena {id} must author multiplayer");
+        }
     }
 
     [Test]

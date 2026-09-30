@@ -104,6 +104,22 @@ public class Level5TwoHumanLocalRosterTests
     }
 
     [Test]
+    public void TwoLocalHumansAreRejectedByAModeWhoseCapacityIsOne()
+    {
+        // The arena is fine; it is the mode's own MaxPlayers that refuses the second participant.
+        LevelDefinition level = TestDefinitions.Level(1, ArenaCapability.Basketball | ArenaCapability.Multiplayer);
+        GameModeCompatibility compatibility = new GameModeCompatibility(
+            new GameModeCatalog(new[] { TestDefinitions.Mode(GameModeId.TotalPoints, maxPlayers: 1) }),
+            new LevelDefinitionCatalog(new[] { level }));
+
+        ValidationResult result = compatibility.Validate(new MatchRequest(GameModeId.TotalPoints, level.LevelId, TwoHumanRoster()));
+
+        Assert.That(result.IsValid, Is.False);
+        Assert.That(result.HasError(MatchValidationCode.RosterTooLarge), Is.True, result.ToString());
+        Assert.That(result.HasError(MatchValidationCode.ArenaLacksMultiplayer), Is.False);
+    }
+
+    [Test]
     public void OneLocalHumanNeverNeedsTheMultiplayerCapability()
     {
         LevelDefinition level = TestDefinitions.Level(1, ArenaCapability.Basketball);

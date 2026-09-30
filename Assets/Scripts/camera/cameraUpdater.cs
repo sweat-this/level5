@@ -1,5 +1,6 @@
 ﻿
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using Level5.Core.Match;
@@ -68,6 +69,35 @@ public class cameraUpdater : MonoBehaviour
     [SerializeField]
     private bool sniperCamera = false;
 
+    // ---- shared framing (two local humans) ----------------------------------------------------
+    // Only used when the roster seats more than one local human. A one-human match never reads any
+    // of this and keeps the single-target path above exactly as it was.
+
+    /// <summary>World units of room kept between each human and the edge of the frame.</summary>
+    [SerializeField]
+    private float sharedFramingPadding = 1.5f;
+
+    /// <summary>
+    /// The farthest the shared camera will dolly back from its authored position. Beyond this the
+    /// humans can separate past the frame; the zoom is bounded rather than following without limit.
+    ///
+    /// Seven is roughly what The Scrapyard tolerates: the gameplay camera is pitched down at a ground plane that
+    /// ends a few units behind the authored position, and dollying back much further shows the void
+    /// under it at the bottom of the frame.
+    /// </summary>
+    [SerializeField]
+    private float sharedFramingMaxExtraDistance = 7f;
+
+    private bool multiHumanTopology;
+    private readonly List<GameObject> humanActors = new List<GameObject>(2);
+    private readonly List<Vector3> humanPositions = new List<Vector3>(2);
+    private Vector3 restPosition;
+    private float restFarClip;
+    private Vector3 sharedBase;
+    private float sharedExtra;
+    private bool sharedInitialized;
+    private bool warnedSpecialCamera;
+
     public bool RequiresWeatherSystem { get => requiresWeatherSystem; set => requiresWeatherSystem = value; }
 
     void Start()
@@ -117,6 +147,12 @@ public class cameraUpdater : MonoBehaviour
         cam = GetComponent<Camera>();
         //cam.depth = -5;
 
+        // The camera answers to who is seated, not to a mode: any roster with more than one local
+        // human is framed together.
+        multiHumanTopology = MatchRuntime.Roster != null && MatchRuntime.Roster.LocalHumanCount > 1;
+        restPosition = transform.position;
+        restFarClip = cam.farClipPlane;
+
         // this is for the sorting layers. when using perspective camera like i am,
         // sometimes the rendering isnt always done by z values because perspective 
         // uses a value that closest to center of the camera or something
@@ -134,6 +170,12 @@ public class cameraUpdater : MonoBehaviour
 
     void Update()
     {
+        if (multiHumanTopology)
+        {
+            UpdateMultiHumanPresentation();
+            return;
+        }
+
         if (player == null)
         {
             return;
@@ -230,6 +272,12 @@ public class cameraUpdater : MonoBehaviour
 
     void FixedUpdate()
     {
+        if (multiHumanTopology)
+        {
+            UpdateMultiHumanPosition();
+            return;
+        }
+
         if (isLockOnGoalCamera && !sniperCamera)
         {
             transform.position = basketBallRim + lockOnGoalCameraOffset;
@@ -249,6 +297,128 @@ public class cameraUpdater : MonoBehaviour
             }
         }
 
+    }
+
+    /// <summary>
+    /// Everything the one-human <see cref="Update"/> does that a shared camera must not: the goal
+    /// inset is opened and closed by player 0's distance from the rim, which says nothing about the
+    /// other human, so it is held closed for the whole match.
+    ///
+    /// The follow-ball, orthographic and sniper paths are single-target too (they read
+    /// <c>BasketBall.instance</c>, which is one player's ball). None is reachable from a normal
+    /// two-human match - <see cref="CameraManager"/> starts on the perspective camera and refuses
+    /// to cycle away from it - so they are not extended here.
+    /// </summary>
+    private void UpdateMultiHumanPresentation()
+    {
+        CameraManager manager = CameraManager.instance;
+        if (manager == null || manager.Cameras == null)
+        {
+            return;
+        }
+
+        int goalIndex = manager.CameraOnGoalIndex;
+        if (goalIndex >= 0 && goalIndex < manager.Cameras.Length)
+        {
+            GameObject goalCamera = manager.Cameras[goalIndex];
+            if (goalCamera != null && goalCamera.name.Contains("goal") && goalCamera.activeSelf)
+            {
+                goalCamera.SetActive(false);
+            }
+        }
+
+        onGoalCameraEnabled = false;
+    }
+
+    private void UpdateMultiHumanPosition()
+    {
+        bool sharedPerspective = mainPerspectiveCamActive
+            && !isOrthoGraphic
+            && !isFollowBallCamera
+            && !isLockOnGoalCamera
+            && !sniperCamera;
+        if (!sharedPerspective)
+        {
+            if (!warnedSpecialCamera && gameObject.activeInHierarchy)
+            {
+                warnedSpecialCamera = true;
+                Debug.LogWarning($"cameraUpdater '{name}' is a single-target camera and does not frame two local humans; it is holding still.");
+            }
+
+            return;
+        }
+
+        ResolveHumanActors();
+        if (SharedCameraFraming.CollectLivePositions(humanActors, humanPositions) == 0
+            || !SharedCameraFraming.TryGetBounds(humanPositions, out Bounds bounds))
+        {
+            // No live human: hold where the camera is rather than chase a destroyed target.
+            return;
+        }
+
+        if (!sharedInitialized)
+        {
+            sharedBase = transform.position;
+            sharedExtra = 0f;
+            sharedInitialized = true;
+        }
+
+        Vector3 middle = bounds.center;
+
+        // The camera's own height rule, applied to the middle of the group instead of one actor. Z is
+        // the authored rest depth: the single-target path reads the current z, which is only safe
+        // while nothing ever changes it.
+        bool tracksHeight = !customCamera || SceneManager.GetActiveScene().name.Equals(Constants.SCENE_NAME_level_21_shore);
+        Vector3 targetBase = new Vector3(
+            middle.x + cameraOffset,
+            tracksHeight ? middle.y + addToCameraPosY : restPosition.y,
+            restPosition.z);
+
+        // Always eased: the single-target path only eases once it has found player 0 in Start, a flag
+        // that says nothing about whether this camera has live humans to follow.
+        float blend = Mathf.Clamp01(smoothSpeed * Time.fixedDeltaTime);
+        sharedBase = Vector3.Lerp(sharedBase, targetBase, blend);
+
+        // Measured from where the camera actually is, not where it is heading, so a fast walker is
+        // never left out of frame while the smoothing catches up. Zooming out is immediate; zooming
+        // back in eases.
+        float required = SharedCameraFraming.RequiredExtraDistance(
+            humanPositions,
+            sharedBase,
+            transform.rotation,
+            cam.fieldOfView,
+            cam.aspect,
+            sharedFramingPadding,
+            sharedFramingMaxExtraDistance);
+        sharedExtra = required >= sharedExtra
+            ? required
+            : Mathf.Lerp(sharedExtra, required, blend);
+
+        transform.position = sharedBase - (transform.forward * sharedExtra);
+
+        // Keep the same stretch of world in the far plane the authored camera saw.
+        cam.farClipPlane = restFarClip + sharedExtra;
+    }
+
+    /// <summary>
+    /// The actors to frame: every non-CPU participant the scene has spawned. Read from the live
+    /// registry each tick rather than cached, so a human who is destroyed or disabled simply drops out.
+    /// </summary>
+    private void ResolveHumanActors()
+    {
+        humanActors.Clear();
+        if (GameLevelManager.instance == null || GameLevelManager.instance.players == null)
+        {
+            return;
+        }
+
+        foreach (PlayerIdentifier participant in GameLevelManager.instance.players)
+        {
+            if (participant != null && !participant.isCpu)
+            {
+                humanActors.Add(participant.player);
+            }
+        }
     }
 
     public void toggleCameraOnGoal()

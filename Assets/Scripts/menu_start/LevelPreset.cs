@@ -17,6 +17,7 @@ public class LevelPreset
     public bool IsShootingLevel { get; private set; }
     public bool IsBattleRoyalLevel { get; private set; }
     public bool IsCageMatchLevel { get; private set; }
+    public bool LevelSupportsMultiplayer { get; private set; }
     public bool CustomCamera { get; private set; }
     public bool IsSelectable { get; private set; }
     public bool IsLocked { get; private set; }
@@ -44,6 +45,7 @@ public class LevelPreset
             IsShootingLevel = level.IsShootingLevel,
             IsBattleRoyalLevel = level.IsBattleRoyalLevel,
             IsCageMatchLevel = level.IsCageMatchLevel,
+            LevelSupportsMultiplayer = level.LevelSupportsMultiplayer,
             CustomCamera = level.CustomCamera,
             IsSelectable = level.IsSelectable,
             IsLocked = level.IsLocked,

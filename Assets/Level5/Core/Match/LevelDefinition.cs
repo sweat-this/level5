@@ -133,7 +133,8 @@ namespace Level5.Core.Match
                 Info = string.Empty,
                 ObjectName = string.Empty,
                 SceneDescriptor = string.Empty,
-                Capabilities = ArenaCapability.Basketball | ArenaCapability.Multiplayer,
+                // Multiplayer is opt-in per arena: it claims a spawn topology that has to be verified.
+                Capabilities = ArenaCapability.Basketball,
                 CustomCamera = false,
                 Selectable = true,
                 Locked = false
