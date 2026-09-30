@@ -10,6 +10,7 @@ using Level5.Core.Versus;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.EventSystems;
+using UnityEngine.InputSystem;
 using UnityEngine.SceneManagement;
 using UnityEngine.TestTools;
 using UnityEngine.UI;
@@ -52,6 +53,16 @@ using Debug = UnityEngine.Debug;
 /// <c>SessionC1</c> ends by killing its own process and therefore never writes a results file; that is the
 /// point of it.
 ///
+/// Local simultaneous (Most Points, two humans, one shared match) has its own sessions, with the same rules:
+/// <c>SessionS1</c> / <c>S2</c> / <c>S3</c> (create, play one shared game and exit; restore in a fresh process,
+/// verify game one and finish the series; restore the completed series in a third), and <c>SessionSC1</c> (kills
+/// its own process with a shared game live and both attempts Started; also needs the kill opt-in) / <c>SC2</c>
+/// (fresh process: both original attempts reused, nobody forfeited, exactly one durable result). They seat two
+/// virtual gamepads for the launcher's two-human preflight; that is not physical-device certification.
+/// <c>ASimultaneousMatchEndRetriesAtomicallyAndWritesOnlyTheSeries</c> is a single-process test of the real
+/// <c>GameRules</c> match end and its persistence exclusions, and <c>Layout_SimultaneousStatesStayOnScreenAndUntruncated</c>
+/// is the simultaneous counterpart of the rendered layout check.
+///
 /// Drives the production Start and Local Versus scenes exactly as the smoke fixture does. The default-
 /// assembly types (<c>Pause</c>, the controller, <c>GameRules</c>) are reached by name for the same reason.
 /// </summary>
@@ -68,6 +79,9 @@ public class LocalVersusProcessCertificationPlayModeTests
     private const float SceneTimeoutSeconds = 90f;
 
     private string root;
+    private InputTestFixture input;
+    private Gamepad padA;
+    private Gamepad padB;
 
     [SetUp]
     public void SetUp()
@@ -89,8 +103,8 @@ public class LocalVersusProcessCertificationPlayModeTests
         ActiveVersusAttempt.Clear();
     }
 
-    [TearDown]
-    public void TearDown()
+    [UnityTearDown]
+    public IEnumerator TearDown()
     {
         Time.timeScale = 1f;
         LocalVersusNavigationState.Clear();
@@ -98,6 +112,14 @@ public class LocalVersusProcessCertificationPlayModeTests
         ActiveMatch.Clear();
         VersusRuntime.Reset();
         VersusCatalogs.Reset();
+
+        if (input != null)
+        {
+            // the gameplay scene reads the virtual gamepads every frame: it goes before they do
+            yield return RealScenePlayModeTestSupport.UnloadAllLoadedScenes("local-versus-cert-blank");
+            input.TearDown();
+            input = null;
+        }
     }
 
     // ================================================================= process restart between turns
@@ -403,6 +425,413 @@ public class LocalVersusProcessCertificationPlayModeTests
         Log("GAMERULES-RETRY OK refusedSaves=" + repository.RefusedSaves + " completed=" + stored.ViewFor(player).CurrentGame.OwnAttemptState);
     }
 
+    // ================================================================= local simultaneous (Most Points, two humans, one shared match)
+
+    // The simultaneous slice's own process sessions (docs/versus-architecture.md, "Local simultaneous play").
+    // Same rules as the alternating sessions above: each is its own Unity.exe, the repository is the only
+    // competitive-state authority, and the handoff file carries identifiers and display names only. Two
+    // virtual gamepads stand in for the two humans so the launcher's own two-human device preflight and the
+    // gameplay scene's own device plan run for real; they are not physical-device certification.
+
+    /// <summary>
+    /// Process S1: create a Best-of-3 Most Points series through the real screens, launch the shared match,
+    /// end it through the real <c>GameRules</c> match-end path, and confirm the pair is durable on disk.
+    /// </summary>
+    [UnityTest]
+    [Timeout(900000)]
+    public IEnumerator SessionS1_CreateSimultaneousBestOf3AndCompleteOneSharedGame()
+    {
+        Assert.That(Directory.Exists(root) ? Directory.GetFiles(root).Length : 0, Is.EqualTo(0), "session S1 needs an empty repository");
+        SeatTwoVirtualGamepads();
+
+        yield return OpenLocalVersusFromStart();
+        SetInput("player1NameInputField", "Alice");
+        SetInput("player2NameInputField", "Bob");
+        FindButton("modeButton").onClick.Invoke();
+        yield return null;
+        FindButton("createButton").onClick.Invoke();
+        yield return null;
+
+        Assert.That(new FileVersusSeriesRepository(root).ListSummaries(), Has.Count.EqualTo(1), "Create stored exactly one series");
+        SeriesId id = new FileVersusSeriesRepository(root).ListSummaries()[0].Id;
+        VersusSeries created = Durable(id);
+        Assert.That(created.Mode, Is.EqualTo(VersusMode.LocalSimultaneous));
+        Assert.That(created.Snapshot.GameCount, Is.EqualTo(3));
+        Assert.That(created.Snapshot.GameAt(0).Id.Value, Is.EqualTo("most-points"));
+
+        yield return LaunchSharedGame(id);
+        AttemptId first = ActiveVersusAttempt.AttemptId;
+        AttemptId second = ActiveVersusAttempt.SecondAttemptId;
+        Assert.That(first.Value, Is.Not.EqualTo(second.Value));
+        Assert.That(Durable(id).ViewFor(created.Participants.First.Id).CurrentGame.OwnAttemptState, Is.EqualTo(AttemptState.Started));
+        Assert.That(Durable(id).ViewFor(created.Participants.Second.Id).CurrentGame.OwnAttemptState, Is.EqualTo(AttemptState.Started));
+
+        // Bob (slot 1) outscores Alice (slot 0): the winner is decided by slot identity, not by who is ahead first
+        yield return EndSharedGame(firstScore: 12, secondScore: 30);
+
+        VersusSeries stored = Durable(id);
+        AssertGameRecorded(stored, 0, first, second);
+        Assert.That(stored.Games[0].Result.WinnerId, Is.EqualTo(stored.Participants.Second.Id));
+        Assert.That(stored.Score.FirstWins, Is.EqualTo(0));
+        Assert.That(stored.Score.SecondWins, Is.EqualTo(1));
+        Assert.That(stored.IsActive, Is.True, "one game does not decide a Best-of-3");
+        Assert.That(stored.CurrentGame.Index, Is.EqualTo(1), "the series advanced to game 2");
+
+        WriteHandoff(new Dictionary<string, string>
+        {
+            ["series"] = id.Value,
+            ["first"] = created.Participants.First.DisplayName,
+            ["second"] = created.Participants.Second.DisplayName,
+            ["game1FirstAttempt"] = first.Value,
+            ["game1SecondAttempt"] = second.Value
+        });
+        Log("SESSIONS1 OK series=" + id + " game1 winner=" + stored.Participants.Second.DisplayName + " attempts=" + first + "," + second + " score=0-1");
+    }
+
+    /// <summary>
+    /// Process S2 (fresh): locate the series from the repository alone, verify game 1, play the remaining
+    /// games until the series completes.
+    /// </summary>
+    [UnityTest]
+    [Timeout(1200000)]
+    public IEnumerator SessionS2_RestoreInFreshProcessVerifyGameOneAndFinishTheSeries()
+    {
+        Dictionary<string, string> handoff = ReadHandoff();
+        SeatTwoVirtualGamepads();
+
+        Assert.That(ActiveVersusAttempt.IsActive, Is.False, "a fresh process has no live attempt");
+        Assert.That(VersusRuntime.Coordinator.ListSeries(), Has.Count.EqualTo(1), "the series survived the process boundary on disk");
+        SeriesId id = VersusRuntime.Coordinator.ListSeries()[0].Id;
+        Assert.That(id.Value, Is.EqualTo(handoff["series"]), "the located series is the one session S1 made (cross-check only)");
+
+        VersusSeries restored = Durable(id);
+        Assert.That(restored.Mode, Is.EqualTo(VersusMode.LocalSimultaneous));
+        AssertGameRecorded(restored, 0, new AttemptId(handoff["game1FirstAttempt"]), new AttemptId(handoff["game1SecondAttempt"]));
+        Assert.That(restored.Games[0].Result.WinnerId, Is.EqualTo(restored.Participants.Second.Id), "the original game-one result");
+        Assert.That(restored.Score.FirstWins + restored.Score.SecondWins, Is.EqualTo(1));
+        Assert.That(restored.CurrentGame.Index, Is.EqualTo(1), "still game 2");
+
+        yield return OpenLocalVersusFromStart();
+        Assert.That(TextOf("seriesDetail"), Does.Contain(handoff["first"] + " 0 - 1 " + handoff["second"]));
+        Assert.That(TextOf("seriesDetail"), Does.Contain("Game 2 of 3"));
+        Assert.That(TextOf("playTurnButton"), Is.EqualTo("Play Game"));
+        Assert.That(FindButton("playTurnButton").interactable, Is.True);
+
+        // game 2 and 3: the first participant wins both, so the series ends 2-1 on game 3
+        yield return PlaySharedGame(id, firstScore: 40, secondScore: 15);
+        VersusSeries afterTwo = Durable(id);
+        Assert.That(afterTwo.IsActive, Is.True, "level at one game each");
+        Assert.That(afterTwo.CurrentGame.Index, Is.EqualTo(2));
+        AssertGameRecorded(afterTwo, 1, default, default);
+
+        yield return PlaySharedGame(id, firstScore: 33, secondScore: 21);
+        VersusSeries finished = Durable(id);
+        AssertGameRecorded(finished, 2, default, default);
+        Assert.That(finished.Status, Is.EqualTo(SeriesStatus.Completed));
+        Assert.That(finished.Result.WinnerId, Is.EqualTo(finished.Participants.First.Id));
+        Assert.That(finished.Score.FirstWins, Is.EqualTo(2));
+        Assert.That(finished.Score.SecondWins, Is.EqualTo(1));
+        Assert.That(TextOf("seriesDetail"), Does.Contain("wins the series."));
+        Assert.That(FindButton("playTurnButton").interactable, Is.False, "a finished series offers no game");
+
+        // the remaining games' attempt ids are what session S3 must find again
+        WriteHandoff(new Dictionary<string, string>
+        {
+            ["series"] = id.Value,
+            ["first"] = handoff["first"],
+            ["second"] = handoff["second"],
+            ["game1FirstAttempt"] = handoff["game1FirstAttempt"],
+            ["game1SecondAttempt"] = handoff["game1SecondAttempt"],
+            ["game2FirstAttempt"] = finished.ViewFor(finished.Participants.First.Id).Games[1].OwnAttemptId.Value,
+            ["game3SecondAttempt"] = finished.ViewFor(finished.Participants.Second.Id).Games[2].OwnAttemptId.Value,
+            ["winner"] = finished.Participants.First.DisplayName
+        });
+        Log("SESSIONS2 OK series=" + id + " completed " + finished.Score.FirstWins + "-" + finished.Score.SecondWins + " winner=" + handoff["first"]);
+    }
+
+    /// <summary>Process S3 (fresh): the completed series and its history survive another restart, and offer no further game.</summary>
+    [UnityTest]
+    [Timeout(900000)]
+    public IEnumerator SessionS3_TheCompletedSeriesSurvivesAnotherRestart()
+    {
+        Dictionary<string, string> handoff = ReadHandoff();
+        SeatTwoVirtualGamepads();
+
+        Assert.That(VersusRuntime.Coordinator.ListSeries(), Has.Count.EqualTo(1));
+        SeriesId id = VersusRuntime.Coordinator.ListSeries()[0].Id;
+        Assert.That(id.Value, Is.EqualTo(handoff["series"]));
+
+        VersusSeries stored = Durable(id);
+        Assert.That(stored.Status, Is.EqualTo(SeriesStatus.Completed));
+        Assert.That(stored.Participants.Find(stored.Result.WinnerId).DisplayName, Is.EqualTo(handoff["winner"]), "cross-check only");
+        Assert.That(stored.Score.FirstWins, Is.EqualTo(2));
+        Assert.That(stored.Score.SecondWins, Is.EqualTo(1));
+        AssertGameRecorded(stored, 0, new AttemptId(handoff["game1FirstAttempt"]), new AttemptId(handoff["game1SecondAttempt"]));
+        Assert.That(stored.Games[0].Result.WinnerId, Is.EqualTo(stored.Participants.Second.Id));
+        AssertGameRecorded(stored, 1, default, default);
+        Assert.That(stored.Games[1].Result.WinnerId, Is.EqualTo(stored.Participants.First.Id));
+        Assert.That(stored.ViewFor(stored.Participants.First.Id).Games[1].OwnAttemptId.Value, Is.EqualTo(handoff["game2FirstAttempt"]));
+        AssertGameRecorded(stored, 2, default, default);
+        Assert.That(stored.Games[2].Result.WinnerId, Is.EqualTo(stored.Participants.First.Id));
+        Assert.That(stored.ViewFor(stored.Participants.Second.Id).Games[2].OwnAttemptId.Value, Is.EqualTo(handoff["game3SecondAttempt"]));
+
+        yield return OpenLocalVersusFromStart();
+        Assert.That(TextOf("seriesDetail"), Does.Contain("wins the series."));
+        Assert.That(TextOf("seriesDetail"), Does.Contain(handoff["winner"]));
+        Assert.That(FindButton("playTurnButton").interactable, Is.False, "a finished series offers no game");
+        Log("SESSIONS3 OK series=" + id + " completed series restored, winner=" + handoff["winner"]);
+    }
+
+    /// <summary>
+    /// Process SC1: launch a shared match from the real screen, confirm both attempts are durably Started,
+    /// record their ids, then die without any pause exit. Never returns.
+    /// </summary>
+    [UnityTest]
+    [Timeout(900000)]
+    public IEnumerator SessionSC1_StartASharedGameThenTheProcessIsKilled()
+    {
+        if (Environment.GetEnvironmentVariable(AllowKillEnvVar) != "1")
+        {
+            Assert.Ignore("Set " + AllowKillEnvVar + "=1 to run the session that kills its own process.");
+        }
+
+        Assert.That(Directory.Exists(root) ? Directory.GetFiles(root).Length : 0, Is.EqualTo(0), "session SC1 needs an empty repository");
+        SeatTwoVirtualGamepads();
+
+        yield return OpenLocalVersusFromStart();
+        SetInput("player1NameInputField", "Alice");
+        SetInput("player2NameInputField", "Bob");
+        FindButton("modeButton").onClick.Invoke();
+        yield return null;
+        FindButton("createButton").onClick.Invoke();
+        yield return null;
+
+        SeriesId id = new FileVersusSeriesRepository(root).ListSummaries()[0].Id;
+        VersusSeries created = Durable(id);
+
+        yield return LaunchSharedGame(id);
+        Assert.That(VersusQuitPolicy.SimultaneousGameInProgress, Is.True, "a live shared game, not yet finished");
+
+        VersusSeries stored = Durable(id);
+        ParticipantGameView one = stored.ViewFor(stored.Participants.First.Id).CurrentGame;
+        ParticipantGameView two = stored.ViewFor(stored.Participants.Second.Id).CurrentGame;
+        Assert.That(one.OwnAttemptState, Is.EqualTo(AttemptState.Started), "the first participant's attempt is durably Started");
+        Assert.That(two.OwnAttemptState, Is.EqualTo(AttemptState.Started), "the second participant's attempt is durably Started");
+        Assert.That(one.OwnAttemptId.Value, Is.EqualTo(ActiveVersusAttempt.AttemptId.Value));
+        Assert.That(two.OwnAttemptId.Value, Is.EqualTo(ActiveVersusAttempt.SecondAttemptId.Value));
+
+        WriteHandoff(new Dictionary<string, string>
+        {
+            ["series"] = id.Value,
+            ["first"] = created.Participants.First.DisplayName,
+            ["second"] = created.Participants.Second.DisplayName,
+            ["firstAttempt"] = one.OwnAttemptId.Value,
+            ["secondAttempt"] = two.OwnAttemptId.Value
+        });
+        Log("SESSIONSC1 shared game live series=" + id + " attempts=" + one.OwnAttemptId + "," + two.OwnAttemptId + " - killing process now, no pause action taken");
+
+        yield return new WaitForSecondsRealtime(1f);
+        Process.GetCurrentProcess().Kill();
+        yield return new WaitForSecondsRealtime(30f);
+        Assert.Fail("the process should have been killed");
+    }
+
+    /// <summary>
+    /// Process SC2 (fresh): the kill cost nobody the game and advanced nothing; relaunching reuses the two
+    /// original attempts, and completing the match records exactly one durable game result.
+    /// </summary>
+    [UnityTest]
+    [Timeout(900000)]
+    public IEnumerator SessionSC2_RelaunchReusesBothAttemptsWithNoForfeitAndRecordsOneResult()
+    {
+        Dictionary<string, string> handoff = ReadHandoff();
+        SeatTwoVirtualGamepads();
+
+        Assert.That(ActiveVersusAttempt.IsActive, Is.False, "a fresh process has no live attempt");
+        Assert.That(VersusRuntime.Coordinator.ListSeries(), Has.Count.EqualTo(1));
+        SeriesId id = VersusRuntime.Coordinator.ListSeries()[0].Id;
+        Assert.That(id.Value, Is.EqualTo(handoff["series"]));
+
+        VersusSeries stored = Durable(id);
+        Assert.That(stored.Status, Is.EqualTo(SeriesStatus.Active));
+        Assert.That(stored.CurrentGame.Index, Is.EqualTo(0), "the game did not advance");
+        Assert.That(stored.Games[0].Status, Is.EqualTo(VersusGameStatus.Active), "nobody was forfeited and nothing resolved");
+        Assert.That(stored.Score.FirstWins + stored.Score.SecondWins + stored.Score.Draws, Is.EqualTo(0), "no game was awarded");
+        ParticipantGameView one = stored.ViewFor(stored.Participants.First.Id).CurrentGame;
+        ParticipantGameView two = stored.ViewFor(stored.Participants.Second.Id).CurrentGame;
+        Assert.That(one.OwnAttemptState, Is.EqualTo(AttemptState.Started), "the first participant's attempt is still outstanding");
+        Assert.That(two.OwnAttemptState, Is.EqualTo(AttemptState.Started), "the second participant's attempt is still outstanding");
+        Assert.That(one.OwnAttemptId.Value, Is.EqualTo(handoff["firstAttempt"]));
+        Assert.That(two.OwnAttemptId.Value, Is.EqualTo(handoff["secondAttempt"]));
+
+        yield return OpenLocalVersusFromStart();
+        Assert.That(TextOf("seriesDetail"), Does.Contain("Game 1 of 3"));
+        Assert.That(FindButton("playTurnButton").interactable, Is.True, "relaunch is permitted");
+
+        yield return LaunchSharedGame(id);
+        Assert.That(ActiveVersusAttempt.AttemptId.Value, Is.EqualTo(handoff["firstAttempt"]), "the first attempt is reused, not a fresh one");
+        Assert.That(ActiveVersusAttempt.SecondAttemptId.Value, Is.EqualTo(handoff["secondAttempt"]), "the second attempt is reused, not a fresh one");
+        Assert.That(Durable(id).Games[0].Status, Is.EqualTo(VersusGameStatus.Active));
+
+        yield return EndSharedGame(firstScore: 30, secondScore: 12);
+
+        VersusSeries after = Durable(id);
+        AssertGameRecorded(after, 0, new AttemptId(handoff["firstAttempt"]), new AttemptId(handoff["secondAttempt"]));
+        Assert.That(after.Games[0].Result.WinnerId, Is.EqualTo(after.Participants.First.Id));
+        Assert.That(after.Score.FirstWins, Is.EqualTo(1));
+        Assert.That(after.Score.SecondWins + after.Score.Draws, Is.EqualTo(0), "exactly one durable game result");
+        int resolved = 0;
+        foreach (VersusGame game in after.Games)
+        {
+            resolved += game.IsResolved ? 1 : 0;
+        }
+
+        Assert.That(resolved, Is.EqualTo(1), "exactly one game resolved");
+        Log("SESSIONSC2 OK series=" + id + " attempts reused " + handoff["firstAttempt"] + "," + handoff["secondAttempt"] + " one result, score=1-0");
+    }
+
+    /// <summary>
+    /// The real <c>GameRules</c> match-end path for a simultaneous game, in an isolated persistence directory:
+    /// a refused save leaves both attempts outstanding and the game unadvanced, the retry after the disk
+    /// recovers records the pair once and advances the game once, and - unlike an ordinary alternating turn,
+    /// which is run first as the positive control - nothing outside the series document is written (no local
+    /// high score, all-time stats, pending result or character progression).
+    /// The existing suites pin the exclusion by reading <c>GameRules</c>'s source; this observes it.
+    /// </summary>
+    [UnityTest]
+    [Timeout(900000)]
+    public IEnumerator ASimultaneousMatchEndRetriesAtomicallyAndWritesOnlyTheSeries()
+    {
+        // seated before any gameplay scene runs: InputTestFixture restores the state it saw at Setup
+        SeatTwoVirtualGamepads();
+        FailableRepository repository = new FailableRepository(new FileVersusSeriesRepository(root));
+        VersusRuntime.Override(repository);
+
+        // control: an ordinary alternating turn does persist general results, and the probe sees it
+        yield return OpenLocalVersusFromStart();
+        FindButton("createButton").onClick.Invoke();
+        yield return null;
+        SeriesId alternating = VersusRuntime.Coordinator.ListSeries()[0].Id;
+        yield return LaunchTurn(alternating, ExpectedNext(Durable(alternating)));
+        Dictionary<string, string> beforeControl = SnapshotPersistentData();
+        UnityEngine.Object.FindAnyObjectByType<GameStats>().TotalPoints = 30;
+        yield return EndMatchThroughGameRules();
+        List<string> controlWrites = ChangesSince(beforeControl);
+        Log("COMPETITION-ONLY control writes: " + string.Join(", ", controlWrites));
+        Assert.That(controlWrites, Is.Not.Empty, "control: an ordinary turn's end writes general results, so this probe can see writes");
+
+        // the simultaneous match
+        yield return OpenLocalVersusFromStart();
+        FindButton("modeButton").onClick.Invoke();
+        yield return null;
+        FindButton("createButton").onClick.Invoke();
+        yield return null;
+        SeriesId id = default;
+        foreach (SeriesSummary summary in VersusRuntime.Coordinator.ListSeries())
+        {
+            if (summary.Mode == VersusMode.LocalSimultaneous)
+            {
+                id = summary.Id;
+            }
+        }
+
+        Assert.That(id.HasValue, Is.True, "the simultaneous series was created");
+        VersusSeries created = Durable(id);
+        yield return LaunchSharedGame(id);
+        AttemptId first = ActiveVersusAttempt.AttemptId;
+        AttemptId second = ActiveVersusAttempt.SecondAttemptId;
+
+        Dictionary<string, string> before = SnapshotPersistentData();
+        PlayerRegistry players = LevelRuntimeContext.instance.Players;
+        players.GetBySlot(0).gameStats.TotalPoints = 12;
+        players.GetBySlot(1).gameStats.TotalPoints = 30;
+
+        repository.FailSaves = true;
+        int refusedBefore = repository.RefusedSaves;
+        MonoBehaviour rules = FindBehaviourByTypeName("GameRules");
+        rules.GetType().GetMethod("RequestGameOver", BindingFlags.Public | BindingFlags.Instance).Invoke(rules, null);
+        float deadline = Time.realtimeSinceStartup + 30f;
+        while (repository.RefusedSaves < refusedBefore + 2 && Time.realtimeSinceStartup < deadline)
+        {
+            yield return null;
+        }
+
+        Assert.That(repository.RefusedSaves, Is.GreaterThanOrEqualTo(refusedBefore + 2), "GameRules retried the pair while saves failed");
+        Assert.That(ActiveVersusAttempt.IsActive, Is.True, "the competitive context stays available for the retry");
+        Assert.That(ActiveVersusAttempt.AttemptId.Value, Is.EqualTo(first.Value));
+        Assert.That(ActiveVersusAttempt.SecondAttemptId.Value, Is.EqualTo(second.Value));
+        VersusSeries pending = Durable(id);
+        Assert.That(pending.Games[0].Status, Is.EqualTo(VersusGameStatus.Active), "the game did not advance");
+        Assert.That(pending.CurrentGame.Index, Is.EqualTo(0));
+        Assert.That(pending.ViewFor(created.Participants.First.Id).CurrentGame.OwnAttemptState, Is.EqualTo(AttemptState.Started), "neither result is durable");
+        Assert.That(pending.ViewFor(created.Participants.Second.Id).CurrentGame.OwnAttemptState, Is.EqualTo(AttemptState.Started), "neither result is durable");
+        Assert.That(VersusQuitPolicy.TryPrepareForExplicitExit(), Is.False, "leaving waits for the pair");
+
+        repository.FailSaves = false;
+        deadline = Time.realtimeSinceStartup + 30f;
+        while (ActiveVersusAttempt.IsActive && Time.realtimeSinceStartup < deadline)
+        {
+            yield return null;
+        }
+
+        Assert.That(ActiveVersusAttempt.IsActive, Is.False, "the retry recorded the pair and cleared the context");
+        VersusSeries stored = Durable(id);
+        AssertGameRecorded(stored, 0, first, second);
+        Assert.That(stored.Games[0].Result.WinnerId, Is.EqualTo(stored.Participants.Second.Id), "slot 1 outscored slot 0");
+        Assert.That(stored.Score.FirstWins + stored.Score.SecondWins + stored.Score.Draws, Is.EqualTo(1), "the game advanced exactly once");
+        Assert.That(stored.CurrentGame.Index, Is.EqualTo(1));
+
+        List<string> writes = ChangesSince(before);
+        Assert.That(writes, Is.Empty, "a simultaneous match wrote outside the series document: " + string.Join(", ", writes));
+        Log("COMPETITION-ONLY OK refusedSaves=" + repository.RefusedSaves + " nonSeriesWrites=" + writes.Count + " (control saw " + controlWrites.Count + ")");
+    }
+
+    /// <summary>Sets the running match over through the real <c>GameRules</c> and waits for its result to be recorded.</summary>
+    private static IEnumerator EndMatchThroughGameRules()
+    {
+        MonoBehaviour rules = FindBehaviourByTypeName("GameRules");
+        Assert.That(rules, Is.Not.Null, "the gameplay scene has no GameRules");
+        rules.GetType().GetMethod("RequestGameOver", BindingFlags.Public | BindingFlags.Instance).Invoke(rules, null);
+        float deadline = Time.realtimeSinceStartup + 30f;
+        while (ActiveVersusAttempt.IsActive && Time.realtimeSinceStartup < deadline)
+        {
+            yield return null;
+        }
+
+        Assert.That(ActiveVersusAttempt.IsActive, Is.False, "GameRules never recorded the result");
+        yield return null;
+    }
+
+    private static Dictionary<string, string> SnapshotPersistentData()
+    {
+        Dictionary<string, string> files = new Dictionary<string, string>();
+        if (Directory.Exists(Application.persistentDataPath))
+        {
+            foreach (string path in Directory.GetFiles(Application.persistentDataPath, "*", SearchOption.AllDirectories))
+            {
+                FileInfo info = new FileInfo(path);
+                files[path] = info.Length + "@" + info.LastWriteTimeUtc.Ticks;
+            }
+        }
+
+        return files;
+    }
+
+    /// <summary>Files under the persistent data path created or modified since <paramref name="before"/>.</summary>
+    private static List<string> ChangesSince(Dictionary<string, string> before)
+    {
+        List<string> changed = new List<string>();
+        foreach (KeyValuePair<string, string> now in SnapshotPersistentData())
+        {
+            if (!before.TryGetValue(now.Key, out string then) || then != now.Value)
+            {
+                changed.Add(Path.GetFileName(now.Key));
+            }
+        }
+
+        return changed;
+    }
+
     // ================================================================= rendered layout
 
     /// <summary>
@@ -422,11 +851,7 @@ public class LocalVersusProcessCertificationPlayModeTests
         Assert.That(shots, Is.Not.Null.And.Not.Empty, "LEVEL5_LOCAL_VERSUS_CERT_SHOTS must name the screenshot directory");
         Directory.CreateDirectory(shots);
 
-#if UNITY_EDITOR
-        UnityEditor.PlayModeWindow.SetCustomRenderingResolution(1920, 1080, "lv-cert 1920x1080");
-        yield return null;
-        yield return null;
-#endif
+        yield return UseCertificationResolution();
         Log("LAYOUT screen=" + Screen.width + "x" + Screen.height);
         List<string> problems = new List<string>();
 
@@ -477,9 +902,228 @@ public class LocalVersusProcessCertificationPlayModeTests
         Assert.That(problems, Is.Empty, "layout problems:\n" + string.Join("\n", problems));
     }
 
+    /// <summary>
+    /// The simultaneous counterpart of <see cref="Layout_RenderedStatesStayOnScreenAndUntruncated"/>: the states
+    /// only a same-time series has - the create form set to Local Simultaneous, both participants' character
+    /// selectors (swept through every character, then held on the longest), the longest permitted names in a
+    /// Best-of-7 (fresh, in progress and completed), a completed Best-of-3, the list mixing alternating and
+    /// simultaneous series, and the two error paths the screen can show (a create that cannot be saved and a
+    /// launch that cannot start). Each state is screenshotted and rendered-boundary checked, and its selection,
+    /// navigation and mode-dependent visibility are checked too. Needs a graphics device.
+    /// </summary>
+    [UnityTest]
+    [Timeout(900000)]
+    public IEnumerator Layout_SimultaneousStatesStayOnScreenAndUntruncated()
+    {
+        string shots = Environment.GetEnvironmentVariable("LEVEL5_LOCAL_VERSUS_CERT_SHOTS");
+        Assert.That(shots, Is.Not.Null.And.Not.Empty, "LEVEL5_LOCAL_VERSUS_CERT_SHOTS must name the screenshot directory");
+        Assert.That(Directory.Exists(root) ? Directory.GetFiles(root).Length : 0, Is.EqualTo(0), "the layout run needs an empty repository");
+        Directory.CreateDirectory(shots);
+
+        yield return UseCertificationResolution();
+        SeatTwoVirtualGamepads();
+        List<string> problems = new List<string>();
+        const string longFirst = "WWWWWWWWWWWWWWWW";
+        const string longSecond = "MMMMMMMMMMMMMMMM";
+
+        // the create form, switched to Local Simultaneous, with nothing stored
+        yield return OpenLocalVersusFromStart();
+        FindButton("modeButton").onClick.Invoke();
+        yield return null;
+        Assert.That(TextOf("modeButton"), Does.Contain("Local Simultaneous"));
+        yield return CaptureCurrent("sim-1-create-form-empty", shots, problems);
+
+        // a fresh Best-of-3: both participants' selectors, swept through every character
+        SeriesId fresh = CreateSimultaneousSeries("Alice", "Bob", 3);
+        yield return CaptureState("sim-2-fresh-best-of-3", shots, problems, fresh);
+        Assert.That(TextOf("playTurnButton"), Is.EqualTo("Play Game"));
+        Assert.That(FindButton("character2Button").gameObject.activeInHierarchy, Is.True, "Player 2's selector is shown");
+        yield return SweepCharacterSelectors("sim-3-both-selectors", shots, problems);
+
+        // the longest permitted names in a Best-of-7 (fresh, then partway, then done)
+        SeriesId longNames = CreateSimultaneousSeries(longFirst, longSecond, 7);
+        yield return CaptureState("sim-4-longest-names-best-of-7", shots, problems, longNames);
+        yield return SweepCharacterSelectors("sim-5-longest-names-longest-characters", shots, problems);
+
+        for (int game = 0; game < 4; game++)
+        {
+            // alternating winners: the first participant takes games 1 and 3, the second games 2 and 4 -> 2-2
+            PlaySimultaneousGameThroughTheCoordinator(longNames, game % 2 == 0 ? 30 : 10, game % 2 == 0 ? 10 : 30);
+        }
+
+        VersusSeries partway = VersusRuntime.Coordinator.Load(longNames);
+        Assert.That(partway.Score.FirstWins, Is.EqualTo(2));
+        Assert.That(partway.Score.SecondWins, Is.EqualTo(2));
+        yield return CaptureState("sim-6-best-of-7-in-progress-2-2", shots, problems, longNames);
+
+        SeriesId finishedLongest = CreateSimultaneousSeries(longFirst, longSecond, 7);
+        for (int game = 0; game < 4; game++)
+        {
+            PlaySimultaneousGameThroughTheCoordinator(finishedLongest, 30, 10);
+        }
+
+        Assert.That(VersusRuntime.Coordinator.Load(finishedLongest).IsOver, Is.True);
+        yield return CaptureState("sim-7-completed-best-of-7-longest-names", shots, problems, finishedLongest);
+        Assert.That(FindButton("playTurnButton").interactable, Is.False, "a finished series offers no game");
+
+        SeriesId finishedShort = CreateSimultaneousSeries("Alice", "Bob", 3);
+        for (int game = 0; game < 2; game++)
+        {
+            PlaySimultaneousGameThroughTheCoordinator(finishedShort, 10, 30);
+        }
+
+        Assert.That(VersusRuntime.Coordinator.Load(finishedShort).IsOver, Is.True);
+        yield return CaptureState("sim-8-completed-best-of-3", shots, problems, finishedShort);
+
+        // a list holding both kinds at once, the selection moving between them
+        SeriesId alternating = CreateSeries("Carol", "Dave", 3);
+        CreateSeries(longFirst, longSecond, 7);
+        SeriesId alternatingDone = CreateSeries("Erin", "Frank", 3);
+        for (int game = 0; game < 2; game++)
+        {
+            Assert.That(ForfeitGame(alternatingDone, VersusRuntime.Coordinator.Load(alternatingDone).Participants.Second.Id), Is.True);
+        }
+
+        yield return CaptureState("sim-9-mixed-list-simultaneous-selected", shots, problems, fresh);
+        yield return CaptureState("sim-10-mixed-list-alternating-selected", shots, problems, alternating);
+        Assert.That(FindButton("character2Button").gameObject.activeInHierarchy, Is.False, "an alternating series has one selector");
+        Assert.That(TextOf("playTurnButton"), Does.StartWith("Play Turn"));
+        yield return CaptureState("sim-11-mixed-list-alternating-finished-selected", shots, problems, alternatingDone);
+        yield return CaptureState("sim-12-mixed-list-longest-simultaneous-selected", shots, problems, finishedLongest);
+
+        // create error: the repository refuses the save, so the coordinator's refusal is what the screen says
+        FailableRepository failing = new FailableRepository(new FileVersusSeriesRepository(root));
+        VersusRuntime.Override(failing);
+        LocalVersusNavigationState.Clear();
+        yield return OpenLocalVersusFromStart();
+        FindButton("modeButton").onClick.Invoke();
+        yield return null;
+        SetInput("player1NameInputField", longFirst);
+        SetInput("player2NameInputField", longSecond);
+        failing.FailSaves = true;
+        int seriesBefore = new FileVersusSeriesRepository(root).ListSummaries().Count;
+        FindButton("createButton").onClick.Invoke();
+        yield return null;
+        Assert.That(TextOf("createMessage"), Does.Contain("Could not create the series"), "the refused create says so");
+        Assert.That(new FileVersusSeriesRepository(root).ListSummaries().Count, Is.EqualTo(seriesBefore), "nothing was stored");
+        yield return CaptureCurrent("sim-13-create-error", shots, problems);
+        failing.FailSaves = false;
+
+        // launch error 1: only one gamepad is attached, so the two-human device preflight refuses
+        LocalVersusNavigationState.Clear();
+        LocalVersusNavigationState.Begin(fresh);
+        yield return OpenLocalVersusFromStart();
+        InputSystem.RemoveDevice(padB);
+        FindButton("playTurnButton").onClick.Invoke();
+        yield return null;
+        Assert.That(SceneManager.GetActiveScene().name, Is.EqualTo(Constants.SCENE_NAME_level_00_local_versus), "a refused launch stays on the screen");
+        Assert.That(TextOf("turnMessage"), Does.StartWith("Could not start the game"));
+        Assert.That(ActiveVersusAttempt.IsActive, Is.False, "nothing was issued");
+        yield return CaptureCurrent("sim-14-launch-error-device-preflight", shots, problems);
+        padB = InputSystem.AddDevice<Gamepad>();
+
+        // launch error 2: the pair of attempts cannot be saved, so nothing is spent and the screen says why
+        failing.FailSaves = true;
+        FindButton("playTurnButton").onClick.Invoke();
+        yield return null;
+        Assert.That(SceneManager.GetActiveScene().name, Is.EqualTo(Constants.SCENE_NAME_level_00_local_versus));
+        Assert.That(TextOf("turnMessage"), Does.StartWith("Could not start the game"));
+        Assert.That(ActiveVersusAttempt.IsActive, Is.False);
+        yield return CaptureCurrent("sim-15-launch-error-save-refused", shots, problems);
+        failing.FailSaves = false;
+
+        Assert.That(problems, Is.Empty, "layout problems:\n" + string.Join("\n", problems));
+    }
+
+    /// <summary>
+    /// Cycles both participants' selectors through every character on the open screen, layout-checking each
+    /// label, then holds each on the longest label and screenshots that state.
+    /// </summary>
+    private IEnumerator SweepCharacterSelectors(string name, string directory, List<string> problems)
+    {
+        string[] longest = new string[2];
+        string[] buttons = { "characterButton", "character2Button" };
+        for (int selector = 0; selector < 2; selector++)
+        {
+            string start = TextOf(buttons[selector]);
+            int guard = 0;
+            do
+            {
+                string label = TextOf(buttons[selector]);
+                if (longest[selector] == null || label.Length > longest[selector].Length)
+                {
+                    longest[selector] = label;
+                }
+
+                FindButton(buttons[selector]).onClick.Invoke();
+                yield return null;
+                List<string> found = new List<string>();
+                CheckLayout(name + " " + buttons[selector] + " '" + Short(TextOf(buttons[selector])) + "'", found);
+                problems.AddRange(found);
+            }
+            while (TextOf(buttons[selector]) != start && ++guard < 400);
+
+            Assert.That(guard, Is.LessThan(400), buttons[selector] + " never cycled back");
+        }
+
+        for (int selector = 0; selector < 2; selector++)
+        {
+            int guard = 0;
+            while (TextOf(buttons[selector]) != longest[selector] && ++guard < 400)
+            {
+                FindButton(buttons[selector]).onClick.Invoke();
+                yield return null;
+            }
+
+            Assert.That(TextOf(buttons[selector]), Is.EqualTo(longest[selector]));
+        }
+
+        yield return CaptureCurrent(name, directory, problems);
+    }
+
+    private static SeriesId CreateSimultaneousSeries(string first, string second, int games)
+    {
+        SeriesId id = CreateSeries(first, second, games, VersusMode.LocalSimultaneous);
+        Assert.That(VersusRuntime.Coordinator.Load(id).Mode, Is.EqualTo(VersusMode.LocalSimultaneous));
+        return id;
+    }
+
+    /// <summary>Resolves one simultaneous game through the coordinator's own pair operations (no scene; layout states only).</summary>
+    private static void PlaySimultaneousGameThroughTheCoordinator(SeriesId id, float firstScore, float secondScore)
+    {
+        VersusMatchCoordinator coordinator = VersusRuntime.Coordinator;
+        CompetitiveRuleset ruleset = VersusCatalogs.Rulesets.Supporting(VersusModes.RequiredCapability(VersusMode.LocalSimultaneous))[0];
+        SimultaneousAttemptOperation issued = coordinator.IssueSimultaneousAttempts(id);
+        Assert.That(issued.Succeeded, Is.True, issued.Validation?.ToString());
+        AttemptResult first = new AttemptResult.Builder(ruleset.Id, ruleset.Version).Set(AttemptMetric.Score, firstScore).SetShooting(5, 10).Build();
+        AttemptResult second = new AttemptResult.Builder(ruleset.Id, ruleset.Version).Set(AttemptMetric.Score, secondScore).SetShooting(5, 10).Build();
+        SubmissionOperation submitted = coordinator.SubmitSimultaneousResults(
+            id,
+            new AttemptSubmission(issued.Attempts.First.Id, issued.Attempts.First.ParticipantId, first),
+            new AttemptSubmission(issued.Attempts.Second.Id, issued.Attempts.Second.ParticipantId, second));
+        Assert.That(submitted.Succeeded, Is.True, submitted.Validation?.ToString());
+    }
+
+    /// <summary>The 1920x1080 render the layout certification is specified at (the Editor Game view; a player is sized by its own window).</summary>
+    private static IEnumerator UseCertificationResolution()
+    {
+#if UNITY_EDITOR
+        UnityEditor.PlayModeWindow.SetCustomRenderingResolution(1920, 1080, "lv-cert 1920x1080");
+        yield return null;
+        yield return null;
+#else
+        yield break;
+#endif
+    }
+
     private static SeriesId CreateSeries(string first, string second, int games)
     {
-        RulesetId ruleset = VersusCatalogs.Rulesets.Supporting(VersusModes.RequiredCapability(VersusMode.LocalAlternating))[0].Id;
+        return CreateSeries(first, second, games, VersusMode.LocalAlternating);
+    }
+
+    private static SeriesId CreateSeries(string first, string second, int games, VersusMode mode)
+    {
+        RulesetId ruleset = VersusCatalogs.Rulesets.Supporting(VersusModes.RequiredCapability(mode))[0].Id;
         List<RulesetId> playlist = new List<RulesetId>();
         for (int game = 0; game < games; game++)
         {
@@ -491,7 +1135,7 @@ public class LocalVersusProcessCertificationPlayModeTests
             new MatchParticipant(new ParticipantId(Guid.NewGuid().ToString("N")), second),
             SeriesFormat.FromGameCount(games),
             playlist,
-            VersusMode.LocalAlternating,
+            mode,
             InformationPolicy.SealedAttempt,
             false,
             true,
@@ -517,6 +1161,12 @@ public class LocalVersusProcessCertificationPlayModeTests
         }
 
         yield return OpenLocalVersusFromStart();
+        yield return CaptureCurrent(name, directory, problems);
+    }
+
+    /// <summary>Screenshots and checks whatever the open Local Versus screen is showing now.</summary>
+    private IEnumerator CaptureCurrent(string name, string directory, List<string> problems)
+    {
         yield return new WaitForEndOfFrame();
         yield return null;
         yield return new WaitForEndOfFrame();
@@ -527,6 +1177,7 @@ public class LocalVersusProcessCertificationPlayModeTests
 
         List<string> found = new List<string>();
         CheckLayout(name, found);
+        CheckScreenBehavior(name, found);
         problems.AddRange(found);
         Log("LAYOUT state=" + name + " problems=" + found.Count);
     }
@@ -585,13 +1236,21 @@ public class LocalVersusProcessCertificationPlayModeTests
                     hasContent = !string.IsNullOrEmpty(text);
                     if (hasContent)
                     {
-                        float preferredHeight = (float)component.GetType().GetProperty("preferredHeight").GetValue(component);
+                        // Auto-sized text is fitted by TMP at render time, but preferredHeight is measured at its
+                        // maximum size, so it would call a fitted label too tall. Measure what was rendered instead,
+                        // and ask TMP itself whether an Ellipsis/Truncate overflow mode cut anything off.
+                        component.GetType().GetMethod("ForceMeshUpdate", new[] { typeof(bool), typeof(bool) })
+                            .Invoke(component, new object[] { false, false });
+                        bool autoSized = (bool)component.GetType().GetProperty("enableAutoSizing").GetValue(component);
+                        float measured = (float)component.GetType().GetProperty(autoSized ? "renderedHeight" : "preferredHeight").GetValue(component);
                         float boxHeight = rect.rect.height * rect.lossyScale.y;
-                        float needed = preferredHeight * rect.lossyScale.y;
-                        if (needed > boxHeight + 1f)
+                        float needed = measured * rect.lossyScale.y;
+                        bool cutOff = (bool)component.GetType().GetProperty("isTextTruncated").GetValue(component);
+                        if (needed > boxHeight + 1f || cutOff)
                         {
                             problems.Add(state + ": '" + component.gameObject.name + "' text needs " + needed.ToString("0")
-                                + "px but its box is " + boxHeight.ToString("0") + "px (truncated): \"" + Short(text) + "\"");
+                                + "px but its box is " + boxHeight.ToString("0") + "px (truncated" + (cutOff ? ", cut off by its overflow mode" : string.Empty)
+                                + "): \"" + Short(text) + "\"");
                         }
                     }
                 }
@@ -609,6 +1268,253 @@ public class LocalVersusProcessCertificationPlayModeTests
     {
         text = text.Replace("\n", " / ");
         return text.Length > 70 ? text.Substring(0, 70) + "..." : text;
+    }
+
+    // ------------------------------------------------------------------ simultaneous steps
+
+    /// <summary>
+    /// Two virtual gamepads and no other device, so the launcher's device preflight and the gameplay scene's
+    /// device plan see exactly two humans. Removes the machine's real devices for this process (as
+    /// <see cref="InputTestFixture"/> always does); undone in <see cref="TearDown"/>.
+    /// </summary>
+    private void SeatTwoVirtualGamepads()
+    {
+        input = new InputTestFixture();
+        input.Setup();
+        padA = InputSystem.AddDevice<Gamepad>();
+        padB = InputSystem.AddDevice<Gamepad>();
+        RealScenePlayModeTestSupport.IgnoreSceneLogNoise();
+    }
+
+    /// <summary>Presses Play Game and waits for the live gameplay scene with both humans seated and both attempts outstanding.</summary>
+    private IEnumerator LaunchSharedGame(SeriesId id)
+    {
+        Button play = FindButton("playTurnButton");
+        Assert.That(play.interactable, Is.True, "Play Game is not available: " + TextOf("turnMessage"));
+        play.onClick.Invoke();
+
+        float deadline = Time.realtimeSinceStartup + SceneTimeoutSeconds;
+        bool seated = false;
+        while (Time.realtimeSinceStartup < deadline)
+        {
+            if (SceneManager.GetActiveScene().name != Constants.SCENE_NAME_level_00_local_versus
+                && LevelRuntimeContext.instance != null
+                && LevelRuntimeContext.instance.Players != null
+                && LevelRuntimeContext.instance.Players.Count == 2)
+            {
+                seated = true;
+                break;
+            }
+
+            yield return null;
+        }
+
+        Assert.That(seated, Is.True, "gameplay never started two humans from Play Game");
+        yield return null;
+
+        Assert.That(ActiveVersusAttempt.IsActive, Is.True);
+        Assert.That(ActiveVersusAttempt.IsSimultaneous, Is.True);
+        Assert.That(ActiveVersusAttempt.SeriesId, Is.EqualTo(id));
+        Assert.That(ActiveMatch.Configuration.Roster.LocalHumanCount, Is.EqualTo(2));
+    }
+
+    /// <summary>
+    /// Sets the two slots' scores and ends the match through the real <c>GameRules.RequestGameOver</c> and its
+    /// match-end reporting, then waits for the pair to be recorded (the active attempt clears only then).
+    /// </summary>
+    private static IEnumerator EndSharedGame(int firstScore, int secondScore)
+    {
+        PlayerRegistry players = LevelRuntimeContext.instance.Players;
+        players.GetBySlot(0).gameStats.TotalPoints = firstScore;
+        players.GetBySlot(0).gameStats.ShotMade = 5;
+        players.GetBySlot(0).gameStats.ShotAttempt = 10;
+        players.GetBySlot(1).gameStats.TotalPoints = secondScore;
+        players.GetBySlot(1).gameStats.ShotMade = 5;
+        players.GetBySlot(1).gameStats.ShotAttempt = 10;
+
+        MonoBehaviour rules = FindBehaviourByTypeName("GameRules");
+        Assert.That(rules, Is.Not.Null, "the gameplay scene has no GameRules");
+        rules.GetType().GetMethod("RequestGameOver", BindingFlags.Public | BindingFlags.Instance).Invoke(rules, null);
+
+        float deadline = Time.realtimeSinceStartup + 30f;
+        while (ActiveVersusAttempt.IsActive && Time.realtimeSinceStartup < deadline)
+        {
+            yield return null;
+        }
+
+        Assert.That(ActiveVersusAttempt.IsActive, Is.False, "GameRules never recorded the simultaneous result");
+    }
+
+    /// <summary>One whole game from the series screen: Play Game, end it through GameRules, Continue Series.</summary>
+    private IEnumerator PlaySharedGame(SeriesId id, int firstScore, int secondScore)
+    {
+        yield return LaunchSharedGame(id);
+        yield return EndSharedGame(firstScore, secondScore);
+        yield return ContinueSeries();
+    }
+
+    /// <summary>
+    /// Both attempts of <paramref name="gameIndex"/> are durably Completed and the game resolved. When ids are
+    /// given they must be the very attempts named; without them, only that each participant has one.
+    /// </summary>
+    private static void AssertGameRecorded(VersusSeries series, int gameIndex, AttemptId firstAttempt, AttemptId secondAttempt)
+    {
+        Assert.That(series.Games[gameIndex].IsResolved, Is.True, "game " + (gameIndex + 1) + " is resolved");
+        ParticipantGameView one = series.ViewFor(series.Participants.First.Id).Games[gameIndex];
+        ParticipantGameView two = series.ViewFor(series.Participants.Second.Id).Games[gameIndex];
+        Assert.That(one.OwnAttemptState, Is.EqualTo(AttemptState.Completed), "the first participant's attempt is durable");
+        Assert.That(two.OwnAttemptState, Is.EqualTo(AttemptState.Completed), "the second participant's attempt is durable");
+        Assert.That(one.OwnAttemptId.HasValue && two.OwnAttemptId.HasValue && one.OwnAttemptId.Value != two.OwnAttemptId.Value, Is.True, "two distinct attempts");
+        if (firstAttempt.HasValue)
+        {
+            Assert.That(one.OwnAttemptId.Value, Is.EqualTo(firstAttempt.Value), "the first participant's original attempt");
+        }
+
+        if (secondAttempt.HasValue)
+        {
+            Assert.That(two.OwnAttemptId.Value, Is.EqualTo(secondAttempt.Value), "the second participant's original attempt");
+        }
+    }
+
+    // ------------------------------------------------------------------ rendered-screen checks beyond the boundary check
+
+    /// <summary>
+    /// Every active control is on the screen, none overlaps another, no other text sits on top of one, a
+    /// control is selected, every enabled control is reachable from it through the screen's own navigation
+    /// graph (what a d-pad or arrow keys walk), and the mode-dependent controls match the selected series.
+    /// </summary>
+    private static void CheckScreenBehavior(string state, List<string> problems)
+    {
+        List<Selectable> controls = new List<Selectable>();
+        List<Component> texts = new List<Component>();
+        foreach (GameObject sceneRoot in SceneManager.GetActiveScene().GetRootGameObjects())
+        {
+            foreach (Selectable selectable in sceneRoot.GetComponentsInChildren<Selectable>(false))
+            {
+                controls.Add(selectable);
+            }
+
+            foreach (Component component in sceneRoot.GetComponentsInChildren<Component>(false))
+            {
+                if (component != null && component.GetType().Name.StartsWith("TextMeshPro"))
+                {
+                    texts.Add(component);
+                }
+            }
+        }
+
+        // control overlap, and text drawn over a control it does not belong to
+        for (int a = 0; a < controls.Count; a++)
+        {
+            Rect one = ScreenRect(controls[a].transform as RectTransform);
+            for (int b = a + 1; b < controls.Count; b++)
+            {
+                if (Overlap(one, ScreenRect(controls[b].transform as RectTransform)) > 1f)
+                {
+                    problems.Add(state + ": controls '" + controls[a].name + "' and '" + controls[b].name + "' overlap");
+                }
+            }
+
+            foreach (Component text in texts)
+            {
+                string content = (string)text.GetType().GetProperty("text").GetValue(text);
+                if (string.IsNullOrEmpty(content) || text.transform.IsChildOf(controls[a].transform))
+                {
+                    continue;
+                }
+
+                if (Overlap(one, ScreenRect(text.transform as RectTransform)) > 1f)
+                {
+                    problems.Add(state + ": text '" + text.gameObject.name + "' (\"" + Short(content) + "\") overlaps control '" + controls[a].name + "'");
+                }
+            }
+        }
+
+        // selection and navigation: something is selected, and everything enabled can be reached from it
+        GameObject selected = EventSystem.current != null ? EventSystem.current.currentSelectedGameObject : null;
+        Selectable start = selected != null ? selected.GetComponent<Selectable>() : null;
+        if (start == null || !start.IsActive() || !start.IsInteractable())
+        {
+            problems.Add(state + ": nothing usable is selected (" + (selected != null ? selected.name : "none") + ")");
+        }
+        else
+        {
+            HashSet<Selectable> reached = new HashSet<Selectable> { start };
+            Queue<Selectable> frontier = new Queue<Selectable>();
+            frontier.Enqueue(start);
+            while (frontier.Count > 0)
+            {
+                Selectable current = frontier.Dequeue();
+                foreach (Selectable next in new[] { current.FindSelectableOnUp(), current.FindSelectableOnDown(), current.FindSelectableOnLeft(), current.FindSelectableOnRight() })
+                {
+                    if (next != null && reached.Add(next))
+                    {
+                        frontier.Enqueue(next);
+                    }
+                }
+            }
+
+            foreach (Selectable control in controls)
+            {
+                if (control.IsInteractable() && !reached.Contains(control))
+                {
+                    problems.Add(state + ": '" + control.name + "' is not reachable by navigation from '" + start.name + "'");
+                }
+            }
+        }
+
+        // the controls that exist only for one kind of series
+        MonoBehaviour controller = FindBehaviourByTypeName("LocalVersusController");
+        object model = controller == null ? null : controller.GetType().GetProperty("Model").GetValue(controller);
+        if (model != null)
+        {
+            bool simultaneous = (bool)model.GetType().GetProperty("IsSimultaneousSelected").GetValue(model);
+            bool hasSeries = model.GetType().GetProperty("SelectedSeries").GetValue(model) != null;
+            if (FindButton("character2Button").gameObject.activeInHierarchy != simultaneous)
+            {
+                problems.Add(state + ": Player 2's selector visibility (" + !simultaneous + ") does not match the selected series (simultaneous=" + simultaneous + ")");
+            }
+
+            if (!FindButton("modeButton").gameObject.activeInHierarchy)
+            {
+                problems.Add(state + ": the Mode selector is hidden");
+            }
+
+            string play = TextOf("playTurnButton");
+            if (hasSeries && simultaneous && play != "Play Game")
+            {
+                problems.Add(state + ": a simultaneous series offers '" + play + "'");
+            }
+
+            if (hasSeries && !simultaneous && !play.StartsWith("Play Turn"))
+            {
+                problems.Add(state + ": an alternating series offers '" + play + "'");
+            }
+
+            if (hasSeries && !simultaneous && TextOf("seriesDetail").Contains("Both players play at once."))
+            {
+                problems.Add(state + ": an alternating series describes a same-time game");
+            }
+        }
+    }
+
+    private static Rect ScreenRect(RectTransform rect)
+    {
+        Vector3[] corners = new Vector3[4];
+        rect.GetWorldCorners(corners);
+        return Rect.MinMaxRect(
+            Mathf.Min(corners[0].x, corners[2].x),
+            Mathf.Min(corners[0].y, corners[2].y),
+            Mathf.Max(corners[0].x, corners[2].x),
+            Mathf.Max(corners[0].y, corners[2].y));
+    }
+
+    /// <summary>Area of the intersection, in pixels squared.</summary>
+    private static float Overlap(Rect a, Rect b)
+    {
+        float width = Mathf.Min(a.xMax, b.xMax) - Mathf.Max(a.xMin, b.xMin);
+        float height = Mathf.Min(a.yMax, b.yMax) - Mathf.Max(a.yMin, b.yMin);
+        return width > 0f && height > 0f ? width * height : 0f;
     }
 
     // ------------------------------------------------------------------ steps

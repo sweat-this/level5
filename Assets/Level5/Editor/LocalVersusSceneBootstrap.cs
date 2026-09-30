@@ -34,6 +34,7 @@ public static class LocalVersusSceneBootstrap
     // single selector, simply has room to spare.
     private const float PanelButtonHeight = 64f;
     private const float PanelSpacing = 8f;
+    private const float TurnMessageMinFontSize = 18f;
 
     [MenuItem("Tools/Local Versus/Generate Local Versus Scene")]
     public static void GenerateScene()
@@ -100,6 +101,12 @@ public static class LocalVersusSceneBootstrap
         Button levelButton = MakeButton(buttonTemplate, seriesPanel, "levelButton", "Arena", out TMP_Text levelText);
         Button playTurnButton = MakeButton(buttonTemplate, seriesPanel, "playTurnButton", "Play Turn", out TMP_Text playTurnText);
         TMP_Text turnMessage = MakeText(textTemplate, seriesPanel, "turnMessage", string.Empty, 30, TextAlignmentOptions.TopLeft, 60f);
+        // A refused launch reports the device preflight's sentence ("Two local players need two gamepads, or a
+        // keyboard plus one gamepad. Detected: ..."), which is three lines at 30pt in a box that holds two, and
+        // the panel has no room to grow the box. Shrink to fit instead of truncating what the player must read.
+        turnMessage.enableAutoSizing = true;
+        turnMessage.fontSizeMin = TurnMessageMinFontSize;
+        turnMessage.fontSizeMax = 30f;
 
         // ---- back
         Button backButton = MakeButton(buttonTemplate, canvas, "backButton", "Back", out _);
