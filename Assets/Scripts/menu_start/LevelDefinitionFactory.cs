@@ -124,11 +124,14 @@ public static class LevelDefinitionFactory
             capabilities |= ArenaCapability.Weather;
         }
 
-        // No level authors a multiplayer flag today - whether the extra player spawn points exist
-        // is discovered by GameLevelManager when the scene loads, and a scene without them fails
-        // there with a named error. Granting the capability to every arena keeps that behaviour
-        // exactly as it is; when spawn counts become authored data this is where they land.
-        capabilities |= ArenaCapability.Multiplayer;
+        // Authored per arena on its LevelSelected prefab, and false until someone has verified the
+        // arena plays with more than one local human. Never granted by default: an arena without the
+        // extra player spawn points would otherwise pass GameModeCompatibility and only fail once its
+        // scene had already loaded.
+        if (source.LevelSupportsMultiplayer)
+        {
+            capabilities |= ArenaCapability.Multiplayer;
+        }
 
         return capabilities;
     }
