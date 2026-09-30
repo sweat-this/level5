@@ -799,13 +799,88 @@ Run on 2026-09-30 against Unity 6000.5.7f1 in batch mode:
   Continue Series loop for a whole Best of 3 and restarts between series and history. This is automated
   (virtual gamepads, scores set by the test); nobody played it by hand.
 - **Layout:** the tallest series state ends at 1064 of the 1080 reference canvas and the create panel at 862,
-  clear of Back at 930 (`TheTallestPanelStatesStillFitTheReferenceCanvasAndClearBack`). The opt-in rendered
-  certification (`Layout_RenderedStatesStayOnScreenAndUntruncated`) refuses to run outside a player built with an
-  isolated product name and was **not** run, so text truncation in the new states is unchecked.
-- **Not done:** keyboard + physical gamepad and two physical gamepads (separate, hardware); the process-kill and
-  fresh-process restart certification sessions (opt-in, player build); a hand-played run.
+  clear of Back at 930 (`TheTallestPanelStatesStillFitTheReferenceCanvasAndClearBack`). The rendered
+  certification was not run when this slice merged; it has since been - see "Certification (2026-09-30)".
+- **Not done at merge, done since:** the process-kill and fresh-process restart sessions and the rendered layout
+  (see "Certification (2026-09-30)"). **Still not done:** keyboard + physical gamepad and two physical gamepads
+  (hardware), and a hand-played run.
 - The scene was edited as YAML (the simultaneous controls were cloned from the existing buttons) rather than in the
-  editor; the suites above load and use it.
+  editor; the suites above load and use it. Unity's own save of it is semantically identical but reorders the file
+  (see "Certification (2026-09-30)", scene serialization).
+
+### Certification (2026-09-30)
+
+Certification of the slice above against `dev` `8ce32033afc02c4612a2e9fd00d39568a7341952` (PR #217, "Do not submit a
+simultaneous versus pair when a slot has no stats", is the one commit past the audited `f955aef`). Certification-first:
+production data changed only for the one defect below. Unity 6000.5.7f1 (`017862109af0`), Windows 10 Pro, one RTX 4060.
+Every process session ran as its own `Unity.exe`, with the isolated product name `level5-local-versus-cert-editor` (set
+temporarily in `ProjectSettings`, never committed), a temporary repository root and a handoff file outside it that holds
+identifiers and display names only. Two virtual gamepads stand in for the two humans; **no physical controller was
+attached to the machine** (see "Not certified").
+
+**Final suites on the certified tree.** Full EditMode 2040/2040. Full PlayMode (graphics enabled): 135 tests, 108 passed,
+0 failed, 27 skipped - the skips are the opt-in fixtures (12 live-backend, 8 process-certification, plus the 7 added
+here), all of which were then run individually (below). `./scripts/validate-repository.ps1` and
+`Level5ProjectValidator.ValidateFromMenu` pass. The pre-change baseline was 2039/2039 and 127/107/0/20, which also
+closes the gap #216 reported (its last same-character selection-test fix had no full run after it: it passes).
+
+| Gate | Result |
+| --- | --- |
+| Scene serialization (`level_00_local_versus`, opened in the editor) | all `LocalVersusUiObjects` references resolve; buttons register callbacks in code (no persistent listeners, by design); navigation is Automatic everywhere; `character2Button` is authored hidden and `modeButton` visible; EventSystem selects `createButton` first. Unity's save of the scene is semantically a no-op (175 YAML documents, one reordered) but rewrites 1272 lines, so it was **not** committed: the authored file is valid, just not in Unity's canonical order, and the next editor save of it will produce that noise. |
+| Rendered layout, simultaneous | 15 states at 1920x1080, screenshots + boundary, truncation (rendered height and TMP's own `isTextTruncated`), control-overlap, selection, navigation-reachability and mode-visibility checks: create form; fresh Best-of-3; both selectors swept through every character and held on the longest; longest names Best-of-7 fresh / 2-2 in progress / completed; completed Best-of-3; mixed alternating+simultaneous lists (each kind selected, a finished alternating one, the longest completed row); create error; launch error (device preflight); launch error (pair could not be saved). Passes. |
+| Rendered layout, alternating | 7 existing states, now with the same stronger checks. Passes. |
+| Fresh-process restoration | S1 (create Best-of-3 through the real screens, one shared game through the real `GameRules`, both results durable) -> S2 (fresh process: series found from the repository, game 1 verified incl. attempt ids, games 2-3 played, series complete 2-1) -> S3 (third process: completed series and history intact, no game offered). |
+| Forced process kill | SC1 (shared game live, both attempts durably `Started`, ids recorded, process killed with no pause action) -> SC2 (fresh process: same game, neither forfeited, score 0, both original attempts reused on relaunch, completes with exactly one durable result). |
+| Atomic recovery | the real `GameRules` loop with a repository that refuses saves: retried (>= 2 refused saves), both attempts and the competitive context stay outstanding, the game does not advance, leaving is refused; after recovery the pair is recorded once and the game advances once; winner by roster slot. Domain events-after-save, slot identity against score order and single-attempt refusal were already pinned by `Level5VersusSimultaneousDomainTests` / `Level5LocalSimultaneousVersusTests` and were not duplicated. |
+| Competition-only persistence | `ASimultaneousMatchEndRetriesAtomicallyAndWritesOnlyTheSeries` snapshots the isolated persistent data path around the match end: an alternating control turn wrote `level5.db` and `guest-pending-progression.json(.bak)`; the simultaneous match wrote **nothing** outside the series. Mutation check: with the latch in `GameRules` disabled, the test fails on exactly those files. |
+| Gamepad navigation, simultaneous | Mode, Create, Player 1 and Player 2 selectors (independent), Play Game seating two humans, by real d-pad/Submit through `InputSystemUIInputModule`. The Arena selector is disabled (one multiplayer arena) and correctly not a navigation stop. |
+| Alternating regression | Session1/2 (restart), C1/C2 (kill), the `GameRules` retry loop and the alternating layout all pass again. |
+
+**Defect found and fixed.** The `turnMessage` label was a fixed 30pt with Truncate overflow in a 60px box. A launch
+refused by the two-human device preflight ("Could not start the game: Two local players need two gamepads, or a keyboard
+plus one gamepad. Detected: no keyboard, 1 gamepad(s).") needs three lines, so the sentence's second half - the devices
+actually detected, the part a player can act on - was cut off (state `sim-14`). Owner: authored scene data. The label now
+auto-sizes 18-30pt in the scene and in `LocalVersusSceneBootstrap`, in a two-line YAML edit, not a reserialization.
+Regression: `LocalVersusSceneContractTests.ARefusedTwoPlayerLaunchIsReadableInTheTurnMessageBox` (fails without the fix;
+also measures the longer touchscreen variant at the smallest permitted size). The opt-in layout run failed on exactly
+that state before the fix and passes after it.
+
+**A check defect, not a product defect.** The first simultaneous layout run also flagged `seriesSelectButton` ("needs
+68px but its box is 64px") in states shared with alternating play, which the alternating layout run of the same tree
+reproduced. TMP measures `preferredHeight` at the *maximum* size when auto-sizing is on, and these labels auto-size
+20-34pt; the screenshots show them fitted. The check now measures the rendered height for auto-sized text and asks TMP
+whether an overflow mode cut anything off, which is stricter for truncation and correct for fitted labels.
+
+**Not certified**
+
+- **No physical device was tested.** Keyboard/mouse + one gamepad and two physical gamepads (initial assignment,
+  independent movement/shooting, stable ownership through pause/resume and across a Best-of-3, camera playability) are
+  **untested**; the machine had no controller. The virtual-device tests are regression coverage, not certification.
+- **No hand-played run.** Nothing here was played by a person; scores are set by the test and matches end through the
+  real `GameRules.RequestGameOver`, so real shooting, scoring and shared-camera play are unobserved.
+- The certification ran in the Editor's PlayMode (and its Game view at 1920x1080), not in a built player.
+- Only 1920x1080 was rendered; the 16:9 canvas contract and its narrow-aspect limitation (see the Local Versus
+  certification above) are unchanged.
+
+**Prerequisites for `most-3-pointers` (not implemented).**
+
+1. Declare the capability: `most-3-pointers` is `MakeCount(...)` with `Anytime` only; it needs the same separate
+   "certified for simultaneous" grant `most-points` has, and `OnlyMostPointsDeclaresLocalSimultaneousInTheShippedRulesets`
+   and the screen-model tests that assert "only Most Points" change with it.
+2. The two-player HUD: `BindSecondHumanContext` and the dual-score presentation exist for Total Points only. The 3s-made
+   clock-side score, per-player panel and end summary need their own two-slot presentation.
+3. Attribution: audit that `ThreePointerMade` lands on the launch-time shooter for both humans (the shot pipeline is
+   launch-state based - see `docs/shot-lifecycle.md`), including one player's ball scoring while the other is mid-shot, and
+   that nothing in the mode's end condition or timer assumes one player.
+4. Match construction: `MatchConfigurationBuilder`'s mode/arena/character compatibility for two humans in
+   `Total3Pointers` on The Scrapyard (the only multiplayer arena), and whether the mode needs anything Most Points does not.
+5. `GameStatsAttemptResults` already maps `ThreePointerMade`; confirm the ruleset's comparison keys (count, then fewer
+   attempts, or accuracy) are what two players should be ranked by, and keep ruleset version rules for the new topology.
+6. Tests to add, mirroring this slice: a Best-of-3 through the real screens on two virtual gamepads, a rendered layout
+   state with the ruleset's labels, atomic-pair/retry through the real `GameRules`, the competition-only persistence
+   probe (`ASimultaneousMatchEndRetriesAtomicallyAndWritesOnlyTheSeries` generalizes to it), and the process sessions.
+7. Do it after the two physical-device configurations above have been certified, so a second ruleset is not stacked on
+   an uncertified input path.
 
 ### Limitations
 
@@ -818,10 +893,8 @@ Run on 2026-09-30 against Unity 6000.5.7f1 in batch mode:
 - Both humans may pick the same character; this is exercised in PlayMode (separate actors, stats and results).
 - `GameRules` has one other versus touchpoint besides the reporter call: the single latch that makes a
   simultaneous match competition-only. `Level5VersusArchitectureTests.TheGameplayFootprintIsOneCall` pins both.
-- The Local Versus panels now lay out 64px buttons (was 80px). The opt-in rendered layout certification
-  (`LocalVersusProcessCertificationPlayModeTests.Layout_RenderedStatesStayOnScreenAndUntruncated`, player build
-  only) has not been re-run against the new layout and should be, at 1920x1080, with both an alternating and a
-  simultaneous series selected.
+- The Local Versus panels lay out 64px buttons (was 80px). The rendered layout certification has been re-run against
+  them for alternating and simultaneous series - see "Certification (2026-09-30)".
 - The dual-score HUD exists for Total Points only; any other ruleset made simultaneous needs its own
   two-player score presentation.
 
@@ -856,4 +929,4 @@ The versus suite lives in `Assets/Tests/Editor`, with runtime smoke coverage in
 | `LocalVersusProductionSmokePlayModeTests` | the production Local Versus loop through the real scenes (in-process restart, live-turn forfeit, failed forfeit save, result awaiting its save) |
 | `LocalVersusGamepadNavigationPlayModeTests` | the Local Versus screen and pause menu driven only by a virtual gamepad: reachability, Format/Character/Arena/Create/Play/Back, no focus trap, Quit Turn (Forfeit) |
 | `LocalVersusSceneContractTests` | the authored scene facts the screen model and input behavior depend on: list box vs `ListLineBudget`, name-field limit, no activate-on-select |
-| `LocalVersusProcessCertificationPlayModeTests` | opt-in (`LEVEL5_LOCAL_VERSUS_CERTIFICATION=1`): genuine process restart, process kill, the real `GameRules` retry loop, player-quit verification and rendered layout - see "Local Versus certification" |
+| `LocalVersusProcessCertificationPlayModeTests` | opt-in (`LEVEL5_LOCAL_VERSUS_CERTIFICATION=1`): genuine process restart, process kill, the real `GameRules` retry loop, player-quit verification and rendered layout - see "Local Versus certification"; and, for simultaneous play, sessions S1-S3 / SC1-SC2, the competition-only atomic-recovery test and the simultaneous layout check - see "Certification (2026-09-30)" |
