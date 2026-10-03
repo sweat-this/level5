@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Text;
 using Level5.Core.Match;
@@ -27,7 +28,7 @@ public static class MatchDefinitionMigration
     private const string LevelPrefabResourcesPath = "Prefabs/menu_start/level_selected_objects";
     private const string ModeAssetFolder = "Assets/Resources/Match/Modes";
     private const string LevelAssetFolder = "Assets/Resources/Match/Levels";
-    private const string CharacterizationPath = "docs/generated/level5-game-mode-characterization.md";
+    public const string CharacterizationPath = "docs/generated/level5-game-mode-characterization.md";
 
     [MenuItem("Level 5/Match/Migrate Authored Mode and Level Definitions")]
     public static void MigrateDefinitions()
@@ -117,10 +118,29 @@ public static class MatchDefinitionMigration
 
     private static string WriteCharacterizationMatrix()
     {
+        string markdown = BuildCharacterizationMatrix();
+        string path = Path.Combine(Directory.GetParent(Application.dataPath).FullName, CharacterizationPath);
+        Directory.CreateDirectory(Path.GetDirectoryName(path));
+        File.WriteAllText(path, markdown, new UTF8Encoding(false));
+        AssetDatabase.Refresh();
+        return $"Wrote {CharacterizationPath}.";
+    }
+
+    /// <summary>
+    /// Builds the same snapshot the export writes, without modifying files or authored assets.
+    /// Unity EditMode validation compares this with the checked-in characterization.
+    /// </summary>
+    public static string BuildCharacterizationMatrix()
+    {
         if (!TryLoadAuthoredSources(out List<StartScreenModeSelected> modes, out List<LevelSelected> levels, out string error))
         {
-            return error;
+            throw new InvalidOperationException(error);
         }
+
+        // Resources enumeration order is not a documentation contract. Sort only these local
+        // lists; the runtime menu and its index-based selection order remain untouched.
+        modes.Sort((left, right) => left.ModeId.CompareTo(right.ModeId));
+        levels.Sort((left, right) => left.LevelId.CompareTo(right.LevelId));
 
         StringBuilder markdown = new StringBuilder();
         markdown.AppendLine("# Level 5 game mode characterization");
@@ -145,25 +165,32 @@ public static class MatchDefinitionMigration
                 continue;
             }
 
-            markdown.AppendLine(string.Join(" | ", new[]
+            try
             {
-                "| " + mode.RawModeId,
-                mode.DisplayName,
-                mode.Objective.ToString(),
-                mode.ClockMode.ToString(),
-                mode.CustomTimerSeconds > 0f ? mode.CustomTimerSeconds.ToString("0.##") : "default",
-                mode.CombatMode.ToString(),
-                mode.ShotRule.ToString(),
-                mode.ShotMarkers.ToString(),
-                Yes(mode.RequiresBasketball),
-                Yes(mode.RequiresMoneyBall),
-                Yes(mode.RequiresConsecutiveShots),
-                Yes(mode.RequiresPlayerSurvive),
-                Yes(mode.AllowsCpuShooters),
-                Yes(mode.EnemiesOnly),
-                Yes(mode.ArcadeMode),
-                $"{mode.MinPlayers}-{mode.MaxPlayers}" + (mode.AddsImplicitDefender ? " +defender" : string.Empty) + " |"
-            }));
+                markdown.AppendLine(string.Join(" | ", new[]
+                {
+                    "| " + mode.RawModeId,
+                    mode.DisplayName,
+                    mode.Objective.ToString(),
+                    mode.ClockMode.ToString(),
+                    mode.CustomTimerSeconds > 0f ? mode.CustomTimerSeconds.ToString("0.##", CultureInfo.InvariantCulture) : "default",
+                    mode.CombatMode.ToString(),
+                    mode.ShotRule.ToString(),
+                    mode.ShotMarkers.ToString(),
+                    Yes(mode.RequiresBasketball),
+                    Yes(mode.RequiresMoneyBall),
+                    Yes(mode.RequiresConsecutiveShots),
+                    Yes(mode.RequiresPlayerSurvive),
+                    Yes(mode.AllowsCpuShooters),
+                    Yes(mode.EnemiesOnly),
+                    Yes(mode.ArcadeMode),
+                    $"{mode.MinPlayers}-{mode.MaxPlayers}" + (mode.AddsImplicitDefender ? " +defender" : string.Empty) + " |"
+                }));
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(mode);
+            }
         }
 
         markdown.AppendLine();
@@ -179,7 +206,14 @@ public static class MatchDefinitionMigration
                 continue;
             }
 
-            markdown.AppendLine($"| {level.LevelId} | {level.DisplayName} | {level.SceneName} | {level.Capabilities} |");
+            try
+            {
+                markdown.AppendLine($"| {level.LevelId} | {level.DisplayName} | {level.SceneName} | {level.Capabilities} |");
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(level);
+            }
         }
 
         markdown.AppendLine();
@@ -199,12 +233,7 @@ public static class MatchDefinitionMigration
             }
         }
 
-        string path = Path.Combine(Directory.GetCurrentDirectory(), CharacterizationPath);
-        Directory.CreateDirectory(Path.GetDirectoryName(path));
-        File.WriteAllText(path, markdown.ToString());
-        AssetDatabase.Refresh();
-
-        return $"Wrote {CharacterizationPath}: {modes.Count} modes, {levels.Count} levels, {anomalies.Count} anomalies.";
+        return markdown.ToString().Replace("\r\n", "\n").Replace("\r", "\n").TrimEnd('\n') + "\n";
     }
 
     /// <summary>
