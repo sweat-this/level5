@@ -140,3 +140,51 @@ Regenerate the file whenever changes alter any exported authored data. Review th
 Run the exporter twice from an unchanged project before accepting a new snapshot. The second run should produce no JSON diff.
 
 Do not manually edit the generated JSON to make documentation look cleaner. Fix the authored Unity data or the exporter, then regenerate.
+
+## Mode and arena characterization
+
+`MatchDefinitionMigration` owns `level5-game-mode-characterization.md`. Refresh
+it with **Level 5 > Match > Export Mode Characterization Matrix**, or in batch mode:
+
+```powershell
+Unity.exe -batchmode -quit -projectPath <path-to-level5> `
+  -executeMethod MatchDefinitionMigration.ExportCharacterizationFromCommandLine `
+  -logFile -
+```
+
+The export loads the same selection-prefab catalogs as runtime, filters arenas
+by `IsSelectable`, and uses `GameModeDefinitionFactory` and
+`LevelDefinitionFactory`. Rows are sorted by stable numeric ID for documentation
+only; runtime menu ordering is unchanged. Output uses invariant timer formatting,
+UTF-8 without a BOM, LF line endings, and one trailing LF. Re-export twice from
+unchanged authored sources and confirm the second run produces no diff.
+
+`Level5DocumentationExporterTests.CheckedInModeCharacterizationMatchesCurrentAuthoredSources`
+is the deterministic drift gate. It builds the full characterization using the
+same exporter and Unity-loaded sources and compares it with the committed file
+(normalizing checkout line endings). It does not rewrite the file, duplicate the
+capability mapping, or compare two generated snapshots. Missing source catalogs
+or missing output fail validation. Run this focused EditMode test after exporting.
+
+This check belongs to Unity EditMode validation. The optional Unity CI job runs it
+when `UNITY_CI_ENABLED` and Unity credentials are configured; repository-only CI
+does not validate authored capability parity. When Unity CI is unavailable, the
+focused editor check must be run before accepting a characterization refresh.
+
+### Root cause of #278
+
+The snapshot last refreshed in `eb9d9224454243a9535bfcece07951fee76e14d5`
+predates `446d3cd4de4efc4cf2910abf9360038183b0fe4e` (#215), which replaced
+unconditional `ArenaCapability.Multiplayer` with the default-false authored
+`LevelSelected.LevelSupportsMultiplayer` flag. The exporter already called the
+correct factory, but its checked-in output was not refreshed and no test compared
+that output with current sources. On the audited `dev` baseline
+`d90e5e0bc800338db270762a213074ed2107163d`, the catalog has 23 arena prefabs,
+21 selectable; only The Scrapyard opts into multiplayer. No arena authoring or
+runtime capability logic needs to change to reconcile this snapshot.
+
+The explicit local-human mode capability required by #234/#235 is not present
+on this baseline, and #235 is still open. After those dependencies land, extend
+the mode table with their actual resolved contract and regenerate; roster bounds
+must not be presented as local-human certification. Until that follow-up and a
+Unity export/test run are complete, #278 and its downstream #246 remain blocked.

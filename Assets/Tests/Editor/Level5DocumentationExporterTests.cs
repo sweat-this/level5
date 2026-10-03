@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.IO;
 using System.Reflection;
 using NUnit.Framework;
 using UnityEditor;
@@ -7,6 +8,23 @@ using UnityEngine;
 public class Level5DocumentationExporterTests
 {
     private const string TempRoot = "Assets/Tests/Editor/TempDocumentationExporter";
+
+    [Test]
+    public void CheckedInModeCharacterizationMatchesCurrentAuthoredSources()
+    {
+        // Use the actual exporter and Unity-loaded source prefabs, not a second capability
+        // mapping or the other generated JSON snapshot. Missing sources must fail, not skip.
+        string expected = MatchDefinitionMigration.BuildCharacterizationMatrix();
+        string path = Path.Combine(
+            Directory.GetParent(Application.dataPath).FullName,
+            MatchDefinitionMigration.CharacterizationPath);
+
+        Assert.That(File.Exists(path), Is.True, "Missing generated characterization: " + path);
+        string actual = File.ReadAllText(path).Replace("\r\n", "\n").Replace("\r", "\n");
+        Assert.That(actual, Is.EqualTo(expected),
+            "Generated characterization is stale. Run Level 5 > Match > Export Mode Characterization Matrix "
+            + "and commit the regenerated file; do not edit it by hand.");
+    }
 
     [TearDown]
     public void TearDown()
