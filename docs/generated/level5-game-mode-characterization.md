@@ -38,26 +38,26 @@ A change to any of these values is a gameplay change, not a refactor.
 | id | level | scene | capabilities |
 | --- | --- | --- | --- |
 | 1 | The Scrapyard | level_01_scrapyard | Basketball, Combat, SevenPointLine, Traffic, TimeOfDay, Multiplayer |
-| 2 | Circle K | level_02_circlek | Basketball, Combat, SevenPointLine, TimeOfDay, Multiplayer |
-| 3 | Avenue B | level_05_aveb | Basketball, Combat, SevenPointLine, Traffic, TimeOfDay, Multiplayer |
-| 4 | Norf | level_03_snow | Basketball, Combat, SevenPointLine, TimeOfDay, Weather, Multiplayer |
-| 5 | The Slab | level_04_slab | Basketball, Combat, SevenPointLine, Traffic, TimeOfDay, Multiplayer |
-| 6 | Caffe | level_06_caffe | Basketball, Combat, SevenPointLine, Traffic, TimeOfDay, Multiplayer |
-| 7 | The Sudan | level_07_sudan | Basketball, Combat, SevenPointLine, Traffic, TimeOfDay, Multiplayer |
-| 8 | Tammys | level_08_tammys | Basketball, Combat, SevenPointLine, Traffic, TimeOfDay, Multiplayer |
-| 9 | Party Mansion | level_09_party_mansion | Basketball, Combat, SevenPointLine, Multiplayer |
-| 10 | Time Jail | level_10_time_jail | Basketball, Combat, SevenPointLine, Multiplayer |
-| 11 | Nexus | level_11_forest | Basketball, Combat, SevenPointLine, Multiplayer |
-| 13 | Rustys | level_13_rustys | Basketball, Combat, SevenPointLine, TimeOfDay, Multiplayer |
-| 14 | The Dome | level_14_dome | Basketball, Combat, SevenPointLine, Multiplayer |
-| 15 | Cocaine Island | level_15_cocaine_island | Basketball, Combat, SevenPointLine, TimeOfDay, Multiplayer |
-| 16 | Boner Mountain | level_16_boner_mountain | Basketball, Combat, SevenPointLine, Multiplayer |
-| 17 | Rumble Pit | level_17_rumble_pit | Combat, Cage, BattleRoyal, SevenPointLine, Multiplayer |
-| 18 | Crank Zone | level_18_aveb2 | Combat, BattleRoyal, SevenPointLine, Multiplayer |
-| 19 | The Back Yard | level_19_cedar_crest | Basketball, Combat, SevenPointLine, TimeOfDay, Multiplayer |
-| 20 | Jacksonville | level_20_jacksonville | Basketball, Combat, SevenPointLine, Traffic, TimeOfDay, Multiplayer |
-| 21 | Seaside | level_21_shore | Basketball, Combat, SevenPointLine, Traffic, TimeOfDay, Multiplayer |
-| 22 | Rumble Pit | level_22_rumble_pit_shooting | Basketball, SevenPointLine, TimeOfDay, Multiplayer |
+| 2 | Circle K | level_02_circlek | Basketball, Combat, SevenPointLine, TimeOfDay |
+| 3 | Avenue B | level_05_aveb | Basketball, Combat, SevenPointLine, Traffic, TimeOfDay |
+| 4 | Norf | level_03_snow | Basketball, Combat, SevenPointLine, TimeOfDay, Weather |
+| 5 | The Slab | level_04_slab | Basketball, Combat, SevenPointLine, Traffic, TimeOfDay |
+| 6 | Caffe | level_06_caffe | Basketball, Combat, SevenPointLine, Traffic, TimeOfDay |
+| 7 | The Sudan | level_07_sudan | Basketball, Combat, SevenPointLine, Traffic, TimeOfDay |
+| 8 | Tammys | level_08_tammys | Basketball, Combat, SevenPointLine, Traffic, TimeOfDay |
+| 9 | Party Mansion | level_09_party_mansion | Basketball, Combat, SevenPointLine |
+| 10 | Time Jail | level_10_time_jail | Basketball, Combat, SevenPointLine |
+| 11 | Nexus | level_11_forest | Basketball, Combat, SevenPointLine |
+| 13 | Rustys | level_13_rustys | Basketball, Combat, SevenPointLine, TimeOfDay |
+| 14 | The Dome | level_14_dome | Basketball, Combat, SevenPointLine |
+| 15 | Cocaine Island | level_15_cocaine_island | Basketball, Combat, SevenPointLine, TimeOfDay |
+| 16 | Boner Mountain | level_16_boner_mountain | Basketball, Combat, SevenPointLine |
+| 17 | Rumble Pit | level_17_rumble_pit | Combat, Cage, BattleRoyal, SevenPointLine |
+| 18 | Crank Zone | level_18_aveb2 | Combat, BattleRoyal, SevenPointLine |
+| 19 | The Back Yard | level_19_cedar_crest | Basketball, Combat, SevenPointLine, TimeOfDay |
+| 20 | Jacksonville | level_20_jacksonville | Basketball, Combat, SevenPointLine, Traffic, TimeOfDay |
+| 21 | Seaside | level_21_shore | Basketball, Combat, SevenPointLine, Traffic, TimeOfDay |
+| 22 | Rumble Pit | level_22_rumble_pit_shooting | Basketball, SevenPointLine, TimeOfDay |
 
 ## Anomalies
 
