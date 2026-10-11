@@ -27,7 +27,7 @@ A change to any of these values is a gameplay change, not a refactor.
 | 22 | Cage Match | Survival | CountUp | default | Cage, BattleRoyal | Any | None | no | no | no | no | no | yes | no | 1-4 |
 | 23 | Versus | Score | Countdown | default | None | Any | None | yes | no | no | no | yes | no | no | 2-4 |
 | 24 | 7 point contest | ContestCompletion | Countdown | 90 | None | SevenPoint | SevenPoint | yes | no | no | no | no | no | no | 1-4 |
-| 25 | Spot up some 7s | ContestCompletion | Countdown | default | None | Any | None | yes | no | no | no | no | no | no | 1-4 |
+| 25 | Spot up some 7s | ContestCompletion | Countdown | default | None | Any | SevenPoint | yes | no | no | no | no | no | no | 1-4 |
 | 26 | Beat tha computahs | CampaignProgression | Countdown | 60 | None | Any | None | yes | no | no | no | yes | no | no | 2-4 |
 | 27 | Lockdown | Score | Countdown | 120 | None | Any | None | yes | no | no | no | yes | no | no | 1-1 +defender |
 | 98 | Arcade mode | Score | None | default | None | Any | None | yes | no | no | no | no | no | yes | 1-4 |

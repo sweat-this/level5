@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Text;
 using Level5.Core.Match;
+using Level5.Core.Progression;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEngine;
@@ -77,6 +78,79 @@ public class Level5AuthoredMatchDataTests
         }
 
         Assert.That(differences.ToString(), Is.Empty, "authored mode data the rule dimensions cannot reproduce:\n" + differences);
+    }
+
+    [TestCase(GameModeId.SpotUp3s, ShotMarkerRequirement.ThreePoint, MatchClockMode.CountUp)]
+    [TestCase(GameModeId.SpotUp4s, ShotMarkerRequirement.FourPoint, MatchClockMode.CountUp)]
+    [TestCase(GameModeId.SpotUp7s, ShotMarkerRequirement.SevenPoint, MatchClockMode.Countdown)]
+    [TestCase(GameModeId.SpotUpAll, ShotMarkerRequirement.ThreePoint | ShotMarkerRequirement.FourPoint, MatchClockMode.CountUp)]
+    public void AuthoredSpotUpModesResolveToMakeQuotaCourses(
+        GameModeId id, ShotMarkerRequirement markers, MatchClockMode clock)
+    {
+        // Pin the shipping prefab, not just parity with whatever booleans it happens to contain.
+        GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(
+            $"Assets/Resources/Prefabs/menu_start/mode_selected_objects/mode_selected_{(int)id:D2}.prefab");
+        Assert.That(prefab, Is.Not.Null);
+        StartScreenModeSelected source = prefab.GetComponent<StartScreenModeSelected>();
+        Assert.That(source, Is.Not.Null);
+        Assert.That(source.ModeId, Is.EqualTo((int)id));
+        Assert.That(source.ModeRequiresShotMarkers7s,
+            Is.EqualTo((markers & ShotMarkerRequirement.SevenPoint) != 0));
+
+        GameModeDefinition mode = GameModeDefinitionFactory.Create(source);
+        LevelDefinition arena = LevelDefinitionFactory.Create(authoredLevels.Find(level => level.LevelId == 1));
+        try
+        {
+            ResolvedMatchRules rules = MatchConfigurationBuilder.Resolve(
+                mode, arena, TestDefinitions.SoloRoster(), MatchModifiers.Default);
+            Assert.That(mode.ShotMarkers, Is.EqualTo(markers));
+            Assert.That(rules.ShotMarkers, Is.EqualTo(markers));
+            Assert.That(rules.Objective, Is.EqualTo(MatchObjective.ContestCompletion));
+            Assert.That(rules.ClockMode, Is.EqualTo(clock));
+            Assert.That(rules.MatchLengthSeconds, Is.EqualTo(180f));
+            Assert.That(rules.ShotRule, Is.EqualTo(ShotRule.Any), "Spot-Up counts makes, not contest attempts");
+            Assert.That(rules.IsThreePointContest || rules.IsFourPointContest
+                || rules.IsSevenPointContest || rules.IsAllPointContest, Is.False);
+        }
+        finally
+        {
+            Object.DestroyImmediate(mode);
+            Object.DestroyImmediate(arena);
+        }
+    }
+
+    [Test]
+    public void AuthoredSpotUp7sRequiresSevenPointLineThroughSelectionAndLaunch()
+    {
+        GameModeDefinition mode = GameModeDefinitionFactory.Create(authoredModes.Find(source => source.ModeId == 25));
+        LevelDefinition scrapyard = LevelDefinitionFactory.Create(authoredLevels.Find(source => source.LevelId == 1));
+        LevelDefinition plainCourt = TestDefinitions.Level(1001, ArenaCapability.Basketball);
+        try
+        {
+            Assert.That(mode, Is.Not.Null);
+            Assert.That(mode.RequiredArenaCapabilities.HasFlag(ArenaCapability.SevenPointLine), Is.True);
+            GameModeCatalog modes = new GameModeCatalog(new[] { mode });
+            LevelDefinitionCatalog levels = new LevelDefinitionCatalog(new[] { plainCourt, scrapyard });
+            GameModeCompatibility compatibility = new GameModeCompatibility(modes, levels);
+            UnlockSnapshot unlock = new UnlockSnapshot(new Dictionary<int, bool>(),
+                new Dictionary<int, bool> { [1001] = true, [1] = true });
+
+            Assert.That(LevelEligibility.CanSelect(plainCourt, mode, compatibility, unlock), Is.False);
+            Assert.That(LevelEligibility.CanSelect(scrapyard, mode, compatibility, unlock), Is.True);
+            Assert.That(LevelEligibility.NextEligibleLevelIndex(compatibility, mode, 0, 1, unlock), Is.EqualTo(1));
+            MatchConfigurationBuilder builder = new MatchConfigurationBuilder(modes, levels, compatibility);
+            MatchBuildResult rejected = builder.Build(new MatchRequest(mode.Id, 1001, TestDefinitions.SoloRoster()), unlock);
+            Assert.That(rejected.Validation.HasError(MatchValidationCode.ArenaLacksSevenPointLine), Is.True);
+            MatchBuildResult accepted = builder.Build(new MatchRequest(mode.Id, 1, TestDefinitions.SoloRoster()), unlock);
+            Assert.That(accepted.Succeeded, Is.True, accepted.Validation.ToString());
+            Assert.That(accepted.Configuration.Rules.ShotMarkers, Is.EqualTo(ShotMarkerRequirement.SevenPoint));
+        }
+        finally
+        {
+            Object.DestroyImmediate(mode);
+            Object.DestroyImmediate(scrapyard);
+            Object.DestroyImmediate(plainCourt);
+        }
     }
 
     [Test]

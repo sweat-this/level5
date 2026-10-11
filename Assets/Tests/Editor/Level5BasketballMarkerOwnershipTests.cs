@@ -1068,6 +1068,62 @@ public class Level5BasketballMarkerOwnershipTests
         Assert.IsFalse(marker.MarkerEnabled);
     }
 
+    [Test]
+    public void AuthoredSpotUp7sMissesDoNotCompleteAndEachMakeQuotaCompletesOnce()
+    {
+        GameObject modePrefab = Resources.Load<GameObject>("Prefabs/menu_start/mode_selected_objects/mode_selected_25");
+        Assert.That(modePrefab, Is.Not.Null);
+        GameModeDefinition mode = GameModeDefinitionFactory.Create(modePrefab.GetComponent<StartScreenModeSelected>());
+        try
+        {
+            ResolvedMatchRules rules = MatchConfigurationBuilder.Resolve(
+                mode, null, TestDefinitions.SoloRoster(), MatchModifiers.Default);
+            GameObject hoop = Resources.Load<GameObject>("Prefabs/basketball/basketball_goal");
+            Assert.That(hoop, Is.Not.Null);
+            BasketBallShotMarker authored = System.Array.Find(
+                hoop.GetComponentsInChildren<BasketBallShotMarker>(true), marker => marker.ShotTypeSeven);
+            Assert.That(authored, Is.Not.Null);
+            Assert.That(authored.MaxShotMade, Is.GreaterThan(0));
+            FakeShotMarkerSession session = new FakeShotMarkerSession { MarkersRemaining = 2 };
+            FakeRuntime runtime = new FakeRuntime { State = MakeState("spot-up-state") };
+
+            for (int index = 0; index < 2; index++)
+            {
+                BasketBallShotMarker marker = MakeMarker("seven-marker-" + index, authored.MaxShotAttempt);
+                SetPrivateField(marker, "maxShotMade", authored.MaxShotMade);
+                PrepareMarkerForSessionDependentBehavior(marker, session, rules);
+                marker.MarkerEnabled = true;
+                Assert.That(InvokeIsPointContestMode(marker), Is.False);
+
+                // More missed attempts than the contest limit must still leave a Spot-Up marker open.
+                for (int miss = 0; miss <= marker.MaxShotAttempt; miss++)
+                {
+                    marker.RegisterAttempt(runtime);
+                    InvokePrivateMethod(marker, "Update");
+                }
+                Assert.That(marker.ShotMade, Is.Zero);
+                Assert.That(marker.MarkerEnabled, Is.True);
+                Assert.That(session.CompletionRecords, Is.EqualTo(index));
+
+                for (int made = 1; made <= marker.MaxShotMade; made++)
+                {
+                    marker.RegisterAttempt(runtime);
+                    marker.ShotMade++;
+                    InvokePrivateMethod(marker, "Update");
+                    Assert.That(marker.MarkerEnabled, Is.EqualTo(made < marker.MaxShotMade));
+                }
+                InvokePrivateMethod(marker, "Update");
+                Assert.That(session.CompletionRecords, Is.EqualTo(index + 1));
+                Assert.That(session.MarkersRemaining, Is.EqualTo(1 - index));
+                Assert.That(session.EndRequests, Is.EqualTo(index));
+            }
+        }
+        finally
+        {
+            Object.DestroyImmediate(mode);
+        }
+    }
+
     // ==================== OnTriggerExit real path (AUD-010 Phase 1c) ====================
     //
     // Previously not exercised here at all (see file header) because setDisplayText reached

@@ -52,7 +52,7 @@ MonoBehaviour:
   modeRequiresCountDown: 1
   modeRequiresShotMarkers3s: 0
   modeRequiresShotMarkers4s: 0
-  modeRequiresShotMarkers7s: 0
+  modeRequiresShotMarkers7s: 1
   gameModeThreePointContest: 0
   gameModeFourPointContest: 0
   gameModeSevenPointContest: 0
