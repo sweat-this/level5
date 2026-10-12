@@ -8,6 +8,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
+using MatchModeId = Level5.Core.Match.GameModeId;
 
 public class GameRules : MonoBehaviour, IMoneyBallState, IShotMarkerSession
 {
@@ -102,6 +103,8 @@ public class GameRules : MonoBehaviour, IMoneyBallState, IShotMarkerSession
     private bool matchEndHandled;
     private bool matchEndHandling;
     private bool matchScoreSaveCompleted;
+    private bool markerCourseInitialized;
+    private bool? ordinaryScoreEligible;
     private bool matchAllTimeStatsSaved;
     private bool matchProgressionApplied;
     private bool progressionPersistenceFailed;
@@ -125,6 +128,7 @@ public class GameRules : MonoBehaviour, IMoneyBallState, IShotMarkerSession
         // gains a MatchController of its own is picked up instead of being duplicated.
         matchController = FindAnyObjectByType<MatchController>()
             ?? gameObject.AddComponent<MatchController>();
+        matchController.Ending += CaptureOrdinaryScoreEligibility;
 
         // The score display. Created here for the same reason as the controller: no gameplay scene
         // carries the component yet, and this keeps the migration to code.
@@ -307,6 +311,11 @@ public class GameRules : MonoBehaviour, IMoneyBallState, IShotMarkerSession
 
     private void OnDestroy()
     {
+        if (matchController != null)
+        {
+            matchController.Ending -= CaptureOrdinaryScoreEligibility;
+        }
+
         if (GameLevelManager.instance != null && GameLevelManager.instance.PlayerHealth != null)
         {
             GameLevelManager.instance.PlayerHealth.OnDied -= OnPlayerDied;
@@ -394,6 +403,10 @@ public class GameRules : MonoBehaviour, IMoneyBallState, IShotMarkerSession
         // GameOver stays the flag the rest of the game polls until those callers migrate; the
         // controller is what decides, and it accepts the transition only once.
         bool accepted = matchController == null || matchController.RequestEnd(reason);
+        if (accepted && matchController == null)
+        {
+            CaptureOrdinaryScoreEligibility(reason);
+        }
         GameOver = true;
         return accepted;
     }
@@ -403,6 +416,23 @@ public class GameRules : MonoBehaviour, IMoneyBallState, IShotMarkerSession
         return GameLevelManager.instance != null
             && GameLevelManager.instance.PlayerHealth != null
             && GameLevelManager.instance.PlayerHealth.IsDead;
+    }
+
+    private void CaptureOrdinaryScoreEligibility(MatchEndReason reason)
+    {
+        if (ordinaryScoreEligible.HasValue)
+        {
+            return;
+        }
+
+        MatchModeId mode = MatchRuntime.ModeId;
+        bool isSpotUp = mode == MatchModeId.SpotUp3s || mode == MatchModeId.SpotUp4s
+            || mode == MatchModeId.SpotUpAll || mode == MatchModeId.SpotUp7s;
+        // Marker completion currently enters through RequestGameOver (Unknown). Only these
+        // successful causes may qualify, and only the course state at the accepted transition
+        // counts; later marker callbacks and persistence retries cannot change this decision.
+        ordinaryScoreEligible = !isSpotUp || (markerCourseInitialized && markersRemaining == 0
+            && (reason.Cause == MatchEndCause.Unknown || reason.Cause == MatchEndCause.ObjectiveComplete));
     }
 
     private void HandleMatchEnded()
@@ -575,6 +605,11 @@ public class GameRules : MonoBehaviour, IMoneyBallState, IShotMarkerSession
         }
 
         // dont save free play game score
+        if (ordinaryScoreEligible == false)
+        {
+            matchScoreSaveCompleted = true;
+        }
+
         if (!matchScoreSaveCompleted && gameModeId != Modes.FreePlay && gameModeId != Modes.BeatThaComputahs)
         {
             if (user == null)
@@ -838,6 +873,7 @@ public class GameRules : MonoBehaviour, IMoneyBallState, IShotMarkerSession
         BasketBallShotMarkersList.Sort(SortByMarkerId);
         // number of markers to complete ( all active and enabled sshot markers based on game options
         markersRemaining = BasketBallShotMarkersList.Count;
+        markerCourseInitialized = markersRemaining > 0;
     }
 
     static int SortByMarkerId(BasketBallShotMarker p1, BasketBallShotMarker p2)
