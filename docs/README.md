@@ -26,6 +26,8 @@ Feature and system docs:
 
 Decision records and audits:
 
+- [GP-001 Post-Remediation Certification — 2026-10-12](gp-001-post-remediation-certification-2026-10-12.md) - current dev reconciliation of F1–F10, all 24 modes, fresh test evidence, targeted CPU/defender/combat observations, and remaining certification limits.
+
 - [Arcade and Free Play longest-shot isolation](gp-001-f10-longest-shot-isolation.md) - GP-001 F10: independent mode history, preserved aggregate/persistence policy, focused regression evidence, and the separate Arcade manual-exit gap.
 
 - [Campaign finale and build scene integrity](gp-001-f5-campaign-build-integrity.md) - GP-001 F5: approved Dev finale, complete route inventory, deterministic build validation, and execution evidence.
