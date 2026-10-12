@@ -60,7 +60,7 @@ MonoBehaviour:
   customTimer: 0
   modeRequiresMoneyBall: 0
   modeRequiresConsecutiveShots: 0
-  highScoreField: maxShotMade
+  highScoreField: fourMade
   arcadeModeActive: 0
   enemiesOnlyEnabled: 0
   isBattleRoyal: 0
