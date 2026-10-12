@@ -81,6 +81,9 @@ public class StartMenuTextMeshProMigrationTests
     }
 
     [TestCase(14)]
+    [TestCase(16)]
+    [TestCase(17)]
+    [TestCase(18)]
     [TestCase(24)]
     public void CountdownDescriptionIsPresentedInTheAuthoredStartMenu(int id)
     {

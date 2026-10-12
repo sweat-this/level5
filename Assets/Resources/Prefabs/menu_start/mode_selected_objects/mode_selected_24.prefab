@@ -47,8 +47,7 @@ MonoBehaviour:
   modeId: 24
   modeDisplayName: 7 point contest
   modeObjectName: mode_24
-  modeDescription: 90 seconds to get a high score. Remaining time added as bonus
-    points
+  modeDescription: 90 seconds to get a high score.
   modeRequiresCounter: 0
   modeRequiresCountDown: 1
   modeRequiresShotMarkers3s: 0

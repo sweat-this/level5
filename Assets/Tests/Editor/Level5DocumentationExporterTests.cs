@@ -27,6 +27,9 @@ public class Level5DocumentationExporterTests
     }
 
     [TestCase(14)]
+    [TestCase(16)]
+    [TestCase(17)]
+    [TestCase(18)]
     [TestCase(24)]
     public void CheckedInCountdownDescriptionMatchesTheProductionPrefab(int id)
     {
