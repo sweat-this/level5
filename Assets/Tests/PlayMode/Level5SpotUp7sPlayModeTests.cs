@@ -1,12 +1,16 @@
 #if UNITY_INCLUDE_TESTS
 using System.Collections;
+using System;
 using System.Linq;
 using System.Reflection;
+using Level5.BackendV2;
 using Level5.Core.Match;
 using NUnit.Framework;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 using UnityEngine.TestTools;
 using UnityEngine.UI;
+using Object = UnityEngine.Object;
 
 /// <summary>
 /// Real authored-mode/arena integration. Attempts and hoop makes are injected at existing production
@@ -15,9 +19,19 @@ using UnityEngine.UI;
 public class Level5SpotUp7sPlayModeTests
 {
     private LocalProfileTestDatabase database;
+    private Guid owner;
+    private RetryableResultTransport transport;
 
     [SetUp]
-    public void SetUp() => RealScenePlayModeTestSupport.IgnoreSceneLogNoise();
+    public void SetUp()
+    {
+        transport = new RetryableResultTransport();
+        BackendV2Runtime.Override(transport);
+        owner = Guid.NewGuid();
+        BackendV2SessionStore.Clear();
+        PendingMatchResultStore.Clear();
+        RealScenePlayModeTestSupport.IgnoreSceneLogNoise();
+    }
 
     [UnityTearDown]
     public IEnumerator TearDown()
@@ -26,19 +40,34 @@ public class Level5SpotUp7sPlayModeTests
         yield return RealScenePlayModeTestSupport.UnloadAllLoadedScenes("spot-up-7s-cleanup");
         database?.Dispose();
         database = null;
+        PendingMatchResultStore.Clear();
+        BackendV2SessionStore.Clear();
+        BackendV2Runtime.Reset();
     }
 
     private IEnumerator LaunchCourse()
     {
-        yield return GameplayScenePlayModeHarness.EnterPlayableGameplayScene(_ => { });
-        MatchConfiguration initial = ActiveMatch.Configuration;
-        Assert.That(initial, Is.Not.Null);
+        // Redirect SQLite before menu/loading bootstrap can access any player database.
         database = new LocalProfileTestDatabase();
         yield return database.Open();
-
+        // Load production catalogs without launching the menu's remembered (possibly non-shooting)
+        // character. This fixture tests the authored course rather than a player's menu draft.
+        SceneManager.LoadScene(Constants.SCENE_NAME_level_00_start);
+        yield return null;
+        yield return null;
+        float deadline = Time.realtimeSinceStartup + 90f;
+        while (!MatchCatalogs.IsReady || SceneManager.GetActiveScene().name != Constants.SCENE_NAME_level_00_start
+            || GameObject.Find("press_start") == null)
+        {
+            Assert.That(Time.realtimeSinceStartup, Is.LessThan(deadline), "production catalogs/menu did not load");
+            yield return null;
+        }
+        CharacterProfile shooter = Resources.LoadAll<GameObject>("Prefabs/menu_start/default_shooter_profiles")
+            .Select(prefab => prefab.GetComponent<CharacterProfile>()).First(profile => profile != null && profile.IsShooter);
         PlayerRoster roster = PlayerRoster.Build(new[]
         {
-            PlayerRosterEntry.LocalHuman(initial.Roster.GetBySlotId(0).Character)
+            PlayerRosterEntry.LocalHuman(new CharacterSelection(shooter.PlayerId, shooter.PlayerObjectName,
+                shooter.PlayerDisplayName, shooter.IsShooter, shooter.IsFighter))
         });
         MatchBuildResult result = MatchCatalogs.Builder.Build(new MatchRequest(
             GameModeId.SpotUp7s, 1, roster, MatchModifiers.Default, source: "Spot-Up 7s regression"));
@@ -57,6 +86,8 @@ public class Level5SpotUp7sPlayModeTests
         }
         Assert.That(MatchController.instance.IsPlaying, Is.True);
         Assert.That(Timer.instance.TimeStart, Is.EqualTo(180f));
+        BackendV2SessionStore.Set(new BackendV2Session("test-access", DateTimeOffset.UtcNow.AddHours(1),
+            owner, "test-refresh", DateTimeOffset.UtcNow.AddDays(1)));
     }
 
     private static BasketBallShotMarker[] AssertCourseComposition(IShotMarkerSession session)
@@ -148,6 +179,10 @@ public class Level5SpotUp7sPlayModeTests
         Assert.That(endings, Is.EqualTo(1));
         Assert.That(completions, Is.EqualTo(1));
         Assert.That(ball.Stats.Stats.TotalPoints, Is.EqualTo(7 * madeTotal));
+        AssertPersistence(gameRules, expectedScores: 1);
+        // Repeated handling cannot write again or change the captured result.
+        RealScenePlayModeTestSupport.Invoke(gameRules, "HandleMatchEnded");
+        AssertPersistence(gameRules, expectedScores: 1);
     }
 
     [UnityTest]
@@ -167,6 +202,54 @@ public class Level5SpotUp7sPlayModeTests
         Assert.That(session.MarkersRemaining, Is.EqualTo(course.Length));
         Assert.That(course.All(marker => marker.MarkerEnabled && marker.ShotMade == 0), Is.True);
         Assert.That(endings, Is.EqualTo(1));
+        AssertPersistence(gameRules, expectedScores: 0);
+    }
+
+    private void AssertPersistence(object gameRules, int expectedScores)
+    {
+        Assert.That(database.CountRows("HighScores", "modeid", 25), Is.EqualTo(expectedScores));
+        Assert.That(database.CountRows("MatchPersistenceLedger"), Is.EqualTo(1), "all-time stats must persist");
+        Assert.That((bool)RealScenePlayModeTestSupport.GetField(gameRules, "matchScoreSaveCompleted"), Is.True);
+        Assert.That((bool)RealScenePlayModeTestSupport.GetField(gameRules, "matchAllTimeStatsSaved"), Is.True);
+        Assert.That((bool)RealScenePlayModeTestSupport.GetField(gameRules, "matchProgressionApplied"), Is.True);
+        Assert.That((bool)RealScenePlayModeTestSupport.GetField(gameRules, "progressionPersistenceFailed"), Is.False);
+        Assert.That(PendingMatchResultStore.GetRetryable(owner), Has.Count.EqualTo(expectedScores));
+        Assert.That(transport.ResultRequests, Is.EqualTo(expectedScores), "failed courses must not reach ordinary submission");
+        Type pendingType = Assembly.Load("Assembly-CSharp").GetType("PendingMatchPersistenceStore", true);
+        object pending = pendingType.GetMethod("Load", BindingFlags.Static | BindingFlags.NonPublic).Invoke(null, null);
+        ICollection scores = (ICollection)pending.GetType().GetField("scores").GetValue(pending);
+        Assert.That(scores.Count, Is.Zero, "SQLite success and failed courses must leave no pending ordinary score");
+    }
+
+    [UnityTest]
+    public IEnumerator DeathBeforeCourseCompletionCannotCreateARecordEvenAfterLateMarkerUpdates()
+    {
+        yield return LaunchCourse();
+        object gameRules = RealScenePlayModeTestSupport.ResolveRuntimeGameRulesInstance();
+        IShotMarkerSession session = (IShotMarkerSession)gameRules;
+        AssertCourseComposition(session);
+        // Exercise the real death subscriber and accepted lifecycle transition, then late callbacks
+        // before GameRules.Update gets to persist anything.
+        RealScenePlayModeTestSupport.Invoke(gameRules, "OnPlayerDied");
+        while (session.MarkersRemaining > 0) session.RecordMarkerCompleted();
+        session.RequestMatchEnd();
+        yield return AssertResults(gameRules, MatchEndCause.PlayerDied, 0);
+        AssertPersistence(gameRules, expectedScores: 0);
+        RealScenePlayModeTestSupport.Invoke(gameRules, "HandleMatchEnded");
+        AssertPersistence(gameRules, expectedScores: 0);
+    }
+
+    private sealed class RetryableResultTransport : IApiTransport
+    {
+        public int ResultRequests { get; private set; }
+
+        public IEnumerator Send(ApiRequest request, Action<RawApiResponse> completed)
+        {
+            if (request.RelativePath == "api/v2/match-results") ResultRequests++;
+            // Keep a successfully queued score pending, without contacting a live Backend.
+            completed(RawApiResponse.Completed(503, "{}"));
+            yield break;
+        }
     }
 }
 #endif
