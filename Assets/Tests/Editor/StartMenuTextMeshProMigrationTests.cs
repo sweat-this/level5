@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
+using Level5.Core.Match;
 using NUnit.Framework;
 using TMPro;
 using UnityEditor;
@@ -30,10 +31,17 @@ public class StartMenuTextMeshProMigrationTests
     private static readonly string[] StaticFieldNames = StartMenuTextMeshProMigration.StaticFieldNames;
 
     private readonly List<Scene> _openedByThisTest = new List<Scene>();
+    private readonly List<Scene> _previewScenes = new List<Scene>();
 
     [TearDown]
     public void TearDown()
     {
+        foreach (Scene scene in _previewScenes)
+        {
+            EditorSceneManager.ClosePreviewScene(scene);
+        }
+        _previewScenes.Clear();
+
         foreach (Scene scene in _openedByThisTest)
         {
             if (scene.IsValid() && scene.isLoaded)
@@ -70,6 +78,60 @@ public class StartMenuTextMeshProMigrationTests
         }
 
         return null;
+    }
+
+    [TestCase(14)]
+    [TestCase(24)]
+    public void CountdownDescriptionIsPresentedInTheAuthoredStartMenu(int id)
+    {
+        Scene scene = EditorSceneManager.OpenPreviewScene(ScenePath);
+        _previewScenes.Add(scene);
+        StartMenuUiObjects ui = FindStartMenuUiObjects(scene);
+        Assert.That(ui, Is.Not.Null);
+        StartManager manager = null;
+        foreach (GameObject root in scene.GetRootGameObjects())
+        {
+            manager = root.GetComponentInChildren<StartManager>(true);
+            if (manager != null)
+            {
+                break;
+            }
+        }
+        Assert.That(manager, Is.Not.Null);
+        StartScreenModeSelected source = AssetDatabase.LoadAssetAtPath<GameObject>(
+            $"Assets/Resources/Prefabs/menu_start/mode_selected_objects/mode_selected_{id:D2}.prefab")
+            .GetComponent<StartScreenModeSelected>();
+        GameModeDefinition mode = GameModeDefinitionFactory.Create(source);
+        GameModeCatalog savedModes = MatchCatalogs.Modes;
+        LevelDefinitionCatalog savedLevels = MatchCatalogs.Levels;
+        StartMenuUiObjects savedUi = StartMenuUiObjects.instance;
+        StartMenuSelectionState selection = (StartMenuSelectionState)typeof(StartManager)
+            .GetField("selection", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(manager);
+        int savedModeIndex = selection.ModeIndex;
+        try
+        {
+            MatchCatalogs.Override(new GameModeCatalog(new[] { mode }), savedLevels);
+            StartMenuUiObjects.instance = ui;
+            selection.ModeIndex = 0;
+
+            manager.initializeModeDisplay();
+
+            TMP_Text description = ui.TextUi.ModeSelectedDescription;
+            Assert.That(description.text, Is.EqualTo(source.ModeDescription));
+            Assert.That(ui.TextUi.ModeSelectedNameDetail.text, Is.EqualTo(source.ModeDisplayName));
+            Canvas.ForceUpdateCanvases();
+            description.ForceMeshUpdate(ignoreActiveState: true);
+            Assert.That(description.isTextTruncated, Is.False, "The authored description must be fully visible.");
+            Assert.That(description.preferredHeight, Is.LessThanOrEqualTo(description.rectTransform.rect.height),
+                "The description must fit the authored menu text area.");
+        }
+        finally
+        {
+            selection.ModeIndex = savedModeIndex;
+            StartMenuUiObjects.instance = savedUi;
+            MatchCatalogs.Override(savedModes, savedLevels);
+            Object.DestroyImmediate(mode);
+        }
     }
 
     // ---------------------------------------------------------------------------------------------

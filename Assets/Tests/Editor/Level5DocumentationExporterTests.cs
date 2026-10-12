@@ -26,6 +26,26 @@ public class Level5DocumentationExporterTests
             + "and commit the regenerated file; do not edit it by hand.");
     }
 
+    [TestCase(14)]
+    [TestCase(24)]
+    public void CheckedInCountdownDescriptionMatchesTheProductionPrefab(int id)
+    {
+        string sourcePath = $"Assets/Resources/Prefabs/menu_start/mode_selected_objects/mode_selected_{id:D2}.prefab";
+        StartScreenModeSelected source = AssetDatabase.LoadAssetAtPath<GameObject>(sourcePath)
+            .GetComponent<StartScreenModeSelected>();
+        string path = Path.Combine(Directory.GetParent(Application.dataPath).FullName,
+            Level5DocumentationExporter.OutputRelativePath);
+        Level5DocumentationExporter.DocumentationExport data = JsonUtility.FromJson<Level5DocumentationExporter.DocumentationExport>(
+            File.ReadAllText(path));
+        Level5DocumentationExporter.AssetRecord record = data.modeSelections.Find(mode => mode.sourcePath == sourcePath);
+        Assert.That(record, Is.Not.Null);
+        Level5DocumentationExporter.ComponentRecord component = record.components.Find(
+            entry => entry.componentType == nameof(StartScreenModeSelected));
+        Assert.That(component, Is.Not.Null);
+        Assert.That(component.properties.Find(property => property.propertyPath == "modeDescription").value,
+            Is.EqualTo(source.ModeDescription));
+    }
+
     [TearDown]
     public void TearDown()
     {
