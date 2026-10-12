@@ -80,6 +80,99 @@ public class Level5AuthoredMatchDataTests
         Assert.That(differences.ToString(), Is.Empty, "authored mode data the rule dimensions cannot reproduce:\n" + differences);
     }
 
+    [TestCase(14, 60f, "The clock starts at 60 seconds.")]
+    [TestCase(24, 90f, "90 seconds to get a high score.")]
+    public void AuthoredCountdownDescriptionsMatchTheStartingClock(int id, float seconds, string countdownText)
+    {
+        GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(
+            $"Assets/Resources/Prefabs/menu_start/mode_selected_objects/mode_selected_{id:D2}.prefab");
+        Assert.That(prefab, Is.Not.Null);
+        StartScreenModeSelected source = prefab.GetComponent<StartScreenModeSelected>();
+        Assert.That(source, Is.Not.Null);
+        Assert.That(source.ModeId, Is.EqualTo(id));
+        Assert.That(source.ModeRequiresCountDown, Is.True);
+        Assert.That(source.ModeRequiresCounter, Is.False);
+        Assert.That(source.CustomTimer, Is.EqualTo(seconds));
+        Assert.That(source.ModeDescription, Does.Contain(countdownText));
+
+        GameModeDefinition mode = GameModeDefinitionFactory.Create(source);
+        LevelDefinition arena = LevelDefinitionFactory.Create(authoredLevels.Find(level => level.LevelId == 1));
+        try
+        {
+            ResolvedMatchRules rules = MatchConfigurationBuilder.Resolve(
+                mode, arena, TestDefinitions.SoloRoster(), MatchModifiers.Default);
+            Assert.That(mode.RawModeId, Is.EqualTo(id));
+            Assert.That(mode.Description, Is.EqualTo(source.ModeDescription));
+            Assert.That(mode.CustomTimerSeconds, Is.EqualTo(seconds));
+            Assert.That(rules.ClockMode, Is.EqualTo(MatchClockMode.Countdown));
+            Assert.That(rules.MatchLengthSeconds, Is.EqualTo(seconds));
+
+            if (id == 14)
+            {
+                Assert.That(source.ModeDescription, Does.Contain(
+                    "Keep a streak of at least 3 going to continue after time runs out."));
+                Assert.That(rules.Objective, Is.EqualTo(MatchObjective.ConsecutiveShots));
+                Assert.That(rules.RequiresConsecutiveShots, Is.True);
+                Assert.That(MatchEndConditions.ConsecutiveShotsToPlayOn, Is.EqualTo(3));
+                Assert.That(MatchEndConditions.TimeExpired(rules.RequiresConsecutiveShots,
+                    ballThrown: false, playerGrounded: true, consecutiveShotsMade: 2), Is.True);
+                Assert.That(MatchEndConditions.TimeExpired(rules.RequiresConsecutiveShots,
+                    ballThrown: false, playerGrounded: true, consecutiveShotsMade: 3), Is.False);
+            }
+            else
+            {
+                Assert.That(rules.Objective, Is.EqualTo(MatchObjective.ContestCompletion));
+                Assert.That(rules.RequiresConsecutiveShots, Is.False);
+                Assert.That(rules.ShotMarkers, Is.EqualTo(ShotMarkerRequirement.SevenPoint));
+                Assert.That(rules.ShotRule, Is.EqualTo(ShotRule.SevenPoint));
+                Assert.That(rules.IsSevenPointContest, Is.True);
+                Assert.That(rules.RequiresMoneyBall, Is.False);
+                Assert.That(MatchEndConditions.MarkersCleared(1), Is.False);
+                Assert.That(MatchEndConditions.MarkersCleared(0), Is.True);
+            }
+        }
+        finally
+        {
+            Object.DestroyImmediate(mode);
+            Object.DestroyImmediate(arena);
+        }
+    }
+
+    [Test]
+    public void EveryAuthoredModeKeepsItsExistingStartingClock()
+    {
+        Dictionary<int, float> customTimers = new Dictionary<int, float>
+        {
+            [14] = 60f, [16] = 70f, [17] = 75f, [18] = 140f,
+            [24] = 90f, [26] = 60f, [27] = 120f
+        };
+        LevelDefinition arena = LevelDefinitionFactory.Create(authoredLevels.Find(level => level.LevelId == 1));
+        try
+        {
+            foreach (StartScreenModeSelected source in authoredModes)
+            {
+                float customTimer = customTimers.TryGetValue(source.ModeId, out float seconds) ? seconds : 0f;
+                GameModeDefinition mode = GameModeDefinitionFactory.Create(source);
+                try
+                {
+                    ResolvedMatchRules rules = MatchConfigurationBuilder.Resolve(
+                        mode, arena, TestDefinitions.SoloRoster(), MatchModifiers.Default);
+                    Assert.That(source.CustomTimer, Is.EqualTo(customTimer), $"mode {source.ModeId}");
+                    Assert.That(rules.MatchLengthSeconds, Is.EqualTo(customTimer > 0f ? customTimer : 180f),
+                        $"mode {source.ModeId}");
+                }
+                finally
+                {
+                    Object.DestroyImmediate(mode);
+                }
+            }
+        }
+        finally
+        {
+            Object.DestroyImmediate(arena);
+        }
+    }
+
     [TestCase(GameModeId.SpotUp3s, ShotMarkerRequirement.ThreePoint, MatchClockMode.CountUp)]
     [TestCase(GameModeId.SpotUp4s, ShotMarkerRequirement.FourPoint, MatchClockMode.CountUp)]
     [TestCase(GameModeId.SpotUp7s, ShotMarkerRequirement.SevenPoint, MatchClockMode.Countdown)]

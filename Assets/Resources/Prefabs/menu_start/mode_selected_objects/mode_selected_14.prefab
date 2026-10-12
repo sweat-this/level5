@@ -47,8 +47,8 @@ MonoBehaviour:
   modeId: 14
   modeDisplayName: Consecutive shots
   modeObjectName: mode_14
-  modeDescription: most consecutive shots (at least 3 pointer) in 2 minutes. Time
-    extended if on a streak
+  modeDescription: Build the longest streak of shots worth 3 points or more. The clock
+    starts at 60 seconds. Keep a streak of at least 3 going to continue after time runs out.
   modeRequiresCounter: 0
   modeRequiresCountDown: 1
   modeRequiresShotMarkers3s: 0

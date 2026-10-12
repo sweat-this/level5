@@ -20327,6 +20327,11 @@
                             "propertyPath": "levelRequiresTimeOfDay",
                             "propertyType": "Boolean",
                             "value": "true"
+                        },
+                        {
+                            "propertyPath": "levelSupportsMultiplayer",
+                            "propertyType": "Boolean",
+                            "value": "true"
                         }
                     ]
                 }
@@ -20426,6 +20431,11 @@
                             "propertyPath": "levelRequiresTimeOfDay",
                             "propertyType": "Boolean",
                             "value": "true"
+                        },
+                        {
+                            "propertyPath": "levelSupportsMultiplayer",
+                            "propertyType": "Boolean",
+                            "value": "false"
                         }
                     ]
                 }
@@ -20525,6 +20535,11 @@
                             "propertyPath": "levelRequiresTimeOfDay",
                             "propertyType": "Boolean",
                             "value": "true"
+                        },
+                        {
+                            "propertyPath": "levelSupportsMultiplayer",
+                            "propertyType": "Boolean",
+                            "value": "false"
                         }
                     ]
                 }
@@ -20624,6 +20639,11 @@
                             "propertyPath": "levelRequiresTimeOfDay",
                             "propertyType": "Boolean",
                             "value": "true"
+                        },
+                        {
+                            "propertyPath": "levelSupportsMultiplayer",
+                            "propertyType": "Boolean",
+                            "value": "false"
                         }
                     ]
                 }
@@ -20723,6 +20743,11 @@
                             "propertyPath": "levelRequiresTimeOfDay",
                             "propertyType": "Boolean",
                             "value": "true"
+                        },
+                        {
+                            "propertyPath": "levelSupportsMultiplayer",
+                            "propertyType": "Boolean",
+                            "value": "false"
                         }
                     ]
                 }
@@ -20822,6 +20847,11 @@
                             "propertyPath": "levelRequiresTimeOfDay",
                             "propertyType": "Boolean",
                             "value": "true"
+                        },
+                        {
+                            "propertyPath": "levelSupportsMultiplayer",
+                            "propertyType": "Boolean",
+                            "value": "false"
                         }
                     ]
                 }
@@ -20921,6 +20951,11 @@
                             "propertyPath": "levelRequiresTimeOfDay",
                             "propertyType": "Boolean",
                             "value": "true"
+                        },
+                        {
+                            "propertyPath": "levelSupportsMultiplayer",
+                            "propertyType": "Boolean",
+                            "value": "false"
                         }
                     ]
                 }
@@ -21020,6 +21055,11 @@
                             "propertyPath": "levelRequiresTimeOfDay",
                             "propertyType": "Boolean",
                             "value": "true"
+                        },
+                        {
+                            "propertyPath": "levelSupportsMultiplayer",
+                            "propertyType": "Boolean",
+                            "value": "false"
                         }
                     ]
                 }
@@ -21117,6 +21157,11 @@
                         },
                         {
                             "propertyPath": "levelRequiresTimeOfDay",
+                            "propertyType": "Boolean",
+                            "value": "false"
+                        },
+                        {
+                            "propertyPath": "levelSupportsMultiplayer",
                             "propertyType": "Boolean",
                             "value": "false"
                         }
@@ -21218,6 +21263,11 @@
                             "propertyPath": "levelRequiresTimeOfDay",
                             "propertyType": "Boolean",
                             "value": "false"
+                        },
+                        {
+                            "propertyPath": "levelSupportsMultiplayer",
+                            "propertyType": "Boolean",
+                            "value": "false"
                         }
                     ]
                 }
@@ -21315,6 +21365,11 @@
                         },
                         {
                             "propertyPath": "levelRequiresTimeOfDay",
+                            "propertyType": "Boolean",
+                            "value": "false"
+                        },
+                        {
+                            "propertyPath": "levelSupportsMultiplayer",
                             "propertyType": "Boolean",
                             "value": "false"
                         }
@@ -21416,6 +21471,11 @@
                             "propertyPath": "levelRequiresTimeOfDay",
                             "propertyType": "Boolean",
                             "value": "true"
+                        },
+                        {
+                            "propertyPath": "levelSupportsMultiplayer",
+                            "propertyType": "Boolean",
+                            "value": "false"
                         }
                     ]
                 }
@@ -21513,6 +21573,11 @@
                         },
                         {
                             "propertyPath": "levelRequiresTimeOfDay",
+                            "propertyType": "Boolean",
+                            "value": "false"
+                        },
+                        {
+                            "propertyPath": "levelSupportsMultiplayer",
                             "propertyType": "Boolean",
                             "value": "false"
                         }
@@ -21614,6 +21679,11 @@
                             "propertyPath": "levelRequiresTimeOfDay",
                             "propertyType": "Boolean",
                             "value": "true"
+                        },
+                        {
+                            "propertyPath": "levelSupportsMultiplayer",
+                            "propertyType": "Boolean",
+                            "value": "false"
                         }
                     ]
                 }
@@ -21711,6 +21781,11 @@
                         },
                         {
                             "propertyPath": "levelRequiresTimeOfDay",
+                            "propertyType": "Boolean",
+                            "value": "false"
+                        },
+                        {
+                            "propertyPath": "levelSupportsMultiplayer",
                             "propertyType": "Boolean",
                             "value": "false"
                         }
@@ -21812,6 +21887,11 @@
                             "propertyPath": "levelRequiresTimeOfDay",
                             "propertyType": "Boolean",
                             "value": "false"
+                        },
+                        {
+                            "propertyPath": "levelSupportsMultiplayer",
+                            "propertyType": "Boolean",
+                            "value": "false"
                         }
                     ]
                 }
@@ -21909,6 +21989,11 @@
                         },
                         {
                             "propertyPath": "levelRequiresTimeOfDay",
+                            "propertyType": "Boolean",
+                            "value": "false"
+                        },
+                        {
+                            "propertyPath": "levelSupportsMultiplayer",
                             "propertyType": "Boolean",
                             "value": "false"
                         }
@@ -22010,6 +22095,11 @@
                             "propertyPath": "levelRequiresTimeOfDay",
                             "propertyType": "Boolean",
                             "value": "true"
+                        },
+                        {
+                            "propertyPath": "levelSupportsMultiplayer",
+                            "propertyType": "Boolean",
+                            "value": "false"
                         }
                     ]
                 }
@@ -22109,6 +22199,11 @@
                             "propertyPath": "levelRequiresTimeOfDay",
                             "propertyType": "Boolean",
                             "value": "true"
+                        },
+                        {
+                            "propertyPath": "levelSupportsMultiplayer",
+                            "propertyType": "Boolean",
+                            "value": "false"
                         }
                     ]
                 }
@@ -22208,6 +22303,11 @@
                             "propertyPath": "levelRequiresTimeOfDay",
                             "propertyType": "Boolean",
                             "value": "true"
+                        },
+                        {
+                            "propertyPath": "levelSupportsMultiplayer",
+                            "propertyType": "Boolean",
+                            "value": "false"
                         }
                     ]
                 }
@@ -22307,6 +22407,11 @@
                             "propertyPath": "levelRequiresTimeOfDay",
                             "propertyType": "Boolean",
                             "value": "true"
+                        },
+                        {
+                            "propertyPath": "levelSupportsMultiplayer",
+                            "propertyType": "Boolean",
+                            "value": "false"
                         }
                     ]
                 }
@@ -22406,6 +22511,11 @@
                             "propertyPath": "levelRequiresTimeOfDay",
                             "propertyType": "Boolean",
                             "value": "false"
+                        },
+                        {
+                            "propertyPath": "levelSupportsMultiplayer",
+                            "propertyType": "Boolean",
+                            "value": "false"
                         }
                     ]
                 }
@@ -22503,6 +22613,11 @@
                         },
                         {
                             "propertyPath": "levelRequiresTimeOfDay",
+                            "propertyType": "Boolean",
+                            "value": "false"
+                        },
+                        {
+                            "propertyPath": "levelSupportsMultiplayer",
                             "propertyType": "Boolean",
                             "value": "false"
                         }
@@ -22709,7 +22824,7 @@
                         {
                             "propertyPath": "highScoreField",
                             "propertyType": "String",
-                            "value": "sevenMade"
+                            "value": "threeMade"
                         },
                         {
                             "propertyPath": "isBattleRoyal",
@@ -22843,7 +22958,7 @@
                         {
                             "propertyPath": "highScoreField",
                             "propertyType": "String",
-                            "value": "threeMade"
+                            "value": "fourMade"
                         },
                         {
                             "propertyPath": "isBattleRoyal",
@@ -22977,7 +23092,7 @@
                         {
                             "propertyPath": "highScoreField",
                             "propertyType": "String",
-                            "value": "fourMade"
+                            "value": "sevenMade"
                         },
                         {
                             "propertyPath": "isBattleRoyal",
@@ -23662,7 +23777,7 @@
                         {
                             "propertyPath": "modeDescription",
                             "propertyType": "String",
-                            "value": "most consecutive shots (at least 3 pointer) in 2 minutes. Time extended if on a streak"
+                            "value": "Build the longest streak of shots worth 3 points or more. The clock starts at 60 seconds. Keep a streak of at least 3 going to continue after time runs out."
                         },
                         {
                             "propertyPath": "modeDisplayName",
@@ -25002,7 +25117,7 @@
                         {
                             "propertyPath": "modeDescription",
                             "propertyType": "String",
-                            "value": "100 seconds to get a high score. Remaining time added as bonus points"
+                            "value": "90 seconds to get a high score. Remaining time added as bonus points"
                         },
                         {
                             "propertyPath": "modeDisplayName",
@@ -25186,7 +25301,7 @@
                         {
                             "propertyPath": "modeRequiresShotMarkers7s",
                             "propertyType": "Boolean",
-                            "value": "false"
+                            "value": "true"
                         }
                     ]
                 }
@@ -34438,6 +34553,12 @@
             "findings": []
         },
         {
+            "sourcePath": "Assets/Scenes/level_00_account_online.unity",
+            "sceneName": "level_00_account_online",
+            "components": [],
+            "findings": []
+        },
+        {
             "sourcePath": "Assets/Scenes/level_00_credits.unity",
             "sceneName": "level_00_credits",
             "components": [],
@@ -34452,6 +34573,18 @@
         {
             "sourcePath": "Assets/Scenes/level_00_loading.unity",
             "sceneName": "level_00_loading",
+            "components": [],
+            "findings": []
+        },
+        {
+            "sourcePath": "Assets/Scenes/level_00_local_versus.unity",
+            "sceneName": "level_00_local_versus",
+            "components": [],
+            "findings": []
+        },
+        {
+            "sourcePath": "Assets/Scenes/level_00_multiplayer.unity",
+            "sceneName": "level_00_multiplayer",
             "components": [],
             "findings": []
         },
