@@ -1,5 +1,6 @@
 ﻿
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 using Level5.Core;
 using Level5.Core.Match;
@@ -8,12 +9,20 @@ using Random = UnityEngine.Random;
 
 public class BasketBallShotMade : MonoBehaviour
 {
-    BasketBallState basketBallState;
     AudioSource audioSource;
     [SerializeField]
     public GameObject rimSprite;
     Animator anim;
-    bool isColliding;
+    // One entry per live basketball, owned only by this hoop. Repeated callbacks allocate nothing.
+    private readonly List<AttemptCrossing> crossings = new List<AttemptCrossing>();
+
+    private sealed class AttemptCrossing
+    {
+        public IBasketballRuntime Runtime;
+        public ulong Generation;
+        public bool UpperEntered;
+        public bool Scored;
+    }
 
     const string moneyPrefabPath = "Prefabs/objects/money";
     private GameObject moneyClone;
@@ -58,6 +67,7 @@ public class BasketBallShotMade : MonoBehaviour
     /// </summary>
     private void OnDestroy()
     {
+        crossings.Clear();
         if (instance == this)
         {
             instance = null;
@@ -97,20 +107,77 @@ public class BasketBallShotMade : MonoBehaviour
         anim.Play("madeshot");
     }
 
-    void Update()
+    private void OnDisable()
     {
-        isColliding = false;
+        // A disabled trigger loses pending crossings. Retain consumed attempts while this hoop
+        // exists so disabling/re-enabling it cannot award a rebound for an already scored attempt.
+        foreach (AttemptCrossing crossing in crossings)
+            crossing.UpperEntered = false;
+        shotMade1 = false;
+        shotMade2 = false;
     }
 
     void OnTriggerEnter(Collider other)
     {
-        if ((other.gameObject.CompareTag("basketball") || other.gameObject.CompareTag("basketballAuto") ) /*&& (!playerState.hasBasketball || !autoPlayerState.hasBasketball) */
-            && !ShotMade1
-            && !ShotMade2
+        if (isActiveAndEnabled
+            && (other.gameObject.CompareTag("basketball") || other.gameObject.CompareTag("basketballAuto"))
             && gameObject.name.Equals("basketBallMadeShot1"))
         {
-            shotMade1 = true;
+            IBasketballRuntime runtime = other.GetComponent<IBasketballRuntime>();
+            if (runtime == null)
+            {
+                Debug.LogError($"'{other.gameObject.name}' triggered a made shot with no basketball runtime binding.", other.gameObject);
+                return;
+            }
+            RegisterUpperCrossing(runtime);
         }
+    }
+
+    private bool HasRuntimeState(IBasketballRuntime runtime)
+    {
+        if (runtime == null || (runtime is UnityEngine.Object obj && obj == null)
+            || runtime.State == null || runtime.Stats == null)
+        {
+            Debug.LogError($"BasketBallShotMade on '{name}' received an invalid basketball runtime binding; skipping crossing.", this);
+            return false;
+        }
+        return true;
+    }
+
+    private AttemptCrossing FindCrossing(IBasketballRuntime runtime)
+    {
+        AttemptCrossing found = null;
+        for (int i = crossings.Count - 1; i >= 0; i--)
+        {
+            AttemptCrossing crossing = crossings[i];
+            if (crossing.Runtime is UnityEngine.Object obj && obj == null)
+                crossings.RemoveAt(i);
+            else if (ReferenceEquals(crossing.Runtime, runtime))
+                found = crossing;
+        }
+        return found;
+    }
+
+    private void RegisterUpperCrossing(IBasketballRuntime runtime)
+    {
+        if (!isActiveAndEnabled || !HasRuntimeState(runtime)) return;
+        ulong generation = runtime.State.ShotAttemptGeneration;
+        if (generation == 0) return; // A ball that has never attempted a shot cannot score.
+
+        AttemptCrossing crossing = FindCrossing(runtime);
+        if (crossing == null)
+        {
+            crossing = new AttemptCrossing { Runtime = runtime };
+            crossings.Add(crossing);
+        }
+        if (crossing.Generation != generation)
+        {
+            crossing.Generation = generation;
+            crossing.Scored = false;
+        }
+        if (crossing.Scored) return;
+        crossing.UpperEntered = true;
+        shotMade1 = true;
     }
 
     /// <summary>
@@ -121,29 +188,30 @@ public class BasketBallShotMade : MonoBehaviour
     /// </summary>
     public void shotMade(IBasketballRuntime runtime)
     {
-        GameStats gameStats = runtime.Stats;
-        basketBallState = runtime.State;
-        if (isColliding)
-        {
-            return;
-        }
-        else
-        {
-            isColliding = true;
-        }
         shotMade1 = false;
         shotMade2 = false;
+        if (!isActiveAndEnabled || !HasRuntimeState(runtime)) return;
+
+        GameStats gameStats = runtime.Stats;
+        BasketBallState basketBallState = runtime.State;
+        AttemptCrossing crossing = FindCrossing(runtime);
+        if (crossing == null || !crossing.UpperEntered || crossing.Scored) return;
+        crossing.UpperEntered = false;
+        if (crossing.Generation != basketBallState.ShotAttemptGeneration) return;
 
         // AUD-010 Phase 2b0: an unbound component is a composition failure, not reachable gameplay
         // state on any production instance - GameLevelManager.Awake binds every scene's
         // BasketBallShotMade before any Start() can run. Fails closed before any scoring/marker/
-        // money-ball mutation or MadeShotResult publication, but only after the latch reset above, so
-        // the hoop does not get stuck waiting for a make that will never resolve.
+        // money-ball mutation or MadeShotResult publication. The pending crossing is consumed above
+        // so binding a context later cannot authorize an old lower crossing.
         if (!hasBoundMatchContext)
         {
             Debug.LogError($"BasketBallShotMade on '{gameObject.name}' has no bound match context; skipping scoring for participant {runtime.ParticipantId}'s made shot.", this);
             return;
         }
+
+        // Consume before scoring/event publication, including reentrant callbacks from subscribers.
+        crossing.Scored = true;
 
         // AUD-010 Phase 1c/2b0: one immutable-rules snapshot for the whole made-shot operation,
         // reused by every decision below instead of each resolving MatchRuntime.Rules separately.
@@ -223,6 +291,10 @@ public class BasketBallShotMade : MonoBehaviour
 
         matchRules = rules;
         gameModeId = modeId;
+        // Crossings observed before composition cannot authorize a make in the bound match.
+        crossings.Clear();
+        shotMade1 = false;
+        shotMade2 = false;
         hasBoundMatchContext = true;
     }
 
@@ -378,6 +450,8 @@ public class BasketBallShotMade : MonoBehaviour
     }
 
     //public int ConsecutiveShotsMade { get => _consecutiveShotsMade; }
+    // Compatibility diagnostics only. No production caller uses these flags to authorize a make;
+    // assigning them cannot substitute for matching a runtime and its attempt generation.
     public bool ShotMade1 { get => shotMade1; set => shotMade1 = value; }
     public bool ShotMade2 { get => shotMade2; set => shotMade2 = value; }
 }

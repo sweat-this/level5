@@ -8,11 +8,15 @@ public class BasketBallShotMadeCollision : MonoBehaviour
 
     void OnTriggerEnter(Collider other)
     {
-        if ((other.gameObject.CompareTag("basketball") || other.gameObject.CompareTag("basketballAuto"))/*&& (!playerState.hasBasketball || !autoPlayerState.hasBasketball) */
-            //&& !isColliding
-            && gameObject.name.Equals("basketBallMadeShot2")
-            && basketBallShotMade.ShotMade1)
+        if (isActiveAndEnabled
+            && (other.gameObject.CompareTag("basketball") || other.gameObject.CompareTag("basketballAuto"))
+            && gameObject.name.Equals("basketBallMadeShot2"))
         {
+            if (basketBallShotMade == null)
+            {
+                Debug.LogError($"'{name}' has no bound upper made-shot trigger; skipping crossing.", this);
+                return;
+            }
             // AUD-013: the colliding ball's own runtime binding, not a ball-side PlayerIdentifier.
             IBasketballRuntime runtime = other.GetComponent<IBasketballRuntime>();
             if (runtime == null)
@@ -21,7 +25,6 @@ public class BasketBallShotMadeCollision : MonoBehaviour
                 return;
             }
 
-            basketBallShotMade.ShotMade2 = true;
             // Consecutive-shot tracking (AUD-065) now happens inside shotMade(), before scoring
             // reads it, so the streak bonus reflects the shot that was just made.
             basketBallShotMade.shotMade(runtime);

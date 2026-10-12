@@ -10,7 +10,7 @@ using UnityEngine.TestTools;
 /// AUD-010 Phase 2b0: <c>BasketBallShotMade</c> no longer reads <c>MatchRuntime.Rules</c>/
 /// <c>MatchRuntime.RawModeId</c> directly - both arrive once through
 /// <c>BindMatchContext(ResolvedMatchRules, GameModeId)</c>, the seam <c>GameLevelManager.Awake</c> now
-/// supplies. Every test here calls <c>shotMade(IBasketballRuntime)</c> directly against a component
+/// supplies. Tests here register an upper crossing and call <c>shotMade(IBasketballRuntime)</c> directly against a component
 /// that is never started - Unity does not pump <c>Start()</c>/<c>Update()</c> in a plain synchronous
 /// NUnit test, so the swish/rim-animation subscriber (which needs a live <c>SFXBB.instance</c>) never
 /// gets attached, mirroring how <see cref="Level5BasketballShotPipelineTests"/>'s own fixtures avoid
@@ -52,6 +52,7 @@ public class Level5BasketBallShotMadeTests
     private BasketBallState MakeState(bool twoAttempt = false, bool threeAttempt = false, bool fourAttempt = false, bool sevenAttempt = false)
     {
         BasketBallState state = Spawn("basketball-state").AddComponent<BasketBallState>();
+        typeof(BasketBallState).GetMethod("BeginShotAttempt", BindingFlags.NonPublic | BindingFlags.Instance).Invoke(state, null);
         state.TwoAttempt = twoAttempt;
         state.ThreeAttempt = threeAttempt;
         state.FourAttempt = fourAttempt;
@@ -71,10 +72,11 @@ public class Level5BasketBallShotMadeTests
         field.SetValue(target, value);
     }
 
-    /// <summary>Undoes <c>shotMade</c>'s own per-shot collision latch, the way <c>Update()</c> would between frames.</summary>
-    private static void ResetCollisionLatch(BasketBallShotMade shotMade)
+    private static void Score(BasketBallShotMade shotMade, IBasketballRuntime runtime)
     {
-        SetPrivateField(shotMade, "isColliding", false);
+        typeof(BasketBallShotMade).GetMethod("RegisterUpperCrossing", BindingFlags.NonPublic | BindingFlags.Instance)
+            .Invoke(shotMade, new object[] { runtime });
+        shotMade.shotMade(runtime);
     }
 
     private sealed class FakeRuntime : IBasketballRuntime
@@ -108,7 +110,7 @@ public class Level5BasketBallShotMadeTests
         FakeRuntime runtime = new FakeRuntime { State = state, Stats = stats, ParticipantId = 1 };
 
         LogAssert.Expect(LogType.Error, new System.Text.RegularExpressions.Regex("has no bound match context"));
-        shotMade.shotMade(runtime);
+        Score(shotMade, runtime);
 
         Assert.That(stats.Stats.TotalPoints, Is.EqualTo(0), "a null-rules bind attempt must leave the component unbound, so a made shot must not score");
     }
@@ -129,7 +131,7 @@ public class Level5BasketBallShotMadeTests
         GameStats stats = MakeStats();
         FakeRuntime runtime = new FakeRuntime { State = state, Stats = stats, LastShotDistance = 10f };
 
-        shotMade.shotMade(runtime);
+        Score(shotMade, runtime);
 
         // PointsByDistance (the first, accepted bind) with distance 10 scores floor(10 * 6 / 10) = 6,
         // not the ordinary three-line value (3) In the Pocket (the rejected second bind) would give.
@@ -156,7 +158,7 @@ public class Level5BasketBallShotMadeTests
         GameStats stats = MakeStats();
         FakeRuntime runtime = new FakeRuntime { State = state, Stats = stats, LastShotDistance = 10f };
 
-        shotMade.shotMade(runtime);
+        Score(shotMade, runtime);
 
         Assert.That(stats.Stats.TotalPoints, Is.EqualTo(6), "the component must still score using its original bind (PointsByDistance) - a null second call must not leave it unbound");
     }
@@ -173,7 +175,7 @@ public class Level5BasketBallShotMadeTests
         GameStats stats = MakeStats();
         FakeRuntime runtime = new FakeRuntime { State = state, Stats = stats, LastShotDistance = 10f };
 
-        shotMade.shotMade(runtime);
+        Score(shotMade, runtime);
 
         Assert.That(stats.Stats.TotalPoints, Is.EqualTo(6), "Points by Distance must score floor(distance * 6 / 10), not the line's ordinary value");
     }
@@ -190,7 +192,7 @@ public class Level5BasketBallShotMadeTests
         GameStats stats = MakeStats();
         FakeRuntime runtime = new FakeRuntime { State = state, Stats = stats, LastShotDistance = 20f };
 
-        shotMade.shotMade(runtime);
+        Score(shotMade, runtime);
 
         Assert.That(stats.Stats.TotalPoints, Is.EqualTo(4), "In the Pocket must pay the +1 three-point streak bonus once the streak meets the production threshold of zero");
     }
@@ -205,7 +207,7 @@ public class Level5BasketBallShotMadeTests
         GameStats stats = MakeStats();
         FakeRuntime runtime = new FakeRuntime { State = state, Stats = stats, LastShotDistance = 20f };
 
-        shotMade.shotMade(runtime);
+        Score(shotMade, runtime);
 
         Assert.That(stats.Stats.TotalPoints, Is.EqualTo(3), "Consecutive Shots is a distinct mode (RequiresConsecutiveShots) and must not enable the In the Pocket streak bonus");
     }
@@ -220,7 +222,7 @@ public class Level5BasketBallShotMadeTests
         GameStats stats = MakeStats();
         FakeRuntime runtime = new FakeRuntime { State = state, Stats = stats, LastShotDistance = 100f };
 
-        shotMade.shotMade(runtime);
+        Score(shotMade, runtime);
 
         Assert.That(stats.Stats.TotalPoints, Is.EqualTo(3), "an ordinary mode must score the line's plain value - no streak bonus, no distance scoring");
     }
@@ -235,7 +237,7 @@ public class Level5BasketBallShotMadeTests
         GameStats stats = MakeStats();
         FakeRuntime runtime = new FakeRuntime { State = state, Stats = stats, LastShotDistance = 100f };
 
-        shotMade.shotMade(runtime);
+        Score(shotMade, runtime);
 
         Assert.That(stats.Stats.TotalPoints, Is.EqualTo(3), "GameModeId.None must score the line's plain value - no streak bonus, no distance scoring");
     }
@@ -260,7 +262,7 @@ public class Level5BasketBallShotMadeTests
         GameStats stats = MakeStats();
         FakeRuntime runtime = new FakeRuntime { State = state, Stats = stats };
 
-        shotMade.shotMade(runtime);
+        Score(shotMade, runtime);
 
         Assert.That(stats.Stats.TotalPoints, Is.EqualTo(3), "an enabled marker's non-final attempt scores the plain line value");
         Assert.That(marker.ShotMade, Is.EqualTo(1), "the marker's own made-count must be credited using the bound rules' RequiresShotMarkers3s");
@@ -278,7 +280,7 @@ public class Level5BasketBallShotMadeTests
         GameStats stats = MakeStats();
         FakeRuntime runtime = new FakeRuntime { State = state, Stats = stats };
 
-        shotMade.shotMade(runtime);
+        Score(shotMade, runtime);
 
         Assert.That(stats.Stats.TotalPoints, Is.EqualTo(0), "a contest shot off the marker must score nothing, not even the made-shot counter");
     }
@@ -302,7 +304,7 @@ public class Level5BasketBallShotMadeTests
 
         PickupObject[] pickupsBefore = Object.FindObjectsByType<PickupObject>(FindObjectsSortMode.None);
 
-        shotMade.shotMade(runtime);
+        Score(shotMade, runtime);
 
         PickupObject[] pickupsAfter = Object.FindObjectsByType<PickupObject>(FindObjectsSortMode.None);
         Assert.That(pickupsAfter.Length, Is.EqualTo(pickupsBefore.Length + 1), "RequiresMoneyBall true with the player on a marker at shoot time must spawn the money pickup");
@@ -335,7 +337,7 @@ public class Level5BasketBallShotMadeTests
 
         int pickupsBefore = Object.FindObjectsByType<PickupObject>(FindObjectsSortMode.None).Length;
 
-        shotMade.shotMade(runtime);
+        Score(shotMade, runtime);
 
         int pickupsAfter = Object.FindObjectsByType<PickupObject>(FindObjectsSortMode.None).Length;
         Assert.That(pickupsAfter, Is.EqualTo(pickupsBefore), "RequiresMoneyBall false must not spawn the money pickup, even with the player on a marker at shoot time - the gate must read the bound rules, not some other source");
@@ -364,7 +366,7 @@ public class Level5BasketBallShotMadeTests
 
         LogAssert.Expect(LogType.Error, new System.Text.RegularExpressions.Regex("has no bound match context"));
 
-        Assert.DoesNotThrow(() => shotMade.shotMade(runtime));
+        Assert.DoesNotThrow(() => Score(shotMade, runtime));
 
         Assert.That(stats.Stats.TotalPoints, Is.EqualTo(0), "no score may be applied when match context is missing");
         Assert.That(marker.ShotMade, Is.EqualTo(0), "no marker made-count may be applied when match context is missing");
@@ -372,7 +374,7 @@ public class Level5BasketBallShotMadeTests
     }
 
     [Test]
-    public void MissingContext_StillResetsTheCollisionLatchSoTheHoopDoesNotStick()
+    public void MissingContext_StillResetsCompatibilityFlags()
     {
         BasketBallShotMade shotMade = MakeShotMade();
         shotMade.ShotMade1 = true;
@@ -383,9 +385,9 @@ public class Level5BasketBallShotMadeTests
         FakeRuntime runtime = new FakeRuntime { State = state, Stats = stats };
 
         LogAssert.Expect(LogType.Error, new System.Text.RegularExpressions.Regex("has no bound match context"));
-        shotMade.shotMade(runtime);
+        Score(shotMade, runtime);
 
-        Assert.IsFalse(shotMade.ShotMade1, "the made-shot latch must reset even when scoring is skipped, so a stuck collision flag does not wedge the hoop");
+        Assert.IsFalse(shotMade.ShotMade1, "compatibility flags reset even when scoring is skipped");
         Assert.IsFalse(shotMade.ShotMade2);
     }
 
@@ -404,7 +406,7 @@ public class Level5BasketBallShotMadeTests
         MadeShotResult? published = null;
         shotMade.ShotResolved += result => published = result;
 
-        shotMade.shotMade(runtimeA);
+        Score(shotMade, runtimeA);
 
         Assert.That(published, Is.Not.Null);
         Assert.That(published.Value.PlayerId, Is.EqualTo(1));
@@ -413,12 +415,11 @@ public class Level5BasketBallShotMadeTests
 
         // A second, different runtime's shot must be independently attributed - not to a shared
         // static/global identity.
-        ResetCollisionLatch(shotMade);
         BasketBallState stateB = MakeState(twoAttempt: true);
         GameStats statsB = MakeStats();
         FakeRuntime runtimeB = new FakeRuntime { State = stateB, Stats = statsB, ParticipantId = 2, IsCpu = true };
 
-        shotMade.shotMade(runtimeB);
+        Score(shotMade, runtimeB);
 
         Assert.That(published.Value.PlayerId, Is.EqualTo(2));
         Assert.That(published.Value.IsCpu, Is.True);

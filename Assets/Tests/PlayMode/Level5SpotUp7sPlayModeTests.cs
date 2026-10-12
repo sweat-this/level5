@@ -208,6 +208,7 @@ public class Level5SpotUp7sPlayModeTests
             for (int made = 1; made <= marker.MaxShotMade; made++)
             {
                 BeginAttempt(ball, marker, money);
+                BasketBallShotMade.instance.SendMessage("OnTriggerEnter", ((Component)ball).GetComponent<Collider>());
                 BasketBallShotMade.instance.shotMade(ball);
                 madeTotal++;
                 yield return null;

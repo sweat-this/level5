@@ -126,7 +126,7 @@ public static class BasketballShotPipeline
         GameStats gameStats = runtime.Stats;
 
         // Clear stale shot snapshot data from a previous miss before setting the new attempt.
-        basketBallState.ResetShotAttemptSnapshot();
+        basketBallState.BeginShotAttempt();
 
         // identify is in 2 or 3 point range for stat counters
         if (two && !three)

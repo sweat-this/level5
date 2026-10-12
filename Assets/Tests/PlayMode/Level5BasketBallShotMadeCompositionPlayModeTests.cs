@@ -1,5 +1,6 @@
 #if UNITY_INCLUDE_TESTS
 using System.Collections;
+using System.Linq;
 using Level5.Core.Match;
 using NUnit.Framework;
 using UnityEngine;
@@ -36,6 +37,9 @@ using UnityEngine.TestTools;
 /// </summary>
 public class Level5BasketBallShotMadeCompositionPlayModeTests
 {
+    private LocalProfileTestDatabase database;
+    private System.Reflection.MethodInfo rememberPrimary;
+    private object previousPrimary;
     [SetUp]
     public void IgnoreSceneLogNoise()
     {
@@ -45,12 +49,34 @@ public class Level5BasketBallShotMadeCompositionPlayModeTests
     [UnityTearDown]
     public IEnumerator TearDown()
     {
-        yield return RealScenePlayModeTestSupport.UnloadAllLoadedScenes("shot-made-composition-cleanup");
+        try
+        {
+            yield return RealScenePlayModeTestSupport.UnloadAllLoadedScenes("shot-made-composition-cleanup");
+        }
+        finally
+        {
+            database?.Dispose();
+            database = null;
+            rememberPrimary?.Invoke(null, new[] { previousPrimary });
+            rememberPrimary = null;
+        }
     }
 
     [UnityTest]
     public IEnumerator TheRealSceneHoopIsBoundToTheRealMatchRulesAndModeBeforeGameplay()
     {
+        RealScenePlayModeTestSupport.IgnoreSceneLogNoise();
+        database = new LocalProfileTestDatabase();
+        yield return database.Open();
+        // Choose a valid shooter rather than relying on the remembered/default menu character.
+        // MenuStart is outside this assembly; use its existing session seam without a new dependency.
+        System.Type session = System.AppDomain.CurrentDomain.GetAssemblies()
+            .Select(assembly => assembly.GetType("PlayerSelectionSession")).First(type => type != null);
+        previousPrimary = session.GetProperty("PrimaryCharacterId").GetValue(null);
+        rememberPrimary = session.GetMethod("RememberPrimary");
+        CharacterProfile shooter = Resources.LoadAll<GameObject>("Prefabs/menu_start/default_shooter_profiles")
+            .Select(prefab => prefab.GetComponent<CharacterProfile>()).First(profile => profile != null && profile.IsShooter);
+        rememberPrimary.Invoke(null, new object[] { shooter.PlayerId });
         yield return GameplayScenePlayModeHarness.EnterPlayableGameplayScene(_ => { });
 
         // The harness only guarantees a live PlayerController, which proves the player spawned but not

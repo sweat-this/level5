@@ -193,6 +193,19 @@ public class BasketBallState : MonoBehaviour
         }
     }
 
+    /// <summary>
+    /// Runtime-only identity for a shot or dunk attempt. Statistical attempt counts can change
+    /// zero or multiple times per launch and are also written by defense accounting.
+    /// Clearing a resolved shot's snapshot must not create another attempt.
+    /// </summary>
+    public ulong ShotAttemptGeneration { get; private set; }
+
+    internal void BeginShotAttempt()
+    {
+        ShotAttemptGeneration++;
+        ResetShotAttemptSnapshot();
+    }
+
     public void ResetShotAttemptSnapshot()
     {
         TwoAttempt = false;
