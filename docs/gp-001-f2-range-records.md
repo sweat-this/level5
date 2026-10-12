@@ -51,9 +51,11 @@ Mode IDs, descriptions, clocks, scoring, filters, GUIDs, and other serialized fi
   independent counters, all-time sentinels, aggregate online mapping, and unrelated ranking fields.
 - `Assets/Tests/PlayMode/Level5RangeShotRecordPlayModeTests.cs` and its new `.meta`: production
   Scrapyard HUD checks for all three authored modes, using disposable SQLite and the existing
-  queue/session file isolation. Runtime result remains pending as described below.
+  queue/session file isolation. Cleanup preserves the runner scene when setup fails before launch.
+- `Assets/Tests/PlayMode/CampaignRoundPlayModeTests.cs`: the shared test-only persistence isolation
+  now tolerates absent directories; a regression verifies a fresh data root remains absent.
 - `docs/generated/level5-authored-game-data.json`: three exporter-produced field replacements.
-- This report: audit, review, commands, evidence, and outstanding validation.
+- This report: audit, review, commands, and validation evidence.
 
 ## Generated data
 
@@ -77,28 +79,37 @@ Local evidence is retained under `TestResults/gp001-f2` (original runner output 
 | Repaired focused EditMode run | 32/32 passed; `edit-range-final.xml` |
 | Final affected EditMode run | 107/107 passed, 0 skipped; `edit-final.xml` |
 | Existing related PlayMode suite | 3/3 passed; `play.xml` |
-| Authored range-mode arena HUD check | BLOCKED: no result XML; see below |
+| Authored range-mode arena HUD check | Passed for modes 2, 3, and 4; `retry-arena/arena-final.xml` |
+| Final focused PlayMode selection | 6/6 passed, 0 skipped: one three-mode arena scenario plus five isolation cases |
 
 The initial test fixes removed an NUnit attribute unsupported by the pinned test framework,
 matched the exact existing EditMode deferred-Destroy diagnostic, preserved the authored
 `MakeCount` objective, and used the existing zero-based SQL page index. The final fixture also
 checks filtered StatsManager refresh and real ordering for unaffected modes.
 
-The arena fixture's earlier diagnostic runs reached disposable schema creation, score seeding,
-and production PlayerData loading, then produced no test XML. Review found and corrected an
-ambiguous reflection call to the overloaded `LevelDefinitionFactory.Create`; the fixture now
-selects the `LevelSelected` overload explicitly. Subsequent graphics and headless diagnostics
-stalled before fixture progress, so the underlying runtime blockage remains unconfirmed.
-`[remote] error: Init socket failed` is present in the graphics log but is not established as the
-cause. These runs provide compilation evidence, not a passed HUD scenario.
+The arena fixture's earlier runs produced no test XML. Review corrected an ambiguous reflection
+call to the overloaded `LevelDefinitionFactory.Create`. A subsequent diagnostic established
+that the editor was unpaused and advancing frames while the fixture never reached its body.
+The shared test isolation helper called `File.Delete` on paths beneath an absent `accounts`
+directory; this throws on Windows. Setup failure then entered cleanup, which could unload the
+runner's own scene and prevent NUnit from reporting the failure. The helper now checks for an
+existing file before deletion, and arena teardown preserves the original runner scene when no
+gameplay scene was entered. These changes affect tests only.
+
+The corrected API diagnostic passed all six cases (`retry-arena/arena-api.xml`). The temporary
+launcher was then removed and the normal command-line runner passed the same focused selection
+with graphics enabled (`retry-arena/arena-final.xml`). No debugger or pause workaround is needed.
+The arena scenario loads all three authored modes on real Scrapyard and verifies that seeded
+qualifying personal bests (8/9/10) and current range counts (2/3/4) appear in the live HUD despite
+larger aggregate counts. Counters are injected; this is HUD integration evidence, not physical
+shot-flight or input certification. The earlier socket diagnostic is not the established cause.
 
 The earlier queue-isolating run had an external crash-recovery snapshot, restored and verified
-after stopping the identified test process. The final diagnostics temporarily used a unique
-Unity product name (`level5-gp001-f2-validation`) so the whole persistent-data directory was
-isolated; ProjectSettings was restored afterward. Unrelated Unity processes were left alone.
+after stopping the identified test process. Diagnostics temporarily used unique Unity product
+names (`level5-gp001-f2-validation` and `level5-gp001-f2-retry`) so the whole persistent-data
+directory was isolated; ProjectSettings was restored afterward. Unrelated Unity processes were left alone.
 The fixture uses one production-authored arena and shooter rather than loading every selection
-asset. The PR must remain a draft until the arena fixture completes successfully in a functioning
-Unity environment.
+asset. The required arena HUD validation gap is closed.
 
 An earlier PlayMode selection ran only the three existing tests because the new test's GUID was
 malformed. The GUID was corrected; those three passes are not counted as range-mode HUD proof.
@@ -120,6 +131,8 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/validate-reposit
 & $unity -batchmode -force-d3d11 -projectPath $project -logFile "$evidence\play-range-bounded.log" -runTests -testPlatform PlayMode -testFilter Level5RangeShotRecordPlayModeTests -testResults "$evidence\play-range-bounded.xml"
 & $unity -batchmode -force-d3d11 -job-worker-count 4 -projectPath $project -logFile "$evidence\play-range-overload.log" -runTests -testPlatform PlayMode -testFilter Level5RangeShotRecordPlayModeTests -testResults "$evidence\play-range-overload.xml"
 & $unity -batchmode -nographics -projectPath $project -logFile "$evidence\play-range-headless.log" -runTests -testPlatform PlayMode -testFilter Level5RangeShotRecordPlayModeTests -testResults "$evidence\play-range-headless.xml"
+# Successful retry; $evidence now points to TestResults/gp001-f2/retry-arena.
+& $unity -batchmode -force-d3d11 -projectPath $project -logFile "$evidence\arena-final.log" -runTests -testPlatform PlayMode -testFilter 'Level5RangeShotRecordPlayModeTests;CampaignBoundaryPersistenceIsolationTests' -testResults "$evidence\arena-final.xml"
 ```
 
 ## Review passes
@@ -133,7 +146,8 @@ aggregate metrics remain separate.
 public metric, or scoring rule was introduced. Reviewed one-field prefab diffs and scoped
 generated-data hunks. Strengthened unaffected-mode SQL and filtered-refresh coverage. Runtime
 test review moved singleton snapshots before fallible setup and added the existing retry-queue
-and session isolation for unexpected scene-end paths. Runtime HUD evidence remains required.
+and session isolation for unexpected scene-end paths. The retry review also checked absent-root
+cleanup and runner-scene preservation; focused PlayMode validation now closes the HUD evidence gap.
 
 ## Separate online follow-up
 

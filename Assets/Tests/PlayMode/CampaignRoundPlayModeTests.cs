@@ -307,7 +307,8 @@ internal sealed class CampaignBoundaryPersistenceIsolation : IDisposable
         // Read every snapshot before mutating any file; a failed read leaves all originals intact.
         try
         {
-            foreach (string path in files.Keys) File.Delete(path);
+            foreach (string path in files.Keys)
+                if (File.Exists(path)) File.Delete(path);
         }
         catch
         {
@@ -319,7 +320,10 @@ internal sealed class CampaignBoundaryPersistenceIsolation : IDisposable
     public void Dispose()
     {
         foreach (var file in files)
-            if (file.Value == null) File.Delete(file.Key);
+            if (file.Value == null)
+            {
+                if (File.Exists(file.Key)) File.Delete(file.Key);
+            }
             else
             {
                 Directory.CreateDirectory(Path.GetDirectoryName(file.Key));
@@ -331,6 +335,15 @@ internal sealed class CampaignBoundaryPersistenceIsolation : IDisposable
 
 public class CampaignBoundaryPersistenceIsolationTests
 {
+    [Test]
+    public void MissingPersistentDirectoriesAreSupportedWithoutCreatingFiles()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "level5-campaign-absent-" + Guid.NewGuid().ToString("N"));
+        using (new CampaignBoundaryPersistenceIsolation(root))
+            Assert.That(Directory.Exists(root), Is.False);
+        Assert.That(Directory.Exists(root), Is.False);
+    }
+
     [TestCase(true, false)]
     [TestCase(true, true)]
     [TestCase(false, false)]

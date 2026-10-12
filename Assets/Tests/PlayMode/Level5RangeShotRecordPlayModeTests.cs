@@ -27,11 +27,13 @@ public class Level5RangeShotRecordPlayModeTests
     private readonly Dictionary<FieldInfo, object> options = new Dictionary<FieldInfo, object>();
     private readonly List<GameModeDefinition> modes = new List<GameModeDefinition>();
     private LevelDefinition level;
+    private Scene runnerScene;
     private static Type Production(string name) => Assembly.Load("Assembly-CSharp").GetType(name, true);
 
     [SetUp]
     public void SetUp()
     {
+        runnerScene = SceneManager.GetActiveScene();
         previousPlayerData = Production("PlayerData").GetField("instance").GetValue(null);
         previousUserId = LocalAccountIdentity.UserId;
         previousUserName = LocalAccountIdentity.UserName;
@@ -130,7 +132,10 @@ public class Level5RangeShotRecordPlayModeTests
         try
         {
             ActiveMatch.Clear();
-            yield return RealScenePlayModeTestSupport.UnloadAllLoadedScenes("range-record-cleanup");
+            // Setup/asset failures can leave the runner in its original scene. Unloading that
+            // scene stops its coroutine before NUnit can report the failure.
+            if (SceneManager.GetActiveScene() != runnerScene)
+                yield return RealScenePlayModeTestSupport.UnloadAllLoadedScenes("range-record-cleanup");
         }
         finally
         {
