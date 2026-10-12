@@ -77,6 +77,16 @@ Architecture/regression review checks one match-local eligibility owner, existin
 
 Result: production remains confined to GameRules, with no new dependencies, public contracts or serialized-content changes. The test's hidden dependence on remembered menu selection was removed using the existing validated builder and authored shooter metadata. Incidental Unity solution ordering and temporary validation settings are excluded from publication.
 
+## Review remediation: preserve PlayMode persistence files
+
+The subsequent review identified that `Level5SpotUp7sPlayModeTests` cleared the ordinary Backend queue in setup and teardown without restoring existing entries. The temporary product name protected the retained validation runs, but a normal Unity Test Runner invocation had no such protection.
+
+The fixture now snapshots the primary and `.bak` files for `backendv2_pending_match_results.json`, `pending-match-persistence.json`, and `backendv2_session.json` before clearing any of them. These are separate from the redirected SQLite file: bootstrap can repair the local pending queue, and session changes can update the persisted session. Setup restores the snapshots if isolation fails; teardown restores the original bytes or original absence in `finally`, after scene/database/session cleanup. The previous in-memory Backend session is restored as well. Production code and public contracts are unchanged by this remediation.
+
+Focused validation on Unity **6000.5.7f1** reran only `Level5SpotUp7sPlayModeTests` in graphics-enabled batch mode: **3 passed, zero failed/skipped**, exit 0. A fresh disposable product directory was seeded with a populated ordinary Backend queue, distinct primary/backup bytes, a local pending file, and a fake persisted session before launch. External comparison after Unity exited confirmed that all five existing files were restored byte-for-byte and the originally absent local pending backup remained absent. Original ProjectSettings and solution bytes were restored after the run. Retained local artifacts are `Logs/gp001-f3/play-queue-preservation.xml`, `play-queue-preservation.log`, `queue-preservation-seed.json`, and `queue-preservation-result.json`; none are committed.
+
+The earlier EditMode and neighboring-mode evidence remains applicable because production code and those fixtures did not change. The previously reproduced marker-binding failure and disabled hosted validation retain the limits described above.
+
 ## Limits and separate ownership
 
 Historical failed records may still exist in SQLite and Backend V2. This change does not delete, rewrite or migrate them. The existing Unknown marker-completion end cause is preserved. Scrapyard's four-make quotas versus the five-make description remain a separate authored-content decision documented in the F1 restoration report. Other GP-001 findings, progression policy and hosted validation recovery retain their existing ownership.

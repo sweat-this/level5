@@ -1,6 +1,8 @@
 #if UNITY_INCLUDE_TESTS
 using System.Collections;
 using System;
+using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Reflection;
 using Level5.BackendV2;
@@ -18,31 +20,75 @@ using Object = UnityEngine.Object;
 /// </summary>
 public class Level5SpotUp7sPlayModeTests
 {
+    private readonly Dictionary<string, byte[]> preservedFiles = new Dictionary<string, byte[]>();
     private LocalProfileTestDatabase database;
+    private BackendV2Session previousSession;
     private Guid owner;
     private RetryableResultTransport transport;
 
     [SetUp]
     public void SetUp()
     {
-        transport = new RetryableResultTransport();
-        BackendV2Runtime.Override(transport);
-        owner = Guid.NewGuid();
-        BackendV2SessionStore.Clear();
-        PendingMatchResultStore.Clear();
-        RealScenePlayModeTestSupport.IgnoreSceneLogNoise();
+        previousSession = BackendV2SessionStore.Current;
+        // SQLite redirection does not isolate JSON queues or the session-change disk mirror.
+        // Read every file before deleting any, so a failed snapshot cannot partially erase data.
+        foreach (string name in new[] { "backendv2_pending_match_results.json", "pending-match-persistence.json", "backendv2_session.json" })
+        {
+            foreach (string suffix in new[] { "", ".bak" })
+            {
+                string path = Path.Combine(Application.persistentDataPath, name + suffix);
+                preservedFiles[path] = File.Exists(path) ? File.ReadAllBytes(path) : null;
+            }
+        }
+        try
+        {
+            foreach (string path in preservedFiles.Keys) File.Delete(path);
+            transport = new RetryableResultTransport();
+            BackendV2Runtime.Override(transport);
+            owner = Guid.NewGuid();
+            BackendV2SessionStore.Clear();
+            RealScenePlayModeTestSupport.IgnoreSceneLogNoise();
+        }
+        catch
+        {
+            RestorePersistentFiles();
+            throw;
+        }
     }
 
     [UnityTearDown]
     public IEnumerator TearDown()
     {
-        ActiveMatch.Clear();
-        yield return RealScenePlayModeTestSupport.UnloadAllLoadedScenes("spot-up-7s-cleanup");
-        database?.Dispose();
-        database = null;
-        PendingMatchResultStore.Clear();
-        BackendV2SessionStore.Clear();
-        BackendV2Runtime.Reset();
+        try
+        {
+            ActiveMatch.Clear();
+            yield return RealScenePlayModeTestSupport.UnloadAllLoadedScenes("spot-up-7s-cleanup");
+        }
+        finally
+        {
+            try
+            {
+                database?.Dispose();
+                database = null;
+                BackendV2SessionStore.Clear();
+                if (previousSession != null) BackendV2SessionStore.Set(previousSession);
+                BackendV2Runtime.Reset();
+            }
+            finally
+            {
+                RestorePersistentFiles();
+            }
+        }
+    }
+
+    private void RestorePersistentFiles()
+    {
+        foreach (var file in preservedFiles)
+        {
+            if (file.Value == null) File.Delete(file.Key);
+            else File.WriteAllBytes(file.Key, file.Value);
+        }
+        preservedFiles.Clear();
     }
 
     private IEnumerator LaunchCourse()
