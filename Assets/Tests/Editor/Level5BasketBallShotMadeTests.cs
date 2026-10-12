@@ -180,21 +180,42 @@ public class Level5BasketBallShotMadeTests
         Assert.That(stats.Stats.TotalPoints, Is.EqualTo(6), "Points by Distance must score floor(distance * 6 / 10), not the line's ordinary value");
     }
 
-    [Test]
-    public void InThePocketMode_AppliesTheStreakBonus()
+    [TestCase(ShotKind.Two, 2)]
+    [TestCase(ShotKind.Three, 4)]
+    [TestCase(ShotKind.Four, 6)]
+    [TestCase(ShotKind.Seven, 10)]
+    public void InThePocketMode_AppliesTheStreakBonus(ShotKind kind, int points)
     {
         BasketBallShotMade shotMade = MakeShotMade();
         shotMade.BindMatchContext(new ResolvedMatchRules(), GameModeId.InThePocket);
 
         // The production streak-bonus threshold is 0 (see CurrentInThePocketStreakBonusThreshold), so
         // the very first made shot already qualifies - no streak needs to be seeded.
-        BasketBallState state = MakeState(threeAttempt: true);
+        BasketBallState state = MakeState(twoAttempt: kind == ShotKind.Two,
+            threeAttempt: kind == ShotKind.Three, fourAttempt: kind == ShotKind.Four,
+            sevenAttempt: kind == ShotKind.Seven);
         GameStats stats = MakeStats();
+        stats.Stats.ShotAttempt = 1;
         FakeRuntime runtime = new FakeRuntime { State = state, Stats = stats, LastShotDistance = 20f };
 
         Score(shotMade, runtime);
 
-        Assert.That(stats.Stats.TotalPoints, Is.EqualTo(4), "In the Pocket must pay the +1 three-point streak bonus once the streak meets the production threshold of zero");
+        Assert.That(stats.Stats.TotalPoints, Is.EqualTo(points), "The first make must receive the production bonus.");
+
+        // A missed attempt breaks the predictive streak before the next make.
+        stats.Stats.ShotAttempt += 2;
+        MethodInfo beginAttempt = typeof(BasketBallState).GetMethod("BeginShotAttempt",
+            BindingFlags.NonPublic | BindingFlags.Instance);
+        beginAttempt.Invoke(state, null); // missed attempt
+        beginAttempt.Invoke(state, null); // next made attempt
+        state.TwoAttempt = kind == ShotKind.Two;
+        state.ThreeAttempt = kind == ShotKind.Three;
+        state.FourAttempt = kind == ShotKind.Four;
+        state.SevenAttempt = kind == ShotKind.Seven;
+        Score(shotMade, runtime);
+
+        Assert.That(stats.Stats.ConsecutiveShotsMade, Is.EqualTo(1));
+        Assert.That(stats.Stats.TotalPoints, Is.EqualTo(2 * points), "A broken streak must not disable the bonus.");
     }
 
     [Test]

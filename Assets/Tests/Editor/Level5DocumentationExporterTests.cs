@@ -27,6 +27,7 @@ public class Level5DocumentationExporterTests
     }
 
     [TestCase(14)]
+    [TestCase(15)]
     [TestCase(16)]
     [TestCase(17)]
     [TestCase(18)]

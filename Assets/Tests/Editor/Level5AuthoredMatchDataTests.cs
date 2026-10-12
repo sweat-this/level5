@@ -80,6 +80,46 @@ public class Level5AuthoredMatchDataTests
         Assert.That(differences.ToString(), Is.Empty, "authored mode data the rule dimensions cannot reproduce:\n" + differences);
     }
 
+    [Test]
+    public void AuthoredInThePocketDescriptionMatchesTheAlwaysActiveBonus()
+    {
+        GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(
+            "Assets/Resources/Prefabs/menu_start/mode_selected_objects/mode_selected_15.prefab");
+        Assert.That(prefab, Is.Not.Null);
+        StartScreenModeSelected source = prefab.GetComponent<StartScreenModeSelected>();
+        Assert.That(source, Is.Not.Null);
+        Assert.That(source.ModeId, Is.EqualTo(15));
+        Assert.That(source.ModeDescription, Is.EqualTo(
+            "Bonus always active: 3s +1, 4s +2, 7s +3. No bonus for 2s."));
+        Assert.That(source.ModeRequiresCountDown, Is.True);
+        Assert.That(source.ModeRequiresCounter, Is.False);
+        Assert.That(source.CustomTimer, Is.Zero);
+        Assert.That(source.HighScoreField, Is.EqualTo("totalPoints"));
+
+        GameModeDefinition mode = GameModeDefinitionFactory.Create(source);
+        LevelDefinition arena = LevelDefinitionFactory.Create(authoredLevels.Find(level => level.LevelId == 1));
+        try
+        {
+            ResolvedMatchRules rules = MatchConfigurationBuilder.Resolve(
+                mode, arena, TestDefinitions.SoloRoster(), MatchModifiers.Default);
+            Assert.That(mode.Id, Is.EqualTo(GameModeId.InThePocket));
+            Assert.That(mode.Description, Is.EqualTo(source.ModeDescription));
+            Assert.That(mode.HighScoreField, Is.EqualTo("totalPoints"));
+            Assert.That(rules.ClockMode, Is.EqualTo(MatchClockMode.Countdown));
+            Assert.That(rules.CustomTimerSeconds, Is.Zero);
+            Assert.That(rules.MatchLengthSeconds, Is.EqualTo(180f));
+            Assert.That(rules.Objective, Is.EqualTo(MatchObjective.Score));
+            Assert.That(rules.RequiresConsecutiveShots, Is.False);
+            Assert.That(rules.ShotRule, Is.EqualTo(ShotRule.Any));
+            Assert.That(rules.ShotMarkers, Is.EqualTo(ShotMarkerRequirement.None));
+        }
+        finally
+        {
+            Object.DestroyImmediate(mode);
+            Object.DestroyImmediate(arena);
+        }
+    }
+
     [TestCase(14, 60f, "The clock starts at 60 seconds.")]
     [TestCase(24, 90f, "90 seconds to get a high score.")]
     public void AuthoredCountdownDescriptionsMatchTheStartingClock(int id, float seconds, string countdownText)
