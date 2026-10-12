@@ -90,6 +90,7 @@ public class GameRules : MonoBehaviour, IMoneyBallState, IShotMarkerSession
     float timePlayedStart;
     [SerializeField]
     float timePlayedEnd;
+    private float? matchEndTime;
     // AUD-010 Phase 1c: drives only the "In The Pocket" HUD notifier (MatchHudPresenter) now, not
     // basketball scoring - see InThePocketActivateValue below and docs/shot-lifecycle.md.
     [SerializeField]
@@ -131,7 +132,7 @@ public class GameRules : MonoBehaviour, IMoneyBallState, IShotMarkerSession
         // gains a MatchController of its own is picked up instead of being duplicated.
         matchController = FindAnyObjectByType<MatchController>()
             ?? gameObject.AddComponent<MatchController>();
-        matchController.Ending += CaptureOrdinaryScoreEligibility;
+        matchController.Ending += CaptureMatchEndState;
 
         // The score display. Created here for the same reason as the controller: no gameplay scene
         // carries the component yet, and this keeps the migration to code.
@@ -317,7 +318,7 @@ public class GameRules : MonoBehaviour, IMoneyBallState, IShotMarkerSession
     {
         if (matchController != null)
         {
-            matchController.Ending -= CaptureOrdinaryScoreEligibility;
+            matchController.Ending -= CaptureMatchEndState;
         }
 
         if (GameLevelManager.instance != null && GameLevelManager.instance.PlayerHealth != null)
@@ -409,7 +410,7 @@ public class GameRules : MonoBehaviour, IMoneyBallState, IShotMarkerSession
         bool accepted = matchController == null || matchController.RequestEnd(reason);
         if (accepted && matchController == null)
         {
-            CaptureOrdinaryScoreEligibility(reason);
+            CaptureMatchEndState(reason);
         }
         GameOver = true;
         return accepted;
@@ -422,8 +423,11 @@ public class GameRules : MonoBehaviour, IMoneyBallState, IShotMarkerSession
             && GameLevelManager.instance.PlayerHealth.IsDead;
     }
 
-    private void CaptureOrdinaryScoreEligibility(MatchEndReason reason)
+    private void CaptureMatchEndState(MatchEndReason reason)
     {
+        // The accepted lifecycle transition freezes elapsed time, including while persistence
+        // retries or an unpaused end screen let the game clock continue advancing.
+        matchEndTime ??= Time.time;
         if (ordinaryScoreEligible.HasValue)
         {
             return;
@@ -457,8 +461,8 @@ public class GameRules : MonoBehaviour, IMoneyBallState, IShotMarkerSession
 
         try
         {
-            TryShowMatchEndPresentation();
             setTimePlayed();
+            TryShowMatchEndPresentation();
 
             List<PlayerIdentifier> gameStatsList = GetMatchEndStatsList();
             TryUpdateCampaignStats();
@@ -816,7 +820,7 @@ public class GameRules : MonoBehaviour, IMoneyBallState, IShotMarkerSession
     public void setTimePlayed()
     {
         // time played end
-        timePlayedEnd = Time.time;
+        timePlayedEnd = matchEndTime ?? Time.time;
         // if player is killed in a game mode that requires a counter
         // if player is killed, high score is being set as time killed
         // must complete game mode to get high score

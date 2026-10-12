@@ -16,14 +16,31 @@ public class EnemyHealth : ActorHealth
     // runs on every OnEnable (so on every pool reuse), and the hardcore bonus is applied each
     // time - it has to scale a stable base or it compounds across respawns.
     int configuredMaxEnemyHealth;
+    private bool initialized;
 
     const int DefaultSpawnHealth = 50;
     const int BossSpawnHealth = 150;
 
     private void Awake()
     {
-        enemyController = gameObject.transform.root.GetComponent<EnemyController>();
+        Initialize();
+    }
+
+    private void Initialize()
+    {
+        if (initialized)
+        {
+            return;
+        }
+
+        // The controller's OnEnable can reset this child before its Awake runs. Resolve the
+        // actor locally and capture authored health before any reset can overwrite it.
+        if (enemyController == null)
+        {
+            enemyController = GetComponentInParent<EnemyController>(true);
+        }
         configuredMaxEnemyHealth = maxHealth;
+        initialized = true;
     }
 
     private void OnEnable()
@@ -33,6 +50,7 @@ public class EnemyHealth : ActorHealth
 
     public void ResetForSpawn()
     {
+        Initialize();
         // this whole body used to be wrapped in `if (enemyController != null)`, so a missing
         // controller skipped the reset silently. With no controller AND no inspector-set health,
         // maxHealth stayed 0 - and the Health setter then clamps every write to zero, producing
@@ -41,7 +59,7 @@ public class EnemyHealth : ActorHealth
         if (enemyController == null)
         {
             Debug.LogError(
-                "EnemyHealth on " + name + " found no EnemyController on its hierarchy root, so it "
+                "EnemyHealth on " + name + " found no EnemyController in its parent hierarchy, so it "
                 + "cannot tell a boss from a minion. Falling back to its configured max health.",
                 this);
 
