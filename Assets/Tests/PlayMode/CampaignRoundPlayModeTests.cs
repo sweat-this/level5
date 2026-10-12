@@ -29,7 +29,7 @@ public class CampaignRoundPlayModeTests
 /// <summary>Real authored arenas and end-round UI; results are injected, not played by physical input.</summary>
 public class CampaignBoundaryPlayModeTests
 {
-    private readonly Dictionary<string, byte[]> files = new Dictionary<string, byte[]>();
+    private CampaignBoundaryPersistenceIsolation persistence;
     private readonly Dictionary<FieldInfo, object> options = new Dictionary<FieldInfo, object>();
     private LocalProfileTestDatabase database;
     private BackendV2Session previousSession;
@@ -54,15 +54,11 @@ public class CampaignBoundaryPlayModeTests
         foreach (string type in new[] { "GameOptions", "EndRoundData" })
             foreach (FieldInfo field in Production(type).GetFields(BindingFlags.Public | BindingFlags.Static))
                 if (!field.IsLiteral && !field.IsInitOnly) options[field] = field.GetValue(null);
-        foreach (string name in new[] { "backendv2_pending_match_results.json", "pending-match-persistence.json", "backendv2_session.json" })
-            foreach (string suffix in new[] { "", ".bak" })
-            {
-                string path = Path.Combine(Application.persistentDataPath, name + suffix);
-                files[path] = File.Exists(path) ? File.ReadAllBytes(path) : null;
-            }
         try
         {
-            foreach (string path in files.Keys) File.Delete(path);
+            // LoadManager repairs guest XP into our disposable SQLite database on startup.
+            // Isolate its account-scoped queue before any production scene can consume it.
+            persistence = new CampaignBoundaryPersistenceIsolation(Application.persistentDataPath);
             owner = Guid.NewGuid();
             transport = new DurableResultTransport(() => database.CountRows("HighScores", "modeid", 26));
             BackendV2Runtime.Override(transport);
@@ -107,10 +103,8 @@ public class CampaignBoundaryPlayModeTests
 
     private void RestoreFiles()
     {
-        foreach (var file in files)
-            if (file.Value == null) File.Delete(file.Key);
-            else File.WriteAllBytes(file.Key, file.Value);
-        files.Clear();
+        persistence?.Dispose();
+        persistence = null;
     }
 
     private IEnumerator BeginAtRound(int index, int continues = 2)
@@ -289,6 +283,104 @@ public class CampaignBoundaryPlayModeTests
             completed(RawApiResponse.Completed(503, "{}"));
             yield break;
         }
+    }
+}
+
+/// <summary>Protects the exact file families touched by the guest campaign fixture.</summary>
+internal sealed class CampaignBoundaryPersistenceIsolation : IDisposable
+{
+    private readonly Dictionary<string, byte[]> files = new Dictionary<string, byte[]>();
+
+    internal CampaignBoundaryPersistenceIsolation(string root)
+    {
+        foreach (string name in new[]
+        {
+            "backendv2_pending_match_results.json", "pending-match-persistence.json", "backendv2_session.json",
+            Path.Combine("accounts", "74-pending-progression.json")
+        })
+            foreach (string suffix in new[] { "", ".bak", ".tmp" })
+            {
+                string path = Path.Combine(root, name + suffix);
+                files[path] = File.Exists(path) ? File.ReadAllBytes(path) : null;
+            }
+
+        // Read every snapshot before mutating any file; a failed read leaves all originals intact.
+        try
+        {
+            foreach (string path in files.Keys) File.Delete(path);
+        }
+        catch
+        {
+            Dispose();
+            throw;
+        }
+    }
+
+    public void Dispose()
+    {
+        foreach (var file in files)
+            if (file.Value == null) File.Delete(file.Key);
+            else
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(file.Key));
+                File.WriteAllBytes(file.Key, file.Value);
+            }
+        files.Clear();
+    }
+}
+
+public class CampaignBoundaryPersistenceIsolationTests
+{
+    [TestCase(true, false)]
+    [TestCase(true, true)]
+    [TestCase(false, false)]
+    [TestCase(false, true)]
+    public void GuestProgressionFileFamilySurvivesCleanup(bool originalExists, bool failDuringExecution)
+    {
+        string root = Path.Combine(Path.GetTempPath(), "level5-campaign-isolation-" + Guid.NewGuid().ToString("N"));
+        string guest = Path.Combine(root, "accounts", "74-pending-progression.json");
+        string otherAccount = Path.Combine(root, "accounts", "75-pending-progression.json");
+        string sessionTemp = Path.Combine(root, "backendv2_session.json.tmp");
+        string[] suffixes = { "", ".bak", ".tmp" };
+        byte[][] originals = suffixes.Select((_, index) => System.Text.Encoding.UTF8.GetBytes(
+            "{\"results\":[{\"resultId\":\"saved-" + index + "\",\"characterId\":1,\"experienceGained\":12.5}]}")).ToArray();
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(guest));
+            File.WriteAllText(otherAccount, "untouched account");
+            File.WriteAllText(sessionTemp, "original temporary session");
+            if (originalExists)
+                for (int index = 0; index < suffixes.Length; index++)
+                    File.WriteAllBytes(guest + suffixes[index], originals[index]);
+
+            bool failureObserved = false;
+            try
+            {
+                using (new CampaignBoundaryPersistenceIsolation(root))
+                {
+                    foreach (string suffix in suffixes) Assert.That(File.Exists(guest + suffix), Is.False);
+                    Assert.That(File.Exists(sessionTemp), Is.False);
+                    // Simulate repair consuming a queue, then test gameplay creating its own file family.
+                    File.WriteAllBytes(guest, originals[0]);
+                    File.Delete(guest);
+                    foreach (string suffix in suffixes) File.WriteAllText(guest + suffix, "test-owned progression");
+                    File.WriteAllText(sessionTemp, "test-owned session");
+                    if (failDuringExecution) throw new InvalidOperationException("simulated boundary failure");
+                }
+            }
+            catch (InvalidOperationException exception) when (exception.Message == "simulated boundary failure")
+            {
+                failureObserved = true;
+            }
+
+            Assert.That(failureObserved, Is.EqualTo(failDuringExecution));
+            for (int index = 0; index < suffixes.Length; index++)
+                if (originalExists) Assert.That(File.ReadAllBytes(guest + suffixes[index]), Is.EqualTo(originals[index]));
+                else Assert.That(File.Exists(guest + suffixes[index]), Is.False);
+            Assert.That(File.ReadAllText(otherAccount), Is.EqualTo("untouched account"));
+            Assert.That(File.ReadAllText(sessionTemp), Is.EqualTo("original temporary session"));
+        }
+        finally { Directory.Delete(root, true); }
     }
 }
 #endif
