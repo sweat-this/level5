@@ -56,6 +56,9 @@ namespace Level5.BackendV2
     /// </summary>
     public sealed class SubmitMatchResultDto
     {
+        // Newtonsoft needs this constructor when reopening the durable queue. Without it, a
+        // stripped player selects the IReadOnlyDictionary constructor, which cannot deserialize metrics.
+        [UnityEngine.Scripting.Preserve]
         public SubmitMatchResultDto()
         {
         }
@@ -166,28 +169,42 @@ namespace Level5.BackendV2
         }
     }
 
+    // Newtonsoft reaches both the default constructor and these accessors through reflection.
+    // Keep the response contract readable in stripped players, not just constructible.
+    [UnityEngine.Scripting.Preserve]
     public sealed class MatchResultResponseDto
     {
+        [UnityEngine.Scripting.Preserve]
         public Guid Id { get; set; }
 
+        [UnityEngine.Scripting.Preserve]
         public Guid PlayerId { get; set; }
 
+        [UnityEngine.Scripting.Preserve]
         public Guid ClientResultId { get; set; }
 
+        [UnityEngine.Scripting.Preserve]
         public int ModeId { get; set; }
 
+        [UnityEngine.Scripting.Preserve]
         public int LevelId { get; set; }
 
+        [UnityEngine.Scripting.Preserve]
         public string CharacterId { get; set; }
 
+        [UnityEngine.Scripting.Preserve]
         public string ClientVersion { get; set; }
 
+        [UnityEngine.Scripting.Preserve]
         public string Platform { get; set; }
 
+        [UnityEngine.Scripting.Preserve]
         public Dictionary<string, double> Metrics { get; set; }
 
+        [UnityEngine.Scripting.Preserve]
         public MatchResultModifiersDto Modifiers { get; set; }
 
+        [UnityEngine.Scripting.Preserve]
         public DateTimeOffset CreatedAt { get; set; }
     }
 }

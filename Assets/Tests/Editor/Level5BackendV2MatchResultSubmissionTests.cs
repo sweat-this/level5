@@ -113,8 +113,11 @@ namespace Level5.BackendV2.Tests
 
             BackendV2MatchResultSubmission.TryQueue(ValidScore());
 
-            // No session means no owner to queue under - never created retroactively later.
-            Assert.DoesNotThrow(() => { });
+            // A later login must never claim a result that became durable without a session.
+            Guid laterPlayer = SetSession();
+            Assert.That(PendingMatchResultStore.GetRetryable(laterPlayer), Is.Empty);
+            Assert.That(System.IO.File.Exists(System.IO.Path.Combine(
+                Application.persistentDataPath, "backendv2_pending_match_results.json")), Is.False);
         }
 
         [Test]

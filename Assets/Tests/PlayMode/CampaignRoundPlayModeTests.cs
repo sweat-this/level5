@@ -37,6 +37,8 @@ public class CampaignBoundaryPlayModeTests
     private DurableResultTransport transport;
     private int previousLocalUserId;
     private string previousLocalUserName;
+    private Scene runnerScene;
+    private bool previousIgnoreLogs;
     private static Type Production(string name) => Assembly.Load("Assembly-CSharp").GetType(name, true);
     private static void SetStatic(string type, string field, object value)
         => Production(type).GetField(field).SetValue(null, value);
@@ -48,6 +50,8 @@ public class CampaignBoundaryPlayModeTests
     [SetUp]
     public void SetUp()
     {
+        runnerScene = SceneManager.GetActiveScene();
+        previousIgnoreLogs = LogAssert.ignoreFailingMessages;
         previousSession = BackendV2SessionStore.Current;
         previousLocalUserId = LocalAccountIdentity.UserId;
         previousLocalUserName = LocalAccountIdentity.UserName;
@@ -82,7 +86,9 @@ public class CampaignBoundaryPlayModeTests
         try
         {
             ActiveMatch.Clear();
-            yield return RealScenePlayModeTestSupport.UnloadAllLoadedScenes("campaign-boundary-cleanup");
+            // Setup can fail before any gameplay scene loads. Keep NUnit's runner alive to report it.
+            if (SceneManager.GetActiveScene() != runnerScene)
+                yield return RealScenePlayModeTestSupport.UnloadAllLoadedScenes("campaign-boundary-cleanup");
         }
         finally
         {
@@ -97,7 +103,11 @@ public class CampaignBoundaryPlayModeTests
                 LocalAccountIdentity.UserName = previousLocalUserName;
                 options.Clear();
             }
-            finally { RestoreFiles(); }
+            finally
+            {
+                RestoreFiles();
+                LogAssert.ignoreFailingMessages = previousIgnoreLogs;
+            }
         }
     }
 
@@ -167,6 +177,32 @@ public class CampaignBoundaryPlayModeTests
         Debug.Log("Campaign boundary: loaded " + configuration.SceneName);
         BackendV2SessionStore.Set(new BackendV2Session("test-access", DateTimeOffset.UtcNow.AddHours(1),
             owner, "test-refresh", DateTimeOffset.UtcNow.AddDays(1)));
+        AssertSubmissionSession("initial round");
+    }
+
+    private void AssertSubmissionSession(string stage)
+    {
+        Assert.That(BackendV2SessionStore.Current, Is.Not.Null, stage);
+        Assert.That(BackendV2SessionStore.Current.PlayerId, Is.EqualTo(owner), stage);
+        Assert.That(BackendV2SessionStore.IsAccessTokenExpiringSoon(TimeSpan.FromSeconds(30)), Is.False, stage);
+        Assert.That(ActiveRemoteAttempt.IsActive || ActiveVersusAttempt.IsActive, Is.False, stage);
+        Assert.That(BackendV2Runtime.Transport, Is.SameAs(transport), stage);
+        Debug.Log("Campaign submission session: stage=" + stage + " owner=" + owner + " valid=True");
+    }
+
+    private static IEnumerator AwaitBackendDrain()
+    {
+        // Enqueue is synchronous; delivery traverses nested production coroutines. Await its actual
+        // completion rather than assuming a fixed number of frames is enough on every platform.
+        FieldInfo draining = typeof(MatchResultSubmissionCoordinator).GetField(
+            "draining", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.That(draining, Is.Not.Null);
+        float deadline = Time.realtimeSinceStartup + 20f;
+        while ((bool)draining.GetValue(null))
+        {
+            Assert.That(Time.realtimeSinceStartup, Is.LessThan(deadline), "Backend drain did not complete");
+            yield return null;
+        }
     }
 
     private static CharacterSelection Selection(CharacterProfile profile) => new CharacterSelection(
@@ -213,9 +249,11 @@ public class CampaignBoundaryPlayModeTests
         Assert.That(transport.Requests, Is.Zero, "intermediate rounds must not submit an aggregate");
         RealScenePlayModeTestSupport.Invoke(EndMenu, "pressNext");
         yield return WaitForScene("level_23_dev");
+        AssertSubmissionSession("Dev loaded");
         Assert.That(ActiveMatch.Configuration.LevelId, Is.EqualTo(23));
         Assert.That(ActiveMatch.Configuration.Roster.CpuCount, Is.EqualTo(1));
         Assert.That(Static("GameOptions", "levelSelectedIndex"), Is.EqualTo(20));
+        AssertSubmissionSession("before final victory");
         yield return FinishRound(100, 0);
         Assert.That(Action, Is.EqualTo(CampaignNextAction.Complete));
         Assert.That(database.CountRows("HighScores", "modeid", 26), Is.EqualTo(1));
@@ -223,9 +261,40 @@ public class CampaignBoundaryPlayModeTests
         RealScenePlayModeTestSupport.Invoke(EndMenu, "saveGame");
         Assert.That(database.CountRows("HighScores", "modeid", 26), Is.EqualTo(1));
         Assert.That(PendingMatchResultStore.GetRetryable(owner), Has.Count.EqualTo(1));
+        var pending = PendingMatchResultStore.GetRetryable(owner)[0];
+        Assert.That(pending.OwnerPlayerId, Is.EqualTo(owner));
+        Assert.That(pending.DefinitiveFailure, Is.False);
+        Assert.That(pending.Request.ClientResultId, Is.EqualTo(Guid.Parse(database.ReadOnlyScoreId(26))));
+        Assert.That(pending.Request.ModeId, Is.EqualTo(26));
+        Assert.That(pending.Request.Metrics["TotalPoints"], Is.EqualTo(200));
+        AssertSubmissionSession("after final save");
+        yield return AwaitBackendDrain();
         Assert.That(transport.Requests, Is.EqualTo(1));
+        Assert.That(transport.LastRequest.RequiresAuth, Is.True);
+        Assert.That(transport.LastRequest.Method, Is.EqualTo(ApiHttpMethod.Post));
+        Assert.That(PendingMatchResultStore.GetRetryable(owner), Has.Count.EqualTo(1), "503 remains retryable after drain completion");
         Assert.That(transport.RowsAtSubmission, Is.EqualTo(1), "Backend submission follows committed local aggregate");
         yield return AssertDurableAndReturnToMenu();
+    }
+
+    [UnityTest]
+    public IEnumerator QueuedCampaignPayloadRoundTripsBeforeDeliveryInAStrippedPlayer()
+    {
+        // Use only the production parameterized constructor: directly calling the default one here
+        // would accidentally keep it in the player and conceal the serialization regression.
+        var request = new SubmitMatchResultDto(Guid.NewGuid(), 26, 23, "45", "4.0.0", "Desktop",
+            new Dictionary<string, double> { [MatchResultMetric.TotalPoints.ToString()] = 200 },
+            new MatchResultModifiersDto());
+        Assert.That(PendingMatchResultStore.Enqueue(owner, request), Is.EqualTo(PendingMatchResultEnqueueResult.Added));
+        Assert.That(File.Exists(Path.Combine(Application.persistentDataPath, "backendv2_pending_match_results.json")), Is.True);
+        var restored = PendingMatchResultStore.GetRetryable(owner);
+        Assert.That(restored, Has.Count.EqualTo(1));
+        Assert.That(restored[0].OwnerPlayerId, Is.EqualTo(owner));
+        Assert.That(restored[0].Request.IsEquivalentTo(request), Is.True);
+        Assert.That(PendingMatchResultStore.Enqueue(owner, request), Is.EqualTo(PendingMatchResultEnqueueResult.AlreadyQueued));
+        Assert.That(PendingMatchResultStore.GetRetryable(Guid.NewGuid()), Is.Empty);
+        Assert.That(transport.Requests, Is.Zero, "synchronous persistence needs no authenticated drain");
+        yield break;
     }
 
     [UnityTest]
@@ -273,10 +342,12 @@ public class CampaignBoundaryPlayModeTests
         internal DurableResultTransport(Func<int> countRows) { this.countRows = countRows; }
         internal int Requests { get; private set; }
         internal int RowsAtSubmission { get; private set; }
+        internal ApiRequest LastRequest { get; private set; }
         public IEnumerator Send(ApiRequest request, Action<RawApiResponse> completed)
         {
             if (request.RelativePath == "api/v2/match-results")
             {
+                LastRequest = request;
                 Requests++;
                 RowsAtSubmission = countRows();
             }
