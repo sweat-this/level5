@@ -166,7 +166,8 @@ public class MatchHudPresenter : MonoBehaviour
             int enemiesKilled,
             int enemiesKilledBattleRoyal,
             int enemiesKilledCageMatch,
-            float longestShotMadeFreePlay)
+            float longestShotMadeFreePlay,
+            float longestShotMadeArcade = 0f)
         {
             TotalPoints = totalPoints;
             TotalPointsLockDown = totalPointsLockDown;
@@ -189,6 +190,7 @@ public class MatchHudPresenter : MonoBehaviour
             EnemiesKilledBattleRoyal = enemiesKilledBattleRoyal;
             EnemiesKilledCageMatch = enemiesKilledCageMatch;
             LongestShotMadeFreePlay = longestShotMadeFreePlay;
+            LongestShotMadeArcade = longestShotMadeArcade;
         }
 
         public float TotalPoints { get; }
@@ -212,6 +214,7 @@ public class MatchHudPresenter : MonoBehaviour
         public int EnemiesKilledBattleRoyal { get; }
         public int EnemiesKilledCageMatch { get; }
         public float LongestShotMadeFreePlay { get; }
+        public float LongestShotMadeArcade { get; }
     }
 
     // AUD-012 Phase 2b Slice 64 dependency-cut fields - see <see cref="BindPersistenceContext"/>.
@@ -228,8 +231,8 @@ public class MatchHudPresenter : MonoBehaviour
     /// <paramref name="highScoreSnapshotReader"/> resolves <c>PlayerData.instance</c> fresh on every
     /// call and returns null when it is absent - the exact prior "no live PlayerData -> no
     /// persistence-backed rendering" behavior, now expressed as a null snapshot guard instead of an
-    /// inline null check. <paramref name="persistLongestShotMadeFreePlay"/> wraps the exact prior
-    /// PlayerData-mutation-then-DBHelper-write pair, unchanged in order and value.
+    /// inline null check. <paramref name="persistLongestShotMadeFreePlay"/> preserves the aggregate
+    /// write; the bound adapter limits the preceding Free Play cache mutation to Free Play/mode 0.
     /// </summary>
     public void BindPersistenceContext(
         Func<HighScoreSnapshot> highScoreSnapshotReader,
@@ -703,7 +706,7 @@ public class MatchHudPresenter : MonoBehaviour
         // matches the exact prior "no live PlayerData -> no persistence-backed rendering" behavior
         // (see BindPersistenceContext), now as a null-snapshot guard clause instead of an inline
         // PlayerData.instance != null wrapping the whole method body.
-        HighScoreSnapshot highScores = highScoreSnapshotReader();
+        HighScoreSnapshot highScores = highScoreSnapshotReader?.Invoke();
         if (highScores == null)
         {
             return;
@@ -989,26 +992,27 @@ public class MatchHudPresenter : MonoBehaviour
 
         if (gameModeId == 0 || gameModeId == Modes.FreePlay || gameModeId == Modes.ArcadeMode)
         {
+            float historicalLongestShot = gameModeId == Modes.ArcadeMode
+                ? highScores.LongestShotMadeArcade
+                : highScores.LongestShotMadeFreePlay;
             displayCurrentScoreText.text = "longest shot : " + (gameStats1.Stats.LongestShotMade).ToString("0.00")
                                                              + "\ncurrent distance : " + (BasketBall.instance.BasketBallState.PlayerDistanceFromRim * 6).ToString("00.00");
             scoreClockTextReader().text = (gameStats1.Stats.LongestShotMade).ToString("0.00");
 
             if (gameModeId == Modes.FreePlay)
             {
-                displayHighScoreText.text = "high score : " + highScores.LongestShotMadeFreePlay.ToString("0.00")
+                displayHighScoreText.text = "high score : " + historicalLongestShot.ToString("0.00")
                     + "\nexp gained : " + gameStats1.getExperienceGainedFromSession();
             }
             else
             {
-                displayHighScoreText.text = "high score : " + highScores.LongestShotMadeFreePlay.ToString("0.00");
+                displayHighScoreText.text = "high score : " + historicalLongestShot.ToString("0.00");
             }
-            // if longest shot > saved longest shot
+            // Preserve the existing aggregate-write trigger, independently of the displayed mode
+            // record. Arcade history is saved only by the ordinary match-result authority.
             if ((stats.LongestShotMade) > highScores.LongestShotMadeFreePlay)
             {
-                // AUD-012 Phase 2b Slice 64: was PlayerData.instance.LongestShotMadeFreePlay = ...
-                // followed by DBHelper.instance.updateFloatValueByTableAndField(...) - both now live
-                // behind this one delegate (see BindPersistenceContext), same value, same order.
-                persistLongestShotMadeFreePlay(gameStats1.Stats.LongestShotMade);
+                persistLongestShotMadeFreePlay?.Invoke(gameStats1.Stats.LongestShotMade);
             }
             return;
         }

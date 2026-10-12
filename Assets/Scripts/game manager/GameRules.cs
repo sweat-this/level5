@@ -63,6 +63,9 @@ public class GameRules : MonoBehaviour, IMoneyBallState, IShotMarkerSession
     public static GameRules instance;
     private ProgressionService progressionService;
     private string matchProgressionResultId;
+    // Transient write watermark, not mode history. Replaces the deduplication formerly caused by
+    // Arcade incorrectly mutating the Free Play cache on every improved shot.
+    private float lastArcadeLongestShotProjectedForHud;
 
     /// <summary>
     /// The rules this match is being played under. Read once in Start from the validated
@@ -245,6 +248,7 @@ public class GameRules : MonoBehaviour, IMoneyBallState, IShotMarkerSession
         matchEndHandling = false;
         matchScoreSaveCompleted = false;
         matchAllTimeStatsSaved = false;
+        lastArcadeLongestShotProjectedForHud = 0f;
         matchProgressionApplied = false;
         progressionPersistenceFailed = false;
         progressionSaveAttempts = 0;
@@ -1041,21 +1045,41 @@ public class GameRules : MonoBehaviour, IMoneyBallState, IShotMarkerSession
             enemiesKilled: current.EnemiesKilled,
             enemiesKilledBattleRoyal: current.EnemiesKilledBattleRoyal,
             enemiesKilledCageMatch: current.EnemiesKilledCageMatch,
-            longestShotMadeFreePlay: current.LongestShotMadeFreePlay);
+            longestShotMadeFreePlay: current.LongestShotMadeFreePlay,
+            longestShotMadeArcade: current.LongestShotMadeArcade);
     }
 
     /// <summary>
-    /// AUD-012 Phase 2b Slice 64: the concrete persistence-layer adapter <see cref="MatchHudPresenter"/>
-    /// now calls instead of writing <c>PlayerData.instance.LongestShotMadeFreePlay</c> and
-    /// <c>DBHelper.instance.updateFloatValueByTableAndField</c> itself. Preserves the exact prior order -
-    /// the in-memory <c>PlayerData</c> mutation happens first, the <c>DBHelper</c> write second - and the
-    /// exact prior value and table/field names. No new null guard, retry, or queue semantics.
+    /// Keeps the existing in-play aggregate write separate from the Free Play record projection.
+    /// Arcade must not mutate either mode's historical cache or insert a HighScores row here.
+    /// Free Play and legacy mode 0 retain cache-before-database ordering.
     /// </summary>
-    private static void PersistLongestShotMadeFreePlayForHud(float longestShotMadeFreePlay)
+    private void PersistLongestShotMadeFreePlayForHud(float longestShotMadeFreePlay)
     {
-        PlayerData.instance.LongestShotMadeFreePlay = longestShotMadeFreePlay;
-        DBHelper.instance.updateFloatValueByTableAndField(
-            "AllTimeStats", "longestShot", PlayerData.instance.LongestShotMadeFreePlay);
+        PlayerData current = PlayerData.instance;
+        if (current == null)
+        {
+            return;
+        }
+
+        if (gameModeId == Modes.FreePlay || gameModeId == 0)
+        {
+            current.LongestShotMadeFreePlay = longestShotMadeFreePlay;
+        }
+        else if (gameModeId == Modes.ArcadeMode)
+        {
+            if (longestShotMadeFreePlay <= lastArcadeLongestShotProjectedForHud)
+            {
+                return;
+            }
+            lastArcadeLongestShotProjectedForHud = longestShotMadeFreePlay;
+        }
+
+        if (DBHelper.instance != null)
+        {
+            DBHelper.instance.updateFloatValueByTableAndField(
+                "AllTimeStats", "longestShot", longestShotMadeFreePlay);
+        }
     }
 
     public int GameModeId

@@ -26,6 +26,8 @@ Feature and system docs:
 
 Decision records and audits:
 
+- [Arcade and Free Play longest-shot isolation](gp-001-f10-longest-shot-isolation.md) - GP-001 F10: independent mode history, preserved aggregate/persistence policy, focused regression evidence, and the separate Arcade manual-exit gap.
+
 - [Campaign finale and build scene integrity](gp-001-f5-campaign-build-integrity.md) - GP-001 F5: approved Dev finale, complete route inventory, deterministic build validation, and execution evidence.
 
 - [GP-001 Single-Player Mode Characterization](gp-001-single-player-characterization.md) - read-only audit of all 24 production-menu-selectable modes at dev `c4353a905`: authored rules, execution and evidence matrices, confirmed findings, existing issue ownership, and narrow remediation scopes.
