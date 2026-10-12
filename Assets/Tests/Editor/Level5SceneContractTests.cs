@@ -41,14 +41,14 @@ public class Level5SceneContractTests
     }
 
     [Test]
-    public void DevScenesAreNotEnabledInReleaseBuildSettings()
+    public void UnapprovedDevScenesAreNotEnabledInReleaseBuildSettings()
     {
         List<string> errors = Level5ProjectValidator.CollectEnabledDevSceneErrors();
 
         Assert.That(
             errors,
             Is.Empty,
-            "Dev-only scenes must stay out of enabled build settings:\n- "
+            "Dev-only scenes except the approved campaign finale must stay out of enabled build settings:\n- "
                 + string.Join("\n- ", errors.ToArray()));
     }
 

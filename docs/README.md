@@ -26,6 +26,8 @@ Feature and system docs:
 
 Decision records and audits:
 
+- [Campaign finale and build scene integrity](gp-001-f5-campaign-build-integrity.md) - GP-001 F5: approved Dev finale, complete route inventory, deterministic build validation, and execution evidence.
+
 - [GP-001 Single-Player Mode Characterization](gp-001-single-player-characterization.md) - read-only audit of all 24 production-menu-selectable modes at dev `c4353a905`: authored rules, execution and evidence matrices, confirmed findings, existing issue ownership, and narrow remediation scopes.
 - [UI Menu System Audit 2026-08-17](ui-menu-audit-2026-08-17.md) - two review passes over the ten menu scenes, the pause menu and `Assets/Scripts/menu_*`: asset authoring, canvas scaling, input routing, wiring ownership, per-frame cost, and coverage. AUD-088 to AUD-112, all open. Paired with the [implementation prompt](ui-menu-overhaul-implementation-prompt.md).
 - [Deep Audit 2026-08-06](deep-audit-2026-08-06.md) - five runtime passes covering progression/XP math, stat ownership, AI instance state, persistence locking, and lifecycle hygiene. AUD-022 to AUD-045 fixed, pending Unity compile/playtest verification.
