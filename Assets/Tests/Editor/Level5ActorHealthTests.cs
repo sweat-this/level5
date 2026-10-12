@@ -1,5 +1,7 @@
 using NUnit.Framework;
+using System.Reflection;
 using UnityEngine;
+using UnityEngine.TestTools;
 
 /// <summary>
 /// AUD-004: these assertions used to have no home, because the behaviour they cover was duplicated
@@ -153,5 +155,51 @@ public class Level5ActorHealthTests
         Assert.That(damageable.CurrentHealth, Is.EqualTo(75f));
         Assert.That(damageable.CurrentMaxHealth, Is.EqualTo(100f));
         Assert.That(damageable.IsDead, Is.False);
+    }
+
+    [TestCase(false, true, false, 150)]
+    [TestCase(true, false, false, 50)]
+    [TestCase(true, true, false, 50)]
+    [TestCase(false, true, true, 187)]
+    public void EnemyResetBeforeAwakeResolvesItsOwnControllerUnderAContainer(
+        bool minion, bool boss, bool hardcore, int expectedHealth)
+    {
+        GameOptions.hardcoreModeEnabled = hardcore;
+        host.SetActive(false);
+        var enemy = new GameObject("pooled-enemy");
+        enemy.transform.SetParent(host.transform);
+        EnemyController controller = enemy.AddComponent<EnemyController>();
+        controller.IsMinion = minion;
+        controller.IsBoss = boss;
+        var hitbox = new GameObject("hitbox");
+        hitbox.transform.SetParent(enemy.transform);
+        EnemyHealth health = hitbox.AddComponent<EnemyHealth>();
+        health.MaxHealth = 91;
+
+        health.ResetForSpawn();
+        Assert.That(health.MaxHealth, Is.EqualTo(expectedHealth));
+        health.TakeDamage(10);
+        typeof(EnemyHealth).GetMethod("Awake", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(health, null);
+        health.ResetForSpawn();
+        Assert.That(health.Health, Is.EqualTo(expectedHealth), "reuse must retain the authored base and role policy");
+    }
+
+    [TestCase(80, 100)]
+    [TestCase(0, 62)]
+    public void MissingEnemyControllerRetainsStableConfiguredFallbackBeforeAndAfterAwake(int configured, int expected)
+    {
+        GameOptions.hardcoreModeEnabled = true;
+        host.SetActive(false);
+        EnemyHealth health = host.AddComponent<EnemyHealth>();
+        health.MaxHealth = configured;
+        string message = "EnemyHealth on " + host.name + " found no EnemyController in its parent hierarchy, so it "
+            + "cannot tell a boss from a minion. Falling back to its configured max health.";
+        LogAssert.Expect(LogType.Error, message);
+        health.ResetForSpawn();
+        Assert.That(health.MaxHealth, Is.EqualTo(expected));
+        typeof(EnemyHealth).GetMethod("Awake", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(health, null);
+        LogAssert.Expect(LogType.Error, message);
+        health.ResetForSpawn();
+        Assert.That(health.MaxHealth, Is.EqualTo(expected), "hardcore health must not compound across resets");
     }
 }

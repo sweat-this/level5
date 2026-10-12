@@ -176,7 +176,10 @@ public class Level5SpotUp7sPlayModeTests
         object hud = RealScenePlayModeTestSupport.GetField(gameRules, "hud");
         Text summary = RealScenePlayModeTestSupport.GetField<Text>(hud, "displayScoreText");
         Assert.That(summary, Is.Not.Null);
-        Assert.That(summary.text, Does.Contain("Your time was"));
+        float elapsed = BasketBall.instance.GameStats.Stats.TimePlayed;
+        int minutes = Mathf.FloorToInt(elapsed / 60f);
+        Assert.That(summary.text, Does.Contain("Your time was " + minutes.ToString("0") + ":"
+            + (elapsed - minutes * 60f).ToString("00.000")), "the first summary must use finalized elapsed time");
     }
 
     [UnityTest]

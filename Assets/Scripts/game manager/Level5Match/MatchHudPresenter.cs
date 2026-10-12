@@ -1093,7 +1093,7 @@ public class MatchHudPresenter : MonoBehaviour
             displayText = "You Bashed up " + stats.EnemiesKilled + " nerds"
                 + "\n\nexperience gained : " + gameStats1.getExperienceGainedFromSession();
         }
-        if (gameModeId == Modes.BattleRoyal)
+        if (gameModeId == Modes.BattleRoyal || gameModeId == Modes.CageMatch)
         {
             int minutes = Mathf.FloorToInt(stats.TimePlayed / 60);
             float seconds = (stats.TimePlayed - (minutes * 60));

@@ -179,6 +179,59 @@ public class Level5MatchHudPresenterCompositionTests
         return (string)method.Invoke(hud, new object[] { modeId });
     }
 
+    [TestCase(Modes.CageMatch, 7)]
+    [TestCase(Modes.CageMatch, 0)]
+    [TestCase(Modes.BattleRoyal, 7)]
+    [TestCase(Modes.BashUpSomeNerds, 7)]
+    public void CombatSummaryRendersAuthoritativeKillsTimeAndExperience(int mode, int kills)
+    {
+        MatchHudPresenter hud = MakePresenter();
+        GameStats stats = Spawn("combat-stats").AddComponent<GameStats>();
+        var rules = new ResolvedMatchRules(enemiesEnabled: true);
+        stats.BindMatchRules(rules);
+        stats.Stats.EnemiesKilled = kills;
+        stats.Stats.MinionsKilled = kills;
+        stats.Stats.TimePlayed = 125.375f;
+        Text summary = SpawnText("summary");
+        SetPrivateField(hud, "displayScoreText", summary);
+        hud.SetMatchContext(mode, stats, rules, 0);
+
+        string expected = "You Bashed up " + kills + " nerds";
+        if (mode != Modes.BashUpSomeNerds)
+            expected += "\n\nYou survived for  : 2:" + 5.375f.ToString("00.000") + "\n\n";
+        expected += "\n\nexperience gained : " + stats.getExperienceGainedFromSession();
+
+        Assert.That(InvokeGetDisplayText(hud, mode), Is.EqualTo(expected));
+        hud.ShowMatchEndSummary();
+        Assert.That(summary.text, Is.EqualTo(expected));
+        Assert.That(summary.text, Does.Not.Contain("wins"));
+    }
+
+    [TestCase(Modes.CageMatch)]
+    [TestCase(Modes.BattleRoyal)]
+    [TestCase(Modes.BashUpSomeNerds)]
+    public void CombatSummaryIdleDeathTakesPrecedenceWithoutStats(int mode)
+    {
+        MatchHudPresenter hud = MakePresenter();
+        Text summary = SpawnText("summary");
+        SetPrivateField(hud, "displayScoreText", summary);
+        hud.SetMatchContext(mode, null, null, 0);
+        hud.SetKilledOnIdle(true);
+        hud.ShowMatchEndSummary();
+        Assert.That(summary.text, Is.EqualTo("You dead bruh"));
+        Assert.That(summary.fontSize, Is.EqualTo(150));
+        Assert.That(summary.alignment, Is.EqualTo((TextAnchor)TextAlignment.Center));
+    }
+
+    [Test]
+    public void MissingSummaryTextIsSafeEvenWithoutStats()
+    {
+        MatchHudPresenter hud = MakePresenter();
+        hud.SetMatchContext(Modes.CageMatch, null, null, 0);
+        Assert.DoesNotThrow(hud.ClearForMatchEnd);
+        Assert.DoesNotThrow(hud.ShowMatchEndSummary);
+    }
+
     private PlayerIdentifier MakePlayer(string name, int pid, string displayName)
     {
         GameObject go = Spawn(name);

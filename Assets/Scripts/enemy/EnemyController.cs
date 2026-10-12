@@ -213,7 +213,10 @@ public class EnemyController : MonoBehaviour, ICombatAgent, IPooledSpawnReset
         if (anim != null)
         {
             anim.Rebind();
-            anim.Update(0f);
+            if (anim.gameObject.activeInHierarchy)
+            {
+                anim.Update(0f);
+            }
         }
 
         enemyHealth?.ResetForSpawn();
