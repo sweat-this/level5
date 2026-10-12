@@ -14,6 +14,9 @@ using UnityEngine.SceneManagement;
 public sealed class Level5ProjectValidator : IPreprocessBuildWithReport
 {
     private const string InputActionsPath = "Assets/Scripts/input/PlayerControls.inputactions";
+    private const string CampaignPrefabPath = "Assets/Resources/Prefabs/critical/player_data.prefab";
+    // GP-001 F5: explicitly approved shipping campaign finale; other developer scenes stay excluded.
+    private const string ShippingCampaignFinalePath = "Assets/Scenes/level_23_dev.unity";
 
     public int callbackOrder => -1000;
 
@@ -51,6 +54,7 @@ public sealed class Level5ProjectValidator : IPreprocessBuildWithReport
         ValidateDevScenesExcludedFromBuild(errors);
         ValidateNoMissingScriptReferences(errors);
         ValidateSelectableLevels(errors);
+        errors.AddRange(CollectCampaignRouteErrors());
         ValidateInputActions(errors);
         ValidateContestModeTimers(errors);
         ValidateDevCodeIsolation(errors);
@@ -260,7 +264,7 @@ public sealed class Level5ProjectValidator : IPreprocessBuildWithReport
             }
 
             string normalized = scene.path.Replace('\\', '/');
-            if (IsDevScenePath(normalized))
+            if (IsUnapprovedDevScenePath(normalized))
             {
                 errors.Add("Dev scene must not be enabled in build settings: " + normalized + ".");
             }
@@ -274,8 +278,13 @@ public sealed class Level5ProjectValidator : IPreprocessBuildWithReport
         errors.AddRange(CollectEnabledDevSceneErrors());
     }
 
-    private static bool IsDevScenePath(string path)
+    private static bool IsUnapprovedDevScenePath(string path)
     {
+        if (string.Equals(path, ShippingCampaignFinalePath, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
         string fileName = Path.GetFileNameWithoutExtension(path);
         return path.IndexOf("/Dev/", StringComparison.OrdinalIgnoreCase) >= 0
             || fileName.StartsWith("dev_", StringComparison.OrdinalIgnoreCase)
@@ -751,6 +760,74 @@ public sealed class Level5ProjectValidator : IPreprocessBuildWithReport
                 errors.Add("Selectable level prefab " + path + " maps to missing build scene " + sceneName + ".");
             }
         }
+    }
+
+    public static List<string> CollectCampaignRouteErrors()
+    {
+        List<string> errors = new List<string>();
+        GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(CampaignPrefabPath);
+        PlayerData playerData = prefab != null ? prefab.GetComponent<PlayerData>() : null;
+        if (playerData == null || playerData.LevelsList == null || playerData.LevelsList.Count == 0)
+        {
+            errors.Add("Campaign route " + CampaignPrefabPath + " is missing PlayerData or a nonempty LevelsList.");
+            return errors;
+        }
+
+        EditorBuildSettingsScene[] buildScenes = EditorBuildSettings.scenes;
+        for (int index = 0; index < playerData.LevelsList.Count; index++)
+        {
+            LevelSelected level = playerData.LevelsList[index];
+            string where = "Campaign " + CampaignPrefabPath + " LevelsList[" + index + "]";
+            if (level == null)
+            {
+                errors.Add(where + " has a missing/null LevelSelected reference.");
+                continue;
+            }
+
+            string sceneName = level.LevelObjectName + "_" + level.LevelDescription;
+            where += " " + level.LevelDisplayName + " (id " + level.LevelId + ", "
+                + AssetDatabase.GetAssetPath(level) + ") scene '" + sceneName + "'";
+            if (string.IsNullOrWhiteSpace(level.LevelObjectName) || string.IsNullOrWhiteSpace(level.LevelDescription))
+            {
+                errors.Add(where + " has an incomplete authored scene name.");
+                continue;
+            }
+
+            int matches = 0;
+            foreach (EditorBuildSettingsScene scene in buildScenes)
+            {
+                if (string.IsNullOrWhiteSpace(scene.path)
+                    || !string.Equals(Path.GetFileNameWithoutExtension(scene.path), sceneName, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                matches++;
+                string path = scene.path.Replace('\\', '/');
+                if (IsUnapprovedDevScenePath(path))
+                {
+                    errors.Add(where + " targets an unapproved developer scene: " + path + ".");
+                }
+                if (!scene.enabled)
+                {
+                    errors.Add(where + " is disabled in Editor Build Settings: " + path + ".");
+                }
+                if (!File.Exists(path) || AssetDatabase.LoadAssetAtPath<SceneAsset>(path) == null)
+                {
+                    errors.Add(where + " references a missing scene asset: " + path + ".");
+                }
+            }
+            if (matches == 0)
+            {
+                errors.Add(where + " has no matching scene in Editor Build Settings.");
+            }
+            else if (matches > 1)
+            {
+                errors.Add(where + " has ambiguous matching scenes in Editor Build Settings.");
+            }
+        }
+
+        return errors;
     }
 
     /// <summary>
