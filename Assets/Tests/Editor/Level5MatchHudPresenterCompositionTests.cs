@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Data;
 using System.Reflection;
 using Level5.Core.Match;
 using NUnit.Framework;
@@ -135,14 +136,16 @@ public class Level5MatchHudPresenterCompositionTests
         int enemiesKilled = 0,
         int enemiesKilledBattleRoyal = 0,
         int enemiesKilledCageMatch = 0,
-        float longestShotMadeFreePlay = 0f)
+        float longestShotMadeFreePlay = 0f,
+        float longestShotMadeArcade = 0f)
     {
         return new MatchHudPresenter.HighScoreSnapshot(
             totalPoints, totalPointsLockDown, threePointerMade, fourPointerMade, sevenPointerMade,
             totalDistance, makeThreePointersLowTime, makeFourPointersLowTime, makeSevenPointersLowTime,
             makeAllPointersLowTime, mostConsecutiveShots, totalPointsBonus, threePointContestScore,
             fourPointContestScore, sevenPointContestScore, allPointContestScore, totalPointsByDistance,
-            enemiesKilled, enemiesKilledBattleRoyal, enemiesKilledCageMatch, longestShotMadeFreePlay);
+            enemiesKilled, enemiesKilledBattleRoyal, enemiesKilledCageMatch, longestShotMadeFreePlay,
+            longestShotMadeArcade);
     }
 
     private Text SpawnText(string name)
@@ -412,6 +415,7 @@ public class Level5MatchHudPresenterCompositionTests
         SetPrivateField(data, "_enemiesKilledBattleRoyal", 19);
         SetPrivateField(data, "_enemiesKilledCageMatch", 20);
         SetPrivateField(data, "_longestShotMadeFreePlay", 121f);
+        SetPrivateField(data, "_longestShotMadeArcade", 122f);
         PlayerData.instance = data;
 
         MatchHudPresenter.HighScoreSnapshot snapshot =
@@ -438,31 +442,24 @@ public class Level5MatchHudPresenterCompositionTests
         Assert.That(snapshot.EnemiesKilledBattleRoyal, Is.EqualTo(19));
         Assert.That(snapshot.EnemiesKilledCageMatch, Is.EqualTo(20));
         Assert.That(snapshot.LongestShotMadeFreePlay, Is.EqualTo(121f));
+        Assert.That(snapshot.LongestShotMadeArcade, Is.EqualTo(122f));
     }
 
     /// <summary>
-    /// Proves the in-memory PlayerData mutation happens before the DBHelper dereference, using no live
-    /// DBHelper at all: with DBHelper.instance left null, the DB call throws, but only after the
-    /// mutation the production adapter performs first is already visible on the PlayerData instance.
-    /// Per AGENTS.md's validation budget, this is the smallest existing mechanism that proves the
-    /// ordering without a broad SQLite integration fixture for one call.
+    /// Missing SQLite does not prevent the existing Free Play in-memory projection.
     /// </summary>
     [Test]
-    public void PersistLongestShotMadeFreePlayForHud_MutatesPlayerDataBeforeReachingDBHelper()
+    public void PersistLongestShotMadeFreePlayForHud_NoDatabase_StillProjectsFreePlayRecord()
     {
         PlayerData data = SpawnPlayerDataWithoutAwake("player-data-persist");
         SetPrivateField(data, "_longestShotMadeFreePlay", 5f);
         PlayerData.instance = data;
         DBHelper.instance = null;
 
-        TargetInvocationException thrown = Assert.Throws<TargetInvocationException>(
-            () => GameRulesAdapterMethod("PersistLongestShotMadeFreePlayForHud").Invoke(null, new object[] { 12.5f }));
-
-        Assert.That(thrown.InnerException, Is.TypeOf<NullReferenceException>(),
-            "with no live DBHelper, the DB dereference itself must be what throws.");
-        Assert.That(data.LongestShotMadeFreePlay, Is.EqualTo(12.5f),
-            "the in-memory PlayerData mutation must occur before the DBHelper dereference, so it is "
-            + "visible even though the DB call itself throws with no live DBHelper.");
+        GameRules rules = Spawn("rules").AddComponent<GameRules>();
+        rules.GameModeId = Modes.FreePlay;
+        Assert.DoesNotThrow(() => PersistLongestShot(rules, 12.5f));
+        Assert.That(data.LongestShotMadeFreePlay, Is.EqualTo(12.5f));
     }
 
     [Test]
@@ -608,6 +605,153 @@ public class Level5MatchHudPresenterCompositionTests
     public void SetScoreDisplayText_FreePlayMode_RendersSnapshotLongestShotMadeFreePlay()
     {
         AssertHighScoreRendered(Modes.FreePlay, MakeSnapshot(longestShotMadeFreePlay: 3f), "3.00");
+    }
+
+    [TestCase(Modes.ArcadeMode, 35f, 12f, "35.00")]
+    [TestCase(Modes.ArcadeMode, 7f, 22f, "7.00")]
+    [TestCase(Modes.FreePlay, 35f, 12f, "12.00")]
+    [TestCase(Modes.FreePlay, 7f, 22f, "22.00")]
+    [TestCase(0, 35f, 12f, "12.00")]
+    public void LongestShotHistoryIsSelectedByMode(int mode, float arcade, float freePlay, string expected)
+    {
+        AssertHighScoreRendered(mode,
+            MakeSnapshot(longestShotMadeFreePlay: freePlay, longestShotMadeArcade: arcade), expected);
+    }
+
+    private static void PersistLongestShot(GameRules rules, float value)
+    {
+        GameRulesAdapterMethod("PersistLongestShotMadeFreePlayForHud", BindingFlags.Instance)
+            .Invoke(rules, new object[] { value });
+    }
+
+    private static object Sql(DBHelper helper, string sql)
+    {
+        using (IDbCommand command = helper.Connection.CreateCommand())
+        {
+            command.CommandText = sql;
+            return command.ExecuteScalar();
+        }
+    }
+
+    [TestCase(false, 18f, 43f)]
+    [TestCase(true, 68f, 93f)]
+    public void PlayerDataLoadsIndependentMode98And99HistoryFromSqlite(bool hardcore, float arcade, float freePlay)
+    {
+        DBHelperTestHarness.Session database = DBHelperTestHarness.Create();
+        DBHelper.instance = database.Helper;
+        bool previousHardcore = GameOptions.hardcoreModeEnabled;
+        try
+        {
+            foreach (string values in new[] { "98,18,0", "99,43,0", "98,68,1", "99,93,1" })
+                Sql(database.Helper, "INSERT INTO HighScores (modeid, longestShot, hardcoreEnabled) VALUES (" + values + ")");
+            PlayerData data = SpawnPlayerDataWithoutAwake("data");
+            PlayerData.instance = data;
+            GameOptions.hardcoreModeEnabled = hardcore;
+            data.loadStatsFromDatabase();
+            var snapshot = (MatchHudPresenter.HighScoreSnapshot)
+                GameRulesAdapterMethod("ReadHighScoreSnapshotForHud").Invoke(null, null);
+            Assert.That(data.LongestShotMadeArcade, Is.EqualTo(arcade));
+            Assert.That(snapshot.LongestShotMadeArcade, Is.EqualTo(arcade));
+            Assert.That(snapshot.LongestShotMadeFreePlay, Is.EqualTo(freePlay));
+            Sql(database.Helper, "DELETE FROM HighScores WHERE modeid = 98");
+            data.loadStatsFromDatabase();
+            Assert.That(data.LongestShotMadeArcade, Is.Zero, "missing Arcade history cannot fall back to Free Play");
+            Assert.That(data.LongestShotMadeFreePlay, Is.EqualTo(freePlay));
+        }
+        finally
+        {
+            GameOptions.hardcoreModeEnabled = previousHardcore;
+            DBHelperTestHarness.Destroy(database);
+        }
+    }
+
+    [TestCase(Modes.ArcadeMode, 35f, 12f, 20f, true)]
+    [TestCase(Modes.ArcadeMode, 7f, 22f, 15f, false)]
+    [TestCase(Modes.ArcadeMode, 35f, 12f, 12f, false)]
+    [TestCase(Modes.FreePlay, 35f, 12f, 20f, true)]
+    [TestCase(Modes.FreePlay, 7f, 22f, 15f, false)]
+    [TestCase(Modes.FreePlay, 35f, 12f, 12f, false)]
+    [TestCase(0, 35f, 12f, 20f, true)]
+    public void ProductionHudAdaptersKeepAggregateTriggerAndIsolateHistory(
+        int mode, float arcade, float freePlay, float shot, bool writesAggregate)
+    {
+        DBHelperTestHarness.Session database = DBHelperTestHarness.Create();
+        DBHelper.instance = database.Helper;
+        try
+        {
+            Sql(database.Helper, "DELETE FROM AllTimeStats");
+            Sql(database.Helper, "INSERT INTO AllTimeStats (longestShot) VALUES (111)");
+            PlayerData data = SpawnPlayerDataWithoutAwake("data");
+            PlayerData.instance = data;
+            data.LongestShotMadeFreePlay = freePlay;
+            SetPrivateField(data, "_longestShotMadeArcade", arcade);
+            GameRules rules = Spawn("rules").AddComponent<GameRules>();
+            rules.GameModeId = mode;
+            BasketBall.instance = SpawnLiveBasketBall("ball");
+            MatchHudPresenter hud = MakePresenter();
+            SetPrivateField(hud, "gameModeId", mode);
+            GameStats stats = Spawn("stats").AddComponent<GameStats>();
+            stats.BindMatchRules(new ResolvedMatchRules());
+            stats.Stats.LongestShotMade = shot;
+            SetPrivateField(hud, "gameStats1", stats);
+            Text current = SpawnText("current"), high = SpawnText("high"), clock = SpawnText("clock");
+            SetPrivateField(hud, "displayCurrentScoreText", current);
+            SetPrivateField(hud, "displayHighScoreText", high);
+            hud.BindGameLevelManagerContext(() => new List<PlayerIdentifier>(), () => null, () => null, () => clock);
+            int reads = 0, writes = 0;
+            float history = mode == Modes.ArcadeMode ? arcade : freePlay;
+            hud.BindPersistenceContext(() =>
+            {
+                reads++;
+                return (MatchHudPresenter.HighScoreSnapshot)
+                    GameRulesAdapterMethod("ReadHighScoreSnapshotForHud").Invoke(null, null);
+            }, value =>
+            {
+                Assert.That(high.text, Does.StartWith("high score : " + history.ToString("0.00")),
+                    "presentation must precede persistence");
+                writes++;
+                PersistLongestShot(rules, value);
+            });
+
+            hud.SetScoreDisplayText();
+
+            Assert.That(reads, Is.EqualTo(1));
+            Assert.That(writes, Is.EqualTo(writesAggregate ? 1 : 0));
+            Assert.That(Convert.ToSingle(Sql(database.Helper, "SELECT longestShot FROM AllTimeStats")),
+                Is.EqualTo(writesAggregate ? shot : 111f), "preserve the legacy exact-value write, including lowering");
+            Assert.That(data.LongestShotMadeFreePlay,
+                Is.EqualTo(writesAggregate && mode != Modes.ArcadeMode ? shot : freePlay));
+            Assert.That(data.LongestShotMadeArcade, Is.EqualTo(arcade));
+            Assert.That(current.text, Does.StartWith("longest shot : " + shot.ToString("0.00")));
+            Assert.That(clock.text, Is.EqualTo(shot.ToString("0.00")));
+            Assert.That(Convert.ToInt32(Sql(database.Helper, "SELECT COUNT(*) FROM HighScores")), Is.Zero,
+                "in-play projection must never create durable mode history");
+            if (writesAggregate)
+            {
+                Sql(database.Helper, "UPDATE AllTimeStats SET longestShot = 222");
+                hud.SetScoreDisplayText();
+                Assert.That(Convert.ToSingle(Sql(database.Helper, "SELECT longestShot FROM AllTimeStats")),
+                    Is.EqualTo(222f), "an unchanged run record must not write again on the next HUD update");
+                stats.Stats.LongestShotMade = shot + 1f;
+                history = mode == Modes.ArcadeMode ? arcade : shot;
+                hud.SetScoreDisplayText();
+                Assert.That(Convert.ToSingle(Sql(database.Helper, "SELECT longestShot FROM AllTimeStats")),
+                    Is.EqualTo(shot + 1f), "the next improvement must still write");
+            }
+        }
+        finally { DBHelperTestHarness.Destroy(database); }
+    }
+
+    [Test]
+    public void MissingPersistenceContextIsSafe()
+    {
+        MatchHudPresenter hud = MakePresenter();
+        SetPrivateField(hud, "gameStats1", Spawn("stats").AddComponent<GameStats>());
+        Assert.DoesNotThrow(() => hud.SetScoreDisplayText());
+        PlayerData.instance = null;
+        DBHelper.instance = null;
+        GameRules rules = Spawn("rules").AddComponent<GameRules>();
+        Assert.DoesNotThrow(() => PersistLongestShot(rules, 20f));
     }
 
     // ==================== longest-shot persistence decision (FreePlay/ArcadeMode/mode 0) ====================

@@ -221,5 +221,5 @@ public class PlayerData : MonoBehaviour
     public GameStats CampaignGameStats { get => campaignGameStats; set => campaignGameStats = value; }
     public List<LevelSelected> LevelsList { get => levelsList; set => levelsList = value; }
     public float TotalPointsLockDown { get => _totalPointsLockDown; set => _totalPointsLockDown = value; }
-    //public float LongestShotMadeArcade { get => _longestShotMadeArcade; set => _longestShotMadeArcade = value; }
+    public float LongestShotMadeArcade => _longestShotMadeArcade;
 }
