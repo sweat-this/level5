@@ -23911,7 +23911,7 @@
                         {
                             "propertyPath": "modeDescription",
                             "propertyType": "String",
-                            "value": "after 3 consecutive made add 1 point 3s, 2 points for 4s, 3 points for 7s"
+                            "value": "Bonus always active: 3s +1, 4s +2, 7s +3. No bonus for 2s."
                         },
                         {
                             "propertyPath": "modeDisplayName",

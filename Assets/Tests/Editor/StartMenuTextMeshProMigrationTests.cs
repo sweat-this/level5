@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
 using Level5.Core.Match;
@@ -8,6 +9,7 @@ using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using UnityEngine.TestTools;
 using UnityEngine.UI;
 using Object = UnityEngine.Object;
 
@@ -81,6 +83,7 @@ public class StartMenuTextMeshProMigrationTests
     }
 
     [TestCase(14)]
+    [TestCase(15)]
     [TestCase(16)]
     [TestCase(17)]
     [TestCase(18)]
@@ -135,6 +138,16 @@ public class StartMenuTextMeshProMigrationTests
             MatchCatalogs.Override(savedModes, savedLevels);
             Object.DestroyImmediate(mode);
         }
+    }
+
+    [UnityTest]
+    public IEnumerator InThePocketDescriptionIsPresentedWhilePlaying()
+    {
+        // Exercise the real presenter and authored TMP layout during Play Mode in a preview
+        // scene. Full menu startup would also start profile/database services unrelated to copy.
+        yield return new EnterPlayMode();
+        CountdownDescriptionIsPresentedInTheAuthoredStartMenu(15);
+        yield return new ExitPlayMode();
     }
 
     // ---------------------------------------------------------------------------------------------

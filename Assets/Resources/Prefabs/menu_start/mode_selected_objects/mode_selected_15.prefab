@@ -47,8 +47,7 @@ MonoBehaviour:
   modeId: 15
   modeDisplayName: In the Pocket
   modeObjectName: mode_15
-  modeDescription: after 3 consecutive made add 1 point 3s, 2 points for 4s, 3 points
-    for 7s
+  modeDescription: 'Bonus always active: 3s +1, 4s +2, 7s +3. No bonus for 2s.'
   modeRequiresCounter: 0
   modeRequiresCountDown: 1
   modeRequiresShotMarkers3s: 0

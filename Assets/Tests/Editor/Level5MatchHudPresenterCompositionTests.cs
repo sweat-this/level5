@@ -247,6 +247,33 @@ public class Level5MatchHudPresenterCompositionTests
 
     // ==================== updatePlayerScore() forwarding ====================
 
+    [TestCase(0, 0, "In The Pocket")]
+    [TestCase(0, 1, "In The Pocket")]
+    [TestCase(3, 1, "")]
+    [TestCase(3, 3, "In The Pocket")]
+    public void InThePocketIndicatorKeepsItsIndependentHudThreshold(int threshold, int streak, string message)
+    {
+        MatchHudPresenter hud = MakePresenter();
+        PlayerIdentifier player = MakePlayer("player1", 0, "Blood");
+        player.gameStats.Stats.ConsecutiveShotsMade = streak;
+        BasketBall.instance = SpawnLiveBasketBall("ball");
+        Text current = SpawnText("current"), high = SpawnText("high");
+        Text clock = SpawnText("clock"), other = SpawnText("other");
+        SetPrivateField(hud, "displayCurrentScoreText", current);
+        SetPrivateField(hud, "displayHighScoreText", high);
+        SetPrivateField(hud, "displayOtherMessageText", other);
+        hud.BindGameLevelManagerContext(() => new List<PlayerIdentifier> { player },
+            () => player, () => player, () => clock);
+        hud.BindPersistenceContext(() => MakeSnapshot(totalPointsBonus: 42f), null);
+        hud.SetMatchContext(Modes.InThePocket, player.gameStats, new ResolvedMatchRules(), threshold);
+
+        hud.SetScoreDisplayText();
+
+        Assert.That(other.text, Is.EqualTo(message));
+        Assert.That(clock.text, Is.EqualTo("7"));
+        Assert.That(high.text, Is.EqualTo("high score : 42"));
+    }
+
     [Test]
     public void UpdatePlayerScore_ForwardsThroughSortedGameStatsListReaderAndScoreClockTextReader()
     {
