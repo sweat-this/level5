@@ -22709,7 +22709,7 @@
                         {
                             "propertyPath": "highScoreField",
                             "propertyType": "String",
-                            "value": "maxShotMade"
+                            "value": "sevenMade"
                         },
                         {
                             "propertyPath": "isBattleRoyal",
@@ -22843,7 +22843,7 @@
                         {
                             "propertyPath": "highScoreField",
                             "propertyType": "String",
-                            "value": "maxShotMade"
+                            "value": "threeMade"
                         },
                         {
                             "propertyPath": "isBattleRoyal",
@@ -22977,7 +22977,7 @@
                         {
                             "propertyPath": "highScoreField",
                             "propertyType": "String",
-                            "value": "maxShotMade"
+                            "value": "fourMade"
                         },
                         {
                             "propertyPath": "isBattleRoyal",

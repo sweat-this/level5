@@ -1886,8 +1886,15 @@ public class DBHelper : MonoBehaviour
                     {
                         while (reader.Read())
                         {
+                            // Historical range counts may be unknown. Keep the row and SQL order,
+                            // but do not invent a count from aggregate makes (or report zero).
+                            if ((field == "threeMade" || field == "fourMade" || field == "sevenMade")
+                                && reader.IsDBNull(0))
+                            {
+                                score = "";
+                            }
                             // game modes that require float values
-                            if ((modeid > 4 && modeid < 14) || modeid == 25 || modeid == 99)
+                            else if ((modeid > 4 && modeid < 14) || modeid == 25 || modeid == 99)
                             {
                                 score = reader.GetFloat(0).ToString();
                             }

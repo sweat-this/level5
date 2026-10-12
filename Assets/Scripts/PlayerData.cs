@@ -130,9 +130,9 @@ public class PlayerData : MonoBehaviour
             TotalPointsLockDown = DBHelper.instance.getIntValueHighScoreFromTableByFieldAndModeId("HighScores", "totalPoints", 27, "DESC", hardcoreValue);
 
             TotalPointsBonus = DBHelper.instance.getIntValueHighScoreFromTableByFieldAndModeId("HighScores", "totalPoints", 15, "DESC", hardcoreValue);
-            _threePointerMade = DBHelper.instance.getIntValueHighScoreFromTableByFieldAndModeId("HighScores", "maxShotMade", 2, "DESC", hardcoreValue);
-            _fourPointerMade = DBHelper.instance.getIntValueHighScoreFromTableByFieldAndModeId("HighScores", "maxShotMade", 3, "DESC", hardcoreValue);
-            _sevenPointerMade = DBHelper.instance.getIntValueHighScoreFromTableByFieldAndModeId("HighScores", "maxShotMade", 4, "DESC", hardcoreValue);
+            _threePointerMade = DBHelper.instance.getIntValueHighScoreFromTableByFieldAndModeId("HighScores", "threeMade", 2, "DESC", hardcoreValue);
+            _fourPointerMade = DBHelper.instance.getIntValueHighScoreFromTableByFieldAndModeId("HighScores", "fourMade", 3, "DESC", hardcoreValue);
+            _sevenPointerMade = DBHelper.instance.getIntValueHighScoreFromTableByFieldAndModeId("HighScores", "sevenMade", 4, "DESC", hardcoreValue);
 
             _longestShotMadeFreePlay = DBHelper.instance.getFloatValueHighScoreFromTableByFieldAndModeId("HighScores", "longestShot", 99, "DESC", hardcoreValue);
             _longestShotMadeArcade = DBHelper.instance.getFloatValueHighScoreFromTableByFieldAndModeId("HighScores", "longestShot", 98, "DESC", hardcoreValue);

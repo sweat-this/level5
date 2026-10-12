@@ -849,34 +849,14 @@ public class StatsManager : MonoBehaviour
             string field = modesList[currentModeSelectedIndex].modeSelectedHighScoreField;
             int modeId = modesList[currentModeSelectedIndex].modeSelectedId;
 
-            DBHelper.instance.DatabaseLocked = true;
-            try
-            {
-                // get new list of scores based on currently selected game mode
-                highScoreRowsDataList
-                    = DBHelper.instance.getListOfHighScoreRowsFromTableByModeIdAndField(field,
-                    modeId,
-                    hardcoreEnabled,
-                    trafficEnabled,
-                    enemiesEnabled,
-                    sniperEnabled,
-                    localResultsPageNumber);
+            // DBHelper owns its lock; pre-acquiring it makes both queries return no results.
+            highScoreRowsDataList = DBHelper.instance.getListOfHighScoreRowsFromTableByModeIdAndField(
+                field, modeId, hardcoreEnabled, trafficEnabled, enemiesEnabled, sniperEnabled,
+                localResultsPageNumber);
 
-                // get # of results for pageination display
-                // same four filters the rows query above used, so the page count describes the
-                // set actually being paged
-                numLocalResults = DBHelper.instance.getNumberOfResults(
-                    field,
-                    modeId,
-                    hardcoreEnabled,
-                    trafficEnabled,
-                    enemiesEnabled,
-                    sniperEnabled);
-            }
-            finally
-            {
-                DBHelper.instance.DatabaseLocked = false;
-            }
+            // Count the same mode/filter scope as the rows being displayed.
+            numLocalResults = DBHelper.instance.getNumberOfResults(
+                field, modeId, hardcoreEnabled, trafficEnabled, enemiesEnabled, sniperEnabled);
 
             if (highScoreRowsDataList == null)
             {
