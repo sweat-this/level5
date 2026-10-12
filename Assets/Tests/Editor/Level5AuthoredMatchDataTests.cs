@@ -138,6 +138,89 @@ public class Level5AuthoredMatchDataTests
         }
     }
 
+    [TestCase(16, 70f, "70 seconds to get a high score.", ShotMarkerRequirement.ThreePoint,
+        ShotRule.ThreePoint, true)]
+    [TestCase(17, 75f, "75 seconds to get a high score.", ShotMarkerRequirement.FourPoint,
+        ShotRule.FourPoint, false)]
+    [TestCase(18, 140f, "140 seconds to get a high score.",
+        ShotMarkerRequirement.ThreePoint | ShotMarkerRequirement.FourPoint,
+        ShotRule.ThreePoint | ShotRule.FourPoint | ShotRule.AllRanges, false)]
+    [TestCase(24, 90f, "90 seconds to get a high score.", ShotMarkerRequirement.SevenPoint,
+        ShotRule.SevenPoint, false)]
+    public void AuthoredContestDescriptionsPreserveExistingRulesWithoutPromisingATimeBonus(
+        int id, float seconds, string description, ShotMarkerRequirement markers,
+        ShotRule shotRule, bool allowsCpuShooters)
+    {
+        GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(
+            $"Assets/Resources/Prefabs/menu_start/mode_selected_objects/mode_selected_{id:D2}.prefab");
+        Assert.That(prefab, Is.Not.Null);
+        StartScreenModeSelected source = prefab.GetComponent<StartScreenModeSelected>();
+        Assert.That(source, Is.Not.Null);
+        Assert.That(source.ModeId, Is.EqualTo(id));
+        Assert.That(source.ModeDescription, Is.EqualTo(description));
+        Assert.That(source.ModeDescription, Does.Not.Contain("Remaining time").IgnoreCase);
+        Assert.That(source.ModeDescription, Does.Not.Contain("bonus").IgnoreCase);
+        Assert.That(source.CustomTimer, Is.EqualTo(seconds));
+        Assert.That(source.ModeRequiresCountDown, Is.True);
+        Assert.That(source.ModeRequiresCounter, Is.False);
+        Assert.That(source.ModeRequiresShotMarkers3S,
+            Is.EqualTo((markers & ShotMarkerRequirement.ThreePoint) != 0));
+        Assert.That(source.ModeRequiresShotMarkers4S,
+            Is.EqualTo((markers & ShotMarkerRequirement.FourPoint) != 0));
+        Assert.That(source.ModeRequiresShotMarkers7s,
+            Is.EqualTo((markers & ShotMarkerRequirement.SevenPoint) != 0));
+        Assert.That(source.GameModeThreePointContest, Is.EqualTo(id == 16 || id == 18));
+        Assert.That(source.GameModeFourPointContest, Is.EqualTo(id == 17 || id == 18));
+        Assert.That(source.GameModeSevenPointContest, Is.EqualTo(id == 24));
+        Assert.That(source.GameModeAllPointContest, Is.EqualTo(id == 18));
+        Assert.That(source.GameModeAllowsCpuShooters, Is.EqualTo(allowsCpuShooters));
+        Assert.That(source.GameModeRequiresBasketball, Is.True);
+        Assert.That(source.ModeRequiresMoneyBall, Is.False);
+        Assert.That(source.ModeRequiresConsecutiveShots, Is.False);
+        Assert.That(source.GameModeRequiresPlayerSurvive, Is.False);
+        Assert.That(source.HighScoreField, Is.EqualTo("totalPoints"));
+
+        GameModeDefinition mode = GameModeDefinitionFactory.Create(source);
+        LevelDefinition arena = LevelDefinitionFactory.Create(authoredLevels.Find(level => level.LevelId == 1));
+        try
+        {
+            ResolvedMatchRules rules = MatchConfigurationBuilder.Resolve(
+                mode, arena, TestDefinitions.SoloRoster(), MatchModifiers.Default);
+            Assert.That(mode.RawModeId, Is.EqualTo(id));
+            Assert.That(mode.Description, Is.EqualTo(description));
+            Assert.That(mode.CustomTimerSeconds, Is.EqualTo(seconds));
+            Assert.That(mode.MinPlayers, Is.EqualTo(1));
+            Assert.That(mode.MaxPlayers, Is.EqualTo(PlayerRoster.MaxSlots));
+            Assert.That(mode.RequiresCpuOpponent, Is.False);
+            Assert.That(mode.AddsImplicitDefender, Is.False);
+            Assert.That(mode.AllowsCpuShooters, Is.EqualTo(allowsCpuShooters));
+            Assert.That(mode.ShotMarkers, Is.EqualTo(markers));
+            Assert.That(mode.ShotRule, Is.EqualTo(shotRule));
+            Assert.That(rules.ClockMode, Is.EqualTo(MatchClockMode.Countdown));
+            Assert.That(rules.CustomTimerSeconds, Is.EqualTo(seconds));
+            Assert.That(rules.MatchLengthSeconds, Is.EqualTo(seconds));
+            Assert.That(rules.Objective, Is.EqualTo(MatchObjective.ContestCompletion));
+            Assert.That(rules.ShotMarkers, Is.EqualTo(markers));
+            Assert.That(rules.ShotRule, Is.EqualTo(shotRule));
+            Assert.That(rules.IsThreePointContest, Is.EqualTo(source.GameModeThreePointContest));
+            Assert.That(rules.IsFourPointContest, Is.EqualTo(source.GameModeFourPointContest));
+            Assert.That(rules.IsSevenPointContest, Is.EqualTo(source.GameModeSevenPointContest));
+            Assert.That(rules.IsAllPointContest, Is.EqualTo(source.GameModeAllPointContest));
+            Assert.That(rules.AllowsCpuShooters, Is.EqualTo(allowsCpuShooters));
+            Assert.That(rules.BasketballCount, Is.EqualTo(1));
+            Assert.That(rules.AddsImplicitDefender, Is.False);
+            Assert.That(rules.RequiresBasketball, Is.True);
+            Assert.That(rules.RequiresMoneyBall, Is.False);
+            Assert.That(rules.RequiresConsecutiveShots, Is.False);
+            Assert.That(rules.RequiresPlayerSurvive, Is.False);
+        }
+        finally
+        {
+            Object.DestroyImmediate(mode);
+            Object.DestroyImmediate(arena);
+        }
+    }
+
     [Test]
     public void EveryAuthoredModeKeepsItsExistingStartingClock()
     {

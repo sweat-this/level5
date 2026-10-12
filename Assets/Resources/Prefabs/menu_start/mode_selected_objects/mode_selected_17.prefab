@@ -47,8 +47,7 @@ MonoBehaviour:
   modeId: 17
   modeDisplayName: 4 point contest
   modeObjectName: mode_18
-  modeDescription: 75 seconds to get a high score. Remaining time added as bonus
-    points
+  modeDescription: 75 seconds to get a high score.
   modeRequiresCounter: 0
   modeRequiresCountDown: 1
   modeRequiresShotMarkers3s: 0

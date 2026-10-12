@@ -24045,7 +24045,7 @@
                         {
                             "propertyPath": "modeDescription",
                             "propertyType": "String",
-                            "value": "70 seconds to get a high score. Remaining time added as bonus points"
+                            "value": "70 seconds to get a high score."
                         },
                         {
                             "propertyPath": "modeDisplayName",
@@ -24179,7 +24179,7 @@
                         {
                             "propertyPath": "modeDescription",
                             "propertyType": "String",
-                            "value": "75 seconds to get a high score. Remaining time added as bonus points"
+                            "value": "75 seconds to get a high score."
                         },
                         {
                             "propertyPath": "modeDisplayName",
@@ -24313,7 +24313,7 @@
                         {
                             "propertyPath": "modeDescription",
                             "propertyType": "String",
-                            "value": "140 seconds to get a high score.Remaining time added as bonus points"
+                            "value": "140 seconds to get a high score."
                         },
                         {
                             "propertyPath": "modeDisplayName",
@@ -25117,7 +25117,7 @@
                         {
                             "propertyPath": "modeDescription",
                             "propertyType": "String",
-                            "value": "90 seconds to get a high score. Remaining time added as bonus points"
+                            "value": "90 seconds to get a high score."
                         },
                         {
                             "propertyPath": "modeDisplayName",
