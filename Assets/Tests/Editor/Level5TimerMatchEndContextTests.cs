@@ -229,6 +229,108 @@ public class Level5TimerMatchEndContextTests
         Assert.That(reported.Value.Detail, Is.Not.Empty, "the consecutive-shots reason carries a detail string, unlike the plain TimeExpired reason.");
     }
 
+    private PlayerIdentifier MakeContestParticipant(bool cpu)
+    {
+        GameObject go = Spawn(cpu ? "contest-cpu" : "contest-human");
+        PlayerIdentifier participant = go.AddComponent<PlayerIdentifier>();
+        participant.isCpu = cpu;
+        participant.basketBallState = go.AddComponent<BasketBallState>();
+        participant.gameStats = go.AddComponent<GameStats>();
+        if (!cpu)
+        {
+            participant.playerController = go.AddComponent<PlayerController>();
+            participant.playerController.Grounded = true;
+        }
+        return participant;
+    }
+
+    private static void SetReleaseTime(BasketBallState state, double time)
+    {
+        typeof(BasketBallState).GetProperty(nameof(BasketBallState.ShotReleasedAt))
+            .GetSetMethod(true).Invoke(state, new object[] { time });
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Mode16_PreZeroFlightKeepsItsOwnerEligibleUntilItResolves(bool cpuShot)
+    {
+        Timer timer = MakeTimer();
+        ArrangeToReachReportTimeExpired(timer);
+        PlayerIdentifier human = MakeContestParticipant(false);
+        PlayerIdentifier cpu = MakeContestParticipant(true);
+        BasketBallState flight = cpuShot ? cpu.basketBallState : human.basketBallState;
+        SetReleaseTime(flight, Time.timeAsDouble - 2d);
+        // A rim collision clears Thrown; it must not remove the pending flight's grace.
+        flight.Thrown = false;
+        int endings = 0;
+        timer.BindMatchEndContext(() => false, () => false, () => human, _ => endings++);
+        timer.BindFinalShotParticipants(new[] { human, cpu });
+
+        InvokeUpdate(timer);
+        Assert.That(endings, Is.Zero);
+        SetReleaseTime(flight, double.PositiveInfinity);
+        InvokeUpdate(timer);
+        Assert.That(endings, Is.EqualTo(1));
+    }
+
+    [Test]
+    public void Mode16_WaitsForAllEligibleFlightsButNewAttemptsCannotRenewGrace()
+    {
+        Timer timer = MakeTimer();
+        ArrangeToReachReportTimeExpired(timer);
+        PlayerIdentifier human = MakeContestParticipant(false);
+        PlayerIdentifier cpu = MakeContestParticipant(true);
+        SetReleaseTime(human.basketBallState, Time.timeAsDouble - 2d);
+        SetReleaseTime(cpu.basketBallState, Time.timeAsDouble - 2d);
+        int endings = 0;
+        timer.BindMatchEndContext(() => false, () => false, () => human, _ => endings++);
+        timer.BindFinalShotParticipants(new[] { human, cpu });
+        InvokeUpdate(timer);
+        Assert.That(endings, Is.Zero);
+
+        // The human's new post-zero shot does not extend the CPU's original grace.
+        SetReleaseTime(human.basketBallState, Time.timeAsDouble);
+        human.basketBallState.Thrown = true;
+        InvokeUpdate(timer);
+        Assert.That(endings, Is.Zero);
+        SetReleaseTime(cpu.basketBallState, double.PositiveInfinity);
+        InvokeUpdate(timer);
+        Assert.That(endings, Is.EqualTo(1));
+    }
+
+    [TestCase(-0.01d, false)]
+    [TestCase(0d, true)]
+    [TestCase(0.01d, true)]
+    [TestCase(double.PositiveInfinity, true)]
+    public void Mode16_OnlyReleasesStrictlyBeforeTheDeadlineReceiveGrace(double offset, bool expires)
+    {
+        Timer timer = MakeTimer();
+        ArrangeToReachReportTimeExpired(timer);
+        PlayerIdentifier human = MakeContestParticipant(false);
+        PlayerIdentifier cpu = MakeContestParticipant(true);
+        int endings = 0;
+        timer.BindMatchEndContext(() => false, () => false, () => human, _ => endings++);
+        timer.BindFinalShotParticipants(new[] { human, cpu });
+        SetPrivateField(timer, "finalShotDeadline", (double?)100d);
+        SetReleaseTime(cpu.basketBallState, 100d + offset);
+        InvokeUpdate(timer);
+        Assert.That(endings, Is.EqualTo(expires ? 1 : 0));
+    }
+
+    [Test]
+    public void OtherTimedModesRetainPrimaryHumanTimeoutPredicate()
+    {
+        Timer timer = MakeTimer();
+        ArrangeToReachReportTimeExpired(timer);
+        PlayerIdentifier human = MakeContestParticipant(false);
+        PlayerIdentifier cpu = MakeContestParticipant(true);
+        SetReleaseTime(cpu.basketBallState, Time.timeAsDouble - 2d);
+        bool ended = false;
+        timer.BindMatchEndContext(() => false, () => false, () => human, _ => ended = true);
+        InvokeUpdate(timer);
+        Assert.That(ended, Is.True, "no mode-16 binding means the existing predicate is unchanged");
+    }
+
     // ================ production adapters: GameLevelManager's Timer composition ================
 
     private static MethodInfo AdapterMethod(string name)

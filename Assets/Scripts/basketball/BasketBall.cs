@@ -348,6 +348,7 @@ public class BasketBall : MonoBehaviour, IBasketballRuntime
             basketBallState.Locked = false;
             basketBallState.Thrown = false;
             audioSource.PlayOneShot(SFXBB.instance.basketballBounce);
+            basketBallState.EndShotFlight();
         }
         // collision : basketball + fence
         if (gameObject.CompareTag("basketball") && other.gameObject.CompareTag("fence")
@@ -357,6 +358,7 @@ public class BasketBall : MonoBehaviour, IBasketballRuntime
             basketBallState.CanPullBall = true;
             basketBallState.Thrown = false;
             basketBallState.Locked = false;
+            basketBallState.EndShotFlight();
         }
     }
 
@@ -377,6 +379,7 @@ public class BasketBall : MonoBehaviour, IBasketballRuntime
         {
             actor.HasBasketball = true;
             basketBallState.Thrown = false;
+            basketBallState.EndShotFlight();
         }
     }
 
@@ -479,6 +482,7 @@ public class BasketBall : MonoBehaviour, IBasketballRuntime
         // BasketballShotPipeline.ApplyLaunchResult - see its doc comment for what stays role-specific
         // (this critical-success gate above, and the telemetry call below).
         BasketballShotPipeline.ApplyLaunchResult(actor, rigidbody, computation);
+        basketBallState.RecordShotRelease();
 
         // AUD-010 Phase 2b0: telemetry is optional from basketball's own perspective, so a missing
         // binding (no analytics call bound, e.g. in a test double) must not affect launch behavior.

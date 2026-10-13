@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using Level5.Core.Match;
 using UnityEngine;
 using UnityEngine.UI;
@@ -36,6 +37,18 @@ public class Timer : MonoBehaviour
     private Func<bool> gameModeRequiresConsecutiveShotsReader;
     private Func<PlayerIdentifier> primaryPlayerReader;
     private Action<MatchEndReason> requestMatchEnd;
+    private IReadOnlyList<PlayerIdentifier> finalShotParticipants;
+    private double? finalShotDeadline;
+
+    /// <summary>
+    /// Mode 16 composition supplies the existing spawned roster. Other timed modes retain their
+    /// primary-human predicate. The timer owns no participant or basketball state.
+    /// </summary>
+    public void BindFinalShotParticipants(IReadOnlyList<PlayerIdentifier> participants)
+    {
+        finalShotParticipants = participants;
+        finalShotDeadline = null;
+    }
 
     /// <summary>
     /// AUD-012 Phase 2b Slice 60: replaces this class's former direct <c>GameRules.instance</c>/
@@ -264,6 +277,29 @@ public class Timer : MonoBehaviour
             player.basketBallState.Thrown,
             player.playerController.Grounded,
             player.gameStats.Stats.ConsecutiveShotsMade);
+
+        if (finalShotParticipants != null)
+        {
+            // Both reads use scaled game time. Derive the deadline from the displayed countdown,
+            // so release eligibility does not depend on Timer/ball Update ordering in this frame.
+            finalShotDeadline ??= Time.timeAsDouble + timeRemaining;
+            double deadline = finalShotDeadline.Value;
+            bool pendingFlight = false;
+            for (int i = 0; i < finalShotParticipants.Count; i++)
+            {
+                PlayerIdentifier participant = finalShotParticipants[i];
+                if (participant != null && participant.basketBallState != null
+                    && participant.basketBallState.ShotReleasedAt < deadline)
+                {
+                    pendingFlight = true;
+                    break;
+                }
+            }
+
+            // Preserve the primary human's existing landing allowance, but a new post-zero
+            // attempt cannot extend it by setting Thrown again.
+            expired = !pendingFlight && player.playerController.Grounded;
+        }
 
         if (expired)
         {

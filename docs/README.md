@@ -26,6 +26,8 @@ Feature and system docs:
 
 Decision records and audits:
 
+- [Mode 16 CPU participation and countdown grace](gp-001-mode16-cpu-timeout-audit.md) - current-dev audit, owner-approved human/CPU pre-zero shot grace, focused correction and runtime evidence; shared-course policy and late-callback finality remain unresolved.
+
 - [Battle Royal survival and saved-stop policy](gp-001-battle-royal-semantics-audit.md) - GP-001: approved endless survival, aligned objective metadata, Save & Main Menu / Save & Quit, ownership audit and regression evidence.
 
 - [Arcade manual exit persistence policy audit](gp-001-arcade-manual-exit-policy-audit.md) - GP-001: approved abandonment of unfinished Arcade runs, conforming existing behavior, two review passes, and focused validation.
