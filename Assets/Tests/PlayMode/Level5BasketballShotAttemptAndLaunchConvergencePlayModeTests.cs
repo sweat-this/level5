@@ -281,6 +281,8 @@ public class Level5BasketballShotAttemptAndLaunchConvergencePlayModeTests
         yield return null;
 
         GameStats stats = ball.GameStats;
+        double beforeRelease = Time.timeAsDouble;
+        Assert.That(ball.BasketBallState.ShotReleasedAt, Is.EqualTo(double.PositiveInfinity));
         ball.shootBasketBall(two: true, three: false, four: false, seven: false);
 
         for (int i = 0; i < 10 && actor.EndShootCycleCallCount == 0; i++)
@@ -293,6 +295,7 @@ public class Level5BasketballShotAttemptAndLaunchConvergencePlayModeTests
         Assert.That(ball.BasketBallState.TwoAttempt, Is.True);
         Assert.That(actor.EndShootCycleCallCount, Is.EqualTo(1),
             "ApplyLaunchResult must have run once the real coroutine reached Launch()");
+        Assert.That(ball.BasketBallState.ShotReleasedAt, Is.InRange(beforeRelease, Time.timeAsDouble));
         Assert.IsFalse(actor.HasBasketball, "the shared launch application must clear HasBasketball");
         Assert.That(ball.Rigidbody.linearVelocity, Is.Not.EqualTo(Vector3.zero),
             "the shared launch application must apply the computed launch velocity");
@@ -307,6 +310,8 @@ public class Level5BasketballShotAttemptAndLaunchConvergencePlayModeTests
         yield return null;
 
         GameStats stats = ball.GameStats;
+        double beforeRelease = Time.timeAsDouble;
+        Assert.That(ball.BasketBallState.ShotReleasedAt, Is.EqualTo(double.PositiveInfinity));
         ball.shootBasketBall(two: false, three: true, four: false, seven: false);
 
         for (int i = 0; i < 10 && actor.EndShootCycleCallCount == 0; i++)
@@ -319,6 +324,7 @@ public class Level5BasketballShotAttemptAndLaunchConvergencePlayModeTests
         Assert.That(ball.BasketBallState.ThreeAttempt, Is.True);
         Assert.That(actor.EndShootCycleCallCount, Is.EqualTo(1),
             "ApplyLaunchResult must have run once the real coroutine reached Launch()");
+        Assert.That(ball.BasketBallState.ShotReleasedAt, Is.InRange(beforeRelease, Time.timeAsDouble));
         Assert.IsFalse(actor.HasBasketball, "the shared launch application must clear HasBasketball");
 
         Rigidbody rigidbody = RealScenePlayModeTestSupport.GetField<Rigidbody>(ball, "rigidbody");

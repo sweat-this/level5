@@ -281,6 +281,7 @@ public class BasketBallAuto : MonoBehaviour, IBasketballRuntime
             basketBallState.Locked = false;
             basketBallState.Thrown = false;
             audioSource.PlayOneShot(SFXBB.instance.basketballBounce);
+            basketBallState.EndShotFlight();
         }
         // collision : basketball + fence
         if (gameObject.CompareTag("basketballAuto") && other.gameObject.CompareTag("fence")
@@ -290,6 +291,7 @@ public class BasketBallAuto : MonoBehaviour, IBasketballRuntime
             basketBallState.CanPullBall = true;
             basketBallState.Thrown = false;
             basketBallState.Locked = false;
+            basketBallState.EndShotFlight();
         }
     }
 
@@ -310,6 +312,7 @@ public class BasketBallAuto : MonoBehaviour, IBasketballRuntime
         {
             actor.HasBasketball = true;
             basketBallState.Thrown = false;
+            basketBallState.EndShotFlight();
         }
     }
 
@@ -409,6 +412,7 @@ public class BasketBallAuto : MonoBehaviour, IBasketballRuntime
         // BasketballShotPipeline.ApplyLaunchResult - see its doc comment for what stays role-specific
         // (this critical-success gate above, which unlike BasketBall's has no !isCpu condition).
         BasketballShotPipeline.ApplyLaunchResult(actor, rigidbody, computation);
+        basketBallState.RecordShotRelease();
     }
 
     // ============================ Functions and Properties ==========================================

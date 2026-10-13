@@ -200,9 +200,27 @@ public class BasketBallState : MonoBehaviour
     /// </summary>
     public ulong ShotAttemptGeneration { get; private set; }
 
+    /// <summary>
+    /// Actual release time for the current ball flight, independent of the legacy Thrown flag
+    /// (which also clears on a rim collision). Infinity means no released flight is pending.
+    /// Runtime-only; mode 16's timer uses this to exclude releases at or after zero.
+    /// </summary>
+    public double ShotReleasedAt { get; private set; } = double.PositiveInfinity;
+
+    internal void RecordShotRelease()
+    {
+        ShotReleasedAt = Time.timeAsDouble;
+    }
+
+    internal void EndShotFlight()
+    {
+        ShotReleasedAt = double.PositiveInfinity;
+    }
+
     internal void BeginShotAttempt()
     {
         ShotAttemptGeneration++;
+        EndShotFlight();
         ResetShotAttemptSnapshot();
     }
 

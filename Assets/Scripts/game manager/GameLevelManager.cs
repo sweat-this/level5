@@ -679,6 +679,10 @@ public class GameLevelManager : MonoBehaviour, IGroundHeightProvider, IPlayerMat
                 ReadGameModeRequiresConsecutiveShotsForTimer,
                 ReadPrimaryPlayerForTimer,
                 RequestMatchEndForTimer);
+            if (_modeId == Level5.Core.Match.GameModeId.ThreePointContest)
+            {
+                Timer.instance.BindFinalShotParticipants(registry.Participants);
+            }
         }
 
         // AUD-012 Phase 2b Slice 63: replaces Pause's former direct GameLevelManager.instance/

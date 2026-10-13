@@ -342,6 +342,23 @@ dependency picture - see the architecture audit/remediation documents for that b
 
 ## What a made shot is worth
 
+### Mode 16 countdown grace
+
+Mode 16's approved policy is that human and CPU shots released before zero receive timeout grace.
+`GameLevelManager.Start` binds only this mode's timer to the existing spawned participant registry.
+Each ball's `BasketBallState.ShotReleasedAt` records actual Rigidbody release in `Launch`, after
+meter wind-up. Ground/fence contact or retrieval clears that flight; rim contact retains it. A new
+attempt clears the previous flight, and its later release receives its own timestamp.
+
+At the first zero evaluation, `Timer` freezes the deadline from scaled game time plus the remaining
+countdown. Only release times strictly before that deadline retain grace, so post-zero attempts
+cannot renew it. The primary human's existing landing allowance remains. Other timed modes retain
+the primary-human `Thrown`/grounded predicate. This does not override an already accepted ending
+or change the shared marker course. See the [mode-16 audit](gp-001-mode16-cpu-timeout-audit.md) for
+runtime evidence, the unresolved course policy and the separate late-callback scoring risk.
+
+### Scoring rules
+
 `Level5.Core.ShotScoring.Score` is the whole of it. There are three scoring worlds and a made shot is
 in exactly one:
 

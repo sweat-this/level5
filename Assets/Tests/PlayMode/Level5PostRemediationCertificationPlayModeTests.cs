@@ -356,6 +356,197 @@ public class Level5PostRemediationCertificationPlayModeTests
         yield return ExpireCountdown();
     }
 
+    private BasketBallShotMarker[] FreezeContestForBoundary()
+    {
+        human.StopAllCoroutines();
+        human.enabled = false;
+        human.Grounded = true;
+        human.InAir = false;
+        ((IShooterActor)human).HasBasketball = false;
+        human.GetComponent<Rigidbody>().isKinematic = true;
+        foreach (IBasketballRuntime ball in Object.FindObjectsByType<MonoBehaviour>(FindObjectsInactive.Exclude)
+            .OfType<IBasketballRuntime>())
+        {
+            ((MonoBehaviour)ball).StopAllCoroutines();
+            ((MonoBehaviour)ball).enabled = false;
+            ((Component)ball).GetComponent<Rigidbody>().isKinematic = true;
+            ball.State.Thrown = false;
+            ball.State.InAir = false;
+            if (ball.IsCpu)
+            {
+                var actor = (AutoPlayerController)ball.Actor;
+                actor.StopAllCoroutines();
+                actor.enabled = false;
+                actor.Grounded = true;
+                actor.InAir = false;
+                ball.Actor.HasBasketball = false;
+                actor.GetComponent<Rigidbody>().isKinematic = true;
+            }
+        }
+        Timer.instance.enabled = false;
+        BasketBallShotMarker[] markers = Object.FindObjectsByType<BasketBallShotMarker>(FindObjectsInactive.Exclude)
+            .Where(m => m.isActiveAndEnabled && m.MarkerEnabled).ToArray();
+        foreach (var marker in markers) marker.enabled = false;
+        return markers;
+    }
+
+    private static void RecordControlledRelease(IBasketballRuntime ball, BasketBallShotMarker marker)
+    {
+        ball.State.EnterShotMarker(marker);
+        BasketballShotPipeline.ApplyShotAttempt(ball, false, true, false, false);
+        BasketballShotPipeline.ApplyMarkerAndMoneyBallOnShoot(ball, (IMoneyBallState)RealScenePlayModeTestSupport.ResolveRuntimeGameRulesInstance(), ActiveMatch.Configuration.Rules);
+        typeof(BasketBallState).GetMethod("RecordShotRelease", BindingFlags.Instance | BindingFlags.NonPublic)
+            .Invoke(ball.State, null);
+        ball.State.Thrown = true;
+    }
+
+    private static void TickContestAtZero()
+    {
+        RealScenePlayModeTestSupport.SetField(Timer.instance, "currentTime", Timer.instance.TimeStart - Time.deltaTime);
+        Timer.instance.SendMessage("Update");
+        TestContext.WriteLine($"BOUNDARY frame={Time.frameCount} phase={MatchController.instance.Phase} cause={MatchController.instance.EndReason.Cause}");
+    }
+
+    private IEnumerator VerifyContestPersistence(int expectedPoints, MatchEndCause cause)
+    {
+        yield return Complete(cause);
+        string resultId = database.ReadOnlyScoreId(16);
+        Assert.That(resultId, Is.Not.Empty);
+        float frozenDuration = stats.Stats.TimePlayed;
+        using (IDbCommand command = ((IDbConnection)typeof(LocalProfileTestDatabase)
+            .GetProperty("Connection", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(database)).CreateCommand())
+        {
+            command.CommandText = "SELECT totalpoints,time FROM HighScores WHERE modeid=16";
+            using (IDataReader reader = command.ExecuteReader())
+            {
+                Assert.That(reader.Read(), Is.True);
+                Assert.That(Convert.ToInt32(reader.GetValue(0)), Is.EqualTo(expectedPoints));
+                Assert.That(Convert.ToSingle(reader.GetValue(1)), Is.EqualTo(frozenDuration).Within(0.0001f));
+            }
+        }
+        Assert.That(MatchController.instance.RequestEnd(MatchEndReason.PlayerDied), Is.False);
+        yield return null;
+        gameRules.GetType().GetMethod("setTimePlayed").Invoke(gameRules, null);
+        Assert.That(stats.Stats.TimePlayed, Is.EqualTo(frozenDuration));
+        Assert.That(database.ReadOnlyScoreId(16), Is.EqualTo(resultId));
+        TestContext.WriteLine($"PERSISTED result={resultId} match={MatchSession.EnsureCurrentMatch()} points={expectedPoints} duration={frozenDuration} markers={((IShotMarkerSession)gameRules).MarkersRemaining}");
+    }
+
+    [UnityTest]
+    public IEnumerator Mode16PreZeroHumanAndCpuFlightsScoreThroughAuthoredHoopAndEndOnce()
+    {
+        yield return Launch(16, 1, withCpu: true);
+        BasketBallShotMarker[] markers = FreezeContestForBoundary();
+        Assert.That(markers, Has.Length.EqualTo(5));
+        BasketBallAuto cpu = Object.FindAnyObjectByType<BasketBallAuto>();
+        IBasketballRuntime[] balls = { BasketBall.instance, cpu };
+        int endings = 0, completions = 0;
+        MatchController.instance.Ending += _ => endings++;
+        MatchController.instance.Completed += _ => completions++;
+        for (int i = 0; i < balls.Length; i++) RecordControlledRelease(balls[i], markers[i]);
+        yield return null; // Controlled release is timestamped before the controlled zero frame.
+        TickContestAtZero();
+        Assert.That(MatchController.instance.IsPlaying, Is.True);
+
+        var upper = BasketBallShotMade.instance;
+        var lower = Object.FindAnyObjectByType<BasketBallShotMadeCollision>();
+        SimulationMode previous = Physics.simulationMode;
+        var floor = new GameObject("mode16-boundary-ground");
+        floor.tag = "ground";
+        floor.transform.position = new Vector3(200f, 0f, 200f);
+        floor.AddComponent<BoxCollider>().size = new Vector3(10f, 1f, 10f);
+        try
+        {
+            Physics.simulationMode = SimulationMode.Script;
+            foreach (IBasketballRuntime ball in balls)
+            {
+                Rigidbody body = ((Component)ball).GetComponent<Rigidbody>();
+                body.isKinematic = false;
+                body.useGravity = false;
+                body.constraints = RigidbodyConstraints.FreezeAll;
+                Vector3 offset = body.transform.TransformVector(body.GetComponent<SphereCollider>().center);
+                void Step(Vector3 point)
+                {
+                    body.position = point - offset;
+                    Physics.SyncTransforms();
+                    Physics.Simulate(Time.fixedDeltaTime);
+                }
+                Step(upper.GetComponent<Collider>().bounds.center + Vector3.up * 2f);
+                Step(upper.GetComponent<Collider>().bounds.center);
+                Step(lower.GetComponent<Collider>().bounds.center);
+                Assert.That(ball.Stats.Stats.TotalPoints, Is.EqualTo(3));
+                // Repeat the same physical crossings: the same attempt scores once.
+                Step(upper.GetComponent<Collider>().bounds.center + Vector3.up * 2f);
+                Step(upper.GetComponent<Collider>().bounds.center);
+                Step(lower.GetComponent<Collider>().bounds.center);
+                Assert.That(ball.Stats.Stats.TotalPoints, Is.EqualTo(3));
+                Step(floor.transform.position + Vector3.up * 0.5f);
+                Assert.That(ball.State.ShotReleasedAt, Is.EqualTo(double.PositiveInfinity), "actual ground collision ends grace");
+                Timer.instance.SendMessage("Update");
+                Assert.That(MatchController.instance.IsOver, Is.EqualTo(ball.IsCpu), "CPU flight must survive the human's resolution");
+            }
+        }
+        finally
+        {
+            Physics.simulationMode = previous;
+            Object.Destroy(floor);
+        }
+        yield return VerifyContestPersistence(3, MatchEndCause.TimeExpired);
+        Assert.That(cpu.GameStats.Stats.TotalPoints, Is.EqualTo(3));
+        Assert.That(endings, Is.EqualTo(1));
+        Assert.That(completions, Is.EqualTo(1));
+    }
+
+    [UnityTest]
+    public IEnumerator Mode16IdleSoloExpiresAndAReleaseAtZeroCannotRenewGrace()
+    {
+        yield return Launch(16, 1);
+        BasketBallShotMarker[] markers = FreezeContestForBoundary();
+        RecordControlledRelease(BasketBall.instance, markers[0]);
+        TickContestAtZero(); // Release and zero have the same frame timestamp.
+        Assert.That(MatchController.instance.IsOver, Is.True);
+        Assert.That(MatchController.instance.EndReason.Cause, Is.EqualTo(MatchEndCause.TimeExpired));
+        yield return VerifyContestPersistence(0, MatchEndCause.TimeExpired);
+    }
+
+    [UnityTest]
+    public IEnumerator Mode16SharedCourseStillWaitsForCapturedCpuFinalAttemptAndCompletesOnce()
+    {
+        yield return Launch(16, 1, withCpu: true);
+        BasketBallShotMarker[] markers = FreezeContestForBoundary();
+        BasketBallAuto cpu = Object.FindAnyObjectByType<BasketBallAuto>();
+        foreach (var marker in markers.Take(markers.Length - 1))
+        {
+            while (marker.ShotAttempt < marker.MaxShotAttempt) marker.RegisterAttempt(BasketBall.instance);
+            marker.SendMessage("Update");
+        }
+        BasketBallShotMarker finalMarker = markers.Last();
+        while (finalMarker.ShotAttempt < finalMarker.MaxShotAttempt - 1) finalMarker.RegisterAttempt(cpu);
+        RecordControlledRelease(cpu, finalMarker);
+        Assert.That(finalMarker.ShotAttempt, Is.EqualTo(finalMarker.MaxShotAttempt));
+        cpu.BasketBallState.InAir = true;
+        finalMarker.SendMessage("Update");
+        Assert.That(((IShotMarkerSession)gameRules).MarkersRemaining, Is.EqualTo(1));
+        yield return null;
+        TickContestAtZero();
+        Assert.That(MatchController.instance.IsPlaying, Is.True);
+        // Controlled make callback at the actual configured countdown boundary; flight is tested separately.
+        BasketBallShotMade.instance.SendMessage("OnTriggerEnter", cpu.GetComponent<Collider>());
+        BasketBallShotMade.instance.shotMade(cpu);
+        Assert.That(cpu.GameStats.Stats.TotalPoints, Is.EqualTo(6));
+        Assert.That(stats.Stats.TotalPoints, Is.Zero);
+        finalMarker.SendMessage("Update");
+        Assert.That(((IShotMarkerSession)gameRules).MarkersRemaining, Is.EqualTo(1));
+        BasketBall.instance.BasketBallState.InAir = true; // Completion reads the captured CPU, not this human.
+        cpu.BasketBallState.InAir = false;
+        finalMarker.SendMessage("Update");
+        Assert.That(((IShotMarkerSession)gameRules).MarkersRemaining, Is.Zero);
+        finalMarker.SendMessage("Update");
+        Assert.That(((IShotMarkerSession)gameRules).MarkersRemaining, Is.Zero);
+        TickContestAtZero();
+        yield return VerifyContestPersistence(0, MatchEndCause.Unknown);
+    }
+
     [UnityTest]
     public IEnumerator Mode27TracksHumanThenChecksControlledBlockAccountingAndTimeout()
     {
