@@ -2,7 +2,6 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.UI;
 using Assets.Scripts.Utility;
 using Random = UnityEngine.Random;
 using Level5.Core;
@@ -72,19 +71,11 @@ public class BasketBallAuto : MonoBehaviour, IBasketballRuntime
     /// once from <see cref="IShooterActor.ShooterAttributes"/> in <see cref="Start"/> rather than
     /// resolved from a <c>CharacterProfile</c> directly - <c>actor</c> owns that mapping now.
     ///
-    /// Code review: resolved once in <see cref="Start"/> rather than recomputed on every read.
-    /// The underlying actor is assigned once and never reassigned, so a computed property gained
-    /// nothing but cost - and cost that mattered specifically on the missing-profile path, where
-    /// <c>displayUiStats</c>'s twice-a-second <c>InvokeRepeating</c> would have re-logged the same
-    /// warning forever instead of once at startup.
+    /// Resolved once in <see cref="Start"/>; the bound actor is never reassigned.
     /// </summary>
     private ShooterAttributes currentShooter;
 
     GameObject dropShadow;
-
-    Text scoreText;
-    Text shootProfileText;
-    GameObject uiStatsBackground;
 
     float releaseVelocityY;
     float lastShotDistance;
@@ -164,32 +155,11 @@ public class BasketBallAuto : MonoBehaviour, IBasketballRuntime
         basketBallState.CanPullBall = true;
         playHitRimSound = true;
 
-        //todo: move to game manager
-        UiStatsEnabled = false;
-
         // cap ball speed
         maxBasketballSpeed = 25f;
-        if (GameObject.Find("ui_stats") != null)
-        {
-            shootProfileText = GameObject.Find("shooterProfileTextObject").GetComponent<Text>();
-            scoreText = GameObject.Find("shootStatsTextObject").GetComponent<Text>();
-            uiStatsBackground = GameObject.Find("textBackground");
-
-            if (UiStatsEnabled)
-            {
-                updateScoreText();
-                BasketballShotPipeline.UpdateShooterProfileText(shootProfileText, currentShooter);
-                uiStatsBackground.SetActive(true);
-            }
-            else
-            {
-                scoreText.text = "";
-                shootProfileText.text = "";
-                uiStatsBackground.SetActive(false);
-            }
-        }
+        // The primary human BasketBall owns the shared stats overlay. A CPU must not bind or
+        // hide it: its background may already be inactive when this Start runs.
         //InvokeRepeating("CheckIsBallFacingGoalAuto", 0, 0.5f);
-        //InvokeRepeating("displayUiStats", 0, 0.5f);
 
         if (matchRules.EnemiesOnly)
         {
@@ -500,58 +470,25 @@ public class BasketBallAuto : MonoBehaviour, IBasketballRuntime
 
     // ========================== ui display ===============================
 
-    public bool displayUiStats()
-    {
-        //Debug.Log("displayUiStats() -- UiStatsEnabled : "+ UiStatsEnabled);
-        if (scoreText == null || shootProfileText == null || uiStatsBackground == null)
-        {
-            return false;
-        }
+    // Compatibility signatures: the caller/serialized-event audit found no CPU UI consumers.
+    // Keep these inert so a legacy call cannot take ownership of the human's shared UI.
+    public bool displayUiStats() => false;
 
-        if (UiStatsEnabled)
-        {
-            updateScoreText();
-            BasketballShotPipeline.UpdateShooterProfileText(shootProfileText, currentShooter);
-            uiStatsBackground.SetActive(true);
-            return true;
-        }
-        else
-        {
-            scoreText.text = "";
-            shootProfileText.text = "";
-            //uiStatsBackground.SetActive(false);
-            return false;
-        }
-    }
-
-    public void toggleUiStats()
-    {
-        UiStatsEnabled = !UiStatsEnabled;
-        Text messageText = GameObject.Find("messageDisplay").GetComponent<Text>();
-        messageText.text = "ui stats = " + UiStatsEnabled;
-
-        // turn off text display after 5 seconds
-        StartCoroutine(turnOffMessageLogDisplayAfterSeconds(3));
-    }
+    public void toggleUiStats() { }
 
     public IEnumerator turnOffMessageLogDisplayAfterSeconds(float seconds)
     {
-        yield return new WaitForSecondsRealtime(seconds);
-        Text messageText = GameObject.Find("messageDisplay").GetComponent<Text>();
-        messageText.text = "";
+        yield break;
     }
 
-    public void updateScoreText()
-    {
-        BasketballShotPipeline.UpdateScoreText(scoreText, gameStats, lastShotDistance);
-    }
+    public void updateScoreText() { }
 
     // ============================= getters/ setters ======================================
 
     public float LastShotDistance { get => lastShotDistance; set => lastShotDistance = value; }
     public GameStats GameStats => gameStats;
     public BasketBallState BasketBallState => basketBallState;
-    public bool UiStatsEnabled { get; private set; }
+    public bool UiStatsEnabled => false;
 
     // ======================= IBasketballRuntime (AUD-013) =======================
 
