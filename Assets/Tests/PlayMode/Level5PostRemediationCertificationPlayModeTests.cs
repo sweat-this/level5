@@ -387,6 +387,8 @@ public class Level5PostRemediationCertificationPlayModeTests
     public IEnumerator Mode21ObservesStagedPopulationAndChecksCreditedKillDeathAndSummary()
     {
         yield return Launch(21, 17);
+        Assert.That(ActiveMatch.Configuration.Rules.Objective, Is.EqualTo(MatchObjective.Survival));
+        Assert.That(ActiveMatch.Configuration.Rules.CombatMode, Is.EqualTo(CombatMode.BattleRoyal));
         // Combat retains the primary stats-owning ball, frozen above the arena by BasketBall.Start.
         BasketBall retainedBall = Object.FindAnyObjectByType<BasketBall>();
         Assert.That(retainedBall, Is.Not.Null);
@@ -402,7 +404,23 @@ public class Level5PostRemediationCertificationPlayModeTests
         Assert.That(staged.Length, Is.GreaterThan(initial.Length));
         Assert.That(staged.Length, Is.LessThanOrEqualTo(EnemyPopulationRules.BattleRoyalCap));
         int before = stats.Stats.EnemiesKilled;
-        staged[0].GetType().GetMethod("HandleDeath").Invoke(staged[0], new object[] { human.gameObject, true });
+        // Controlled disable, not an elimination: an empty registry must not end this survival run.
+        foreach (Component enemy in staged) enemy.gameObject.SetActive(false);
+        for (int frame = 0; frame < 3; frame++)
+        {
+            yield return null;
+            Assert.That(ActiveEnemies(), Is.Empty);
+            Assert.That(MatchController.instance.IsPlaying, Is.True);
+            Assert.That(database.CountRows("HighScores", "modeid", 21), Is.Zero);
+        }
+        Assert.That(stats.Stats.EnemiesKilled, Is.EqualTo(before));
+        float deadline = Time.realtimeSinceStartup + 11f;
+        while (ActiveEnemies().Length == 0 && Time.realtimeSinceStartup < deadline) yield return null;
+        Component[] replenished = ActiveEnemies();
+        Assert.That(replenished, Is.Not.Empty, "the existing admission schedule must continue after an empty population");
+        Assert.That(MatchController.instance.IsPlaying, Is.True);
+        TestContext.WriteLine($"EMPTY POPULATION remained Playing; scheduled admissions resumed={replenished.Length}");
+        replenished[0].GetType().GetMethod("HandleDeath").Invoke(replenished[0], new object[] { human.gameObject, true });
         // Controlled production death/credit seam, not a player attack.
         Assert.That(stats.Stats.EnemiesKilled, Is.EqualTo(before + 1));
         PlayerHealth health = human.GetComponentInChildren<PlayerHealth>();

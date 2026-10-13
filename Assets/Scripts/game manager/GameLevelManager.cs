@@ -480,6 +480,11 @@ public class GameLevelManager : MonoBehaviour, IGroundHeightProvider, IPlayerMat
         return instance.GameOver;
     }
 
+    private static bool TrySaveBattleRoyalForPause()
+    {
+        return GameRules.instance != null && GameRules.instance.TrySaveBattleRoyalForExit();
+    }
+
     /// <summary>
     /// AUD-012 Phase 2b Slice 63: the composition adapter <see cref="Pause.TogglePause"/> now calls
     /// instead of reading/writing <c>GameLevelManager.instance.Joystick</c> itself. No guard on
@@ -698,7 +703,8 @@ public class GameLevelManager : MonoBehaviour, IGroundHeightProvider, IPlayerMat
                 DatabaseLockedForPause,
                 HasPlayerDataForPause,
                 ReloadPlayerDataForPause,
-                PersistFreePlayStatsForPause);
+                PersistFreePlayStatsForPause,
+                TrySaveBattleRoyalForPause);
 
             // Series-turn exit policy. Level5.Match cannot reference Level5.Versus (it depends on
             // Level5.Match), so the quit policy is handed in here, where both are visible.

@@ -235,8 +235,6 @@ public static class GameModeDefinitionFactory
                 return MatchObjective.ContestCompletion;
 
             case Modes.BattleRoyal:
-                return MatchObjective.LastPlayerStanding;
-
             case Modes.CageMatch:
                 return MatchObjective.Survival;
 

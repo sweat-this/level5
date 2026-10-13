@@ -23,7 +23,7 @@ A change to any of these values is a gameplay change, not a refactor.
 | 18 | all point contest | ContestCompletion | Countdown | 140 | None | ThreePoint, FourPoint, AllRanges | ThreePoint, FourPoint | yes | no | no | no | no | no | no | 1-4 |
 | 19 | Points by Distance | Score | Countdown | default | None | Any | None | yes | no | no | no | no | no | no | 1-4 |
 | 20 | Bash Up Some Nerds | Score | None | default | Standard | Any | None | no | no | no | yes | no | yes | no | 1-4 |
-| 21 | Battle Royal | LastPlayerStanding | CountUp | default | BattleRoyal | Any | None | no | no | no | no | no | yes | no | 1-4 |
+| 21 | Battle Royal | Survival | CountUp | default | BattleRoyal | Any | None | no | no | no | no | no | yes | no | 1-4 |
 | 22 | Cage Match | Survival | CountUp | default | Cage, BattleRoyal | Any | None | no | no | no | no | no | yes | no | 1-4 |
 | 23 | Versus | Score | Countdown | default | None | Any | None | yes | no | no | no | yes | no | no | 2-4 |
 | 24 | 7 point contest | ContestCompletion | Countdown | 90 | None | SevenPoint | SevenPoint | yes | no | no | no | no | no | no | 1-4 |

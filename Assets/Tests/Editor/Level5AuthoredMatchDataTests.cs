@@ -261,6 +261,62 @@ public class Level5AuthoredMatchDataTests
         }
     }
 
+    [TestCase(21, "Battle Royal", CombatMode.BattleRoyal)]
+    [TestCase(22, "Cage Match", CombatMode.Cage | CombatMode.BattleRoyal)]
+    public void AuthoredCombatSurvivalObjectivesPreserveTheirIndependentRules(int id, string name, CombatMode combat)
+    {
+        GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(
+            $"Assets/Resources/Prefabs/menu_start/mode_selected_objects/mode_selected_{id:D2}.prefab");
+        Assert.That(prefab, Is.Not.Null);
+        StartScreenModeSelected source = prefab.GetComponent<StartScreenModeSelected>();
+        Assert.That(source, Is.Not.Null);
+        GameModeDefinition mode = GameModeDefinitionFactory.Create(source);
+        var arenas = new List<LevelDefinition>();
+        try
+        {
+            foreach (int arenaId in new[] { 1, 17, 18 })
+            {
+                LevelSelected arenaSource = authoredLevels.Find(level => level.LevelId == arenaId);
+                Assert.That(arenaSource, Is.Not.Null);
+                arenas.Add(LevelDefinitionFactory.Create(arenaSource));
+            }
+            ResolvedMatchRules rules = MatchConfigurationBuilder.Resolve(
+                mode, arenas[1], TestDefinitions.SoloRoster(isShooter: false), MatchModifiers.Default);
+            Assert.That(source.ModeId, Is.EqualTo(id));
+            Assert.That(mode.RawModeId, Is.EqualTo(id));
+            Assert.That(mode.DisplayName, Is.EqualTo(name));
+            Assert.That(mode.Description, Is.EqualTo("Survive"));
+            Assert.That(mode.HighScoreField, Is.EqualTo("enemiesKilled"));
+            Assert.That(mode.Objective, Is.EqualTo(MatchObjective.Survival));
+            Assert.That(rules.Objective, Is.EqualTo(MatchObjective.Survival));
+            Assert.That(rules.CombatMode, Is.EqualTo(combat));
+            Assert.That(rules.ClockMode, Is.EqualTo(MatchClockMode.CountUp));
+            Assert.That(rules.CustomTimerSeconds, Is.Zero);
+            Assert.That(rules.EnemiesOnly, Is.True);
+            Assert.That(rules.EnemiesEnabled, Is.True);
+            Assert.That(rules.RequiresBasketball, Is.False);
+            Assert.That(rules.AllowsCpuShooters, Is.False);
+            Assert.That(rules.RequiresPlayerSurvive, Is.False);
+            Assert.That(rules.ShotMarkers, Is.EqualTo(ShotMarkerRequirement.None));
+            Assert.That(rules.ShotRule, Is.EqualTo(ShotRule.Any));
+            Assert.That(mode.MinPlayers, Is.EqualTo(1));
+            Assert.That(mode.MaxPlayers, Is.EqualTo(PlayerRoster.MaxSlots));
+            Assert.That(mode.RequiresCpuOpponent, Is.False);
+            Assert.That(GameModeCompatibility.CharacterCanPlay(mode, MatchModifiers.Default,
+                TestDefinitions.Character("non-fighter", isFighter: false)), Is.False);
+            var compatibility = new GameModeCompatibility(new GameModeCatalog(new[] { mode }),
+                new LevelDefinitionCatalog(arenas));
+            Assert.That(compatibility.CanPlay(mode, arenas[0]), Is.False);
+            Assert.That(compatibility.CanPlay(mode, arenas[1]), Is.True);
+            Assert.That(compatibility.CanPlay(mode, arenas[2]), Is.EqualTo(id == 21));
+        }
+        finally
+        {
+            Object.DestroyImmediate(mode);
+            foreach (LevelDefinition arena in arenas) Object.DestroyImmediate(arena);
+        }
+    }
+
     [Test]
     public void EveryAuthoredModeKeepsItsExistingStartingClock()
     {
