@@ -26,6 +26,8 @@ Feature and system docs:
 
 Decision records and audits:
 
+- [Arcade manual exit persistence policy audit](gp-001-arcade-manual-exit-policy-audit.md) - GP-001: approved abandonment of unfinished Arcade runs, conforming existing behavior, two review passes, and focused validation.
+
 - [GP-001 W1 HUD and animation diagnostics](gp-001-w1-hud-animation-diagnostics.md) - reproduced invisible fallback score panels, narrow canvas-selection correction, retained Dracula transition, focused runtime evidence and remaining visual limits.
 
 - [GP-001 Post-Remediation Certification — 2026-10-12](gp-001-post-remediation-certification-2026-10-12.md) - current dev reconciliation of F1–F10, all 24 modes, fresh test evidence, targeted CPU/defender/combat observations, and remaining certification limits.
