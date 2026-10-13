@@ -12,12 +12,15 @@ public class Level5SharedHoopTests
     private readonly List<GameObject> spawned = new List<GameObject>();
     private BasketBallShotMade upper;
     private BasketBallShotMadeCollision lower;
+    private MatchLifecycle lifecycle;
 
     [SetUp]
     public void SetUp()
     {
+        lifecycle = new MatchLifecycle();
+        lifecycle.BeginPlay();
         upper = Spawn("basketBallMadeShot1").AddComponent<BasketBallShotMade>();
-        upper.BindMatchContext(new ResolvedMatchRules(), GameModeId.TotalPoints);
+        upper.BindMatchContext(new ResolvedMatchRules(), GameModeId.TotalPoints, () => lifecycle.IsPlaying);
         lower = Spawn("basketBallMadeShot2").AddComponent<BasketBallShotMadeCollision>();
         SetField(lower, "basketBallShotMade", upper);
     }
@@ -201,7 +204,7 @@ public class Level5SharedHoopTests
         Upper(a);
         Object.DestroyImmediate(upper.gameObject);
         upper = Spawn("basketBallMadeShot1").AddComponent<BasketBallShotMade>();
-        upper.BindMatchContext(new ResolvedMatchRules(), GameModeId.TotalPoints);
+        upper.BindMatchContext(new ResolvedMatchRules(), GameModeId.TotalPoints, () => lifecycle.IsPlaying);
         SetField(lower, "basketBallShotMade", upper);
         Lower(a);
         Assert.That(a.Stats.Stats.ShotMade, Is.Zero);
@@ -260,7 +263,7 @@ public class Level5SharedHoopTests
         upper = Spawn("basketBallMadeShot1").AddComponent<BasketBallShotMade>();
         SetField(lower, "basketBallShotMade", upper);
         Upper(a);
-        upper.BindMatchContext(new ResolvedMatchRules(), GameModeId.TotalPoints);
+        upper.BindMatchContext(new ResolvedMatchRules(), GameModeId.TotalPoints, () => lifecycle.IsPlaying);
         Lower(a);
         Assert.That(a.Stats.Stats.TotalPoints, Is.Zero);
         Upper(a);
@@ -323,5 +326,104 @@ public class Level5SharedHoopTests
         Assert.That(b.State.ThreeAttempt, Is.False);
         Assert.That(a.Stats.Stats.TotalPoints, Is.EqualTo(3));
         Assert.That(b.Stats.Stats.TotalPoints, Is.EqualTo(3));
+    }
+
+    [TestCase(false, false, false)]
+    [TestCase(false, false, true)]
+    [TestCase(false, true, false)]
+    [TestCase(false, true, true)]
+    [TestCase(true, false, false)]
+    [TestCase(true, false, true)]
+    [TestCase(true, true, false)]
+    [TestCase(true, true, true)]
+    public void TerminalPhaseRejectsPendingRepeatedAndNewAttempts(bool cpu, bool completed, bool upperBeforeEnd)
+    {
+        IBasketballRuntime ball = Ball(cpu);
+        if (upperBeforeEnd) Upper(ball);
+        lifecycle.RequestEnd(MatchEndReason.TimeExpired);
+        if (completed) lifecycle.CompleteEnd();
+        if (!upperBeforeEnd) Upper(ball);
+        int events = 0;
+        upper.ShotResolved += _ => events++;
+        string before = JsonUtility.ToJson(ball.Stats.Stats);
+        Lower(ball);
+        Upper(ball);
+        Lower(ball);
+        typeof(BasketBallShotMade).GetMethod("OnDisable", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(upper, null);
+        Upper(ball);
+        Lower(ball);
+        Assert.That(JsonUtility.ToJson(ball.Stats.Stats), Is.EqualTo(before));
+        Begin(ball);
+        before = JsonUtility.ToJson(ball.Stats.Stats);
+        Upper(ball);
+        Lower(ball);
+        Assert.That(JsonUtility.ToJson(ball.Stats.Stats), Is.EqualTo(before));
+        Assert.That(events, Is.Zero);
+    }
+
+    [Test]
+    public void ReentrantEndingRejectsAnotherBallsPendingMake()
+    {
+        IBasketballRuntime human = Ball();
+        IBasketballRuntime cpu = Ball(true);
+        Upper(human);
+        Upper(cpu);
+        int events = 0;
+        upper.ShotResolved += _ =>
+        {
+            events++;
+            lifecycle.RequestEnd(MatchEndReason.TimeExpired);
+            Lower(cpu);
+            Lower(human);
+        };
+        Lower(human);
+        Assert.That(lifecycle.Phase, Is.EqualTo(MatchPhase.Ending));
+        Assert.That(human.Stats.TotalPoints, Is.EqualTo(3));
+        Assert.That(cpu.Stats.TotalPoints, Is.Zero);
+        Assert.That(events, Is.EqualTo(1));
+    }
+
+    [Test]
+    public void PreparingAndCountdownCannotAcceptMakesButNewPlayingAttemptCan()
+    {
+        lifecycle = new MatchLifecycle();
+        IBasketballRuntime ball = Ball();
+        Upper(ball);
+        Lower(ball);
+        Assert.That(ball.Stats.TotalPoints, Is.Zero);
+        lifecycle.BeginCountdown();
+        Begin(ball);
+        Upper(ball);
+        Lower(ball);
+        Assert.That(ball.Stats.TotalPoints, Is.Zero);
+        lifecycle.BeginPlay();
+        Upper(ball);
+        Lower(ball);
+        Assert.That(ball.Stats.TotalPoints, Is.Zero, "rejected countdown attempt remains consumed");
+        Begin(ball);
+        Upper(ball);
+        Lower(ball);
+        Assert.That(ball.Stats.TotalPoints, Is.EqualTo(3));
+    }
+
+    [Test]
+    public void RejectedAttemptStaysConsumedIfEligibilityLaterChanges()
+    {
+        Object.DestroyImmediate(upper.gameObject);
+        upper = Spawn("basketBallMadeShot1").AddComponent<BasketBallShotMade>();
+        bool eligible = false;
+        upper.BindMatchContext(new ResolvedMatchRules(), GameModeId.TotalPoints, () => eligible);
+        SetField(lower, "basketBallShotMade", upper);
+        IBasketballRuntime ball = Ball();
+        Upper(ball);
+        Lower(ball);
+        eligible = true; // Adversarial provider: real lifecycle cannot return to Playing after Ending.
+        Upper(ball);
+        Lower(ball);
+        Assert.That(ball.Stats.TotalPoints, Is.Zero);
+        Begin(ball);
+        Upper(ball);
+        Lower(ball);
+        Assert.That(ball.Stats.TotalPoints, Is.EqualTo(3));
     }
 }

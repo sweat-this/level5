@@ -509,6 +509,160 @@ public class Level5PostRemediationCertificationPlayModeTests
         yield return VerifyContestPersistence(0, MatchEndCause.TimeExpired);
     }
 
+    private static void CrossUpper(IBasketballRuntime ball)
+        => BasketBallShotMade.instance.SendMessage("OnTriggerEnter", ((Component)ball).GetComponent<Collider>());
+
+    private static void CrossLower(IBasketballRuntime ball)
+        => Object.FindAnyObjectByType<BasketBallShotMadeCollision>()
+            .SendMessage("OnTriggerEnter", ((Component)ball).GetComponent<Collider>());
+
+    [UnityTest]
+    public IEnumerator Mode16LateMakesCannotChangeAcceptedScoresMarkersOrSavedResult()
+    {
+        yield return Launch(16, 1, withCpu: true);
+        var markers = FreezeContestForBoundary();
+        IBasketballRuntime[] balls = { BasketBall.instance, Object.FindAnyObjectByType<BasketBallAuto>() };
+        int events = 0;
+        BasketBallShotMade.instance.ShotResolved += _ => events++;
+        foreach (var ball in balls)
+        {
+            RecordControlledRelease(ball, markers[0]);
+            CrossUpper(ball);
+            CrossLower(ball);
+            CrossLower(ball);
+            Assert.That(ball.Stats.TotalPoints, Is.EqualTo(3));
+            RecordControlledRelease(ball, markers[1]);
+            CrossUpper(ball); // Upper is accepted during Playing, lower arrives during Ending.
+        }
+        int markerMakes = markers[1].ShotMade;
+        int remaining = ((IShotMarkerSession)gameRules).MarkersRemaining;
+        string matchId = MatchSession.EnsureCurrentMatch();
+        Assert.That((bool)gameRules.GetType().GetMethod("RequestEnd")
+            .Invoke(gameRules, new object[] { MatchEndReason.TimeExpired }), Is.True);
+        Assert.That(MatchController.instance.Phase, Is.EqualTo(MatchPhase.Ending));
+        Assert.That(database.CountRows("HighScores", "modeid", 16), Is.Zero);
+        foreach (var ball in balls)
+        {
+            CrossLower(ball);
+            CrossUpper(ball);
+            CrossLower(ball);
+            Assert.That(ball.Stats.TotalPoints, Is.EqualTo(3));
+            Assert.That(ball.Stats.Stats.ShotMade, Is.EqualTo(1));
+        }
+        Assert.That(events, Is.EqualTo(2));
+        Assert.That(markers[1].ShotMade, Is.EqualTo(markerMakes));
+        Assert.That(((IShotMarkerSession)gameRules).MarkersRemaining, Is.EqualTo(remaining));
+        yield return VerifyContestPersistence(3, MatchEndCause.TimeExpired);
+        string savedId = database.ReadOnlyScoreId(16);
+        float frozenTime = stats.Stats.TimePlayed;
+        BasketBallShotMade.instance.enabled = false;
+        BasketBallShotMade.instance.enabled = true;
+        foreach (var ball in balls)
+        {
+            CrossUpper(ball);
+            CrossLower(ball);
+            RecordControlledRelease(ball, markers[2]); // A new generation must also remain ineligible.
+            CrossUpper(ball);
+            CrossLower(ball);
+            CrossLower(ball);
+            Assert.That(ball.Stats.TotalPoints, Is.EqualTo(3));
+            Assert.That(ball.Stats.Stats.ShotMade, Is.EqualTo(1));
+        }
+        Assert.That(events, Is.EqualTo(2));
+        Assert.That(markers[2].ShotMade, Is.Zero);
+        Assert.That(markers[1].ShotMade, Is.EqualTo(markerMakes));
+        Assert.That(((IShotMarkerSession)gameRules).MarkersRemaining, Is.EqualTo(remaining));
+        yield return VerifyContestPersistence(3, MatchEndCause.TimeExpired);
+        Assert.That(stats.Stats.TimePlayed, Is.EqualTo(frozenTime));
+        Assert.That(database.ReadOnlyScoreId(16), Is.EqualTo(savedId));
+        Assert.That(MatchSession.EnsureCurrentMatch(), Is.EqualTo(matchId));
+    }
+
+    [UnityTest]
+    public IEnumerator Mode16FailedPersistenceRetryKeepsAcceptedScoreTimeAndMatchIdentity()
+    {
+        yield return Launch(16, 1);
+        var markers = FreezeContestForBoundary();
+        IBasketballRuntime ball = BasketBall.instance;
+        RecordControlledRelease(ball, markers[0]);
+        CrossUpper(ball);
+        CrossLower(ball);
+        Assert.That(stats.TotalPoints, Is.EqualTo(3));
+        string matchId = MatchSession.EnsureCurrentMatch();
+        var connectorField = Production("DBConnector").GetField("instance");
+        object connector = connectorField.GetValue(null);
+        string pendingPath = System.IO.Path.Combine(Application.persistentDataPath, "pending-match-persistence.json");
+        // Startup repair may write an empty queue after SetUp's isolation has cleared it.
+        if (System.IO.File.Exists(pendingPath))
+        {
+            Type pendingType = Production("PendingMatchPersistenceData");
+            object pending = JsonUtility.FromJson(System.IO.File.ReadAllText(pendingPath), pendingType);
+            Assert.That(((IList)pendingType.GetField("scores").GetValue(pending)).Count, Is.Zero);
+            Assert.That(((IList)pendingType.GetField("allTime").GetValue(pending)).Count, Is.Zero);
+        }
+        foreach (string suffix in new[] { "", ".bak", ".tmp" })
+            if (System.IO.File.Exists(pendingPath + suffix)) System.IO.File.Delete(pendingPath + suffix);
+        System.IO.Directory.CreateDirectory(pendingPath); // Deliberately block the isolated fallback write.
+        bool blockingFallback = true;
+        float frozenTime = 0;
+        string durableResultId = null;
+        try
+        {
+            connectorField.SetValue(null, null); // SQLite unavailable AND fallback unavailable.
+            gameRules.GetType().GetMethod("RequestEnd").Invoke(gameRules, new object[] { MatchEndReason.TimeExpired });
+            for (int retry = 0; retry < 2; retry++)
+            {
+                gameRules.GetType().GetMethod("HandleMatchEnded", BindingFlags.Instance | BindingFlags.NonPublic)
+                    .Invoke(gameRules, null);
+                Assert.That(MatchController.instance.Phase, Is.EqualTo(MatchPhase.Ending));
+                if (retry == 0) frozenTime = stats.Stats.TimePlayed;
+                Assert.That(stats.Stats.TimePlayed, Is.EqualTo(frozenTime));
+                RecordControlledRelease(ball, markers[1]);
+                CrossUpper(ball);
+                CrossLower(ball);
+                Assert.That(stats.TotalPoints, Is.EqualTo(3));
+                Assert.That(MatchSession.EnsureCurrentMatch(), Is.EqualTo(matchId));
+                Assert.That(database.CountRows("HighScores", "modeid", 16), Is.Zero);
+                yield return null;
+            }
+            System.IO.Directory.Delete(pendingPath);
+            blockingFallback = false;
+            // Recover local fallback first, while SQLite is still unavailable.
+            gameRules.GetType().GetMethod("HandleMatchEnded", BindingFlags.Instance | BindingFlags.NonPublic)
+                .Invoke(gameRules, null);
+            Assert.That(MatchController.instance.Phase, Is.EqualTo(MatchPhase.Completed));
+            Type pendingType = Production("PendingMatchPersistenceData");
+            object pending = JsonUtility.FromJson(System.IO.File.ReadAllText(pendingPath), pendingType);
+            var scores = (IList)pendingType.GetField("scores").GetValue(pending);
+            Assert.That(scores.Count, Is.EqualTo(1));
+            object queued = scores[0];
+            durableResultId = (string)queued.GetType().GetField("Scoreid").GetValue(queued);
+            Assert.That(durableResultId, Is.Not.Empty);
+            Assert.That(queued.GetType().GetField("TotalPoints").GetValue(queued), Is.EqualTo(3));
+            Assert.That((float)queued.GetType().GetField("Time").GetValue(queued), Is.EqualTo(frozenTime));
+            RecordControlledRelease(ball, markers[1]);
+            CrossUpper(ball);
+            CrossLower(ball);
+            Assert.That(stats.TotalPoints, Is.EqualTo(3));
+        }
+        finally
+        {
+            connectorField.SetValue(null, connector);
+            if (blockingFallback) System.IO.Directory.Delete(pendingPath); // Only the empty directory created above.
+        }
+        for (int replay = 0; replay < 2; replay++)
+            Assert.That((bool)Production("PendingMatchPersistenceStore").GetMethod("Repair").Invoke(null, null), Is.True);
+        yield return VerifyContestPersistence(3, MatchEndCause.TimeExpired);
+        string savedId = database.ReadOnlyScoreId(16);
+        Assert.That(savedId, Is.EqualTo(durableResultId), "repair preserves the first locally durable result identity");
+        gameRules.GetType().GetMethod("HandleMatchEnded", BindingFlags.Instance | BindingFlags.NonPublic)
+            .Invoke(gameRules, null);
+        Assert.That(database.ReadOnlyScoreId(16), Is.EqualTo(savedId));
+        Assert.That(MatchSession.EnsureCurrentMatch(), Is.EqualTo(matchId));
+        Assert.That(stats.Stats.TimePlayed, Is.EqualTo(frozenTime));
+        Assert.That(markers[1].ShotMade, Is.Zero);
+    }
+
     [UnityTest]
     public IEnumerator Mode16SharedCourseStillWaitsForCapturedCpuFinalAttemptAndCompletesOnce()
     {
@@ -545,6 +699,14 @@ public class Level5PostRemediationCertificationPlayModeTests
         Assert.That(((IShotMarkerSession)gameRules).MarkersRemaining, Is.Zero);
         TickContestAtZero();
         yield return VerifyContestPersistence(0, MatchEndCause.Unknown);
+        int finalMakes = finalMarker.ShotMade;
+        RecordControlledRelease(BasketBall.instance, finalMarker);
+        CrossUpper(BasketBall.instance);
+        CrossLower(BasketBall.instance);
+        Assert.That(finalMarker.ShotMade, Is.EqualTo(finalMakes));
+        Assert.That(finalMarker.MarkerEnabled, Is.False);
+        Assert.That(((IShotMarkerSession)gameRules).MarkersRemaining, Is.Zero);
+        Assert.That(stats.TotalPoints, Is.Zero);
     }
 
     [UnityTest]

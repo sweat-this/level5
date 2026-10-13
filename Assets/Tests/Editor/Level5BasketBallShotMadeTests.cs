@@ -21,6 +21,14 @@ using UnityEngine.TestTools;
 public class Level5BasketBallShotMadeTests
 {
     private readonly List<GameObject> spawned = new List<GameObject>();
+    private MatchLifecycle lifecycle;
+
+    [SetUp]
+    public void SetUp()
+    {
+        lifecycle = new MatchLifecycle();
+        lifecycle.BeginPlay();
+    }
 
     [TearDown]
     public void TearDown()
@@ -103,7 +111,7 @@ public class Level5BasketBallShotMadeTests
         BasketBallShotMade shotMade = MakeShotMade();
 
         LogAssert.Expect(LogType.Error, new System.Text.RegularExpressions.Regex("received a null ResolvedMatchRules"));
-        shotMade.BindMatchContext(null, GameModeId.TotalPoints);
+        shotMade.BindMatchContext(null, GameModeId.TotalPoints, () => lifecycle.IsPlaying);
 
         BasketBallState state = MakeState(twoAttempt: true);
         GameStats stats = MakeStats();
@@ -122,10 +130,10 @@ public class Level5BasketBallShotMadeTests
         ResolvedMatchRules firstRules = new ResolvedMatchRules();
         ResolvedMatchRules secondRules = new ResolvedMatchRules();
 
-        shotMade.BindMatchContext(firstRules, GameModeId.PointsByDistance);
+        shotMade.BindMatchContext(firstRules, GameModeId.PointsByDistance, () => lifecycle.IsPlaying);
 
         LogAssert.Expect(LogType.Error, new System.Text.RegularExpressions.Regex("already has bound match context"));
-        shotMade.BindMatchContext(secondRules, GameModeId.InThePocket);
+        shotMade.BindMatchContext(secondRules, GameModeId.InThePocket, () => false);
 
         BasketBallState state = MakeState(threeAttempt: true);
         GameStats stats = MakeStats();
@@ -149,10 +157,10 @@ public class Level5BasketBallShotMadeTests
     {
         BasketBallShotMade shotMade = MakeShotMade();
         ResolvedMatchRules firstRules = new ResolvedMatchRules();
-        shotMade.BindMatchContext(firstRules, GameModeId.PointsByDistance);
+        shotMade.BindMatchContext(firstRules, GameModeId.PointsByDistance, () => lifecycle.IsPlaying);
 
         LogAssert.Expect(LogType.Error, new System.Text.RegularExpressions.Regex("already has bound match context"));
-        shotMade.BindMatchContext(null, GameModeId.InThePocket);
+        shotMade.BindMatchContext(null, GameModeId.InThePocket, () => lifecycle.IsPlaying);
 
         BasketBallState state = MakeState(threeAttempt: true);
         GameStats stats = MakeStats();
@@ -169,7 +177,7 @@ public class Level5BasketBallShotMadeTests
     public void PointsByDistanceMode_ScoresByDistanceRatherThanByLine()
     {
         BasketBallShotMade shotMade = MakeShotMade();
-        shotMade.BindMatchContext(new ResolvedMatchRules(), GameModeId.PointsByDistance);
+        shotMade.BindMatchContext(new ResolvedMatchRules(), GameModeId.PointsByDistance, () => lifecycle.IsPlaying);
 
         BasketBallState state = MakeState(threeAttempt: true);
         GameStats stats = MakeStats();
@@ -187,7 +195,7 @@ public class Level5BasketBallShotMadeTests
     public void InThePocketMode_AppliesTheStreakBonus(ShotKind kind, int points)
     {
         BasketBallShotMade shotMade = MakeShotMade();
-        shotMade.BindMatchContext(new ResolvedMatchRules(), GameModeId.InThePocket);
+        shotMade.BindMatchContext(new ResolvedMatchRules(), GameModeId.InThePocket, () => lifecycle.IsPlaying);
 
         // The production streak-bonus threshold is 0 (see CurrentInThePocketStreakBonusThreshold), so
         // the very first made shot already qualifies - no streak needs to be seeded.
@@ -222,7 +230,7 @@ public class Level5BasketBallShotMadeTests
     public void ConsecutiveShotsMode_IsNotTreatedAsInThePocket()
     {
         BasketBallShotMade shotMade = MakeShotMade();
-        shotMade.BindMatchContext(new ResolvedMatchRules(requiresConsecutiveShots: true), GameModeId.ConsecutiveShots);
+        shotMade.BindMatchContext(new ResolvedMatchRules(requiresConsecutiveShots: true), GameModeId.ConsecutiveShots, () => lifecycle.IsPlaying);
 
         BasketBallState state = MakeState(threeAttempt: true);
         GameStats stats = MakeStats();
@@ -237,7 +245,7 @@ public class Level5BasketBallShotMadeTests
     public void OrdinaryMode_EnablesNeitherSpecialBranch()
     {
         BasketBallShotMade shotMade = MakeShotMade();
-        shotMade.BindMatchContext(new ResolvedMatchRules(), GameModeId.TotalPoints);
+        shotMade.BindMatchContext(new ResolvedMatchRules(), GameModeId.TotalPoints, () => lifecycle.IsPlaying);
 
         BasketBallState state = MakeState(threeAttempt: true);
         GameStats stats = MakeStats();
@@ -252,7 +260,7 @@ public class Level5BasketBallShotMadeTests
     public void NoneMode_EnablesNeitherSpecialBranch()
     {
         BasketBallShotMade shotMade = MakeShotMade();
-        shotMade.BindMatchContext(new ResolvedMatchRules(), GameModeId.None);
+        shotMade.BindMatchContext(new ResolvedMatchRules(), GameModeId.None, () => lifecycle.IsPlaying);
 
         BasketBallState state = MakeState(threeAttempt: true);
         GameStats stats = MakeStats();
@@ -270,7 +278,7 @@ public class Level5BasketBallShotMadeTests
     {
         BasketBallShotMade shotMade = MakeShotMade();
         ResolvedMatchRules rules = new ResolvedMatchRules(shotRule: ShotRule.ThreePoint, shotMarkers: ShotMarkerRequirement.ThreePoint);
-        shotMade.BindMatchContext(rules, GameModeId.ThreePointContest);
+        shotMade.BindMatchContext(rules, GameModeId.ThreePointContest, () => lifecycle.IsPlaying);
 
         BasketBallShotMarker marker = Spawn("marker").AddComponent<BasketBallShotMarker>();
         marker.MaxShotAttempt = 5;
@@ -294,7 +302,7 @@ public class Level5BasketBallShotMadeTests
     {
         BasketBallShotMade shotMade = MakeShotMade();
         ResolvedMatchRules rules = new ResolvedMatchRules(shotRule: ShotRule.ThreePoint, shotMarkers: ShotMarkerRequirement.ThreePoint);
-        shotMade.BindMatchContext(rules, GameModeId.ThreePointContest);
+        shotMade.BindMatchContext(rules, GameModeId.ThreePointContest, () => lifecycle.IsPlaying);
 
         // Deliberately never enters a marker - PlayerOnMarkerOnShoot stays false.
         BasketBallState state = MakeState(threeAttempt: true);
@@ -308,6 +316,59 @@ public class Level5BasketBallShotMadeTests
 
     // ==================== RequiresMoneyBall ====================
 
+    [TestCase(false, false)]
+    [TestCase(false, true)]
+    [TestCase(true, false)]
+    [TestCase(true, true)]
+    public void LateMoneyBallMakeCannotMutateStatsMarkerSnapshotOrPublish(bool cpu, bool completed)
+    {
+        var shotMade = MakeShotMade();
+        var rules = new ResolvedMatchRules(shotRule: ShotRule.ThreePoint,
+            shotMarkers: ShotMarkerRequirement.ThreePoint, requiresMoneyBall: true);
+        shotMade.BindMatchContext(rules, GameModeId.ThreePointContest, () => lifecycle.IsPlaying);
+        var marker = Spawn("marker").AddComponent<BasketBallShotMarker>();
+        marker.MarkerEnabled = true;
+        SetPrivateField(marker, "maxShotMade", 5);
+        marker.ShotMade = 2;
+        var state = MakeState(threeAttempt: true);
+        state.EnterShotMarker(marker);
+        state.CaptureShotMarkerForAttempt();
+        state.MoneyBallEnabledOnShoot = true;
+        var stats = MakeStats();
+        stats.Stats.TotalPoints = 9;
+        stats.Stats.TotalDistance = 12;
+        stats.Stats.LongestShotMade = 12;
+        var runtime = new FakeRuntime { State = state, Stats = stats, IsCpu = cpu, LastShotDistance = 40 };
+        int events = 0;
+        shotMade.ShotResolved += _ => events++;
+        lifecycle.RequestEnd(MatchEndReason.TimeExpired);
+        if (completed) lifecycle.CompleteEnd();
+        string before = JsonUtility.ToJson(stats.Stats);
+        int pickups = Object.FindObjectsByType<PickupObject>(FindObjectsSortMode.None).Length;
+        Score(shotMade, runtime);
+        Score(shotMade, runtime);
+        Assert.That(JsonUtility.ToJson(stats.Stats), Is.EqualTo(before));
+        Assert.That(marker.ShotMade, Is.EqualTo(2));
+        Assert.That(marker.MarkerEnabled, Is.True);
+        Assert.That(state.OnShootShotMarker, Is.SameAs(marker));
+        Assert.That(state.MoneyBallEnabledOnShoot, Is.True);
+        Assert.That(state.ThreeAttempt, Is.True);
+        Assert.That(events, Is.Zero);
+        Assert.That(Object.FindObjectsByType<PickupObject>(FindObjectsSortMode.None).Length, Is.EqualTo(pickups));
+        // No money template was supplied: reaching the pickup tail would also throw.
+    }
+
+    [Test]
+    public void MissingEligibilityFailsClosed()
+    {
+        var shotMade = MakeShotMade();
+        shotMade.BindMatchContext(new ResolvedMatchRules(), GameModeId.TotalPoints);
+        var stats = MakeStats();
+        var runtime = new FakeRuntime { State = MakeState(threeAttempt: true), Stats = stats };
+        Score(shotMade, runtime);
+        Assert.That(stats.TotalPoints, Is.Zero);
+    }
+
     [Test]
     public void RequiresMoneyBallTrue_OnMarkerAtShoot_SpawnsTheMoneyPickup()
     {
@@ -316,7 +377,7 @@ public class Level5BasketBallShotMadeTests
         moneyTemplate.AddComponent<PickupObject>();
         SetPrivateField(shotMade, "moneyClone", moneyTemplate);
 
-        shotMade.BindMatchContext(new ResolvedMatchRules(requiresMoneyBall: true), GameModeId.TotalPoints);
+        shotMade.BindMatchContext(new ResolvedMatchRules(requiresMoneyBall: true), GameModeId.TotalPoints, () => lifecycle.IsPlaying);
 
         BasketBallState state = MakeState(threeAttempt: true);
         state.PlayerOnMarkerOnShoot = true;
@@ -325,8 +386,11 @@ public class Level5BasketBallShotMadeTests
 
         PickupObject[] pickupsBefore = Object.FindObjectsByType<PickupObject>(FindObjectsSortMode.None);
 
+        // An accepted make must finish its money tail even when publication accepts an ending.
+        shotMade.ShotResolved += _ => lifecycle.RequestEnd(MatchEndReason.TimeExpired);
         Score(shotMade, runtime);
 
+        Assert.That(lifecycle.Phase, Is.EqualTo(MatchPhase.Ending));
         PickupObject[] pickupsAfter = Object.FindObjectsByType<PickupObject>(FindObjectsSortMode.None);
         Assert.That(pickupsAfter.Length, Is.EqualTo(pickupsBefore.Length + 1), "RequiresMoneyBall true with the player on a marker at shoot time must spawn the money pickup");
 
@@ -349,7 +413,7 @@ public class Level5BasketBallShotMadeTests
         moneyTemplate.AddComponent<PickupObject>();
         SetPrivateField(shotMade, "moneyClone", moneyTemplate);
 
-        shotMade.BindMatchContext(new ResolvedMatchRules(requiresMoneyBall: false), GameModeId.TotalPoints);
+        shotMade.BindMatchContext(new ResolvedMatchRules(requiresMoneyBall: false), GameModeId.TotalPoints, () => lifecycle.IsPlaying);
 
         BasketBallState state = MakeState(threeAttempt: true);
         state.PlayerOnMarkerOnShoot = true;
@@ -418,7 +482,7 @@ public class Level5BasketBallShotMadeTests
     public void ParticipantIdentity_ComesFromTheCollidingRuntimeNotAnyGlobal()
     {
         BasketBallShotMade shotMade = MakeShotMade();
-        shotMade.BindMatchContext(new ResolvedMatchRules(), GameModeId.TotalPoints);
+        shotMade.BindMatchContext(new ResolvedMatchRules(), GameModeId.TotalPoints, () => lifecycle.IsPlaying);
 
         BasketBallState stateA = MakeState(twoAttempt: true);
         GameStats statsA = MakeStats();

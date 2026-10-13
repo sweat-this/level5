@@ -1,6 +1,6 @@
 # The Basketball Shot Lifecycle
 
-Last reviewed: 2026-09-02
+Last reviewed: 2026-10-13
 
 AUD-010 asks for two things: this document, and a single shot result consumed by everything
 downstream. The result exists for the part that decides *what a shot is worth*
@@ -36,6 +36,25 @@ parts that are still spread out.
                             - MatchExperience -> progression                     [Level5.Core]
                             - VersusMatchReporter -> series, if there is one
 ```
+
+## Made-shot finality after an accepted ending (GP-001)
+
+`BasketBallShotMade.shotMade` accepts a matching runtime/attempt crossing only while the
+scene's `MatchController` is Playing. It consumes the attempt before checking eligibility,
+so rejected late callbacks cannot re-arm it through another crossing or hoop disable/enable.
+The guard precedes all distance/stat/marker changes, `MadeShotResult` publication,
+swish/rim presentation, money pickup effects and snapshot reset.
+
+`GameLevelManager.Awake` supplies eligibility through `BindMatchContext`'s optional third
+argument (`Func<bool>`). It resolves the scene controller in Start, after `GameRules.Awake`
+creates it; missing/destroyed composition fails closed. Two-argument bindings remain
+source-compatible but cannot accept makes without eligibility. Basketball never reads
+`MatchRuntime` or discovers the lifecycle itself.
+
+An accepted make finishes its existing tail even if a subscriber ends the match; reentrant
+makes recheck eligibility. Mode-16 pre-zero flight grace remains in the timer and keeps the
+match Playing until that opportunity resolves. `Ending` and `Completed` cannot accept more
+makes. See the [audit, reviews and validation](gp-001-made-shot-finality.md).
 
 ## The snapshot, and why it exists
 

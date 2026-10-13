@@ -49,6 +49,7 @@ public class BasketBallShotMade : MonoBehaviour
     private ResolvedMatchRules matchRules;
     private GameModeId gameModeId;
     private bool hasBoundMatchContext;
+    private Func<bool> canAcceptMadeShot;
     //int _consecutiveShotsMade = 0;
     //int _currentShotMade = 0;
     //int _currentShotAttempts = 0;
@@ -210,8 +211,10 @@ public class BasketBallShotMade : MonoBehaviour
             return;
         }
 
-        // Consume before scoring/event publication, including reentrant callbacks from subscribers.
+        // Consume before eligibility/scoring/events. Rejected late attempts cannot re-arm through
+        // another upper crossing or hoop disable/enable, even if an eligibility provider changes.
         crossing.Scored = true;
+        if (canAcceptMadeShot == null || !canAcceptMadeShot()) return;
 
         // AUD-010 Phase 1c/2b0: one immutable-rules snapshot for the whole made-shot operation,
         // reused by every decision below instead of each resolving MatchRuntime.Rules separately.
@@ -271,7 +274,7 @@ public class BasketBallShotMade : MonoBehaviour
     /// scene-authored on the hoop (not spawned by <c>SpawnCoordinator</c>), so it is found and bound
     /// the same way <c>LevelRuntimeContext</c> already is in that method.
     /// </summary>
-    public void BindMatchContext(ResolvedMatchRules rules, GameModeId modeId)
+    public void BindMatchContext(ResolvedMatchRules rules, GameModeId modeId, Func<bool> canAcceptMadeShot = null)
     {
         // Checked before the null-argument branch below: a null second call after a real bind
         // already succeeded must report "already bound", not "leaving it unbound" - matchRules is
@@ -291,6 +294,9 @@ public class BasketBallShotMade : MonoBehaviour
 
         matchRules = rules;
         gameModeId = modeId;
+        // Missing lifecycle composition fails closed. The optional argument keeps older callers
+        // source-compatible; scoring callers must explicitly supply live match eligibility.
+        this.canAcceptMadeShot = canAcceptMadeShot;
         // Crossings observed before composition cannot authorize a make in the bound match.
         crossings.Clear();
         shotMade1 = false;

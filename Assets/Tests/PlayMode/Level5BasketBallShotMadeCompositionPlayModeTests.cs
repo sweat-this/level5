@@ -117,6 +117,16 @@ public class Level5BasketBallShotMadeCompositionPlayModeTests
             (GameModeId)boundModeValue,
             Is.EqualTo(configuration.ModeId),
             $"BasketBallShotMade '{shotMade.gameObject.name}' is bound to a mode identity other than the launched match's own configuration.ModeId");
+
+        var eligibility = RealScenePlayModeTestSupport.GetField<System.Func<bool>>(shotMade, "canAcceptMadeShot");
+        Assert.That(eligibility, Is.Not.Null);
+        Assert.That(eligibility(), Is.True, "early Awake composition must resolve the controller after initialization");
+        yield return GameplayScenePlayModeHarness.LoadConfiguredGameplayScene(configuration.SceneName, _ => { });
+        for (int frame = 0; frame < 10; frame++) yield return null;
+        Assert.That(eligibility(), Is.False, "an old hoop's dependency must not follow the new scene's Playing controller");
+        var replacement = Object.FindAnyObjectByType<BasketBallShotMade>();
+        var replacementEligibility = RealScenePlayModeTestSupport.GetField<System.Func<bool>>(replacement, "canAcceptMadeShot");
+        Assert.That(replacementEligibility(), Is.True);
     }
 }
 #endif

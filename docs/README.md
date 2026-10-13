@@ -26,7 +26,9 @@ Feature and system docs:
 
 Decision records and audits:
 
-- [Mode 16 CPU participation and countdown grace](gp-001-mode16-cpu-timeout-audit.md) - current-dev audit, owner-approved human/CPU pre-zero shot grace, focused correction and runtime evidence; shared-course policy and late-callback finality remain unresolved.
+- [Made-shot finality](gp-001-made-shot-finality.md) - GP-001: reject makes after accepted ending, preserve human/CPU pre-zero grace, lifecycle composition, two review passes and focused validation.
+
+- [Mode 16 CPU participation and countdown grace](gp-001-mode16-cpu-timeout-audit.md) - current-dev audit, owner-approved human/CPU pre-zero shot grace, focused correction and runtime evidence; shared-course policy remains unresolved, and the finality follow-up is documented above.
 
 - [Battle Royal survival and saved-stop policy](gp-001-battle-royal-semantics-audit.md) - GP-001: approved endless survival, aligned objective metadata, Save & Main Menu / Save & Quit, ownership audit and regression evidence.
 
