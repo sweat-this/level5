@@ -25,6 +25,71 @@ using UnityEngine.UI;
 /// </summary>
 public class Level5MatchHudPresenterCompositionTests
 {
+    [TestCase(false)]
+    [TestCase(true)]
+    public void InitializeParentsFallbackScoresToAuthoredHudInsteadOfInactivePopup(bool missingSummary)
+    {
+        // Initialize resolves names across loaded scenes. Refuse to bind or clear a user's
+        // existing HUD, including when this case deliberately omits its own summary text.
+        foreach (Text existing in Resources.FindObjectsOfTypeAll<Text>())
+        {
+            if (existing != null && existing.gameObject.scene.IsValid()
+                && (Array.IndexOf(MatchHudPresenter.RequiredHudObjectNames, existing.name) >= 0
+                    || existing.name == "display_p1_score" || existing.name == "display_p2_score"
+                    || existing.name == "display_p3_score" || existing.name == "display_p4_score"))
+            {
+                Assert.Ignore("HUD fallback composition requires no pre-existing match HUD text; loaded scenes are left untouched.");
+            }
+        }
+
+        GameObject popup = Spawn("damage-popup");
+        popup.AddComponent<Canvas>();
+        popup.SetActive(false);
+        Canvas canvas = Spawn("authored-match-hud").AddComponent<Canvas>();
+        foreach (string name in MatchHudPresenter.RequiredHudObjectNames)
+        {
+            if (missingSummary && name == "display_score") continue;
+            SpawnText(name).transform.SetParent(canvas.transform, false);
+        }
+
+        MatchHudPresenter hud = MakePresenter();
+        hud.Initialize();
+
+        Assert.That(hud.IsComplete, Is.True);
+        var panels = new Text[4];
+        for (int i = 0; i < panels.Length; i++)
+        {
+            panels[i] = canvas.transform.Find("display_p" + (i + 1) + "_score").GetComponent<Text>();
+            Assert.That(panels[i].gameObject.activeInHierarchy, Is.True);
+            Assert.That(panels[i].font, Is.Not.Null);
+            Assert.That(panels[i].raycastTarget, Is.False);
+        }
+        Assert.That(popup.transform.childCount, Is.Zero);
+        if (missingSummary)
+            Assert.That(canvas.transform.Find("display_score"), Is.Not.Null);
+
+        int childCount = canvas.transform.childCount;
+        hud.Initialize();
+        Assert.That(canvas.transform.childCount, Is.EqualTo(childCount));
+        for (int i = 0; i < panels.Length; i++)
+            Assert.That(canvas.transform.Find(panels[i].name).GetComponent<Text>(), Is.SameAs(panels[i]));
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void FallbackCompositionSkipsBeforeMutatingAnExistingHud(bool missingSummary)
+    {
+        Text existing = SpawnText("display_score");
+        existing.text = "Existing HUD must survive";
+        int objectCount = spawned.Count;
+
+        Assert.Throws<IgnoreException>(() =>
+            InitializeParentsFallbackScoresToAuthoredHudInsteadOfInactivePopup(missingSummary));
+
+        Assert.That(existing.text, Is.EqualTo("Existing HUD must survive"));
+        Assert.That(spawned.Count, Is.EqualTo(objectCount), "the preflight must skip before creating fixture objects");
+    }
+
     private readonly List<GameObject> spawned = new List<GameObject>();
     private GameLevelManager savedGameLevelManagerInstance;
     private GameRules savedGameRulesInstance;
