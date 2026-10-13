@@ -517,6 +517,77 @@ public class Level5PostRemediationCertificationPlayModeTests
             .SendMessage("OnTriggerEnter", ((Component)ball).GetComponent<Collider>());
 
     [UnityTest]
+    public IEnumerator Mode16OverlappingFinalMarkerBonusesKeepOwnershipCompletionAndSavedScore()
+    {
+        yield return Launch(16, 1, withCpu: true);
+        var markers = FreezeContestForBoundary();
+        IBasketballRuntime humanBall = BasketBall.instance;
+        IBasketballRuntime cpuBall = Object.FindAnyObjectByType<BasketBallAuto>();
+        int events = 0;
+        BasketBallShotMade.instance.ShotResolved += _ => events++;
+        for (int scenario = 0; scenario < 3; scenario++)
+        {
+            var marker = markers[scenario];
+            Assert.That(marker.MaxShotAttempt, Is.EqualTo(5));
+            for (int i = 0; i < 3; i++) RecordControlledRelease(humanBall, marker); // Misses.
+            RecordControlledRelease(humanBall, marker); // Fourth.
+            RecordControlledRelease(cpuBall, marker); // Fifth.
+            cpuBall.State.InAir = true;
+            marker.SendMessage("Update");
+            Assert.That(marker.MarkerEnabled, Is.True, "Completion waits for captured CPU flight");
+            int humanBefore = humanBall.Stats.TotalPoints;
+            int cpuBefore = cpuBall.Stats.TotalPoints;
+            void Make(IBasketballRuntime ball)
+            {
+                CrossUpper(ball);
+                CrossLower(ball);
+                CrossUpper(ball);
+                CrossLower(ball);
+            }
+            if (scenario == 1) Make(cpuBall); // Fifth before fourth.
+            Make(humanBall);
+            if (scenario == 2)
+            {
+                RecordControlledRelease(humanBall, marker); // Sixth before fifth resolves.
+                Make(humanBall);
+            }
+            if (scenario != 1) Make(cpuBall);
+            TestContext.WriteLine($"CONTROLLED scenario={scenario} humanDelta={humanBall.Stats.TotalPoints-humanBefore} cpuDelta={cpuBall.Stats.TotalPoints-cpuBefore} attempts={marker.ShotAttempt} makes={marker.ShotMade} events={events} enabled={marker.MarkerEnabled} humanMoney={humanBall.Stats.Stats.MoneyBallAttempts}/{humanBall.Stats.Stats.MoneyBallMade} cpuMoney={cpuBall.Stats.Stats.MoneyBallAttempts}/{cpuBall.Stats.Stats.MoneyBallMade}");
+            Assert.That(humanBall.Stats.TotalPoints - humanBefore, Is.EqualTo(scenario == 2 ? 6 : 3));
+            Assert.That(cpuBall.Stats.TotalPoints - cpuBefore, Is.EqualTo(6));
+            Assert.That(marker.ShotAttempt, Is.EqualTo(scenario == 2 ? 6 : 5));
+            Assert.That(marker.ShotMade, Is.EqualTo(scenario == 2 ? 3 : 2));
+            marker.SendMessage("Update");
+            Assert.That(marker.MarkerEnabled, Is.True);
+            cpuBall.State.InAir = false;
+            marker.SendMessage("Update");
+            marker.SendMessage("Update");
+            Assert.That(marker.MarkerEnabled, Is.False);
+            Assert.That(((IShotMarkerSession)gameRules).MarkersRemaining, Is.EqualTo(4 - scenario));
+        }
+        Assert.That(events, Is.EqualTo(7));
+        Assert.That(humanBall.Stats.TotalPoints, Is.EqualTo(12));
+        Assert.That(cpuBall.Stats.TotalPoints, Is.EqualTo(18));
+        Assert.That(humanBall.Stats.Stats.MoneyBallAttempts, Is.Zero);
+        Assert.That(humanBall.Stats.Stats.MoneyBallMade, Is.Zero);
+        Assert.That(cpuBall.Stats.Stats.MoneyBallAttempts, Is.EqualTo(3));
+        Assert.That(cpuBall.Stats.Stats.MoneyBallMade, Is.EqualTo(3));
+        for (int i = 0; i < 5; i++) RecordControlledRelease(cpuBall, markers[3]);
+        CrossUpper(cpuBall); // Pending bonus-bearing flight at accepted ending.
+        gameRules.GetType().GetMethod("RequestEnd").Invoke(gameRules, new object[] { MatchEndReason.TimeExpired });
+        CrossLower(cpuBall);
+        Assert.That(cpuBall.Stats.TotalPoints, Is.EqualTo(18));
+        Assert.That(markers[3].ShotMade, Is.Zero);
+        Assert.That(events, Is.EqualTo(7));
+        yield return VerifyContestPersistence(12, MatchEndCause.TimeExpired);
+        CrossUpper(cpuBall);
+        CrossLower(cpuBall);
+        Assert.That(cpuBall.Stats.TotalPoints, Is.EqualTo(18));
+        Assert.That(events, Is.EqualTo(7));
+        yield return VerifyContestPersistence(12, MatchEndCause.TimeExpired);
+    }
+
+    [UnityTest]
     public IEnumerator Mode16LateMakesCannotChangeAcceptedScoresMarkersOrSavedResult()
     {
         yield return Launch(16, 1, withCpu: true);

@@ -77,6 +77,181 @@ public class Level5SharedHoopTests
     private void Upper(IBasketballRuntime ball) => Trigger(upper, ColliderOf(ball));
     private void Lower(IBasketballRuntime ball) => Trigger(lower, ColliderOf(ball));
 
+    private sealed class MoneyBallState : IMoneyBallState
+    {
+        public bool MoneyBallEnabled { get; set; }
+    }
+
+    private BasketBallShotMarker ContestMarker(ResolvedMatchRules rules, int quota = 5)
+    {
+        Object.DestroyImmediate(upper.gameObject);
+        upper = Spawn("basketBallMadeShot1").AddComponent<BasketBallShotMade>();
+        upper.BindMatchContext(rules, GameModeId.ThreePointContest, () => lifecycle.IsPlaying);
+        SetField(lower, "basketBallShotMade", upper);
+        var marker = Spawn("shared-marker").AddComponent<BasketBallShotMarker>();
+        marker.MaxShotAttempt = quota;
+        marker.MarkerEnabled = true;
+        return marker;
+    }
+
+    private static ResolvedMatchRules ContestRules(bool allRanges = false) => new ResolvedMatchRules(
+        shotRule: allRanges ? ShotRule.ThreePoint | ShotRule.FourPoint | ShotRule.AllRanges : ShotRule.ThreePoint,
+        shotMarkers: ShotMarkerRequirement.ThreePoint);
+
+    private static void MarkerAttempt(IBasketballRuntime ball, BasketBallShotMarker marker,
+        ResolvedMatchRules rules, bool moneyBall = false)
+    {
+        ball.State.EnterShotMarker(marker);
+        Begin(ball);
+        BasketballShotPipeline.ApplyMarkerAndMoneyBallOnShoot(ball,
+            new MoneyBallState { MoneyBallEnabled = moneyBall }, rules);
+    }
+
+    private void Make(IBasketballRuntime ball)
+    {
+        Upper(ball);
+        Lower(ball);
+        Upper(ball);
+        Lower(ball); // Repeated callbacks cannot add points, makes or events.
+    }
+
+    private static void TraceMarker(BasketBallShotMarker marker, int events, params IBasketballRuntime[] balls)
+    {
+        TestContext.WriteLine($"marker attempts={marker.ShotAttempt} makes={marker.ShotMade} enabled={marker.MarkerEnabled} events={events}");
+        foreach (var ball in balls)
+            TestContext.WriteLine($"cpu={ball.IsCpu} points={ball.Stats.TotalPoints} moneyAttempts={ball.Stats.Stats.MoneyBallAttempts} moneyMade={ball.Stats.Stats.MoneyBallMade} makes={ball.Stats.Stats.ShotMade}");
+    }
+
+    [TestCase(false, false, false)]
+    [TestCase(true, false, false)]
+    [TestCase(false, true, false)]
+    [TestCase(true, true, false)]
+    [TestCase(false, false, true)]
+    [TestCase(true, false, true)]
+    [TestCase(false, true, true)]
+    [TestCase(true, true, true)]
+    public void FinalMarkerBonusBelongsToFifthAttemptRegardlessOfMakeOrderOrSixthAttempt(bool fifthFirst, bool sixth, bool allRanges)
+    {
+        var rules = ContestRules(allRanges); // Mode 18 authors combined Three/Four/AllRanges flags.
+        var marker = ContestMarker(rules);
+        var fourth = Ball();
+        var fifth = Ball(true);
+        for (int i = 0; i < 3; i++) MarkerAttempt(fourth, marker, rules); // Three misses.
+        MarkerAttempt(fourth, marker, rules);
+        MarkerAttempt(fifth, marker, rules);
+        IBasketballRuntime extra = null;
+        if (sixth)
+        {
+            extra = Ball();
+            MarkerAttempt(extra, marker, rules);
+        }
+        int events = 0;
+        upper.ShotResolved += _ => events++;
+        Make(fifthFirst ? fifth : fourth);
+        Make(fifthFirst ? fourth : fifth);
+        if (sixth) Make(extra);
+        TraceMarker(marker, events, fourth, fifth);
+        if (sixth) TraceMarker(marker, events, extra);
+        Assert.That(fourth.Stats.TotalPoints, Is.EqualTo(3));
+        Assert.That(fifth.Stats.TotalPoints, Is.EqualTo(6));
+        Assert.That(fourth.Stats.Stats.MoneyBallAttempts, Is.Zero);
+        Assert.That(fourth.Stats.Stats.MoneyBallMade, Is.Zero);
+        Assert.That(fifth.Stats.Stats.MoneyBallAttempts, Is.EqualTo(1));
+        Assert.That(fifth.Stats.Stats.MoneyBallMade, Is.EqualTo(1));
+        if (sixth)
+        {
+            Assert.That(extra.Stats.TotalPoints, Is.EqualTo(3));
+            Assert.That(extra.Stats.Stats.MoneyBallAttempts, Is.Zero);
+            Assert.That(extra.Stats.Stats.MoneyBallMade, Is.Zero);
+        }
+        Assert.That(marker.ShotAttempt, Is.EqualTo(sixth ? 6 : 5));
+        Assert.That(marker.ShotMade, Is.EqualTo(sixth ? 3 : 2));
+        Assert.That(events, Is.EqualTo(sixth ? 3 : 2));
+        Assert.That(marker.MarkerEnabled, Is.True, "Scoring must not take ownership of completion");
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void FinalMarkerBonusDoesNotSurviveMissAndNextAttemptOnAnotherMarker(bool cpu)
+    {
+        var rules = ContestRules();
+        var marker = ContestMarker(rules);
+        var ball = Ball(cpu);
+        for (int i = 0; i < 5; i++) MarkerAttempt(ball, marker, rules);
+        Upper(ball); // Fifth misses; its upper crossing must not authorize the next generation.
+        var next = Spawn("next-marker").AddComponent<BasketBallShotMarker>();
+        next.MaxShotAttempt = 5;
+        next.MarkerEnabled = true;
+        MarkerAttempt(ball, next, rules);
+        Assert.That(ball.State.IsFinalMarkerAttempt, Is.False);
+        Lower(ball);
+        Assert.That(ball.Stats.TotalPoints, Is.Zero);
+        int events = 0;
+        upper.ShotResolved += _ => events++;
+        Make(ball);
+        TraceMarker(marker, events, ball);
+        Assert.That(ball.Stats.TotalPoints, Is.EqualTo(3));
+        Assert.That(ball.Stats.Stats.MoneyBallAttempts, Is.EqualTo(1));
+        Assert.That(ball.Stats.Stats.MoneyBallMade, Is.Zero);
+        Assert.That(marker.ShotMade, Is.Zero);
+        Assert.That(next.ShotMade, Is.EqualTo(1));
+        Assert.That(events, Is.EqualTo(1));
+    }
+
+    [TestCase(false, 5, 6, 1, 1)]
+    [TestCase(true, 5, 6, 2, 2)]
+    [TestCase(false, 3, 6, 0, 1)]
+    public void UncontestedFinalMarkerRetainsMoneyBallCreditsAndAuthoredQuotaPolicy(
+        bool moneyBall, int quota, int points, int moneyAttempts, int moneyMade)
+    {
+        var rules = ContestRules();
+        var marker = ContestMarker(rules, quota);
+        var ball = Ball();
+        for (int i = 1; i < quota; i++) MarkerAttempt(ball, marker, rules);
+        MarkerAttempt(ball, marker, rules, moneyBall);
+        int events = 0;
+        upper.ShotResolved += _ => events++;
+        Make(ball);
+        TraceMarker(marker, events, ball);
+        Assert.That(ball.Stats.TotalPoints, Is.EqualTo(points));
+        Assert.That(ball.Stats.Stats.MoneyBallAttempts, Is.EqualTo(moneyAttempts));
+        Assert.That(ball.Stats.Stats.MoneyBallMade, Is.EqualTo(moneyMade));
+        Assert.That(ball.State.OnShootShotMarker, Is.Null);
+        Assert.That(ball.State.IsFinalMarkerAttempt, Is.False);
+        Assert.That(events, Is.EqualTo(1));
+    }
+
+    [TestCase(ShotRule.Any, true, 3)]
+    [TestCase(ShotRule.AllRanges, true, 3)]
+    [TestCase(ShotRule.ThreePoint, false, 0)]
+    public void FinalMarkerSnapshotPreservesModeAndEnabledMarkerGates(ShotRule shotRule, bool enabled, int points)
+    {
+        var rules = new ResolvedMatchRules(shotRule: shotRule, shotMarkers: ShotMarkerRequirement.ThreePoint);
+        var marker = ContestMarker(rules);
+        var ball = Ball();
+        for (int i = 0; i < 5; i++) MarkerAttempt(ball, marker, rules);
+        Assert.That(ball.State.IsFinalMarkerAttempt, Is.True);
+        marker.MarkerEnabled = enabled;
+        Make(ball);
+        Assert.That(ball.Stats.TotalPoints, Is.EqualTo(points));
+        Assert.That(ball.Stats.Stats.MoneyBallMade, Is.Zero);
+        Assert.That(ball.State.IsFinalMarkerAttempt, Is.False);
+    }
+
+    [Test]
+    public void MissingRegistrationCannotBorrowFinalBonusFromSharedMarkerCount()
+    {
+        var rules = ContestRules();
+        var marker = ContestMarker(rules);
+        var ball = Ball();
+        for (int i = 0; i < 5; i++) MarkerAttempt(ball, marker, rules);
+        Begin(ball);
+        ball.State.CaptureShotMarkerForAttempt(); // Legacy/incomplete snapshot with no registration.
+        Make(ball);
+        Assert.That(ball.Stats.TotalPoints, Is.EqualTo(3));
+        Assert.That(ball.Stats.Stats.MoneyBallMade, Is.Zero);
+    }
+
     [Test]
     public void MatchingCrossingsScoreOnceAndPublishOnce()
     {
