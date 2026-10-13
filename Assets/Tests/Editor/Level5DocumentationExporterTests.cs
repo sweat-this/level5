@@ -32,6 +32,7 @@ public class Level5DocumentationExporterTests
     [TestCase(17)]
     [TestCase(18)]
     [TestCase(24)]
+    [TestCase(25)]
     public void CheckedInCountdownDescriptionMatchesTheProductionPrefab(int id)
     {
         string sourcePath = $"Assets/Resources/Prefabs/menu_start/mode_selected_objects/mode_selected_{id:D2}.prefab";

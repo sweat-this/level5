@@ -310,8 +310,15 @@ public class Level5AuthoredMatchDataTests
         StartScreenModeSelected source = prefab.GetComponent<StartScreenModeSelected>();
         Assert.That(source, Is.Not.Null);
         Assert.That(source.ModeId, Is.EqualTo((int)id));
+        Assert.That(authoredModes.Exists(authored => authored.ModeId == (int)id), Is.True);
         Assert.That(source.ModeRequiresShotMarkers7s,
             Is.EqualTo((markers & ShotMarkerRequirement.SevenPoint) != 0));
+        if (id == GameModeId.SpotUp7s)
+        {
+            Assert.That(source.ModeDescription, Is.EqualTo(
+                "Make the required 7-point shots from each position marker to complete the course."));
+            Assert.That(source.HighScoreField, Is.EqualTo("time"));
+        }
 
         GameModeDefinition mode = GameModeDefinitionFactory.Create(source);
         LevelDefinition arena = LevelDefinitionFactory.Create(authoredLevels.Find(level => level.LevelId == 1));
@@ -320,6 +327,7 @@ public class Level5AuthoredMatchDataTests
             ResolvedMatchRules rules = MatchConfigurationBuilder.Resolve(
                 mode, arena, TestDefinitions.SoloRoster(), MatchModifiers.Default);
             Assert.That(mode.ShotMarkers, Is.EqualTo(markers));
+            Assert.That(mode.Description, Is.EqualTo(source.ModeDescription));
             Assert.That(rules.ShotMarkers, Is.EqualTo(markers));
             Assert.That(rules.Objective, Is.EqualTo(MatchObjective.ContestCompletion));
             Assert.That(rules.ClockMode, Is.EqualTo(clock));

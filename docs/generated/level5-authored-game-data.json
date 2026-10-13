@@ -25251,7 +25251,7 @@
                         {
                             "propertyPath": "modeDescription",
                             "propertyType": "String",
-                            "value": "Make 5 7s from each position marker"
+                            "value": "Make the required 7-point shots from each position marker to complete the course."
                         },
                         {
                             "propertyPath": "modeDisplayName",
