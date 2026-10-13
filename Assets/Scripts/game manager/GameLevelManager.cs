@@ -42,6 +42,7 @@ public class GameLevelManager : MonoBehaviour, IGroundHeightProvider, IPlayerMat
     private ResolvedMatchRules _rules;
     private PlayerRoster _roster;
     private GameModeId _modeId;
+    private MatchController _shotMatchController;
 
     private Vector3 _basketballRimVector;
 
@@ -269,7 +270,14 @@ public class GameLevelManager : MonoBehaviour, IGroundHeightProvider, IPlayerMat
             return;
         }
 
-        shotMade.BindMatchContext(_rules, _modeId);
+        shotMade.BindMatchContext(_rules, _modeId, CanAcceptBasketballMake);
+    }
+
+    private bool CanAcceptBasketballMake()
+    {
+        // Keep the scene's controller, never a later scene's singleton. Missing/destroyed scene
+        // composition fails closed, including callbacks retained during scene teardown.
+        return this != null && _shotMatchController != null && _shotMatchController.IsPlaying;
     }
 
     /// <summary>
@@ -614,6 +622,9 @@ public class GameLevelManager : MonoBehaviour, IGroundHeightProvider, IPlayerMat
 
     private void Start()
     {
+        // GameRules.Awake creates the controller after this manager's early Awake. Resolve it only
+        // after all Awake calls; the delegate bound above reads this initialized reference at make time.
+        _shotMatchController = MatchController.instance;
         // return to this if n
         GameOptions.previousSceneName = Constants.SCENE_NAME_level_00_loading;
         if (numPlayers > 1)
