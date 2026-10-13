@@ -34,7 +34,8 @@ namespace Level5.Core.Match
         PlayerDied,
         LastPlayerStanding,
         CampaignRoundComplete,
-        Abandoned
+        Abandoned,
+        PlayerStopped
     }
 
     /// <summary>The reason a match ended, with an optional note for logs.</summary>

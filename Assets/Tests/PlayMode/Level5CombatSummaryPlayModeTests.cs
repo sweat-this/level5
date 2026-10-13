@@ -272,9 +272,152 @@ public class Level5CombatSummaryPlayModeTests
     public IEnumerator BattleRoyalDeathRetainsSurvivalSummary()
     {
         yield return Launch(GameModeId.BattleRoyal, 17);
+        Assert.That(ActiveMatch.Configuration.Rules.Objective, Is.EqualTo(MatchObjective.Survival));
         Kill();
         yield return WaitForCompletion();
         AssertSummary(true);
+        AssertPersistence(GameModeId.BattleRoyal);
+    }
+
+    [UnityTest]
+    public IEnumerator BattleRoyalSaveExitsRecordALongLiveRunOnceAndPreserveTheAcceptedCause()
+    {
+        yield return Launch(GameModeId.BattleRoyal, 17);
+        RealScenePlayModeTestSupport.SetField(gameRules, "timePlayedStart", Time.time - 14400f);
+        Pause pause = Pause.instance;
+        Assert.That(pause, Is.Not.Null);
+        pause.TogglePause();
+        Assert.That(RealScenePlayModeTestSupport.GetField<Text>(pause, "loadStartScreenText").text,
+            Is.EqualTo(Pause.BattleRoyalSaveMenuLabel));
+        Assert.That(RealScenePlayModeTestSupport.GetField<Text>(pause, "quitGameText").text,
+            Is.EqualTo(Pause.BattleRoyalSaveQuitLabel));
+        PlayerHealth health = UnityEngine.Object.FindAnyObjectByType<PlayerHealth>();
+        Assert.That(health.IsDead, Is.False);
+
+        // Execute each real exit's durability step, stopping before process quit or scene navigation.
+        IEnumerator quit = pause.Quit();
+        Assert.That(quit.MoveNext(), Is.True);
+        (quit as IDisposable)?.Dispose();
+        Assert.That(MatchController.instance.Phase, Is.EqualTo(MatchPhase.Completed));
+        Assert.That(MatchController.instance.EndReason.Cause, Is.EqualTo(MatchEndCause.PlayerStopped));
+        Assert.That(health.IsDead, Is.False);
+        Assert.That(stats.Stats.TimePlayed, Is.GreaterThanOrEqualTo(14400f));
+        Assert.That(Convert.ToInt32(Sql("SELECT enemiesKilled FROM HighScores WHERE modeid = 21")), Is.EqualTo(3));
+        AssertSummary(true);
+        AssertPersistence(GameModeId.BattleRoyal);
+        float stoppedAt = stats.Stats.TimePlayed;
+
+        IEnumerator menu = pause.loadstartScreen();
+        Assert.That(menu.MoveNext(), Is.True);
+        (menu as IDisposable)?.Dispose();
+        Assert.That(stats.Stats.TimePlayed, Is.EqualTo(stoppedAt));
+        AssertPersistence(GameModeId.BattleRoyal);
+        health.TakeDamage(float.MaxValue); // A later death must not replace or save the accepted run again.
+        yield return null;
+        Assert.That(MatchController.instance.EndReason.Cause, Is.EqualTo(MatchEndCause.PlayerStopped));
+        Assert.That(stats.Stats.TimePlayed, Is.EqualTo(stoppedAt));
+        AssertPersistence(GameModeId.BattleRoyal);
+    }
+
+    [UnityTest]
+    public IEnumerator BattleRoyalFailedSaveBlocksQuitMenuAndRestartUntilTheSameRunIsDurable()
+    {
+        yield return Launch(GameModeId.BattleRoyal, 17);
+        Pause pause = Pause.instance;
+        // The gameplay harness suppresses Pause and unregisters its buttons. Restore the real
+        // component before exercising onClick, rather than bypassing the production UI handlers.
+        pause.enabled = true;
+        Assert.That(pause.StartOnPause, Is.False);
+        Assert.That(pause.TogglePause(), Is.True);
+        Assert.That(pause.TogglePause(), Is.False, "a live run must still allow ordinary resume");
+        Assert.That(Time.timeScale, Is.EqualTo(1f));
+        Assert.That(pause.TogglePause(), Is.True);
+        string resultId = MatchSession.EnsureCurrentMatch();
+        Sql("CREATE TEMP TRIGGER refuse_battle_score BEFORE INSERT ON HighScores BEGIN SELECT RAISE(ABORT, 'survival exit retry test'); END");
+        // Startup repair may have written an empty queue. This fixture snapshots its whole file
+        // family in SetUp; verify no pending results exist before replacing the primary with a blocker.
+        if (File.Exists(QueuePath))
+        {
+            string queue = File.ReadAllText(QueuePath);
+            Assert.That(queue, Does.Contain("\"scores\": []"));
+            Assert.That(queue, Does.Contain("\"allTime\": []"));
+            File.Delete(QueuePath);
+        }
+        Directory.CreateDirectory(QueuePath);
+        queueBlocked = true;
+        RealScenePlayModeTestSupport.GetField<Button>(pause, "quitGameButton").onClick.Invoke();
+        Assert.That(MatchController.instance.Phase, Is.EqualTo(MatchPhase.Ending));
+        Assert.That(MatchController.instance.EndReason.Cause, Is.EqualTo(MatchEndCause.PlayerStopped));
+        Assert.That(RealScenePlayModeTestSupport.GetField<Text>(pause, "quitGameText").text,
+            Is.EqualTo(Pause.ExitNotSavedMessage));
+        Assert.That(database.CountRows("HighScores"), Is.Zero);
+        float stoppedAt = stats.Stats.TimePlayed;
+        int stoppedKills = stats.Stats.EnemiesKilled;
+        // Exercise the exact shared API used by mobile double-tap Cancel, which bypasses onClick.
+        Assert.That(pause.TogglePause(), Is.True);
+        Assert.That(pause.Paused, Is.True);
+        Assert.That(Time.timeScale, Is.Zero);
+        yield return new WaitForSecondsRealtime(1.2f);
+        Assert.That(MatchController.instance.Phase, Is.EqualTo(MatchPhase.Ending));
+        Assert.That(pause.Paused, Is.True);
+        Assert.That(Time.timeScale, Is.Zero);
+        Assert.That(stats.Stats.TimePlayed, Is.EqualTo(stoppedAt));
+        Assert.That(stats.Stats.EnemiesKilled, Is.EqualTo(stoppedKills));
+        Assert.That(database.CountRows("HighScores"), Is.Zero);
+        RealScenePlayModeTestSupport.GetField<Button>(pause, "loadStartScreenButton").onClick.Invoke();
+        Assert.That(RealScenePlayModeTestSupport.GetField<Text>(pause, "loadStartScreenText").text,
+            Is.EqualTo(Pause.ExitNotSavedMessage));
+        pause.reloadScene();
+        Assert.That(MatchSession.EnsureCurrentMatch(), Is.EqualTo(resultId));
+        Assert.That(SceneManager.GetActiveScene().name, Is.EqualTo(ActiveMatch.Configuration.SceneName));
+        Assert.That(stats.Stats.TimePlayed, Is.EqualTo(stoppedAt));
+
+        Sql("DROP TRIGGER refuse_battle_score");
+        Directory.Delete(QueuePath);
+        queueBlocked = false;
+        yield return WaitForCompletion(); // Existing unscaled-time GameRules.Update retry, even while paused.
+        Assert.That(stats.Stats.TimePlayed, Is.EqualTo(stoppedAt));
+        Assert.That(stats.Stats.EnemiesKilled, Is.EqualTo(stoppedKills));
+        Assert.That(pause.TogglePause(), Is.True, "a completed stopped run must not resume either");
+        Assert.That(Time.timeScale, Is.Zero);
+        AssertPersistence(GameModeId.BattleRoyal);
+        IEnumerator quit = pause.Quit();
+        Assert.That(quit.MoveNext(), Is.True, "durability must release the exit gate");
+        (quit as IDisposable)?.Dispose();
+        AssertPersistence(GameModeId.BattleRoyal);
+    }
+
+    [UnityTest]
+    public IEnumerator BattleRoyalDeathBeforeSaveExitKeepsPlayerDiedAndOneResult()
+    {
+        yield return Launch(GameModeId.BattleRoyal, 17);
+        Kill();
+        IEnumerator quit = Pause.instance.Quit();
+        Assert.That(quit.MoveNext(), Is.True);
+        (quit as IDisposable)?.Dispose();
+        Assert.That(MatchController.instance.EndReason.Cause, Is.EqualTo(MatchEndCause.PlayerDied));
+        AssertPersistence(GameModeId.BattleRoyal);
+    }
+
+    [UnityTest]
+    public IEnumerator BattleRoyalSaveMenuAcceptsDurableFallbackAndRepairsOneScore()
+    {
+        yield return Launch(GameModeId.BattleRoyal, 17);
+        Pause.instance.TogglePause();
+        Sql("CREATE TEMP TRIGGER refuse_battle_score BEFORE INSERT ON HighScores BEGIN SELECT RAISE(ABORT, 'survival exit fallback test'); END");
+        IEnumerator menu = Pause.instance.loadstartScreen();
+        Assert.That(menu.MoveNext(), Is.True);
+        (menu as IDisposable)?.Dispose();
+        Assert.That(MatchController.instance.Phase, Is.EqualTo(MatchPhase.Completed));
+        Assert.That(MatchController.instance.EndReason.Cause, Is.EqualTo(MatchEndCause.PlayerStopped));
+        Assert.That(database.CountRows("HighScores"), Is.Zero);
+        Assert.That(File.Exists(QueuePath), Is.True, "the score must be durable before leaving");
+        Sql("DROP TRIGGER refuse_battle_score");
+        Assembly.Load("Assembly-CSharp").GetType("PendingMatchPersistenceStore", true)
+            .GetMethod("Repair").Invoke(null, null);
+        AssertPersistence(GameModeId.BattleRoyal);
+        Assert.That(Convert.ToInt32(Sql("SELECT enemiesKilled FROM HighScores WHERE modeid = 21")), Is.EqualTo(3));
+        Assert.That((bool)gameRules.GetType().GetMethod("TrySaveBattleRoyalForExit").Invoke(gameRules, null), Is.True);
         AssertPersistence(GameModeId.BattleRoyal);
     }
 

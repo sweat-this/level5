@@ -17,6 +17,8 @@ public class Pause : MonoBehaviour
     public const string LocalVersusSimultaneousExitLabel = "Exit unavailable during a game";
     public const string ExitNotSavedMessage = "Couldn't save - try again";
     public const string ExitUnavailableSimultaneousMessage = "Unavailable until the game ends";
+    public const string BattleRoyalSaveMenuLabel = "Save & Main Menu";
+    public const string BattleRoyalSaveQuitLabel = "Save & Quit";
     private const float ExitNotSavedMessageSeconds = 3f;
     // main flag
     [SerializeField]
@@ -139,6 +141,7 @@ public class Pause : MonoBehaviour
     private Func<bool> hasPlayerDataReader = () => false;
     private Action reloadPlayerData = () => { };
     private Action<string> persistFreePlayStats = resultId => { };
+    private Func<bool> trySaveBattleRoyalForExit = () => false;
 
     /// <summary>
     /// AUD-012 Phase 2b Slice 67: replaces this class's former direct <c>DBConnector</c>/<c>DBHelper</c>/
@@ -171,13 +174,15 @@ public class Pause : MonoBehaviour
         Func<bool> databaseLockedReader,
         Func<bool> hasPlayerDataReader,
         Action reloadPlayerData,
-        Action<string> persistFreePlayStats)
+        Action<string> persistFreePlayStats,
+        Func<bool> trySaveBattleRoyalForExit = null)
     {
         this.hasDatabaseReader = hasDatabaseReader;
         this.databaseLockedReader = databaseLockedReader;
         this.hasPlayerDataReader = hasPlayerDataReader;
         this.reloadPlayerData = reloadPlayerData;
         this.persistFreePlayStats = persistFreePlayStats;
+        this.trySaveBattleRoyalForExit = trySaveBattleRoyalForExit ?? (() => false);
     }
 
     /// <summary>
@@ -566,6 +571,15 @@ public class Pause : MonoBehaviour
             return;
         }
 
+        // A live Restart still abandons the old run. Once Save has accepted an ending, a restart
+        // must not bypass its outstanding durability work or replace the result identity.
+        if (MatchRuntime.ModeId == GameModeId.BattleRoyal
+            && MatchController.instance != null && MatchController.instance.IsOver
+            && !TryLeaveMatch(loadSceneText))
+        {
+            return;
+        }
+
         // update all time stats
         if (hasDatabaseReader()
             && (MatchRuntime.ModeDisplayName.ToLower().Contains("free") || MatchRuntime.RawModeId == 99))
@@ -602,7 +616,8 @@ public class Pause : MonoBehaviour
     /// </summary>
     private bool TryLeaveMatch(Text feedback)
     {
-        if (tryPrepareForExplicitExit())
+        if (tryPrepareForExplicitExit()
+            && (MatchRuntime.ModeId != GameModeId.BattleRoyal || trySaveBattleRoyalForExit()))
         {
             return true;
         }
@@ -614,7 +629,9 @@ public class Pause : MonoBehaviour
             : ExitNotSavedMessage;
         Debug.LogWarning(message == ExitUnavailableSimultaneousMessage
             ? "Cannot leave a simultaneous versus game before it ends; nobody is forfeited."
-            : "Cannot leave the match yet: a series turn's forfeit or result has not been saved. Try again.");
+            : MatchRuntime.ModeId == GameModeId.BattleRoyal
+                ? "Cannot leave the match yet: the survival run has not been saved. Try again."
+                : "Cannot leave the match yet: a series turn's forfeit or result has not been saved. Try again.");
         if (feedback != null)
         {
             StartCoroutine(ShowExitNotSaved(feedback, message));
@@ -688,6 +705,12 @@ public class Pause : MonoBehaviour
     // quit, which forfeits the game, so it says so; once the result is in it is a plain continue.
     private void RefreshLocalVersusLabel()
     {
+        if (MatchRuntime.ModeId == GameModeId.BattleRoyal && !attemptOutstandingReader())
+        {
+            if (loadStartScreenText != null) loadStartScreenText.text = BattleRoyalSaveMenuLabel;
+            if (quitGameText != null) quitGameText.text = BattleRoyalSaveQuitLabel;
+        }
+
         // Restart is refused while a series attempt is outstanding, so don't offer it.
         if (loadSceneButton != null)
         {
@@ -706,6 +729,14 @@ public class Pause : MonoBehaviour
 
     public bool TogglePause()
     {
+        // Touch Cancel calls this directly. An accepted survival stop must stay paused even
+        // when its save is still retrying; scene navigation restores time through SceneTransition.
+        if (Time.timeScale == 0f && MatchRuntime.ModeId == GameModeId.BattleRoyal
+            && MatchController.instance != null && MatchController.instance.IsOver)
+        {
+            return paused;
+        }
+
         RefreshLocalVersusLabel();
         //Debug.Log("toggle pause");
         if (Time.timeScale == 0f)

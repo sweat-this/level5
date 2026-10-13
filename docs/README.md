@@ -26,6 +26,8 @@ Feature and system docs:
 
 Decision records and audits:
 
+- [Battle Royal survival and saved-stop policy](gp-001-battle-royal-semantics-audit.md) - GP-001: approved endless survival, aligned objective metadata, Save & Main Menu / Save & Quit, ownership audit and regression evidence.
+
 - [Arcade manual exit persistence policy audit](gp-001-arcade-manual-exit-policy-audit.md) - GP-001: approved abandonment of unfinished Arcade runs, conforming existing behavior, two review passes, and focused validation.
 
 - [GP-001 W1 HUD and animation diagnostics](gp-001-w1-hud-animation-diagnostics.md) - reproduced invisible fallback score panels, narrow canvas-selection correction, retained Dracula transition, focused runtime evidence and remaining visual limits.

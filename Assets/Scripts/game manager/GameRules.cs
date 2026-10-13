@@ -416,6 +416,23 @@ public class GameRules : MonoBehaviour, IMoneyBallState, IShotMarkerSession
         return accepted;
     }
 
+    /// <summary>Finalizes an ordinary Battle Royal run before navigation; false keeps the save retry alive.</summary>
+    public bool TrySaveBattleRoyalForExit()
+    {
+        if (MatchRuntime.ModeId != MatchModeId.BattleRoyal
+            || ActiveVersusAttempt.IsActive || Level5.BackendV2.ActiveRemoteAttempt.IsActive
+            || matchController == null || GetPrimaryGameStats() == null
+            || (!matchController.IsPlaying && !matchController.IsOver))
+        {
+            return false;
+        }
+
+        RequestEnd(IsPlayerDead() ? MatchEndReason.PlayerDied
+            : new MatchEndReason(MatchEndCause.PlayerStopped, "survival run saved by player"));
+        HandleMatchEnded();
+        return matchEndHandled;
+    }
+
     private bool IsPlayerDead()
     {
         return GameLevelManager.instance != null
@@ -622,6 +639,10 @@ public class GameRules : MonoBehaviour, IMoneyBallState, IShotMarkerSession
         {
             if (user == null)
             {
+                if (matchController != null && matchController.EndReason.Cause == MatchEndCause.PlayerStopped)
+                {
+                    return false;
+                }
                 Debug.LogWarning("GameRules skipped match score save because no high score model was available.");
                 matchScoreSaveCompleted = true;
             }
