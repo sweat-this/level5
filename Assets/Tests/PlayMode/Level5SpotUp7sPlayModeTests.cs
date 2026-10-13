@@ -16,7 +16,7 @@ using Object = UnityEngine.Object;
 
 /// <summary>
 /// Real authored-mode/arena integration. Attempts and hoop makes are injected at existing production
-/// seams; this does not certify aiming, input, flight physics, or five-make content intent.
+/// seams; this does not certify aiming, input, or flight physics.
 /// </summary>
 public class Level5SpotUp7sPlayModeTests
 {
@@ -140,7 +140,7 @@ public class Level5SpotUp7sPlayModeTests
     {
         BasketBallShotMarker[] all = Object.FindObjectsByType<BasketBallShotMarker>(FindObjectsInactive.Include);
         BasketBallShotMarker[] course = all.Where(marker => marker.ShotTypeSeven).ToArray();
-        Assert.That(course, Is.Not.Empty);
+        Assert.That(course, Has.Length.EqualTo(6));
         Assert.That(all.Any(marker => marker.ShotTypeThree || marker.ShotTypeFour), Is.True);
         foreach (BasketBallShotMarker marker in all)
         {
@@ -148,7 +148,7 @@ public class Level5SpotUp7sPlayModeTests
             if (marker.ShotTypeSeven)
             {
                 Assert.That(marker.MarkerEnabled, Is.True, marker.name);
-                Assert.That(marker.MaxShotMade, Is.GreaterThan(0), marker.name);
+                Assert.That(marker.MaxShotMade, Is.EqualTo(4), marker.name);
                 TestContext.WriteLine($"Scrapyard/{marker.name}: make quota={marker.MaxShotMade}, attempt quota={marker.MaxShotAttempt}");
             }
         }

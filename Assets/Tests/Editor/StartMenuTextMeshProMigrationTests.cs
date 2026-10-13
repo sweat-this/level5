@@ -88,6 +88,7 @@ public class StartMenuTextMeshProMigrationTests
     [TestCase(17)]
     [TestCase(18)]
     [TestCase(24)]
+    [TestCase(25)]
     public void CountdownDescriptionIsPresentedInTheAuthoredStartMenu(int id)
     {
         Scene scene = EditorSceneManager.OpenPreviewScene(ScenePath);
@@ -138,6 +139,14 @@ public class StartMenuTextMeshProMigrationTests
             MatchCatalogs.Override(savedModes, savedLevels);
             Object.DestroyImmediate(mode);
         }
+    }
+
+    [UnityTest]
+    public IEnumerator SpotUp7sDescriptionIsPresentedWhilePlaying()
+    {
+        yield return new EnterPlayMode();
+        CountdownDescriptionIsPresentedInTheAuthoredStartMenu(25);
+        yield return new ExitPlayMode();
     }
 
     [UnityTest]

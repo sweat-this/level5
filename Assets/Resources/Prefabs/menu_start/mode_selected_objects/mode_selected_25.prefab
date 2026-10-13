@@ -47,7 +47,7 @@ MonoBehaviour:
   modeId: 25
   modeDisplayName: Spot up some 7s
   modeObjectName: mode_25
-  modeDescription: Make 5 7s from each position marker
+  modeDescription: Make the required 7-point shots from each position marker to complete the course.
   modeRequiresCounter: 0
   modeRequiresCountDown: 1
   modeRequiresShotMarkers3s: 0

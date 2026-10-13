@@ -1,5 +1,7 @@
 # GP-001 post-remediation gameplay audit — 2026-10-12
 
+Follow-up status: [D2's mode-25 instructions are corrected](#d2-spot-up-7s-instructions--2026-10-13); the original observations below remain historical evidence.
+
 ## Audited state and conclusion
 
 Audited repository: `sweat-this/level5`, branch `dev`, commit **`14b2cdc6dd7abd617aa86e5524dd4817e2dddf0c`**. A fresh `git fetch origin dev` established identical HEAD, `origin/dev`, and FETCH_HEAD. A subsequent `git ls-remote origin refs/heads/dev` returned the same SHA. The initial checkout was clean; other existing agent worktrees were inventoried and left untouched. GitHub returned no open PRs. All ten corrective PRs below are merged into `dev`.
@@ -287,3 +289,79 @@ The helper and outputs are ignored local evidence, not new shipped tooling. The 
 **Review pass 2 — architecture/regressions.** Confirmed that every production edit is in `BasketBallAuto`'s obsolete UI responsibility; all public signatures and gameplay/runtime contracts remain available. Removing unused references and making compatibility UI methods inert prevents future legacy calls from acquiring human overlay ownership. No manager, service, duplicated stats owner, scene change or D3 repair is introduced. The final EditMode contracts, Editor/player runs and source comparison establish unchanged shot/physics/binding behavior. Four older scene fixtures still fail due to their implicit invalid menu selection: telemetry composition, money-ball composition, marker composition, and `TwoGamepadsSeatTwoDistinctHumansWithIndependentStatsBallsAndInputSlots`. They were executed and reported, not silently counted as passing; their setup repair is separate from D1. The deterministic second-human overlay case and the existing made-shot scene composition case pass in Editor and Windows.
 
 **Separate diagnostics/limits.** D3's missing-human-controller `PlayerAnimationEvents` error remains present once in each tested CPU launch and is reported explicitly. Defender ShotMeter/null-actor behavior is untouched and was not rerun. Legacy HUD fallback, negative-scale collider and unconditional animation-transition warnings remain; synthetic actors also produce expected animator-controller warnings. No ordinary menu/device, physical input, full competition, release executable, mobile, live Backend or hosted CI certification is claimed. Initial implementation and review did not publish changes; the user subsequently authorized committing, pushing and opening a PR targeting `dev`. No new issue or merge is part of this delivery.
+
+### D2 Spot-Up 7s instructions — 2026-10-13
+
+**D2 is corrected without changing gameplay.** Mode 25 now says: **"Make the required 7-point shots from each position marker to complete the course."** The only production edit is `modeDescription` in `Assets/Resources/Prefabs/menu_start/mode_selected_objects/mode_selected_25.prefab`. The original GP-001 characterization and the F1/F3 historical reports remain unchanged.
+
+**Current-state audit.** A fresh `git fetch origin dev` resolved to **`b17a916aa9dcfb0229ad72af661f9e20cc953b55`**, also the clean starting HEAD. D1 is merged in [#294](https://github.com/sweat-this/level5/pull/294) at that SHA; its correction and addendum are present. The twelve latest merged PRs, all open PRs (none), and GP-001/Spot-Up issue searches contained no D2 correction. The old five-make text was still present in both the prefab and generated JSON. [#244](https://github.com/sweat-this/level5/issues/244) owns simultaneous-versus Spot-Up certification, not this ordinary-mode wording correction; #222/#277 remain broader follow-ups. Existing worktrees were inventoried and left untouched. Work starts on `fix/gp001-d2-spot-up-instructions` from that exact `origin/dev`.
+
+**Root cause and ownership.** `StartScreenModeSelected` authored a universal five-make promise; `GameModeDefinitionFactory` copies it into `Description`, and `StartManager.initializeModeDisplay` presents that description unchanged. Gameplay instead uses each `BasketBallShotMarker.MaxShotMade`, with the marker HUD already displaying `maxShotMade - ShotMade`. `GameRules.SetPositionMarkers` filters active tagged markers by the resolved range requirements, initializes the nonempty course and owns its remaining count. The existing shot pipeline snapshots the attempt/marker, the hoop callback applies `MatchStats`/`ShotScoring`, and each marker completes once after its make quota. Only the final completion requests match end through `MatchController`. F3's accepted-ending latch continues excluding timeout/death/incomplete courses from ordinary completion-time records, pending results and Backend submission while preserving independent aggregate/progression work. No owner or public contract changed.
+
+**Authored quota audit.** A temporary, read-only Unity Editor probe loaded the five `basketball_goal*.prefab` assets and the nested `three_point_positions.prefab` / `four_point_positions.prefab`, then opened every selectable shooting arena as a preview scene using `LevelDefinitionFactory`'s resolved scene name. It recorded hierarchy, active/enabled state, tag, range flags, make/attempt quotas and nearest prefab source. The probe and output are retained locally in `Logs/gp001-d2/D2QuotaAudit.cs` and `quota-audit.txt`; no probe is included in production or permanent test infrastructure.
+
+Scrapyard still resolves six active, enabled, tagged seven-point markers, each with **four** required makes: `left_corner`, `left_wing.2`, `top_key`, `top_key.1`, `left_wing.3`, `right_corner`. The three inherited corner/key components come from `four_point_positions.prefab` with shared-goal overrides changing their range and quota from four-point/five makes to seven-point/four makes. The other three components are authored directly in `basketball_goal.prefab`. Scrapyard does not override `maxShotMade`. The course remains **24 seven-point makes / 168 points**.
+
+The audit did not infer other arenas from Scrapyard. All **19 selectable shooting scenes** independently resolved the following composition before mode filtering:
+
+| Marker range | Active markers per inspected scene | Makes per marker | Used by Spot-Up mode |
+| --- | --- | --- | --- |
+| Three-point | 5 | 5 | 7 and 9 |
+| Four-point | 5 | 5 | 8 and 9 |
+| Seven-point | 6 | 4 | 25 |
+
+Inspected level IDs were **1–11, 13–16, 19–22** (all authored selectable/unlocked with seven-point capability). Resolved scene names were `level_01_scrapyard`, `level_02_circlek`, `level_03_snow`, `level_04_slab`, `level_05_aveb`, `level_06_caffe`, `level_07_sudan`, `level_08_tammys`, `level_09_party_mansion`, `level_10_time_jail`, `level_11_forest`, `level_13_rustys`, `level_14_dome`, `level_15_cocaine_island`, `level_16_boner_mountain`, `level_19_cedar_crest`, `level_20_jacksonville`, `level_21_shore`, and `level_22_rumble_pit_shooting`. This includes nested inheritance and effective scene overrides, not just YAML searches. No material arena quota discrepancy was found in that inventory. The standalone `basketball_goal_circlek.prefab` lacks seven-point markers, but the actual Circle K scene uses the shared `basketball_goal.prefab` composition; the asset name alone would give the wrong conclusion.
+
+**Neighboring modes.** Prefabs 07, 08 and 09 correctly advertise five makes for their effective three/four-point markers in the inspected scenes. Mode 9 requests only three- and four-point markers, despite its "All" name. Their descriptions, count-up clocks and marker composition remain untouched. Point-contest attempt limits and final-attempt doubling are separate from Spot-Up make quotas.
+
+**Regression changes.** Extended `Level5AuthoredMatchDataTests.AuthoredSpotUpModesResolveToMakeQuotaCourses` to require production catalog presence, the approved mode-25 text, the `time` score field and description preservation through the factory. Existing resolved-rule and Scrapyard compatibility assertions retain ID 25, SevenPoint requirements, ContestCompletion, 180-second countdown, `ShotRule.Any` and disabled contest flags. Added mode 25 to the generated-description parity cases and the authored-menu presentation cases. The existing menu fixture also enters Play Mode to invoke the real presenter against the preview scene's TMP layout, checking matching text, no truncation and preferred height within the authored rectangle. Existing course tests already exercised misses, one-time completion, score totals and unsuccessful record exclusion; their positive-count/quota assertions are now pinned to six markers and four makes. No new test framework or gameplay C# was added.
+
+**Validation.** Unity **6000.5.7f1**, revision **017862109af0**, matches current `dev`. Retained local evidence is under `Logs/gp001-d2/`. Tests ran with disposable product name `level5-gp001-d2-20261013`; the runner restored the original `ProjectSettings.asset` bytes in `finally`. Existing isolated SQLite helpers and queue/session snapshot/restore behavior were retained. Backend queues, sessions, pending match results, progression and their `.bak`/`.tmp` families therefore resolve under disposable player state rather than the real player's directory. No live Backend submission was performed. Unity's incidental solution ordering was excluded from the final diff.
+
+| Check | Result | Limit |
+| --- | --- | --- |
+| `scripts/validate-repository.ps1` | PASS, exit **0** | Repository invariants |
+| Unity compilation + existing documentation exporter | PASS, Unity exit **0** | Generated JSON diff contains only mode 25's description |
+| Authored-data, exporter, marker ownership/session, eligibility selection | **136 passed**, 0 failed/skipped; Unity **0** | 21 authored + 16 exporter + 62 ownership + 8 session + 29 eligibility |
+| Graphics-enabled menu selection | **8 passed**, 0 failed/skipped; Unity **0** | Seven description cases plus mode-25 presenter/TMP fit during Play Mode; automated preview-scene layout, not physical device navigation |
+| Graphics-enabled gameplay selection | **3 passed / 1 failed**, 0 skipped; Unity **2** (invoking shell reported **1**) | All three `Level5SpotUp7sPlayModeTests` pass. The unchanged neighboring marker-composition fixture fails before its assertions on the known Doctor Blood/Total Points launch refusal. |
+| Authored arena probe | PASS, Unity **0** | Scene composition inspection, not full course execution on all 19 arenas |
+| Hosted CI | **Unavailable: `disabled_manually`** | Fresh workflow API check; no hosted pass claimed |
+
+The neighboring failure is the same fixture setup defect recorded in F3 and the D1 addendum; it was executed once here and is not counted as passing. The three passing Spot-Up cases independently launch the explicit authored shooter through the existing builder, complete the real Scrapyard course with injected attempts/hoop callbacks, exercise accelerated timeout and death/late callbacks, and assert durable success versus failure exclusion. They retain the legacy successful end cause `Unknown`. No unrelated fixture or gameplay repair was made.
+
+Exact commands (PowerShell, repo as working directory; processes launched with `Start-Process -WindowStyle Hidden -PassThru`, then `WaitForExit()` and recorded `ExitCode`; test runs omit `-quit`):
+
+```powershell
+$repo = 'C:/Users/Patrick/Documents/github/level5'
+$editor = 'C:/Program Files/Unity/Hub/Editor/6000.5.7f1/Editor/Unity.exe'
+$out = "$repo/Logs/gp001-d2"
+./scripts/validate-repository.ps1
+
+# Local read-only probe, temporarily placed in Assets/Scripts/Documentation/Editor.
+& $editor -batchmode -nographics -quit -projectPath $repo `
+  -executeMethod D2QuotaAudit.Run -logFile "$out/audit-resolved.log"
+
+& $editor -batchmode -nographics -quit -projectPath $repo `
+  -executeMethod Level5DocumentationExporter.ExportFromCommandLine -logFile "$out/export.log"
+
+$edit = 'Level5AuthoredMatchDataTests;Level5DocumentationExporterTests;Level5BasketballMarkerOwnershipTests;Level5BasketballShotMarkerSessionTests;Level5SpotUpRecordEligibilityTests'
+& $editor -batchmode -nographics -projectPath $repo -runTests -testPlatform EditMode `
+  -testFilter $edit -testResults "$out/edit.xml" -logFile "$out/edit.log"
+
+$menu = 'StartMenuTextMeshProMigrationTests.CountdownDescriptionIsPresentedInTheAuthoredStartMenu;StartMenuTextMeshProMigrationTests.SpotUp7sDescriptionIsPresentedWhilePlaying'
+& $editor -batchmode -projectPath $repo -runTests -testPlatform EditMode `
+  -testFilter $menu -testResults "$out/menu.xml" -logFile "$out/menu.log"
+
+$play = 'Level5SpotUp7sPlayModeTests;Level5ShotMarkerSessionCompositionPlayModeTests'
+& $editor -batchmode -projectPath $repo -runTests -testPlatform PlayMode `
+  -testFilter $play -testResults "$out/play.xml" -logFile "$out/play.log"
+```
+
+`Logs/gp001-d2/run-validation.ps1` retains the actual launch/isolation wrapper, invoked once each with `export`, `edit`, `menu`, and `play`; each stage also retains its expanded command and exit-code file. The first audit attempt (`audit.log`, Unity **1**) incorrectly treated `LevelObjectName` as the full scene name and failed before completing the inventory. The local probe was corrected to use `LevelDefinitionFactory.SceneName`, then completed successfully (`audit-resolved.log`); this required no production change.
+
+**Review pass 1 — correctness.** Traced production prefab identity, description conversion/presentation, nested and scene quota ownership, range filtering, successful makes/scoring, final termination and F3 eligibility. Checked all 19 selectable shooting scenes and modes 7/8/9 individually. Refinement: the existing live-course assertions only required positive counts/quotas, so they now explicitly protect the observed six/four contract. The exporter diff contains one string, and the presenter/layout check passes with the longer copy. No remaining D2 correctness finding.
+
+**Review pass 2 — architecture and scope.** Compared the final diff against the fetched baseline: one production serialized string, focused extensions to four existing fixtures, one regenerated JSON string and this report addendum. Mode identity/name, clocks, marker assets, all scenes, roster/CPU flags, scoring, eligibility, persistence, GUIDs/references and public contracts are unchanged. No dynamic copy service, quota abstraction or adjacent migration was introduced. Temporary audit code, isolated settings and solution ordering are excluded. No additional test rerun is needed after documentation-only closeout.
+
+**Remaining limits.** The source inventory supports current authored composition, not unrestricted arena playability. Full courses on other arenas, ordinary menu/device navigation, physical aiming/shot flight, standalone-player execution, live Backend and physical gameplay certification were **not run** for D2. The known neighboring fixture failure and disabled hosted CI remain separate gaps. Historical scores and failed legacy rows were not changed or migrated; record comparability is preserved.
