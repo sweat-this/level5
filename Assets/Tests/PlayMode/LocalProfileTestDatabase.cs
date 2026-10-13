@@ -191,6 +191,17 @@ internal sealed class LocalProfileTestDatabase
         }
     }
 
+    internal string ReadOnlyScoreId(int modeId)
+    {
+        Assert.That(CountRows("HighScores", "modeid", modeId), Is.EqualTo(1));
+        using (IDbCommand command = Connection.CreateCommand())
+        {
+            command.CommandText = "SELECT scoreidUnique FROM HighScores WHERE modeid = @modeId";
+            AddParameter(command, "@modeId", modeId);
+            return Convert.ToString(command.ExecuteScalar());
+        }
+    }
+
     internal List<KeyValuePair<int, string>> ReadUsers()
     {
         List<KeyValuePair<int, string>> users = new List<KeyValuePair<int, string>>();

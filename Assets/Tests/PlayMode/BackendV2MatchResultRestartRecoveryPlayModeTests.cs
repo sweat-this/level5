@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using Level5.BackendV2;
 using NUnit.Framework;
+using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.TestTools;
 
@@ -20,13 +21,41 @@ using UnityEngine.TestTools;
 /// </summary>
 public class BackendV2MatchResultRestartRecoveryPlayModeTests
 {
+    private CampaignBoundaryPersistenceIsolation persistence;
+    private BackendV2Session previousSession;
+
+    [SetUp]
+    public void SetUp()
+    {
+        previousSession = BackendV2SessionStore.Current;
+        // Protect queues and session files before any session event or production startup can
+        // mutate them. Reuse the campaign fixture's primary/backup/temporary-file isolation.
+        persistence = new CampaignBoundaryPersistenceIsolation(Application.persistentDataPath);
+        BackendV2SessionStore.Clear();
+    }
+
     [TearDown]
     public void TearDown()
     {
-        PendingMatchResultStore.Clear();
-        BackendV2SessionPersistenceStore.Clear();
-        BackendV2SessionStore.Clear();
-        BackendV2Runtime.Reset();
+        // A snapshot failure leaves originals intact and must not be followed by destructive cleanup.
+        if (persistence == null)
+            return;
+
+        try
+        {
+            PendingMatchResultStore.Clear();
+            BackendV2SessionPersistenceStore.Clear();
+            BackendV2SessionStore.Clear();
+            if (previousSession != null) BackendV2SessionStore.Set(previousSession);
+            BackendV2Runtime.Reset();
+        }
+        finally
+        {
+            // Session events can write files, so restore original bytes only after restoring memory.
+            persistence.Dispose();
+            persistence = null;
+            previousSession = null;
+        }
     }
 
     private static SubmitMatchResultDto Request(Guid clientResultId)
@@ -43,6 +72,43 @@ public class BackendV2MatchResultRestartRecoveryPlayModeTests
         BackendV2SessionPersistenceStore.Save(new BackendV2Session(
             "restart-recovery-access-token", DateTimeOffset.UtcNow.AddHours(1), playerId,
             "restart-recovery-refresh-token", DateTimeOffset.UtcNow.AddDays(30)));
+    }
+
+    [UnityTest]
+    public IEnumerator SuccessfulMatchResultResponseRetainsItsWireFieldsInAStrippedPlayer()
+    {
+        Guid owner = Guid.NewGuid();
+        Guid clientResultId = Guid.NewGuid();
+        BackendV2SessionStore.Set(new BackendV2Session("test-access", DateTimeOffset.UtcNow.AddHours(1),
+            owner, "test-refresh", DateTimeOffset.UtcNow.AddDays(1)));
+        var transport = new RecordingApiTransport
+        {
+            Handler = _ => RawApiResponse.Completed(200,
+                RecordingApiTransport.MatchResultResponseJson(clientResultId, owner))
+        };
+        BackendV2Runtime.Override(transport);
+
+        ApiResponse<MatchResultResponseDto> response = null;
+        yield return BackendV2Runtime.MatchResults.Submit(Request(clientResultId), completed => response = completed);
+
+        Assert.That(response, Is.Not.Null);
+        Assert.That(response.Success, Is.True);
+        Assert.That(transport.Requests, Has.Count.EqualTo(1));
+        // Read the returned object; never construct it or assign its setters here, which would
+        // accidentally keep those reflection-only members alive and conceal player stripping.
+        var result = response.Value;
+        Assert.That(result.Id, Is.Not.EqualTo(Guid.Empty));
+        Assert.That(result.PlayerId, Is.EqualTo(owner));
+        Assert.That(result.ClientResultId, Is.EqualTo(clientResultId));
+        Assert.That(result.ModeId, Is.EqualTo(3));
+        Assert.That(result.LevelId, Is.EqualTo(7));
+        Assert.That(result.CharacterId, Is.EqualTo("12"));
+        Assert.That(result.ClientVersion, Is.EqualTo("1.4.2"));
+        Assert.That(result.Platform, Is.EqualTo("Handheld"));
+        Assert.That(result.Metrics["TotalPoints"], Is.EqualTo(100));
+        Assert.That(result.Modifiers, Is.Not.Null);
+        Assert.That(result.Modifiers.Hardcore, Is.False);
+        Assert.That(result.CreatedAt, Is.GreaterThan(DateTimeOffset.MinValue));
     }
 
     [UnityTest]
@@ -138,12 +204,12 @@ public class BackendV2MatchResultRestartRecoveryPlayModeTests
             yield break;
         }
 
-        private static string MatchResultResponseJson()
+        internal static string MatchResultResponseJson(Guid? clientResultId = null, Guid? playerId = null)
         {
             return "{"
                 + "\"id\":\"" + Guid.NewGuid() + "\","
-                + "\"playerId\":\"" + Guid.NewGuid() + "\","
-                + "\"clientResultId\":\"" + Guid.NewGuid() + "\","
+                + "\"playerId\":\"" + (playerId ?? Guid.NewGuid()) + "\","
+                + "\"clientResultId\":\"" + (clientResultId ?? Guid.NewGuid()) + "\","
                 + "\"modeId\":3,\"levelId\":7,\"characterId\":\"12\","
                 + "\"clientVersion\":\"1.4.2\",\"platform\":\"Handheld\","
                 + "\"metrics\":{\"TotalPoints\":100.0},"
