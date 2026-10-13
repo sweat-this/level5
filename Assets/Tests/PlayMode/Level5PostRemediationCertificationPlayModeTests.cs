@@ -191,6 +191,62 @@ public class Level5PostRemediationCertificationPlayModeTests
     }
 
     [UnityTest]
+    public IEnumerator VersusCpuFallbackScoresRenderOnMatchHudAndDoNotSurviveSceneReload()
+    {
+        yield return Launch(23, 1, withCpu: true, checkCpuStartup: true);
+        MatchHudPresenter Hud() => (MatchHudPresenter)RealScenePlayModeTestSupport.GetField(gameRules, "hud");
+        Text[] Panels() => Object.FindObjectsByType<Text>(FindObjectsInactive.Include)
+            .Where(t => Regex.IsMatch(t.name, "^display_p[1-4]_score$")).OrderBy(t => t.name).ToArray();
+        void CheckPanels(Text[] panels)
+        {
+            Assert.That(Hud().IsComplete, Is.True);
+            Assert.That(panels, Has.Length.EqualTo(4));
+            Canvas canvas = summary.GetComponentInParent<Canvas>();
+            Assert.That(canvas, Is.Not.Null);
+            foreach (Text panel in panels)
+            {
+                Assert.That(panel.transform.parent, Is.SameAs(canvas.transform));
+                Assert.That(panel.font, Is.Not.Null);
+                Assert.That(panel.raycastTarget, Is.False);
+            }
+            foreach (Text panel in panels.Take(2))
+            {
+                Assert.That(panel.gameObject.activeInHierarchy, Is.True);
+                Assert.That(panel.canvas, Is.SameAs(canvas));
+                Assert.That(panel.cachedTextGenerator.vertexCount, Is.GreaterThan(0));
+            }
+            Assert.That(panels[2].gameObject.activeSelf, Is.False);
+            Assert.That(panels[3].gameObject.activeSelf, Is.False);
+        }
+
+        // Inject values at the presentation boundary; this does not simulate made shots.
+        stats.Stats.TotalPoints = 9;
+        Object.FindAnyObjectByType<BasketBallAuto>().GameStats.Stats.TotalPoints = 3;
+        yield return null;
+        Canvas.ForceUpdateCanvases();
+        Text[] original = Panels();
+        CheckPanels(original);
+        Assert.That(original[0].text, Does.StartWith("Player 1\nJohnny B\npoints : 9"));
+        Assert.That(original[1].text, Does.StartWith("CPU 2\nIan\npoints : 3"));
+        Hud().Initialize();
+        Assert.That(Panels(), Is.EqualTo(original));
+
+        LogAssert.Expect(LogType.Error, new Regex("^PlayerAnimationEvents on .* found no PlayerController on its hierarchy; attack boxes and lunge events will not run\\.$"));
+        yield return GameplayScenePlayModeHarness.LoadConfiguredGameplayScene(ActiveMatch.Configuration.SceneName, p => human = p);
+        for (int frame = 0; frame < 10; frame++) yield return null;
+        Assert.That(original.All(t => t == null), Is.True);
+        gameRules = RealScenePlayModeTestSupport.ResolveRuntimeGameRulesInstance();
+        stats = RealScenePlayModeTestSupport.GetField<GameStats>(gameRules, "gameStats1");
+        summary = RealScenePlayModeTestSupport.GetField<Text>(Hud(), "displayScoreText");
+        Canvas.ForceUpdateCanvases();
+        CheckPanels(Panels());
+        yield return ExpireCountdown();
+        Assert.That(summary.text, Does.Contain("wins!"));
+        Assert.That(errors.Keys.All(e => e.StartsWith("PlayerAnimationEvents on ")), Is.True,
+            string.Join("\n", errors.Keys));
+    }
+
+    [UnityTest]
     public IEnumerator Mode16CpuStartsWithHiddenHumanOverlayAndStillMovesShootsAndOwnsItsStats()
     {
         yield return Launch(16, 1, withCpu: true, checkCpuStartup: true);

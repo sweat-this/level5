@@ -2,6 +2,8 @@
 
 Follow-up status: [D2's mode-25 instructions are corrected](#d2-spot-up-7s-instructions--2026-10-13); the original observations below remain historical evidence.
 
+W1 follow-up: [HUD fallback parenting is corrected; Dracula's ignored legacy transition is retained](gp-001-w1-hud-animation-diagnostics.md). That report records the reproduced invisible score panels, focused validation and remaining visual/device limits. Known negative-scale BoxCollider warnings are explicitly accepted and out of scope.
+
 ## Audited state and conclusion
 
 Audited repository: `sweat-this/level5`, branch `dev`, commit **`14b2cdc6dd7abd617aa86e5524dd4817e2dddf0c`**. A fresh `git fetch origin dev` established identical HEAD, `origin/dev`, and FETCH_HEAD. A subsequent `git ls-remote origin refs/heads/dev` returned the same SHA. The initial checkout was clean; other existing agent worktrees were inventoried and left untouched. GitHub returned no open PRs. All ten corrective PRs below are merged into `dev`.

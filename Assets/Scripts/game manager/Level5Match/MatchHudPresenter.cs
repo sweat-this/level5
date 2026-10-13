@@ -477,6 +477,18 @@ public class MatchHudPresenter : MonoBehaviour
 
     private static Transform FindOrCreateHudRoot()
     {
+        // Reuse the match HUD's authored canvas. The first canvas in Resources can be an
+        // inactive damage popup, which makes otherwise correct fallback scores invisible.
+        foreach (string objectName in RequiredHudObjectNames)
+        {
+            Text hudText = FindSceneText(objectName);
+            Canvas hudCanvas = hudText != null ? hudText.GetComponentInParent<Canvas>(true) : null;
+            if (hudCanvas != null)
+            {
+                return hudCanvas.transform;
+            }
+        }
+
         foreach (Canvas candidate in Resources.FindObjectsOfTypeAll<Canvas>())
         {
             if (candidate != null && candidate.gameObject.scene.IsValid())
