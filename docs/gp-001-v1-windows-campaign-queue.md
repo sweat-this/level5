@@ -104,3 +104,18 @@ This development test player is automated boundary evidence. It is not a product
 Hosted Repository Quality remains **`disabled_manually`**, verified live during this follow-up. Local execution does not imply a successful hosted CI run.
 
 Final diff review passed changed-path scope, whitespace, local Markdown links, byte-equivalent executed C# source and unchanged historical characterization. Remote `dev` was rechecked before publication and still pointed to the audited SHA.
+
+## Review correction: response-test persistence isolation
+
+Review of PR #293 at `eaf6f9eb4f08e332b15cd7ff806888b0556dda1e` found that the new typed-response test inherited destructive cleanup from the existing restart fixture. An ordinary focused Test Runner invocation could delete an existing pending-results queue and persisted session. `ReviewResponseIsolation.xml` passed **1/1**, but its preservation probe found both primary files and both backups deleted. An external guard restored all six original paths; those synthetic losses are the defect reproduction, not a preservation pass.
+
+The restart/response fixture now reuses `CampaignBoundaryPersistenceIsolation` in NUnit setup, before clearing the session or entering production startup. It isolates all twelve existing primary/backup/temporary paths, retains the previous in-memory Backend session, and restores memory before restoring original bytes in teardown. Cleanup returns without mutating files if the snapshot never completed. This also protects the fixture's existing startup cases; no production code, session contract, queue policy or test response assertions changed.
+
+Focused verification in the disposable project:
+
+- `ResponseIsolationSuccess.xml`: **1/1 passed**, Unity **0**; all twelve seeded file paths restored byte for byte. A temporary assertion verified restoration of a pre-existing in-memory session with session-persistence event handling active.
+- `ResponseIsolationFailure.xml`: **one deliberate test failure**, Unity **2**; verification **PASS**, all twelve existing/absent paths restored and the original null in-memory session restored. The failure was injected after the fake response returned, so NUnit teardown was exercised. This is failure-path evidence, not a passing gameplay case.
+- `ResponseIsolationWindows.xml`: **1/1 passed**, no skips, Unity **0**, using final source without diagnostic injection. The stripped Windows player retained the typed response contract, and fixture teardown restored all twelve seeded primary/backup/temporary paths byte for byte. The outer guard then restored all twelve prior originals.
+- Both probes used an external read-all-before-mutation snapshot, restored the original twelve paths in `finally`, and removed temporary source instrumentation before the final player check. No real account data or credentials were logged.
+
+The earlier 91/91 Backend EditMode, 4/4 campaign Editor and 13/13 Windows results remain historical evidence for the production correction. This review correction changes only test lifecycle and is verified separately rather than relabeling those earlier runs as new executions.

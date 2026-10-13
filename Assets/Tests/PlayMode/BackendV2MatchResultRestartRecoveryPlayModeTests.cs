@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using Level5.BackendV2;
 using NUnit.Framework;
+using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.TestTools;
 
@@ -20,13 +21,41 @@ using UnityEngine.TestTools;
 /// </summary>
 public class BackendV2MatchResultRestartRecoveryPlayModeTests
 {
+    private CampaignBoundaryPersistenceIsolation persistence;
+    private BackendV2Session previousSession;
+
+    [SetUp]
+    public void SetUp()
+    {
+        previousSession = BackendV2SessionStore.Current;
+        // Protect queues and session files before any session event or production startup can
+        // mutate them. Reuse the campaign fixture's primary/backup/temporary-file isolation.
+        persistence = new CampaignBoundaryPersistenceIsolation(Application.persistentDataPath);
+        BackendV2SessionStore.Clear();
+    }
+
     [TearDown]
     public void TearDown()
     {
-        PendingMatchResultStore.Clear();
-        BackendV2SessionPersistenceStore.Clear();
-        BackendV2SessionStore.Clear();
-        BackendV2Runtime.Reset();
+        // A snapshot failure leaves originals intact and must not be followed by destructive cleanup.
+        if (persistence == null)
+            return;
+
+        try
+        {
+            PendingMatchResultStore.Clear();
+            BackendV2SessionPersistenceStore.Clear();
+            BackendV2SessionStore.Clear();
+            if (previousSession != null) BackendV2SessionStore.Set(previousSession);
+            BackendV2Runtime.Reset();
+        }
+        finally
+        {
+            // Session events can write files, so restore original bytes only after restoring memory.
+            persistence.Dispose();
+            persistence = null;
+            previousSession = null;
+        }
     }
 
     private static SubmitMatchResultDto Request(Guid clientResultId)
