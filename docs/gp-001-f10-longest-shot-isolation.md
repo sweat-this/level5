@@ -30,6 +30,8 @@ No scoring, physics, authored identity, storage schema, Backend V2 contract, exp
 
 ## Result and exit policy
 
+**Product-policy follow-up, 2026-10-13:** the owner approved abandoning unfinished Arcade runs on Quit, Main Menu, and Restart, with ordinary results saved only at accepted match end. Existing production behavior conforms; no exit-save correction is required. The separate in-play all-time aggregate write remains unchanged. See the [manual exit policy audit](gp-001-arcade-manual-exit-policy-audit.md) for the decision, ownership trace, reviews, and validation boundaries. The original gap description below records the policy ambiguity at the time of F10.
+
 Arcade remains eligible for ordinary mode-98 result persistence when `GameRules.SaveMatchResults` runs. Local SQLite or the existing pending-score fallback must establish durability before the existing Backend V2 queue attempt. Save flags retain idempotency. A missing online session at that moment remains a no-op; no historical result is claimed later.
 
 Free Play remains excluded from ordinary `SaveMatchResults` score insertion. Its pause quit, return-to-menu, and restart conditions still call the existing `GameLevelManager.PersistFreePlayStatsForPause` adapter, which saves the score/history, aggregate stats, and progression using the existing pending fallbacks. Restart retains its reload behavior. Arcade's experience formula still returns zero.
