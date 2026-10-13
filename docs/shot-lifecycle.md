@@ -64,11 +64,19 @@ records, at the moment the ball leaves the player's hands:
 - which line it was taken from (`TwoAttempt` / `ThreeAttempt` / `FourAttempt` / `SevenAttempt`);
 - whether the player was standing on a shot marker, and which one (`PlayerOnMarkerOnShoot`,
   `OnShootShotMarker`);
+- whether this attempt reached that marker's final-attempt quota (`IsFinalMarkerAttempt`),
+  captured immediately after registration rather than inferred from its shared count at make time;
 - whether the money ball was active (`MoneyBallEnabledOnShoot`).
 
 This matters because the player can move, the marker can change state, and the money ball can be
 spent while the ball is in the air. Scoring the make against the situation at launch is what makes a
 shot worth what it looked like when it was taken.
+
+Final-marker bonus status clears with the existing snapshot on the next attempt and after an
+accepted make. Another participant's fourth/fifth/sixth attempt cannot grant or revoke it.
+The existing enabled-marker and Three/Four/Seven contest gates still apply; fifth-attempt
+`MoneyBallAttempts`, independent active-money credits and captured-runtime completion readiness
+retain their existing policies. See the [overlap reproduction and validation](gp-001-final-marker-bonus.md).
 
 AUD-015 was a bug in exactly this area: the attempt flags were set at launch but only cleared on the
 make path, so a missed two followed by a made three scored both. They are now reset at the start of

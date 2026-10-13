@@ -407,7 +407,7 @@ public class BasketBallShotMade : MonoBehaviour
             OnEnabledMarker = basketBallState.PlayerOnMarkerOnShoot
                 && marker != null
                 && marker.MarkerEnabled,
-            IsFinalMarkerAttempt = marker != null && marker.ShotAttempt == marker.MaxShotAttempt,
+            IsFinalMarkerAttempt = basketBallState.IsFinalMarkerAttempt,
             MarkerFinalShotScoresDouble = rules.IsThreePointContest
                 || rules.IsFourPointContest
                 || rules.IsSevenPointContest,

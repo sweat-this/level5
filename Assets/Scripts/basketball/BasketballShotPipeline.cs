@@ -86,6 +86,7 @@ public static class BasketballShotPipeline
         basketBallState.CaptureShotMarkerForAttempt();
         BasketBallShotMarker marker = basketBallState.OnShootShotMarker;
         marker.RegisterAttempt(runtime);
+        basketBallState.IsFinalMarkerAttempt = marker.ShotAttempt == marker.MaxShotAttempt;
 
         if (marker.ShotAttempt == 5
             && (rules.IsThreePointContest || rules.IsFourPointContest || rules.IsSevenPointContest))
