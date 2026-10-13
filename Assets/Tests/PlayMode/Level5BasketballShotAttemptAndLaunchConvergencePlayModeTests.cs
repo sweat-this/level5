@@ -6,6 +6,7 @@ using Level5.Core.Match;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
+using UnityEngine.UI;
 
 /// <summary>
 /// AUD-012 Phase 3 Slice 71: <c>BasketballShotPipeline.ApplyShotAttempt</c>/<c>ApplyLaunchResult</c> are
@@ -29,6 +30,14 @@ using UnityEngine.TestTools;
 public class Level5BasketballShotAttemptAndLaunchConvergencePlayModeTests
 {
     private readonly List<GameObject> spawned = new List<GameObject>();
+    private bool previousIgnoreLogs;
+
+    [SetUp]
+    public void SetUp()
+    {
+        previousIgnoreLogs = LogAssert.ignoreFailingMessages;
+        LogAssert.ignoreFailingMessages = false;
+    }
 
     /// <summary>
     /// A coroutine teardown (rather than plain <c>[TearDown]</c>) so the trailing <c>yield return
@@ -57,6 +66,7 @@ public class Level5BasketballShotAttemptAndLaunchConvergencePlayModeTests
         spawned.Clear();
 
         yield return null;
+        LogAssert.ignoreFailingMessages = previousIgnoreLogs;
     }
 
     private GameObject Spawn(string name)
@@ -106,7 +116,7 @@ public class Level5BasketballShotAttemptAndLaunchConvergencePlayModeTests
         public float GroundHeight => 0f;
     }
 
-    private BasketBall BuildHumanBall(FakeShooterActor actor)
+    private BasketBall BuildHumanBall(FakeShooterActor actor, int slot = 0)
     {
         GameObject playerGo = Spawn("human-actor");
         Spawn("basketBall_position").transform.parent = playerGo.transform;
@@ -129,12 +139,108 @@ public class Level5BasketballShotAttemptAndLaunchConvergencePlayModeTests
         state.BindMatchRules(new ResolvedMatchRules(enemiesOnly: false));
 
         BasketBall ball = ballGo.AddComponent<BasketBall>();
-        ball.BindOwner(0, isCpu: false, isPrimary: true, playerGo, actor);
+        ballGo.GetComponent<GameStats>().BindMatchRules(new ResolvedMatchRules(enemiesOnly: false));
+        ball.BindOwner(slot, isCpu: false, isPrimary: slot == 0, playerGo, actor);
         ball.BindGroundHeightProvider(new FakeGroundHeightProvider());
         ball.BindMatchRules(new ResolvedMatchRules(enemiesOnly: false));
 
         ballGo.SetActive(true);
         return ball;
+    }
+
+    private void BuildOverlay(out Text score, out Text profile, out GameObject background)
+    {
+        GameObject overlay = Spawn("ui_stats");
+        score = Spawn("shootStatsTextObject").AddComponent<Text>();
+        profile = Spawn("shooterProfileTextObject").AddComponent<Text>();
+        background = Spawn("textBackground");
+        score.transform.SetParent(overlay.transform);
+        profile.transform.SetParent(overlay.transform);
+        background.transform.SetParent(overlay.transform);
+    }
+
+    [UnityTest]
+    public IEnumerator CpuStartupWithHiddenHumanOverlayLeavesItOwnedAndToggleableByTheHuman()
+    {
+        BuildOverlay(out Text score, out Text profile, out GameObject background);
+        BasketBall human = BuildHumanBall(new FakeShooterActor(shotMeterEnded: false));
+        yield return null;
+        Assert.That(human.UiStatsEnabled, Is.False);
+        Assert.That(background.activeSelf, Is.False);
+        Assert.That(GameObject.Find("textBackground"), Is.Null, "the original inactive-lookup precondition");
+
+        BasketBallAuto cpu = BuildCpuBall(new FakeShooterActor(shotMeterEnded: true));
+        yield return null; // Unity runs the real CPU Start, without ignoring exceptions.
+        Assert.That(cpu.GameStats, Is.Not.Null.And.Not.SameAs(human.GameStats));
+        Assert.That(BasketBall.instance, Is.SameAs(human));
+        Assert.That(background.activeSelf, Is.False);
+        Assert.That(score.text, Is.Empty);
+        Assert.That(profile.text, Is.Empty);
+
+        // toggleUiStats also writes the existing message line.
+        Spawn("messageDisplay").AddComponent<Text>();
+        human.toggleUiStats();
+        Assert.That(human.displayUiStats(), Is.True);
+        Assert.That(background.activeSelf, Is.True);
+        Assert.That(profile.text, Does.Contain("fake-shooter"));
+        human.toggleUiStats();
+        Assert.That(human.displayUiStats(), Is.False);
+        Assert.That(background.activeSelf, Is.False);
+        Assert.That(score.text, Is.Empty);
+    }
+
+    [UnityTest]
+    public IEnumerator CpuStartupAndLegacyUiMethodsLeaveActiveHumanStatsUntouched()
+    {
+        BuildOverlay(out Text score, out Text profile, out GameObject background);
+        Spawn("messageDisplay").AddComponent<Text>();
+        BasketBall human = BuildHumanBall(new FakeShooterActor(shotMeterEnded: false));
+        yield return null;
+        human.GameStats.TotalPoints = 17;
+        human.toggleUiStats();
+        Assert.That(human.displayUiStats(), Is.True);
+        string expectedScore = score.text;
+        string expectedProfile = profile.text;
+
+        BasketBallAuto cpu = BuildCpuBall(new FakeShooterActor(shotMeterEnded: true));
+        yield return null;
+        Assert.That(background.activeSelf, Is.True, "CPU Start must not hide active human stats");
+        Assert.That(score.text, Is.EqualTo(expectedScore));
+        Assert.That(profile.text, Is.EqualTo(expectedProfile));
+        cpu.toggleUiStats();
+        Assert.That(cpu.displayUiStats(), Is.False);
+        cpu.updateScoreText();
+        yield return cpu.turnOffMessageLogDisplayAfterSeconds(0);
+        Assert.That(cpu.UiStatsEnabled, Is.False);
+        Assert.That(background.activeSelf, Is.True);
+        Assert.That(score.text, Is.EqualTo(expectedScore));
+        Assert.That(profile.text, Is.EqualTo(expectedProfile));
+        Assert.That(cpu.GameStats.TotalPoints, Is.EqualTo(0));
+        Assert.That(human.GameStats.TotalPoints, Is.EqualTo(17));
+    }
+
+    [UnityTest]
+    public IEnumerator SecondHumanStartupPreservesThePrimaryHumanOverlay()
+    {
+        BuildOverlay(out Text score, out Text profile, out GameObject background);
+        Spawn("messageDisplay").AddComponent<Text>();
+        BasketBall primary = BuildHumanBall(new FakeShooterActor(shotMeterEnded: false));
+        yield return null;
+        Assert.That(background.activeSelf, Is.False);
+        BasketBall second = BuildHumanBall(new FakeShooterActor(shotMeterEnded: false), slot: 1);
+        yield return null;
+        Assert.That(BasketBall.instance, Is.SameAs(primary));
+        Assert.That(background.activeSelf, Is.False);
+        primary.GameStats.TotalPoints = 17;
+        second.GameStats.TotalPoints = 8;
+        primary.toggleUiStats();
+        Assert.That(primary.displayUiStats(), Is.True);
+        string expected = score.text;
+        second.toggleUiStats();
+        Assert.That(second.displayUiStats(), Is.False);
+        Assert.That(background.activeSelf, Is.True);
+        Assert.That(score.text, Is.EqualTo(expected));
+        Assert.That(primary.GameStats.TotalPoints, Is.EqualTo(17));
     }
 
     private BasketBallAuto BuildCpuBall(FakeShooterActor actor)

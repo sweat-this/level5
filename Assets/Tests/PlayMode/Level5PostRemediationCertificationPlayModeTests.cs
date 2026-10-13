@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Data;
 using System.Linq;
 using System.Reflection;
+using System.Text.RegularExpressions;
 using Level5.BackendV2;
 using Level5.Core;
 using Level5.Core.Match;
@@ -105,9 +106,16 @@ public class Level5PostRemediationCertificationPlayModeTests
         }
     }
 
-    private IEnumerator Launch(int modeId, int arenaId, bool withCpu = false)
+    private IEnumerator Launch(int modeId, int arenaId, bool withCpu = false, bool checkCpuStartup = false)
     {
-        RealScenePlayModeTestSupport.IgnoreSceneLogNoise();
+        if (checkCpuStartup)
+        {
+            LogAssert.ignoreFailingMessages = false;
+            // D3 is an existing, separately scoped role diagnostic. No exception is accepted.
+            if (withCpu)
+                LogAssert.Expect(LogType.Error, new Regex("^PlayerAnimationEvents on .* found no PlayerController on its hierarchy; attack boxes and lunge events will not run\\.$"));
+        }
+        else RealScenePlayModeTestSupport.IgnoreSceneLogNoise();
         database = new LocalProfileTestDatabase();
         yield return database.Open();
         SceneManager.LoadScene(Constants.SCENE_NAME_level_00_loading);
@@ -148,6 +156,91 @@ public class Level5PostRemediationCertificationPlayModeTests
         Assert.That(stats, Is.Not.Null);
         Assert.That(summary, Is.Not.Null);
         TestContext.WriteLine($"LAUNCH mode={modeId} scene={build.Configuration.SceneName} roster={build.Configuration.Roster.Count}");
+    }
+
+    private static T Overlay<T>(string name) where T : Component
+        => Object.FindObjectsByType<T>(FindObjectsInactive.Include, FindObjectsSortMode.None)
+            .Single(c => c.name == name);
+
+    private void CheckNoCpuStartupException()
+    {
+        Assert.That(errors.Keys.Any(e => e.Contains("BasketBallAuto.Start")), Is.False,
+            "CPU startup must never throw, including the original inactive textBackground lookup");
+    }
+
+    private void ToggleHumanOverlay()
+    {
+        BasketBall ball = BasketBall.instance;
+        GameObject background = Overlay<Transform>("textBackground").gameObject;
+        Text score = Overlay<Text>("shootStatsTextObject");
+        Text profile = Overlay<Text>("shooterProfileTextObject");
+        Assert.That(ball.UiStatsEnabled, Is.False);
+        Assert.That(background.activeSelf, Is.False);
+        Assert.That(score.text, Is.Empty);
+        Assert.That(profile.text, Is.Empty);
+        ball.toggleUiStats();
+        Assert.That(ball.displayUiStats(), Is.True);
+        Assert.That(background.activeSelf, Is.True);
+        Assert.That(score.text, Does.Contain("points : " + stats.TotalPoints));
+        Assert.That(profile.text, Is.Not.Empty);
+        ball.toggleUiStats();
+        Assert.That(ball.displayUiStats(), Is.False);
+        Assert.That(background.activeSelf, Is.False);
+        Assert.That(score.text, Is.Empty);
+        Assert.That(profile.text, Is.Empty);
+    }
+
+    [UnityTest]
+    public IEnumerator Mode16CpuStartsWithHiddenHumanOverlayAndStillMovesShootsAndOwnsItsStats()
+    {
+        yield return Launch(16, 1, withCpu: true, checkCpuStartup: true);
+        CheckNoCpuStartupException();
+        ToggleHumanOverlay();
+        BasketBallAuto cpu = Object.FindAnyObjectByType<BasketBallAuto>();
+        AutoPlayerController actor = Object.FindAnyObjectByType<AutoPlayerController>();
+        Assert.That(cpu, Is.Not.Null);
+        Assert.That(actor, Is.Not.Null);
+        Assert.That(cpu.ParticipantId, Is.EqualTo(1));
+        Assert.That(cpu.OwnerActor, Is.SameAs(actor.gameObject));
+        Assert.That(cpu.GameStats, Is.Not.SameAs(stats));
+        Assert.That(cpu.GameStats.Stats, Is.Not.SameAs(stats.Stats));
+        Vector3 initial = actor.transform.position;
+        int attempts = cpu.GameStats.Stats.ShotAttempt;
+        int humanAttempts = stats.Stats.ShotAttempt;
+        int humanPoints = stats.TotalPoints;
+        yield return new WaitForSeconds(12f);
+        Assert.That(Vector3.Distance(initial, actor.transform.position), Is.GreaterThan(0.01f));
+        Assert.That(cpu.GameStats.Stats.ShotAttempt, Is.GreaterThan(attempts));
+        Assert.That(stats.Stats.ShotAttempt, Is.EqualTo(humanAttempts));
+        Assert.That(stats.TotalPoints, Is.EqualTo(humanPoints));
+        TestContext.WriteLine($"D1 NATURAL CPU displacement={Vector3.Distance(initial, actor.transform.position)} "
+            + $"attempts={cpu.GameStats.Stats.ShotAttempt - attempts} points={cpu.GameStats.TotalPoints}");
+        ToggleHumanOverlay();
+        CheckNoCpuStartupException();
+    }
+
+    [UnityTest]
+    public IEnumerator VersusCpuStartupPreservesHumanOverlayAndSeparateStatistics()
+    {
+        yield return Launch((int)GameModeId.VersusCpu, 1, withCpu: true, checkCpuStartup: true);
+        BasketBallAuto cpu = Object.FindAnyObjectByType<BasketBallAuto>();
+        Assert.That(cpu, Is.Not.Null);
+        Assert.That(cpu.GameStats, Is.Not.SameAs(stats));
+        ToggleHumanOverlay();
+        int before = cpu.GameStats.Stats.ShotAttempt;
+        yield return new WaitForSeconds(12f);
+        Assert.That(cpu.GameStats.Stats.ShotAttempt, Is.GreaterThan(before));
+        Assert.That(stats.Stats.ShotAttempt, Is.EqualTo(0));
+        CheckNoCpuStartupException();
+    }
+
+    [UnityTest]
+    public IEnumerator SoloHumanRetainsProductionOverlayToggleBehavior()
+    {
+        yield return Launch(16, 1, checkCpuStartup: true);
+        Assert.That(Object.FindAnyObjectByType<BasketBallAuto>(), Is.Null);
+        ToggleHumanOverlay();
+        CheckNoCpuStartupException();
     }
 
     private IEnumerator ExpireCountdown()
