@@ -281,10 +281,8 @@ public class GameLevelManager : MonoBehaviour, IGroundHeightProvider, IPlayerMat
     }
 
     /// <summary>
-    /// AUD-012 Phase 2b Slice 54: the composition adapter <see cref="SpawnCoordinator"/> now calls
-    /// instead of reaching directly for legacy campaign selection itself. This class already reads
-    /// <c>GameOptions</c> (it is an allowlisted consumer) and already constructs the coordinator, so it
-    /// is the narrowest existing owner for this one lookup - not a new <c>GameOptions</c> consumer.
+    /// The composition adapter <see cref="SpawnCoordinator"/> calls for the authored campaign CPU.
+    /// PlayerData owns the route; EndRoundData owns its active position, independently of menu indices.
     ///
     /// Preserves the exact prior three-state semantics <c>SpawnCoordinator.ResolveParticipantPrefab</c>
     /// used to implement inline: no list, a negative index, or an out-of-range index all report "no
@@ -298,8 +296,8 @@ public class GameLevelManager : MonoBehaviour, IGroundHeightProvider, IPlayerMat
     {
         prefab = null;
 
-        List<LevelSelected> levels = GameOptions.levelsList;
-        int levelIndex = GameOptions.levelSelectedIndex;
+        List<LevelSelected> levels = PlayerData.instance != null ? PlayerData.instance.LevelsList : null;
+        int levelIndex = EndRoundData.currentLevelIndex;
         if (levels == null || levelIndex < 0 || levelIndex >= levels.Count)
         {
             return false;
@@ -631,8 +629,6 @@ public class GameLevelManager : MonoBehaviour, IGroundHeightProvider, IPlayerMat
         {
             isMultiplePlayersTotalPoints = true;
         }
-        // analytic event
-
         _locked = false;
         //set up player/basketball read only references for use in other classes
         PlayerIdentifier player1 = registry.GetBySlot(0);

@@ -13,15 +13,16 @@ using UnityEngine;
 /// These tests drive the real private <c>ResolveParticipantPrefab</c> through reflection (the sole
 /// production path) against a fully controlled fake resolver, then separately exercise the real
 /// production adapter (<see cref="GameLevelManager"/>'s own <c>TryResolveCampaignCpuPrefab</c>) against
-/// <c>GameOptions.levelsList</c>/<c>levelSelectedIndex</c> directly - so neither the seam's contract nor
+/// <c>PlayerData.LevelsList</c>/<c>EndRoundData.currentLevelIndex</c> directly - so neither the seam's contract nor
 /// its one production implementation goes untested.
 /// </summary>
 public class Level5SpawnCoordinatorCampaignCpuPrefabResolverTests
 {
     private readonly List<GameObject> spawned = new List<GameObject>();
     private MethodInfo resolveParticipantPrefab;
-    private List<LevelSelected> savedLevelsList;
+    private PlayerData savedPlayerData;
     private int savedLevelIndex;
+    private int savedMenuLevelIndex;
 
     [SetUp]
     public void SetUp()
@@ -30,18 +31,20 @@ public class Level5SpawnCoordinatorCampaignCpuPrefabResolverTests
             "ResolveParticipantPrefab", BindingFlags.NonPublic | BindingFlags.Instance);
         Assert.IsNotNull(resolveParticipantPrefab, "SpawnCoordinator.ResolveParticipantPrefab must exist");
 
-        // The production adapter tests below write GameOptions' legacy campaign globals directly;
-        // save/restore keeps this fixture from leaking that state into whatever else runs in the
-        // same Editor test session.
-        savedLevelsList = GameOptions.levelsList;
-        savedLevelIndex = GameOptions.levelSelectedIndex;
+        savedPlayerData = PlayerData.instance;
+        savedLevelIndex = EndRoundData.currentLevelIndex;
+        savedMenuLevelIndex = GameOptions.levelSelectedIndex;
+        GameObject data = Spawn("campaign-route-owner");
+        data.SetActive(false);
+        PlayerData.instance = data.AddComponent<PlayerData>();
     }
 
     [TearDown]
     public void TearDown()
     {
-        GameOptions.levelsList = savedLevelsList;
-        GameOptions.levelSelectedIndex = savedLevelIndex;
+        PlayerData.instance = savedPlayerData;
+        EndRoundData.currentLevelIndex = savedLevelIndex;
+        GameOptions.levelSelectedIndex = savedMenuLevelIndex;
 
         foreach (GameObject go in spawned)
         {
@@ -209,6 +212,40 @@ public class Level5SpawnCoordinatorCampaignCpuPrefabResolverTests
 
     // ================ production legacy adapter: GameLevelManager.TryResolveCampaignCpuPrefab ================
 
+    [Test]
+    public void Adapter_UsesRoutePositionIndependentlyOfMenuIndexAndNumericalLevelId()
+    {
+        LevelSelected first = Spawn("first").AddComponent<LevelSelected>();
+        first.CpuPlayer = Spawn("first-cpu");
+        LevelSelected second = Spawn("hidden-finale").AddComponent<LevelSelected>();
+        second.LevelId = 23;
+        second.CpuPlayer = Spawn("finale-cpu");
+        PlayerData.instance.LevelsList = new List<LevelSelected> { first, second };
+        GameOptions.levelSelectedIndex = 0;
+        EndRoundData.currentLevelIndex = 1;
+
+        Assert.That(InvokeAdapter(out GameObject prefab), Is.True);
+        Assert.That(prefab, Is.SameAs(second.CpuPlayer));
+        Assert.That(GameOptions.levelSelectedIndex, Is.Zero);
+    }
+
+    [Test]
+    public void Adapter_MissingRouteOwner_ReportsUnavailable()
+    {
+        PlayerData.instance = null;
+        Assert.That(InvokeAdapter(out GameObject prefab), Is.False);
+        Assert.That(prefab, Is.Null);
+    }
+
+    [Test]
+    public void Adapter_NullRouteEntry_RetainsMalformedEntryFailure()
+    {
+        PlayerData.instance.LevelsList = new List<LevelSelected> { null };
+        EndRoundData.currentLevelIndex = 0;
+        TargetInvocationException error = Assert.Throws<TargetInvocationException>(() => InvokeAdapter(out _));
+        Assert.That(error.InnerException, Is.TypeOf<System.NullReferenceException>());
+    }
+
     private static MethodInfo AdapterMethod()
     {
         MethodInfo method = typeof(GameLevelManager).GetMethod(
@@ -228,8 +265,8 @@ public class Level5SpawnCoordinatorCampaignCpuPrefabResolverTests
     [Test]
     public void Adapter_NullLevelsList_ReportsUnavailable()
     {
-        GameOptions.levelsList = null;
-        GameOptions.levelSelectedIndex = 0;
+        PlayerData.instance.LevelsList = null;
+        EndRoundData.currentLevelIndex = 0;
 
         bool available = InvokeAdapter(out GameObject prefab);
 
@@ -241,8 +278,8 @@ public class Level5SpawnCoordinatorCampaignCpuPrefabResolverTests
     public void Adapter_NegativeIndex_ReportsUnavailable()
     {
         LevelSelected level = Spawn("level-selected-negative").AddComponent<LevelSelected>();
-        GameOptions.levelsList = new List<LevelSelected> { level };
-        GameOptions.levelSelectedIndex = -1;
+        PlayerData.instance.LevelsList = new List<LevelSelected> { level };
+        EndRoundData.currentLevelIndex = -1;
 
         bool available = InvokeAdapter(out GameObject prefab);
 
@@ -254,8 +291,8 @@ public class Level5SpawnCoordinatorCampaignCpuPrefabResolverTests
     public void Adapter_IndexAtOrPastCount_ReportsUnavailable()
     {
         LevelSelected level = Spawn("level-selected-out-of-range").AddComponent<LevelSelected>();
-        GameOptions.levelsList = new List<LevelSelected> { level };
-        GameOptions.levelSelectedIndex = 1;
+        PlayerData.instance.LevelsList = new List<LevelSelected> { level };
+        EndRoundData.currentLevelIndex = 1;
 
         bool available = InvokeAdapter(out GameObject prefab);
 
@@ -269,8 +306,8 @@ public class Level5SpawnCoordinatorCampaignCpuPrefabResolverTests
         GameObject campaignPrefab = Spawn("authored-cpu-prefab");
         LevelSelected level = Spawn("level-selected-with-prefab").AddComponent<LevelSelected>();
         level.CpuPlayer = campaignPrefab;
-        GameOptions.levelsList = new List<LevelSelected> { level };
-        GameOptions.levelSelectedIndex = 0;
+        PlayerData.instance.LevelsList = new List<LevelSelected> { level };
+        EndRoundData.currentLevelIndex = 0;
 
         bool available = InvokeAdapter(out GameObject prefab);
 
@@ -283,8 +320,8 @@ public class Level5SpawnCoordinatorCampaignCpuPrefabResolverTests
     {
         LevelSelected level = Spawn("level-selected-null-prefab").AddComponent<LevelSelected>();
         level.CpuPlayer = null;
-        GameOptions.levelsList = new List<LevelSelected> { level };
-        GameOptions.levelSelectedIndex = 0;
+        PlayerData.instance.LevelsList = new List<LevelSelected> { level };
+        EndRoundData.currentLevelIndex = 0;
 
         bool available = InvokeAdapter(out GameObject prefab);
 

@@ -62,7 +62,6 @@ namespace Assets.Scripts.Utility
             ActiveMatch.Begin(configuration);
             // Same one-way push the menu does, for the consumers that have not migrated yet.
             LegacyGameOptionsBridge.Apply(configuration);
-            GameOptions.levelsList = PlayerData.instance.LevelsList;
 
             yield return new WaitForSecondsRealtime(seconds);
 

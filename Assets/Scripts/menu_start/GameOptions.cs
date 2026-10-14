@@ -135,19 +135,6 @@ public static class GameOptions
     static public bool gameModeRequiresShotMarkers7s;
     static public bool gameModeSevenPointContest;
 
-    // campaign mode stats
-    //static public bool isCampaignMode = true;
-    static public List<LevelSelected> levelsList;
-    //static public bool currentRoundWinnerIsCpu;
-    //static public bool currentRoundLoserIsCpu;
-    //static public int numberOfContinues = 0;
-    //static public int currentRoundWinnerScore;
-    //static public int currentRoundLoserScore;
-    //static public Sprite currentRoundPlayerWinnerImage;
-    //static public Sprite currentRoundPlayerLoserImage;
-    //static public Sprite currentRoundCpuWinnerImage;
-    //static public Sprite currentRoundCpuLoserImage;
-
     // AUD-012 Phase 2b Slice 52: MatchRuntime moved into Level5.Match and can no longer read these
     // fields directly for its direct-scene-entry fallback. It resolves through the one reader
     // installed below instead - see LegacyMatchRuntimeSnapshot for why the shape is resolved answers

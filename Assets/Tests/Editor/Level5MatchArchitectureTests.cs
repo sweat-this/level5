@@ -43,7 +43,6 @@ public class Level5MatchArchitectureTests
         "ProgressionManager.cs",
         "EndRoundMenuManager.cs",
         "AccountManager.cs",
-        "LoadGame.cs",
 
         // account, api and persistence: their own owners, plan phase 11
         "APIHelper.cs",
@@ -54,7 +53,6 @@ public class Level5MatchArchitectureTests
 
         // gameplay consumers not yet migrated
         "GameLevelManager.cs",
-        "GameRules.cs",
     };
 
     /// <summary>
@@ -110,8 +108,8 @@ public class Level5MatchArchitectureTests
     {
         // GameOptions is a legacy compatibility surface being retired, not somewhere to add to.
         // Count stored declarations, excluding forwarding properties and methods. The old modifier
-        // count included four non-fields. #274 A/D3 retire five of the 55 actual stored fields.
-        const int allowedPublicStaticFields = 50;
+        // count included four non-fields. #274 A/D3/E retire six of the 55 actual stored fields.
+        const int allowedPublicStaticFields = 49;
 
         string text = File.ReadAllText(Path.Combine(ScriptsRoot, "menu_start", "GameOptions.cs"));
         int fields = Regex.Matches(StripComments(text),
@@ -129,10 +127,18 @@ public class Level5MatchArchitectureTests
     [TestCase("numCpuPlayers")]
     [TestCase("sniperEnabled")]
     [TestCase("levelSelectedName")]
+    [TestCase("levelsList")]
     public void RetiredCompatibilityFieldsCannotReturn(string name)
     {
         Assert.That(typeof(GameOptions).GetField(name), Is.Null,
             "Retired compatibility storage must not be reintroduced, even if the field-count ratchet permits it.");
+    }
+
+    [Test]
+    public void CommentMarkerInsideLineCommentCannotHideAFollowingLegacyConsumer()
+    {
+        string source = "// historical /* marker\nvar id = GameOptions.userid;\n/* later block */";
+        Assert.That(StripComments(source), Does.Contain("GameOptions.userid"));
     }
 
     [Test]

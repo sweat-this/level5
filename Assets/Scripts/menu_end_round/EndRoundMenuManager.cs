@@ -21,7 +21,7 @@ public class EndRoundMenuManager : MonoBehaviour
     string nextLevelName;
     int completedLevelIndex;
     int targetLevelIndex;
-    List<LevelSelected> levelsList = new List<LevelSelected>();
+    List<LevelSelected> levelsList;
     bool isGameSaved = false;
     bool campaignEnded;
     CampaignNextAction nextAction;
@@ -60,8 +60,8 @@ public class EndRoundMenuManager : MonoBehaviour
     }
     void Start()
     {
-        levelsList = GameOptions.levelsList ?? new List<LevelSelected>();
-        if (levelsList.Count == 0 || PlayerData.instance == null || PlayerData.instance.CampaignGameStats == null)
+        levelsList = PlayerData.instance != null ? PlayerData.instance.LevelsList : null;
+        if (levelsList == null || levelsList.Count == 0 || PlayerData.instance.CampaignGameStats == null)
         {
             Debug.LogError("EndRoundMenuManager cannot display campaign results because campaign state is unavailable.");
             SceneManager.LoadScene(Constants.SCENE_NAME_level_00_start);
@@ -191,7 +191,6 @@ public class EndRoundMenuManager : MonoBehaviour
 
      void LoadData()
      {
-        EndRoundData.levelsList = levelsList;
         LevelSelected completedLevel = levelsList[completedLevelIndex];
         // cpu wins
         if (currentWinnerisCpu)
@@ -303,7 +302,7 @@ public class EndRoundMenuManager : MonoBehaviour
     private void ApplyLevelSelection(int levelIndex)
     {
         LevelSelected level = levelsList[levelIndex];
-        GameOptions.levelSelectedIndex = levelIndex;
+        EndRoundData.currentLevelIndex = levelIndex;
 
         MatchConfiguration nextRound = ActiveMatch.ContinueInLevel(LevelDefinitionFactory.Create(level));
         if (nextRound != null)
