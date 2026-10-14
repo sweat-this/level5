@@ -58,7 +58,6 @@ public class Level5MatchBridgeParityTests
         LegacyGameOptionsBridge.Apply(Configure(mode, TestDefinitions.Level(1)));
 
         Assert.That(GameOptions.gameModeSelectedId, Is.EqualTo((int)GameModeId.AllPointContest));
-        Assert.That(GameOptions.gameModeHasBeenSelected, Is.True);
         Assert.That(GameOptions.gameModeRequiresCountDown, Is.True);
         Assert.That(GameOptions.gameModeRequiresCounter, Is.False);
         Assert.That(GameOptions.gameModeRequiresShotMarkers3s, Is.True);
@@ -113,7 +112,6 @@ public class Level5MatchBridgeParityTests
         LegacyGameOptionsBridge.Apply(Configure(TestDefinitions.Mode(GameModeId.TotalPoints), level));
 
         Assert.That(GameOptions.levelId, Is.EqualTo(7));
-        Assert.That(GameOptions.levelSelected, Is.EqualTo("level_07_dome"));
         Assert.That(GameOptions.levelHasSevenPointers, Is.True);
         Assert.That(GameOptions.levelRequiresWeather, Is.True);
         Assert.That(GameOptions.levelRequiresTimeOfDay, Is.True);
@@ -136,7 +134,6 @@ public class Level5MatchBridgeParityTests
 
         // Exactly what GameOptions.ConfigureSingleHumanRoster(3) produced.
         Assert.That(GameOptions.numPlayers, Is.EqualTo(3));
-        Assert.That(GameOptions.numCpuPlayers, Is.EqualTo(2));
         Assert.That(GameOptions.player1IsCpu, Is.False);
         Assert.That(GameOptions.player2IsCpu, Is.True);
         Assert.That(GameOptions.player3IsCpu, Is.True);
@@ -155,7 +152,6 @@ public class Level5MatchBridgeParityTests
             TestDefinitions.Level(1)));
 
         Assert.That(GameOptions.numPlayers, Is.EqualTo(1));
-        Assert.That(GameOptions.numCpuPlayers, Is.EqualTo(1));
         Assert.That(GameOptions.player1IsCpu, Is.False);
         Assert.That(GameOptions.player2IsCpu, Is.True);
     }
@@ -168,7 +164,6 @@ public class Level5MatchBridgeParityTests
             TestDefinitions.Level(1),
             modifiers: new MatchModifiers(sniper: SniperMode.MachineGun)));
 
-        Assert.That(GameOptions.sniperEnabled, Is.True);
         Assert.That(GameOptions.sniperEnabledBulletAuto, Is.True);
         Assert.That(GameOptions.sniperEnabledBullet, Is.False);
         Assert.That(GameOptions.sniperEnabledLaser, Is.False);

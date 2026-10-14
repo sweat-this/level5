@@ -53,6 +53,7 @@ public class Level5MatchArchitectureTests
         "PlayerData.cs",
         "UserAccountManager.cs",
         "LocalAccount.cs",
+        "LoadManager.cs", // Existing account identity consumer, recorded by the #273 inventory.
         "ProgressionService.cs",
 
         // gameplay consumers not yet migrated
@@ -112,21 +113,29 @@ public class Level5MatchArchitectureTests
     public void GameOptionsGrowsNoNewMatchFields()
     {
         // GameOptions is a legacy compatibility surface being retired, not somewhere to add to.
-        // The count is a ratchet: it may go down, never up. It started this migration at 85.
-        // Lowered from 65 to 60 when playerSelectedIndex/cpu1SelectedIndex/cpu2SelectedIndex/
-        // cpu3SelectedIndex moved to PlayerSelectionSession (player-select architecture overhaul).
-        // Lowered from 60 to 59 when matchResultId moved to MatchSession (Phase 2b Slice 17).
-        const int allowedPublicStaticFields = 59;
+        // Count stored declarations, excluding forwarding properties and methods. The old modifier
+        // count included four non-fields. #274 A retires four of the 55 actual stored fields.
+        const int allowedPublicStaticFields = 51;
 
         string text = File.ReadAllText(Path.Combine(ScriptsRoot, "menu_start", "GameOptions.cs"));
-        int fields = Regex.Matches(StripComments(text), @"static\s+public|public\s+static").Count
-            - Regex.Matches(StripComments(text), @"(static\s+public|public\s+static)\s+(void|bool\s+\w+\s*\()").Count;
+        int fields = Regex.Matches(StripComments(text),
+            @"(?m)^\s*(?:static\s+public|public\s+static)\s+[\w<>.,\[\]?]+\s+\w+\s*(?:=[^;\r\n]*)?;").Count;
 
         Assert.That(
             fields,
             Is.LessThanOrEqualTo(allowedPublicStaticFields),
             "GameOptions has grown. New match state belongs in MatchConfiguration; new non-match state "
             + "belongs to its own owner. If you removed fields, lower the number in this test.");
+    }
+
+    [TestCase("gameModeHasBeenSelected")]
+    [TestCase("levelSelected")]
+    [TestCase("numCpuPlayers")]
+    [TestCase("sniperEnabled")]
+    public void RetiredCompatibilityFieldsCannotReturn(string name)
+    {
+        Assert.That(typeof(GameOptions).GetField(name), Is.Null,
+            "Retired compatibility storage must not be reintroduced, even if the field-count ratchet permits it.");
     }
 
     [Test]

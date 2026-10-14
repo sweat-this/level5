@@ -9,7 +9,6 @@ public class Level5CoreTests
     private bool player3WasCpu;
     private bool player4WasCpu;
     private int playerCount;
-    private int cpuPlayerCount;
 
     [SetUp]
     public void SetUp()
@@ -19,7 +18,6 @@ public class Level5CoreTests
         player3WasCpu = GameOptions.player3IsCpu;
         player4WasCpu = GameOptions.player4IsCpu;
         playerCount = GameOptions.numPlayers;
-        cpuPlayerCount = GameOptions.numCpuPlayers;
     }
 
     [TearDown]
@@ -30,7 +28,6 @@ public class Level5CoreTests
         GameOptions.player3IsCpu = player3WasCpu;
         GameOptions.player4IsCpu = player4WasCpu;
         GameOptions.numPlayers = playerCount;
-        GameOptions.numCpuPlayers = cpuPlayerCount;
     }
 
     [Test]
@@ -53,7 +50,6 @@ public class Level5CoreTests
         GameOptions.ConfigureSingleHumanRoster(2);
 
         Assert.That(GameOptions.numPlayers, Is.EqualTo(2));
-        Assert.That(GameOptions.numCpuPlayers, Is.EqualTo(1));
         Assert.That(GameOptions.player1IsCpu, Is.False);
         Assert.That(GameOptions.player2IsCpu, Is.True);
         Assert.That(GameOptions.player3IsCpu, Is.False);
@@ -61,12 +57,11 @@ public class Level5CoreTests
     }
 
     [Test]
-    public void LockdownRosterCountsItsImplicitCpu()
+    public void LockdownRosterRetainsItsImplicitCpuSlot()
     {
         GameOptions.ConfigureSingleHumanRoster(1, true);
 
         Assert.That(GameOptions.numPlayers, Is.EqualTo(1));
-        Assert.That(GameOptions.numCpuPlayers, Is.EqualTo(1));
         Assert.That(GameOptions.player2IsCpu, Is.True);
     }
 

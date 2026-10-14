@@ -1014,6 +1014,55 @@ Exit criteria:
 
 ### Phase 10 — Remaining match-state retirement (#274)
 
+#### 2026-10-14 implementation review (before source changes)
+
+Baseline: `origin/dev 8a93cb2a7d3b979c759196f0430d3aa4895b23a8`, Unity `6000.5.7f1`.
+Fetched #273 (closed, PR #309 merged), #274/#275/#276 (open); no open PR overlap.
+Source confirms 55 stored fields, two identity forwarding properties and 45 bridge assignments;
+41 assignments remain inputs to the installed fallback reader. Use the current inventory's
+release-expression accounting (68 expressions, not 63 expressions).
+
+**Review pass 1: gameplay and data integrity.** Deleting bridge writes just because configured
+gameplay ignores them would break live direct-scene rules, combined shot/combat flags, timer-zero,
+CPU/input ordering, Lockdown's out-of-roster defender and incomplete configured characters. Keep
+all 41 fallback inputs. A's four candidates have only writes, declarations and test snapshots;
+asset/reflection searches reveal no consumer. B must bind SQLite `@numPlayers` to the captured
+score model, including retry after a later launch. C's one-argument progression overloads have
+no consumers; null results must fail without attributing XP to the current selection, applying
+anything, or repairing unrelated pending results. D1 needs separate startup preference and
+bound-match filters; use the existing menu preference boundary at startup, resolved configuration
+at launch, and the manager's captured rules on pause refresh. D2's object-name write still
+supplies configured-incomplete fallback and cannot yet retire. D3 has no arena-name producer;
+remove the dormant branch without emitting replacement events. E must migrate route and cursor
+together: use the serialized PlayerData route and existing EndRoundData.currentLevelIndex for
+the active/completed round. Keep nextLevelIndex as the outcome handoff; do not convert level IDs
+to route positions. Preserve retry/continue decisions, hidden destinations, adapter null/index
+semantics and the menu preference's last-launch behavior on return.
+
+**Review pass 2: architecture and scope.** No new service, static state bag, route collection,
+asmdef edge or persistence schema is needed for A-E. MatchConfiguration and MatchRuntime remain
+authoritative and the bridge stays one-way. PlayerSelectionSession remains the menu character
+owner, with D2's explicitly retained compatibility publication. Reuse EndRoundData's existing
+cursor instead of adding a new global, and remove its unused route copy alongside GameOptions'
+copy. Campaign launch selects the authored route's first arena through its stable ID in the
+ordinary catalog; cursor zero is a route position, independent of that catalog's menu index.
+Keep #275 preference storage until its own migration; expose only the existing hardcore
+preference read at StartMenuSelectionState, with no second stored value. Tighten architecture
+guards to count declarations (excluding methods/properties), prohibit retired members, and
+remove migrated consumers; account for the pre-existing missing LoadManager allowlist entry.
+F1 remains blocked: ArenaBootstrap consumes resolved rules, LevelRuntimeContext consumes
+MatchRuntime, and neither authors independent rules/roster/identity inputs before early Awake.
+Catalogs and PlayerSelectionSession cannot reconstruct arbitrary live direct-scene flags or
+configured-incomplete character fallback. Keep the installed reader/reset lifecycle unchanged;
+F2 and bridge deletion (#276) depend on a separately established scene-input contract.
+
+Implementation order: A (dead compatibility), B/C (captured persistence identities), D1/D3
+(explicit records and dormant telemetry), E1/E2 (one campaign responsibility change), then
+document D2/F blockers. Use separate reviewable commits. Validate compilation and focused
+bridge/fallback/architecture, SQLite/progression/record tests; validate E through the existing
+authored CampaignBoundaryPlayModeTests with isolated persistence. Do not claim issue completion
+while D2/F still require GameOptions.
+
 Current evidence: [issue #273 inventory](game-options-inventory.md), audited 2026-10-14 at `ca65435afeec75ddfbfa79dcd348f2a52cc36fe8`. This is the implementation sequence, not permission to delete all fields together. Each row is a separate reviewable responsibility; re-scan before starting and retire bridge writes only when that field's normal, fallback and edge readers are gone.
 
 | Slice | Concrete source boundary and solution | Exit / focused evidence when implemented |

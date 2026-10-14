@@ -318,7 +318,6 @@ public class EndRoundMenuManager : MonoBehaviour
         Debug.LogWarning("Campaign round advanced without an active match configuration; using legacy fields.");
         GameOptions.levelHasSevenPointers = level.LevelHasSevenPointers;
         GameOptions.levelId = level.LevelId;
-        GameOptions.levelSelected = level.LevelObjectName;
         GameOptions.levelDisplayName = level.LevelDisplayName;
     }
 
