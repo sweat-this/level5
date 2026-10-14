@@ -572,6 +572,75 @@ public class Level5AuthoredMatchDataTests
     }
 
     [Test]
+    public void TotalPointsAloneAuthorsAndResolvesTheTwoLocalHumanCapability()
+    {
+        Assert.That(authoredModes.FindAll(mode => mode.SupportsTwoLocalHumans), Has.Count.EqualTo(1));
+        LevelDefinition scrapyard = LevelDefinitionFactory.Create(authoredLevels.Find(level => level.LevelId == 1));
+        PlayerRoster roster = PlayerRoster.Build(new[]
+        {
+            PlayerRosterEntry.LocalHuman(TestDefinitions.Character("first")),
+            PlayerRosterEntry.LocalHuman(TestDefinitions.Character("second"))
+        });
+        try
+        {
+            foreach (StartScreenModeSelected source in authoredModes)
+            {
+                GameModeDefinition mode = GameModeDefinitionFactory.Create(source);
+                try
+                {
+                    bool certified = mode.Id == GameModeId.TotalPoints;
+                    Assert.That(source.SupportsTwoLocalHumans, Is.EqualTo(certified), source.ModeDisplayName);
+                    Assert.That(mode.SupportsTwoLocalHumans, Is.EqualTo(certified), source.ModeDisplayName);
+                    MatchBuildResult result = new MatchConfigurationBuilder(
+                        new GameModeCatalog(new[] { mode }), new LevelDefinitionCatalog(new[] { scrapyard }))
+                        .Build(new MatchRequest(mode.Id, scrapyard.LevelId, roster));
+                    Assert.That(result.Succeeded, Is.EqualTo(certified), source.ModeDisplayName + ": " + result.Validation);
+                    Assert.That(result.Validation.HasError(MatchValidationCode.ModeLocalHumansNotSupported),
+                        Is.EqualTo(!certified), source.ModeDisplayName);
+                    Assert.That(result.Validation.HasError(MatchValidationCode.ArenaLacksMultiplayer), Is.False);
+                }
+                finally
+                {
+                    Object.DestroyImmediate(mode);
+                }
+            }
+        }
+        finally
+        {
+            Object.DestroyImmediate(scrapyard);
+        }
+    }
+
+    [Test]
+    public void TwoHumanTotalPointsRequiresACertifiedArenaThroughTheRuntimeFallbackCatalog()
+    {
+        LegacyMatchCatalogBootstrap.Reset();
+        MatchCatalogs.Reset();
+        try
+        {
+            LegacyMatchCatalogBootstrap.EnsureBuilt(authoredModes, authoredLevels);
+            Assert.That(MatchCatalogs.Modes.Find(GameModeId.TotalPoints).SupportsTwoLocalHumans, Is.True);
+            PlayerRoster roster = PlayerRoster.Build(new[]
+            {
+                PlayerRosterEntry.LocalHuman(TestDefinitions.Character("first")),
+                PlayerRosterEntry.LocalHuman(TestDefinitions.Character("second"))
+            });
+            foreach (LevelDefinition arena in MatchCatalogs.Levels.Definitions)
+            {
+                MatchBuildResult result = MatchCatalogs.Builder.Build(new MatchRequest(GameModeId.TotalPoints, arena.LevelId, roster));
+                Assert.That(result.Succeeded, Is.EqualTo(arena.LevelId == 1), arena.DisplayName + ": " + result.Validation);
+                Assert.That(result.Validation.HasError(MatchValidationCode.ArenaLacksMultiplayer), Is.EqualTo(arena.LevelId != 1));
+                Assert.That(result.Validation.HasError(MatchValidationCode.ModeLocalHumansNotSupported), Is.False);
+            }
+        }
+        finally
+        {
+            LegacyMatchCatalogBootstrap.Reset();
+            MatchCatalogs.Reset();
+        }
+    }
+
+    [Test]
     public void OnlyArenasThatHaveBeenCertifiedForTwoLocalHumansAuthorMultiplayer()
     {
         // Multiplayer claims a spawn topology and a camera that frames it. Adding an arena to this

@@ -68,3 +68,4 @@ MonoBehaviour:
   gameModeRequiresPlayerSurvive: 0
   gameModeRequiresBasketball: 1
   gameModeAllowsCpuShooters: 0
+  supportsTwoLocalHumans: 1
