@@ -322,3 +322,7 @@ before anything is spent on the attempt, the second only after the frozen rulese
 - Confirm the two server-side expectations above against `Level5Backend`.
 - Durable level-progress/completion persistence remains unimplemented pending a product decision on
   what "completing a level" means (see "Unlock authority" above).
+
+## Correspondence acknowledgement presentation (#266)
+
+`CorrespondenceReadState` uses AtomicFile at `backendv2-correspondence-read-<authenticated-player-GUID-N>.json`. Version 1 contains only the Backend V2 player GUID and explicitly acknowledged challenge/series/game attention keys. It contains no credentials, public identities, results or aggregate snapshots. Token rotation retains the owner; logout/player changes clear screen memory and reload only the new owner file. Local profile changes/deletion do not select or delete another Backend V2 account's read metadata. Validated backup recovery restores acknowledgements after primary corruption; unusable files start unread, and failed writes leave the item unread. There is no cloud synchronization. See [engagement architecture and evidence](backend-v2-correspondence-engagement.md).
