@@ -6,32 +6,32 @@ Do not edit by hand - re-export it.
 Each row is what one authored mode resolves to under the match configuration model.
 A change to any of these values is a gameplay change, not a refactor.
 
-| id | mode | objective | clock | timer | combat | shot rule | markers | ball | money | streak | survive | cpu shooters | enemies only | arcade | roster |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Total Points | Score | Countdown | default | None | Any | None | yes | no | no | no | no | no | no | 1-4 |
-| 2 | Total 3 pointers | MakeCount | Countdown | default | None | Any | None | yes | no | no | no | no | no | no | 1-4 |
-| 3 | Total 4 pointers | MakeCount | Countdown | default | None | Any | None | yes | no | no | no | no | no | no | 1-4 |
-| 4 | Total 7 pointers | MakeCount | Countdown | default | None | Any | None | yes | no | no | no | no | no | no | 1-4 |
-| 6 | Total Distance | Distance | Countdown | default | None | Any | None | yes | no | no | no | no | no | no | 1-4 |
-| 7 | spot up some 3s | ContestCompletion | CountUp | default | None | Any | ThreePoint | yes | no | no | yes | no | no | no | 1-4 |
-| 8 | spot up some 4s | ContestCompletion | CountUp | default | None | Any | FourPoint | yes | no | no | yes | no | no | no | 1-4 |
-| 9 | spot up all  | ContestCompletion | CountUp | default | None | Any | ThreePoint, FourPoint | yes | no | no | no | no | no | no | 1-4 |
-| 14 | Consecutive shots | ConsecutiveShots | Countdown | 60 | None | Any | None | yes | no | yes | no | no | no | no | 1-4 |
-| 15 | In the Pocket | Score | Countdown | default | None | Any | None | yes | no | no | no | no | no | no | 1-4 |
-| 16 | 3 point Contest | ContestCompletion | Countdown | 70 | None | ThreePoint | ThreePoint | yes | no | no | no | yes | no | no | 1-4 |
-| 17 | 4 point contest | ContestCompletion | Countdown | 75 | None | FourPoint | FourPoint | yes | no | no | no | no | no | no | 1-4 |
-| 18 | all point contest | ContestCompletion | Countdown | 140 | None | ThreePoint, FourPoint, AllRanges | ThreePoint, FourPoint | yes | no | no | no | no | no | no | 1-4 |
-| 19 | Points by Distance | Score | Countdown | default | None | Any | None | yes | no | no | no | no | no | no | 1-4 |
-| 20 | Bash Up Some Nerds | Score | None | default | Standard | Any | None | no | no | no | yes | no | yes | no | 1-4 |
-| 21 | Battle Royal | Survival | CountUp | default | BattleRoyal | Any | None | no | no | no | no | no | yes | no | 1-4 |
-| 22 | Cage Match | Survival | CountUp | default | Cage, BattleRoyal | Any | None | no | no | no | no | no | yes | no | 1-4 |
-| 23 | Versus | Score | Countdown | default | None | Any | None | yes | no | no | no | yes | no | no | 2-4 |
-| 24 | 7 point contest | ContestCompletion | Countdown | 90 | None | SevenPoint | SevenPoint | yes | no | no | no | no | no | no | 1-4 |
-| 25 | Spot up some 7s | ContestCompletion | Countdown | default | None | Any | SevenPoint | yes | no | no | no | no | no | no | 1-4 |
-| 26 | Beat tha computahs | CampaignProgression | Countdown | 60 | None | Any | None | yes | no | no | no | yes | no | no | 2-4 |
-| 27 | Lockdown | Score | Countdown | 120 | None | Any | None | yes | no | no | no | yes | no | no | 1-1 +defender |
-| 98 | Arcade mode | Score | None | default | None | Any | None | yes | no | no | no | no | no | yes | 1-4 |
-| 99 | free play | Score | None | default | None | Any | None | yes | no | no | no | no | no | no | 1-4 |
+| id | mode | objective | clock | timer | combat | shot rule | markers | ball | money | streak | survive | cpu shooters | enemies only | arcade | roster | mode supports two local humans |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | Total Points | Score | Countdown | default | None | Any | None | yes | no | no | no | no | no | no | 1-4 | yes |
+| 2 | Total 3 pointers | MakeCount | Countdown | default | None | Any | None | yes | no | no | no | no | no | no | 1-4 | no |
+| 3 | Total 4 pointers | MakeCount | Countdown | default | None | Any | None | yes | no | no | no | no | no | no | 1-4 | no |
+| 4 | Total 7 pointers | MakeCount | Countdown | default | None | Any | None | yes | no | no | no | no | no | no | 1-4 | no |
+| 6 | Total Distance | Distance | Countdown | default | None | Any | None | yes | no | no | no | no | no | no | 1-4 | no |
+| 7 | spot up some 3s | ContestCompletion | CountUp | default | None | Any | ThreePoint | yes | no | no | yes | no | no | no | 1-4 | no |
+| 8 | spot up some 4s | ContestCompletion | CountUp | default | None | Any | FourPoint | yes | no | no | yes | no | no | no | 1-4 | no |
+| 9 | spot up all  | ContestCompletion | CountUp | default | None | Any | ThreePoint, FourPoint | yes | no | no | no | no | no | no | 1-4 | no |
+| 14 | Consecutive shots | ConsecutiveShots | Countdown | 60 | None | Any | None | yes | no | yes | no | no | no | no | 1-4 | no |
+| 15 | In the Pocket | Score | Countdown | default | None | Any | None | yes | no | no | no | no | no | no | 1-4 | no |
+| 16 | 3 point Contest | ContestCompletion | Countdown | 70 | None | ThreePoint | ThreePoint | yes | no | no | no | yes | no | no | 1-4 | no |
+| 17 | 4 point contest | ContestCompletion | Countdown | 75 | None | FourPoint | FourPoint | yes | no | no | no | no | no | no | 1-4 | no |
+| 18 | all point contest | ContestCompletion | Countdown | 140 | None | ThreePoint, FourPoint, AllRanges | ThreePoint, FourPoint | yes | no | no | no | no | no | no | 1-4 | no |
+| 19 | Points by Distance | Score | Countdown | default | None | Any | None | yes | no | no | no | no | no | no | 1-4 | no |
+| 20 | Bash Up Some Nerds | Score | None | default | Standard | Any | None | no | no | no | yes | no | yes | no | 1-4 | no |
+| 21 | Battle Royal | Survival | CountUp | default | BattleRoyal | Any | None | no | no | no | no | no | yes | no | 1-4 | no |
+| 22 | Cage Match | Survival | CountUp | default | Cage, BattleRoyal | Any | None | no | no | no | no | no | yes | no | 1-4 | no |
+| 23 | Versus | Score | Countdown | default | None | Any | None | yes | no | no | no | yes | no | no | 2-4 | no |
+| 24 | 7 point contest | ContestCompletion | Countdown | 90 | None | SevenPoint | SevenPoint | yes | no | no | no | no | no | no | 1-4 | no |
+| 25 | Spot up some 7s | ContestCompletion | Countdown | default | None | Any | SevenPoint | yes | no | no | no | no | no | no | 1-4 | no |
+| 26 | Beat tha computahs | CampaignProgression | Countdown | 60 | None | Any | None | yes | no | no | no | yes | no | no | 2-4 | no |
+| 27 | Lockdown | Score | Countdown | 120 | None | Any | None | yes | no | no | no | yes | no | no | 1-1 +defender | no |
+| 98 | Arcade mode | Score | None | default | None | Any | None | yes | no | no | no | no | no | yes | 1-4 | no |
+| 99 | free play | Score | None | default | None | Any | None | yes | no | no | no | no | no | no | 1-4 | no |
 
 ## Arena capabilities
 

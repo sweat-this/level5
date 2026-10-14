@@ -872,8 +872,11 @@ whether an overflow mode cut anything off, which is stricter for truncation and 
 3. Attribution: audit that `ThreePointerMade` lands on the launch-time shooter for both humans (the shot pipeline is
    launch-state based - see `docs/shot-lifecycle.md`), including one player's ball scoring while the other is mid-shot, and
    that nothing in the mode's end condition or timer assumes one player.
-4. Match construction: `MatchConfigurationBuilder`'s mode/arena/character compatibility for two humans in
-   `Total3Pointers` on The Scrapyard (the only multiplayer arena), and whether the mode needs anything Most Points does not.
+4. Match construction: explicitly certify and author `supportsTwoLocalHumans` on the mode prefab.
+   Total Points alone currently opts in; `MatchConfigurationBuilder` refuses `Total3Pointers` for two humans
+   even on The Scrapyard (the only multiplayer arena). Mode authorization is separate from the ruleset's
+   `LocalSimultaneous` capability and total roster bounds. Preserve builder refusal before paired attempts
+   are issued by `VersusLauncher.LaunchSimultaneous`.
 5. `GameStatsAttemptResults` already maps `ThreePointerMade`; confirm the ruleset's comparison keys (count, then fewer
    attempts, or accuracy) are what two players should be ranked by, and keep ruleset version rules for the new topology.
 6. Tests to add, mirroring this slice: a Best-of-3 through the real screens on two virtual gamepads, a rendered layout

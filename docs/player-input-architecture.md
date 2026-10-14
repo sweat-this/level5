@@ -248,9 +248,14 @@ recorded for the `LocalSimultaneous` work.
 - **Fixed: `BasketBall.Start` threw on the second human's ball.** The debug stats overlay binding assumed a
   single human ball; the first ball deactivates `textBackground`, so the second ball's `GameObject.Find`
   returned null. The overlay is now bound by the primary ball only, the rule `displayUiStats` already used.
-- **Open: mode data does not say which modes are meaningful for two humans.** Compatibility accepts two
-  humans in any mode with `GameModeDefinition.MaxPlayers >= 2` on any arena with the multiplayer capability;
-  authored `MaxPlayers` is 4 for nearly every mode.
+- **Fixed: mode data now explicitly authorizes two local humans.** The default-false
+  `StartScreenModeSelected.SupportsTwoLocalHumans` flag is carried through the existing factory,
+  definition and editor migration. Total Points alone opts in. `GameModeCompatibility.Validate`
+  rejects unsupported compositions with `ModeLocalHumansNotSupported`, independently of total
+  `MinPlayers`/`MaxPlayers` and the arena capability. The opt-in covers exactly two humans without
+  CPU participants, a required CPU opponent or an implicit defender; three/four humans remain
+  unsupported. Solo and one-human/CPU behavior is unchanged. See
+  [implementation evidence](local-human-capability-package.md).
 - **Fixed: `ArenaCapability.Multiplayer` was granted to every arena.** It is now authored per arena
   (`LevelSelected.LevelSupportsMultiplayer`) and defaults to unsupported; see "Arena multiplayer capability"
   below. The audit that found the problem: a scene
@@ -293,7 +298,7 @@ truth) carry a new `levelSupportsMultiplayer` field, `LevelPreset` carries it, a
   other prefab needed editing.
 - `Level5AuthoredMatchDataTests.OnlyArenasThatHaveBeenCertifiedForTwoLocalHumansAuthorMultiplayer` holds the
   certified id list; adding an arena means adding its two-human certification and its id there.
-- `GameModeCompatibility` is unchanged and remains the launch authority
+- `GameModeCompatibility` remains the launch authority and checks this separately from the mode opt-in
   (`roster.LocalHumanCount > 1 && !level.Supports(ArenaCapability.Multiplayer)` -> `ArenaLacksMultiplayer`).
   Nothing in the camera, controllers or spawning re-checks it.
 - The per-arena spawn audit above is a starting point for certifying more arenas, not a certification.

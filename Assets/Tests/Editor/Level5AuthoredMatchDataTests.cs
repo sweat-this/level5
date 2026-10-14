@@ -38,6 +38,69 @@ public class Level5AuthoredMatchDataTests
     }
 
     [Test]
+    public void NewAndUnmigratedModeAuthoringDefaultsToOneLocalHuman()
+    {
+        GameObject host = new GameObject("unmigrated-mode");
+        GameModeDefinition asset = ScriptableObject.CreateInstance<GameModeDefinition>();
+        GameModeDefinition converted = null;
+        try
+        {
+            StartScreenModeSelected source = host.AddComponent<StartScreenModeSelected>();
+            // Simulate old serialized data: its known Total Points id must not imply certification.
+            JsonUtility.FromJsonOverwrite("{\"modeId\":1}", source);
+            JsonUtility.FromJsonOverwrite("{\"modeId\":1}", asset);
+            converted = GameModeDefinitionFactory.Create(source);
+            Assert.That(source.SupportsTwoLocalHumans, Is.False);
+            Assert.That(asset.SupportsTwoLocalHumans, Is.False);
+            Assert.That(converted.SupportsTwoLocalHumans, Is.False);
+            Assert.That(GameModeDefinitionData.Default(1).SupportsTwoLocalHumans, Is.False);
+            Assert.That(GameModeDefinitionFactory.Create(null), Is.Null);
+        }
+        finally
+        {
+            Object.DestroyImmediate(converted);
+            Object.DestroyImmediate(asset);
+            Object.DestroyImmediate(host);
+        }
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void ModeConversionAndMigrationCopyPreserveTheAuthoredOptIn(bool supported)
+    {
+        GameObject host = new GameObject("authored-mode");
+        GameModeDefinition converted = null;
+        GameModeDefinition existing = ScriptableObject.CreateInstance<GameModeDefinition>();
+        try
+        {
+            StartScreenModeSelected source = host.AddComponent<StartScreenModeSelected>();
+            SerializedObject serialized = new SerializedObject(source);
+            serialized.FindProperty("modeId").intValue = 1;
+            serialized.FindProperty("supportsTwoLocalHumans").boolValue = supported;
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+            converted = GameModeDefinitionFactory.Create(source);
+            Assert.That(converted.SupportsTwoLocalHumans, Is.EqualTo(supported));
+
+            // Exercise the exact copy used when migration updates an existing asset in place.
+            System.Reflection.MethodInfo copy = typeof(MatchDefinitionMigration).GetMethod("ToData",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static,
+                null, new[] { typeof(GameModeDefinition) }, null);
+            Assert.That(copy, Is.Not.Null);
+            GameModeDefinitionData previous = GameModeDefinitionData.Default(1);
+            previous.SupportsTwoLocalHumans = !supported;
+            existing.Apply(previous);
+            existing.Apply((GameModeDefinitionData)copy.Invoke(null, new object[] { converted }));
+            Assert.That(existing.SupportsTwoLocalHumans, Is.EqualTo(supported), "migration must both set and clear the flag");
+        }
+        finally
+        {
+            Object.DestroyImmediate(existing);
+            Object.DestroyImmediate(converted);
+            Object.DestroyImmediate(host);
+        }
+    }
+
+    [Test]
     public void EveryAuthoredModeRoundTripsThroughTheRuleDimensions()
     {
         StringBuilder differences = new StringBuilder();
@@ -69,6 +132,7 @@ public class Level5AuthoredMatchDataTests
             Compare(differences, label, "requiresPlayerSurvive", source.GameModeRequiresPlayerSurvive, mode.RequiresPlayerSurvive);
             Compare(differences, label, "allowsCpuShooters", source.GameModeAllowsCpuShooters, mode.AllowsCpuShooters);
             Compare(differences, label, "arcadeMode", source.ArcadeModeActive, mode.ArcadeMode);
+            Compare(differences, label, "supportsTwoLocalHumans", source.SupportsTwoLocalHumans, mode.SupportsTwoLocalHumans);
 
             float expectedTimer = source.CustomTimer > 0f ? source.CustomTimer : 0f;
             if (!Mathf.Approximately(expectedTimer, mode.CustomTimerSeconds))
@@ -505,6 +569,75 @@ public class Level5AuthoredMatchDataTests
         }
 
         Assert.That(differences.ToString(), Is.Empty, "authored level data the capability flags cannot reproduce:\n" + differences);
+    }
+
+    [Test]
+    public void TotalPointsAloneAuthorsAndResolvesTheTwoLocalHumanCapability()
+    {
+        Assert.That(authoredModes.FindAll(mode => mode.SupportsTwoLocalHumans), Has.Count.EqualTo(1));
+        LevelDefinition scrapyard = LevelDefinitionFactory.Create(authoredLevels.Find(level => level.LevelId == 1));
+        PlayerRoster roster = PlayerRoster.Build(new[]
+        {
+            PlayerRosterEntry.LocalHuman(TestDefinitions.Character("first")),
+            PlayerRosterEntry.LocalHuman(TestDefinitions.Character("second"))
+        });
+        try
+        {
+            foreach (StartScreenModeSelected source in authoredModes)
+            {
+                GameModeDefinition mode = GameModeDefinitionFactory.Create(source);
+                try
+                {
+                    bool certified = mode.Id == GameModeId.TotalPoints;
+                    Assert.That(source.SupportsTwoLocalHumans, Is.EqualTo(certified), source.ModeDisplayName);
+                    Assert.That(mode.SupportsTwoLocalHumans, Is.EqualTo(certified), source.ModeDisplayName);
+                    MatchBuildResult result = new MatchConfigurationBuilder(
+                        new GameModeCatalog(new[] { mode }), new LevelDefinitionCatalog(new[] { scrapyard }))
+                        .Build(new MatchRequest(mode.Id, scrapyard.LevelId, roster));
+                    Assert.That(result.Succeeded, Is.EqualTo(certified), source.ModeDisplayName + ": " + result.Validation);
+                    Assert.That(result.Validation.HasError(MatchValidationCode.ModeLocalHumansNotSupported),
+                        Is.EqualTo(!certified), source.ModeDisplayName);
+                    Assert.That(result.Validation.HasError(MatchValidationCode.ArenaLacksMultiplayer), Is.False);
+                }
+                finally
+                {
+                    Object.DestroyImmediate(mode);
+                }
+            }
+        }
+        finally
+        {
+            Object.DestroyImmediate(scrapyard);
+        }
+    }
+
+    [Test]
+    public void TwoHumanTotalPointsRequiresACertifiedArenaThroughTheRuntimeFallbackCatalog()
+    {
+        LegacyMatchCatalogBootstrap.Reset();
+        MatchCatalogs.Reset();
+        try
+        {
+            LegacyMatchCatalogBootstrap.EnsureBuilt(authoredModes, authoredLevels);
+            Assert.That(MatchCatalogs.Modes.Find(GameModeId.TotalPoints).SupportsTwoLocalHumans, Is.True);
+            PlayerRoster roster = PlayerRoster.Build(new[]
+            {
+                PlayerRosterEntry.LocalHuman(TestDefinitions.Character("first")),
+                PlayerRosterEntry.LocalHuman(TestDefinitions.Character("second"))
+            });
+            foreach (LevelDefinition arena in MatchCatalogs.Levels.Definitions)
+            {
+                MatchBuildResult result = MatchCatalogs.Builder.Build(new MatchRequest(GameModeId.TotalPoints, arena.LevelId, roster));
+                Assert.That(result.Succeeded, Is.EqualTo(arena.LevelId == 1), arena.DisplayName + ": " + result.Validation);
+                Assert.That(result.Validation.HasError(MatchValidationCode.ArenaLacksMultiplayer), Is.EqualTo(arena.LevelId != 1));
+                Assert.That(result.Validation.HasError(MatchValidationCode.ModeLocalHumansNotSupported), Is.False);
+            }
+        }
+        finally
+        {
+            LegacyMatchCatalogBootstrap.Reset();
+            MatchCatalogs.Reset();
+        }
     }
 
     [Test]

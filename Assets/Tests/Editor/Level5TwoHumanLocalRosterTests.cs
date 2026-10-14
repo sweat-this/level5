@@ -21,7 +21,7 @@ public class Level5TwoHumanLocalRosterTests
     private static GameModeCompatibility CompatibilityFor(LevelDefinition level)
     {
         return new GameModeCompatibility(
-            new GameModeCatalog(new[] { TestDefinitions.Mode(GameModeId.TotalPoints) }),
+            new GameModeCatalog(new[] { TestDefinitions.Mode(GameModeId.TotalPoints, supportsTwoLocalHumans: true) }),
             new LevelDefinitionCatalog(new[] { level }));
     }
 
@@ -83,6 +83,154 @@ public class Level5TwoHumanLocalRosterTests
     // ==================== arena rule ====================
 
     [Test]
+    public void TotalCapacityAndMultiplayerArenaDoNotAuthorizeTwoHumans()
+    {
+        GameModeDefinition mode = TestDefinitions.Mode(GameModeId.TotalPoints, maxPlayers: 4);
+        LevelDefinition level = TestDefinitions.Level(1);
+        try
+        {
+            MatchConfigurationBuilder builder = new MatchConfigurationBuilder(
+                new GameModeCatalog(new[] { mode }), new LevelDefinitionCatalog(new[] { level }));
+
+            Assert.That(mode.SupportsTwoLocalHumans, Is.False, "synthetic defaults must fail closed, even for Total Points");
+            Assert.That(builder.Compatibility.CanPlay(mode, level), Is.True, "CanPlay remains mode/arena compatibility only");
+            MatchBuildResult result = builder.Build(new MatchRequest(mode.Id, level.LevelId, TwoHumanRoster()));
+
+            Assert.That(result.Configuration, Is.Null);
+            Assert.That(result.Validation.HasError(MatchValidationCode.ModeLocalHumansNotSupported), Is.True);
+            Assert.That(result.Validation.HasError(MatchValidationCode.ArenaLacksMultiplayer), Is.False);
+            Assert.That(result.Validation.HasError(MatchValidationCode.RosterTooLarge), Is.False);
+        }
+        finally
+        {
+            UnityEngine.Object.DestroyImmediate(mode);
+            UnityEngine.Object.DestroyImmediate(level);
+        }
+    }
+
+    [TestCase(2, 0, false, false, true)]
+    [TestCase(3, 0, false, false, false)]
+    [TestCase(4, 0, false, false, false)]
+    [TestCase(2, 1, false, false, false)]
+    [TestCase(2, 2, false, false, false)]
+    [TestCase(2, 0, true, false, false)]
+    [TestCase(2, 0, false, true, false)]
+    public void OptInAuthorizesOnlyTheCertifiedRoster(
+        int humans, int cpus, bool requiresCpu, bool implicitDefender, bool accepted)
+    {
+        GameModeDefinition mode = TestDefinitions.Mode(GameModeId.TotalPoints,
+            requiresCpuOpponent: requiresCpu, addsImplicitDefender: implicitDefender, supportsTwoLocalHumans: true);
+        LevelDefinition level = TestDefinitions.Level(1);
+        try
+        {
+            var entries = new System.Collections.Generic.List<PlayerRosterEntry>();
+            for (int i = 0; i < humans; i++)
+            {
+                entries.Add(PlayerRosterEntry.LocalHuman(TestDefinitions.Character("human-" + i)));
+            }
+            for (int i = 0; i < cpus; i++)
+            {
+                entries.Add(PlayerRosterEntry.Cpu(TestDefinitions.Character("cpu-" + i)));
+            }
+            MatchBuildResult result = new MatchConfigurationBuilder(
+                new GameModeCatalog(new[] { mode }), new LevelDefinitionCatalog(new[] { level }))
+                .Build(new MatchRequest(mode.Id, 1, PlayerRoster.Build(entries)));
+
+            Assert.That(result.Succeeded, Is.EqualTo(accepted), result.Validation.ToString());
+            Assert.That(result.Validation.HasError(MatchValidationCode.ModeLocalHumansNotSupported), Is.EqualTo(!accepted));
+            Assert.That(result.Validation.HasError(MatchValidationCode.ArenaLacksMultiplayer), Is.False);
+        }
+        finally
+        {
+            UnityEngine.Object.DestroyImmediate(mode);
+            UnityEngine.Object.DestroyImmediate(level);
+        }
+    }
+
+    [TestCase(0, false, false)]
+    [TestCase(1, true, false)]
+    [TestCase(3, false, false)]
+    [TestCase(0, false, true)]
+    public void OneHumanCpuSemanticsDoNotRequireAnOptIn(int cpus, bool requiresCpu, bool implicitDefender)
+    {
+        GameModeDefinition mode = TestDefinitions.Mode(GameModeId.TotalPoints,
+            requiresCpuOpponent: requiresCpu, addsImplicitDefender: implicitDefender);
+        LevelDefinition level = TestDefinitions.Level(1, ArenaCapability.Basketball);
+        try
+        {
+            var entries = new System.Collections.Generic.List<PlayerRosterEntry>
+            {
+                PlayerRosterEntry.LocalHuman(TestDefinitions.Character("human"))
+            };
+            for (int i = 0; i < cpus; i++)
+            {
+                entries.Add(PlayerRosterEntry.Cpu(TestDefinitions.Character("cpu-" + i)));
+            }
+            MatchBuildResult result = new MatchConfigurationBuilder(
+                new GameModeCatalog(new[] { mode }), new LevelDefinitionCatalog(new[] { level }))
+                .Build(new MatchRequest(mode.Id, 1, PlayerRoster.Build(entries)));
+
+            Assert.That(result.Succeeded, Is.True, result.Validation.ToString());
+            Assert.That(result.Configuration.Roster.CpuCount, Is.EqualTo(cpus));
+            Assert.That(result.Configuration.Rules.BasketballCount, Is.EqualTo(implicitDefender ? 1 : cpus + 1));
+        }
+        finally
+        {
+            UnityEngine.Object.DestroyImmediate(mode);
+            UnityEngine.Object.DestroyImmediate(level);
+        }
+    }
+
+    [TestCase(0)]
+    [TestCase(999)]
+    public void AnUnknownDefinitionCannotAuthorizeTwoHumansEvenWithAnOptIn(int rawId)
+    {
+        GameModeDefinition mode = TestDefinitions.Mode((GameModeId)rawId, supportsTwoLocalHumans: true);
+        LevelDefinition level = TestDefinitions.Level(1);
+        try
+        {
+            MatchBuildResult result = new MatchConfigurationBuilder(
+                new GameModeCatalog(new[] { mode }), new LevelDefinitionCatalog(new[] { level }))
+                .Build(new MatchRequest((GameModeId)rawId, 1, TwoHumanRoster()));
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.Validation.HasError(MatchValidationCode.ModeLocalHumansNotSupported), Is.True);
+        }
+        finally
+        {
+            UnityEngine.Object.DestroyImmediate(mode);
+            UnityEngine.Object.DestroyImmediate(level);
+        }
+    }
+
+    [TestCase(PlayerControlType.RemoteHuman)]
+    [TestCase(PlayerControlType.ReplayGhost)]
+    public void AnOptInDoesNotAuthorizeRemoteOrReplayParticipants(PlayerControlType extraType)
+    {
+        GameModeDefinition mode = TestDefinitions.Mode(GameModeId.TotalPoints, supportsTwoLocalHumans: true);
+        LevelDefinition level = TestDefinitions.Level(1);
+        try
+        {
+            var entries = new System.Collections.Generic.List<PlayerRosterEntry>();
+            foreach (PlayerSlot slot in TwoHumanRoster().Players)
+            {
+                entries.Add(new PlayerRosterEntry(slot.ControlType, slot.Character, slot.ParticipantId));
+            }
+            entries.Add(new PlayerRosterEntry(extraType, TestDefinitions.Character("unsupported")));
+            MatchBuildResult result = new MatchConfigurationBuilder(
+                new GameModeCatalog(new[] { mode }), new LevelDefinitionCatalog(new[] { level }))
+                .Build(new MatchRequest(mode.Id, 1, PlayerRoster.Build(entries)));
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.Validation.HasError(MatchValidationCode.ParticipantTypeNotSupported), Is.True);
+            Assert.That(result.Validation.HasError(MatchValidationCode.ModeLocalHumansNotSupported), Is.True);
+        }
+        finally
+        {
+            UnityEngine.Object.DestroyImmediate(mode);
+            UnityEngine.Object.DestroyImmediate(level);
+        }
+    }
+
+    [Test]
     public void TwoLocalHumansAreRejectedOnAnArenaWithoutTheMultiplayerCapability()
     {
         LevelDefinition level = TestDefinitions.Level(1, ArenaCapability.Basketball);
@@ -109,7 +257,7 @@ public class Level5TwoHumanLocalRosterTests
         // The arena is fine; it is the mode's own MaxPlayers that refuses the second participant.
         LevelDefinition level = TestDefinitions.Level(1, ArenaCapability.Basketball | ArenaCapability.Multiplayer);
         GameModeCompatibility compatibility = new GameModeCompatibility(
-            new GameModeCatalog(new[] { TestDefinitions.Mode(GameModeId.TotalPoints, maxPlayers: 1) }),
+            new GameModeCatalog(new[] { TestDefinitions.Mode(GameModeId.TotalPoints, maxPlayers: 1, supportsTwoLocalHumans: true) }),
             new LevelDefinitionCatalog(new[] { level }));
 
         ValidationResult result = compatibility.Validate(new MatchRequest(GameModeId.TotalPoints, level.LevelId, TwoHumanRoster()));
