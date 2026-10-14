@@ -12,6 +12,8 @@ Start here:
 
 Feature and system docs:
 
+- [Player settings and audio audit](player-settings-audio-audit.md) - issues #249/#279/#250, two pre-implementation reviews, settings ownership, mixer routing, validation and acceptance blockers; includes the [source inventory](player-audio-source-inventory.md) and [changed-file manifest](player-settings-audio-changes.md).
+
 - [Versus and Correspondence Multiplayer](versus-architecture.md) - competitive rulesets, attempt lifecycle, game resolution, best-of-N series, sealed attempts and open targets, ruleset versioning, persistence, the future networking boundary, and how to add a versus-compatible mode.
 - [Versus Dev Console Guide](versus-dev-console-guide.md) - how to create, resume and play a local-alternating or correspondence series before production versus menus exist.
 - [Backend V2 Client](backend-v2-client.md) - the typed API transport/clients for remote correspondence (issue #158): architecture, session handling, error mapping, the attempt-descriptor-to-match mapping, and result submission.

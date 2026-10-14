@@ -10,7 +10,10 @@
     "Level5.Input",
     "Unity.InputSystem",
     "Unity.InputSystem.TestFramework",
-    "Level5.BackendV2"
+    "Level5.BackendV2",
+    "Level5.Audio",
+    "Level5.Utility",
+    "Unity.Collections"
   ],
   "optionalUnityReferences": [
     "TestAssemblies"
