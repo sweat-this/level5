@@ -29,7 +29,8 @@ namespace Level5.Core.Match
         CharacterCannotShoot,
         CharacterCannotFight,
         LevelNotSelectable,
-        LevelLocked
+        LevelLocked,
+        ModeLocalHumansNotSupported
     }
 
     /// <summary>One rejection reason, with a message a launch screen can show as-is.</summary>

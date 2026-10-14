@@ -43,7 +43,7 @@ public class Level5LocalSimultaneousVersusTests
     public void SetUp()
     {
         MatchCatalogs.Override(
-            new GameModeCatalog(new[] { TestDefinitions.Mode(GameModeId.TotalPoints) }),
+            new GameModeCatalog(new[] { TestDefinitions.Mode(GameModeId.TotalPoints, supportsTwoLocalHumans: true) }),
             new LevelDefinitionCatalog(new[]
             {
                 TestDefinitions.Level(ArenaId),
@@ -268,6 +268,31 @@ public class Level5LocalSimultaneousVersusTests
             id, Character(FirstCharacterId, "a"), nonShooter, ArenaId, Snapshot());
 
         AssertRefusedBeforeAnyAttempt(id, launch);
+    }
+
+    [Test]
+    public void AnUncertifiedModeFailsBeforeIssuingEitherSimultaneousAttempt()
+    {
+        MatchCatalogs.Override(
+            new GameModeCatalog(new[] { TestDefinitions.Mode(GameModeId.TotalPoints) }),
+            new LevelDefinitionCatalog(new[] { TestDefinitions.Level(ArenaId) }));
+        LogAssert.Expect(LogType.Warning, new Regex("does not support this local-human roster"));
+        SeriesId id = CreateSimultaneousSeries(3, out _);
+
+        AssertRefusedBeforeAnyAttempt(id, VersusLauncher.LaunchSimultaneous(
+            id, Character(FirstCharacterId, "a"), Character(SecondCharacterId, "b"), ArenaId, Snapshot()));
+        Assert.That(preflightRequests, Is.EqualTo(new[] { 2 }), "preserve the existing preflight/build/issue order");
+    }
+
+    [Test]
+    public void AMissingModeCatalogFailsBeforeIssuingEitherSimultaneousAttempt()
+    {
+        MatchCatalogs.Override(GameModeCatalog.Empty(), new LevelDefinitionCatalog(new[] { TestDefinitions.Level(ArenaId) }));
+        LogAssert.Expect(LogType.Warning, new Regex("not in the mode catalog"));
+        SeriesId id = CreateSimultaneousSeries(3, out _);
+
+        AssertRefusedBeforeAnyAttempt(id, VersusLauncher.LaunchSimultaneous(
+            id, Character(FirstCharacterId, "a"), Character(SecondCharacterId, "b"), ArenaId, Snapshot()));
     }
 
     [Test]

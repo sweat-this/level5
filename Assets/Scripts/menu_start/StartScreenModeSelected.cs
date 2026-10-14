@@ -33,6 +33,10 @@ public class StartScreenModeSelected : MonoBehaviour
     [SerializeField] private bool gameModeRequiresPlayerSurvive;
     [SerializeField] private bool gameModeRequiresBasketball;
     [SerializeField] private bool gameModeAllowsCpuShooters;
+    [Tooltip("Certified for exactly two local humans, without CPU participants or an implicit opponent.")]
+    [SerializeField] private bool supportsTwoLocalHumans;
+
+    public bool SupportsTwoLocalHumans => supportsTwoLocalHumans;
 
     public bool EnemiesOnlyEnabled => enemiesOnlyEnabled;
 

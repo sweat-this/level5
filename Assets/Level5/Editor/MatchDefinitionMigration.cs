@@ -368,6 +368,7 @@ public static class MatchDefinitionMigration
             ArcadeMode = definition.ArcadeMode,
             MinPlayers = definition.MinPlayers,
             MaxPlayers = definition.MaxPlayers,
+            SupportsTwoLocalHumans = definition.SupportsTwoLocalHumans,
             RequiresCpuOpponent = definition.RequiresCpuOpponent,
             AddsImplicitDefender = definition.AddsImplicitDefender,
             RequiredArenaCapabilities = definition.RequiredArenaCapabilities,

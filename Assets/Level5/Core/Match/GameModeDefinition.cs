@@ -45,6 +45,8 @@ namespace Level5.Core.Match
         [Header("Roster")]
         [SerializeField] private int minPlayers = 1;
         [SerializeField] private int maxPlayers = PlayerRoster.MaxSlots;
+        [Tooltip("Certified for exactly two local humans, without CPU participants or an implicit opponent.")]
+        [SerializeField] private bool supportsTwoLocalHumans;
         [Tooltip("The mode always adds one CPU opponent even when the player picked none.")]
         [SerializeField] private bool requiresCpuOpponent;
         [Tooltip("The mode adds a defender the roster count does not include (Lockdown).")]
@@ -96,6 +98,8 @@ namespace Level5.Core.Match
         public int MinPlayers => minPlayers;
 
         public int MaxPlayers => maxPlayers;
+
+        public bool SupportsTwoLocalHumans => supportsTwoLocalHumans;
 
         public bool RequiresCpuOpponent => requiresCpuOpponent;
 
@@ -172,6 +176,7 @@ namespace Level5.Core.Match
             arcadeMode = data.ArcadeMode;
             minPlayers = data.MinPlayers;
             maxPlayers = data.MaxPlayers;
+            supportsTwoLocalHumans = data.SupportsTwoLocalHumans;
             requiresCpuOpponent = data.RequiresCpuOpponent;
             addsImplicitDefender = data.AddsImplicitDefender;
             requiredArenaCapabilities = data.RequiredArenaCapabilities;
@@ -207,6 +212,7 @@ namespace Level5.Core.Match
         public bool ArcadeMode;
         public int MinPlayers;
         public int MaxPlayers;
+        public bool SupportsTwoLocalHumans;
         public bool RequiresCpuOpponent;
         public bool AddsImplicitDefender;
         public ArenaCapability RequiredArenaCapabilities;
@@ -237,6 +243,7 @@ namespace Level5.Core.Match
                 ArcadeMode = false,
                 MinPlayers = 1,
                 MaxPlayers = PlayerRoster.MaxSlots,
+                SupportsTwoLocalHumans = false,
                 RequiresCpuOpponent = false,
                 AddsImplicitDefender = false,
                 RequiredArenaCapabilities = ArenaCapability.None,

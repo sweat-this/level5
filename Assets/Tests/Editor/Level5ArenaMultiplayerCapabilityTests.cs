@@ -61,7 +61,7 @@ public class Level5ArenaMultiplayerCapabilityTests
     private static ValidationResult Validate(LevelDefinition level, PlayerRoster roster)
     {
         GameModeCompatibility compatibility = new GameModeCompatibility(
-            new GameModeCatalog(new[] { TestDefinitions.Mode(GameModeId.TotalPoints) }),
+            new GameModeCatalog(new[] { TestDefinitions.Mode(GameModeId.TotalPoints, supportsTwoLocalHumans: true) }),
             new LevelDefinitionCatalog(new[] { level }));
         return compatibility.Validate(new MatchRequest(GameModeId.TotalPoints, level.LevelId, roster));
     }

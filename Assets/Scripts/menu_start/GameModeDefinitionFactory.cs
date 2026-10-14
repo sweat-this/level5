@@ -72,6 +72,7 @@ public static class GameModeDefinitionFactory
         data.AllowsCpuShooters = source.GameModeAllowsCpuShooters;
         data.EnemiesOnly = source.EnemiesOnlyEnabled;
         data.ArcadeMode = source.ArcadeModeActive;
+        data.SupportsTwoLocalHumans = source.SupportsTwoLocalHumans;
 
         data.Objective = ResolveObjective(source, data);
         ApplyRosterRules(source.ModeId, ref data);

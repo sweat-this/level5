@@ -285,6 +285,20 @@ namespace Level5.Core.Match
                 MatchValidationCode.RosterTooLarge,
                 $"a match supports at most {PlayerRoster.MaxSlots} participants");
 
+            // Total roster capacity is independent of local-human certification. The current
+            // opt-in covers only two humans playing alone, never additional humans or opponents.
+            builder.AddIf(
+                roster.LocalHumanCount > 1
+                    && (mode.Id == GameModeId.None
+                        || !mode.SupportsTwoLocalHumans
+                        || roster.LocalHumanCount != 2
+                        || roster.Count != 2
+                        || mode.RequiresCpuOpponent
+                        || mode.AddsImplicitDefender),
+                MatchValidationCode.ModeLocalHumansNotSupported,
+                $"'{mode.DisplayName}' does not support this local-human roster "
+                    + $"({roster.LocalHumanCount} local humans, {roster.Count} participants)");
+
             builder.AddIf(
                 roster.LocalHumanCount > 1 && !level.Supports(ArenaCapability.Multiplayer),
                 MatchValidationCode.ArenaLacksMultiplayer,

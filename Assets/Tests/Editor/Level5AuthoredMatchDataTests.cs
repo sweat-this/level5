@@ -38,6 +38,69 @@ public class Level5AuthoredMatchDataTests
     }
 
     [Test]
+    public void NewAndUnmigratedModeAuthoringDefaultsToOneLocalHuman()
+    {
+        GameObject host = new GameObject("unmigrated-mode");
+        GameModeDefinition asset = ScriptableObject.CreateInstance<GameModeDefinition>();
+        GameModeDefinition converted = null;
+        try
+        {
+            StartScreenModeSelected source = host.AddComponent<StartScreenModeSelected>();
+            // Simulate old serialized data: its known Total Points id must not imply certification.
+            JsonUtility.FromJsonOverwrite("{\"modeId\":1}", source);
+            JsonUtility.FromJsonOverwrite("{\"modeId\":1}", asset);
+            converted = GameModeDefinitionFactory.Create(source);
+            Assert.That(source.SupportsTwoLocalHumans, Is.False);
+            Assert.That(asset.SupportsTwoLocalHumans, Is.False);
+            Assert.That(converted.SupportsTwoLocalHumans, Is.False);
+            Assert.That(GameModeDefinitionData.Default(1).SupportsTwoLocalHumans, Is.False);
+            Assert.That(GameModeDefinitionFactory.Create(null), Is.Null);
+        }
+        finally
+        {
+            Object.DestroyImmediate(converted);
+            Object.DestroyImmediate(asset);
+            Object.DestroyImmediate(host);
+        }
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void ModeConversionAndMigrationCopyPreserveTheAuthoredOptIn(bool supported)
+    {
+        GameObject host = new GameObject("authored-mode");
+        GameModeDefinition converted = null;
+        GameModeDefinition existing = ScriptableObject.CreateInstance<GameModeDefinition>();
+        try
+        {
+            StartScreenModeSelected source = host.AddComponent<StartScreenModeSelected>();
+            SerializedObject serialized = new SerializedObject(source);
+            serialized.FindProperty("modeId").intValue = 1;
+            serialized.FindProperty("supportsTwoLocalHumans").boolValue = supported;
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+            converted = GameModeDefinitionFactory.Create(source);
+            Assert.That(converted.SupportsTwoLocalHumans, Is.EqualTo(supported));
+
+            // Exercise the exact copy used when migration updates an existing asset in place.
+            System.Reflection.MethodInfo copy = typeof(MatchDefinitionMigration).GetMethod("ToData",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static,
+                null, new[] { typeof(GameModeDefinition) }, null);
+            Assert.That(copy, Is.Not.Null);
+            GameModeDefinitionData previous = GameModeDefinitionData.Default(1);
+            previous.SupportsTwoLocalHumans = !supported;
+            existing.Apply(previous);
+            existing.Apply((GameModeDefinitionData)copy.Invoke(null, new object[] { converted }));
+            Assert.That(existing.SupportsTwoLocalHumans, Is.EqualTo(supported), "migration must both set and clear the flag");
+        }
+        finally
+        {
+            Object.DestroyImmediate(existing);
+            Object.DestroyImmediate(converted);
+            Object.DestroyImmediate(host);
+        }
+    }
+
+    [Test]
     public void EveryAuthoredModeRoundTripsThroughTheRuleDimensions()
     {
         StringBuilder differences = new StringBuilder();
@@ -69,6 +132,7 @@ public class Level5AuthoredMatchDataTests
             Compare(differences, label, "requiresPlayerSurvive", source.GameModeRequiresPlayerSurvive, mode.RequiresPlayerSurvive);
             Compare(differences, label, "allowsCpuShooters", source.GameModeAllowsCpuShooters, mode.AllowsCpuShooters);
             Compare(differences, label, "arcadeMode", source.ArcadeModeActive, mode.ArcadeMode);
+            Compare(differences, label, "supportsTwoLocalHumans", source.SupportsTwoLocalHumans, mode.SupportsTwoLocalHumans);
 
             float expectedTimer = source.CustomTimer > 0f ? source.CustomTimer : 0f;
             if (!Mathf.Approximately(expectedTimer, mode.CustomTimerSeconds))

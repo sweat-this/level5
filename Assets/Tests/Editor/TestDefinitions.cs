@@ -24,7 +24,8 @@ public static class TestDefinitions
         ArenaCapability required = ArenaCapability.None,
         ArenaCapability forbidden = ArenaCapability.None,
         bool addsImplicitDefender = false,
-        bool requiresCpuOpponent = false)
+        bool requiresCpuOpponent = false,
+        bool supportsTwoLocalHumans = false)
     {
         GameModeDefinitionData data = GameModeDefinitionData.Default((int)id);
         data.DisplayName = id.ToString();
@@ -43,6 +44,7 @@ public static class TestDefinitions
         data.ForbiddenArenaCapabilities = forbidden;
         data.AddsImplicitDefender = addsImplicitDefender;
         data.RequiresCpuOpponent = requiresCpuOpponent;
+        data.SupportsTwoLocalHumans = supportsTwoLocalHumans;
         return GameModeDefinition.Create(data);
     }
 
