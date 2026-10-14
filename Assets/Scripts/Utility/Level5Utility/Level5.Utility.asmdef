@@ -2,7 +2,8 @@
     "name": "Level5.Utility",
     "rootNamespace": "",
     "references": [
-        "Level5.Core"
+        "Level5.Core",
+        "Newtonsoft.Json"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],
