@@ -141,3 +141,17 @@ The live test used real UnityWebRequestTransport and existing typed clients agai
 Earlier diagnostic runs: first EditMode 134/134 passed; initial PlayMode 4/8 passed (four fixed-frame timing assumptions), next 7/8 (ambiguous test button lookup), focused corrected acknowledgement 1/1. First live 0/1 exposed lazy-round semantics; corrected live 1/1. Final results above include all repairs and added real-contract regressions. No unresolved test failures remain. No physical/manual UX, full Unity suite, Player/IL2CPP or hosted CI result is implied.
 
 Final pre-publication fetch: Unity and backend SHAs unchanged from baseline; both repositories had no open PRs. Diff reviewed; focused checks rerun after that fetch.
+
+## PR #306 review corrections (2026-10-14)
+
+The follow-up review reproduced two UI ordering defects at head `fd0f49c260b5b1064f71672001f50c8d86948638`: selecting a detailed tab during another refresh dropped the selected source refresh, and an earlier completed-detail response could replace the latest selection. Both original reproductions failed against that head (0/2, process exit 2).
+
+Corrections in `CorrespondenceScreenController` use selection generations at the existing refresh boundary: the latest detailed tab waits for the current operation, superseded selections stop waiting, and selecting Inbox cancels queued reads without refetching its source pages. A separate completed-detail request generation rejects superseded responses and is invalidated when full refresh or account change clears the selection. No client, backend contract, competition, submission or acknowledgement behavior changed.
+
+Added `Assets/Tests/PlayMode/Level5BackendV2CorrespondenceOrderingPlayModeTests.cs` and its `.meta`. Six real-screen fake-transport regressions cover reverse-order detail responses, selecting a tab during another refresh, two selections in one frame, coalescing queued tabs, cancellation by Inbox, and a pending detail response arriving after full refresh clears selection.
+
+Final affected validation, Unity 6000.5.7f1: `-batchmode -force-d3d11 -projectPath . -runTests -testPlatform PlayMode -testFilter 'Level5BackendV2CorrespondenceOrderingPlayModeTests;Level5BackendV2CorrespondenceScenePlayModeTests' -testResults TestResults/engagement/ordering-fixes.xml -logFile TestResults/engagement/ordering-fixes.log`: **12 total, 12 passed, 0 failed, 0 skipped, 0 inconclusive; process exit 0**. Persistent data was backed up/restored and the temporary backup deleted. The preceding five-regression iteration also passed 11/11, exit 0.
+
+Earlier 138/138 EditMode, 9/9 PlayMode/live and 36/36 backend notification results above remain evidence for unchanged feature contracts; they were not rerun for these UI-only corrections. Final dev refresh remains `361468742791799da44c6a9f1401cd37560086f5`, with PR #306 as the only open Unity PR.
+
+Repository validation also passed after adding the ordering fixture and metadata (exit 0).

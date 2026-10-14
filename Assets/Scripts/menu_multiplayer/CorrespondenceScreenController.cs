@@ -59,6 +59,8 @@ public sealed class CorrespondenceScreenController : MonoBehaviour
     private Tab currentTab = Tab.Inbox;
     private CorrespondenceReadState readState;
     private long identityGeneration;
+    private int tabSelectionGeneration;
+    private int completedViewGeneration;
     private bool refreshing;
     private bool preparingRematch;
     private bool rematchDraft;
@@ -109,6 +111,8 @@ public sealed class CorrespondenceScreenController : MonoBehaviour
         if (identityGeneration == BackendV2SessionStore.IdentityGeneration) return;
         identityGeneration = BackendV2SessionStore.IdentityGeneration;
         StopAllCoroutines();
+        tabSelectionGeneration++;
+        completedViewGeneration++;
         refreshing = false;
         preparingRematch = false;
         rematchDraft = false;
@@ -156,6 +160,7 @@ public sealed class CorrespondenceScreenController : MonoBehaviour
         refreshing = true;
         try
         {
+            completedViewGeneration++;
             viewedCompleted = null;
             turnClassifier.Reset();
             yield return friends.RefreshAll();
@@ -212,12 +217,15 @@ public sealed class CorrespondenceScreenController : MonoBehaviour
     private void SelectTab(Tab tab)
     {
         currentTab = tab;
+        int selection = ++tabSelectionGeneration;
         RenderCurrentTab();
-        if (!refreshing && tab != Tab.Inbox) StartCoroutine(RefreshTabThenRender(tab));
+        if (tab != Tab.Inbox) StartCoroutine(RefreshTabThenRender(tab, selection));
     }
 
-    private IEnumerator RefreshTabThenRender(Tab tab)
+    private IEnumerator RefreshTabThenRender(Tab tab, int selection)
     {
+        while (refreshing && selection == tabSelectionGeneration) yield return null;
+        if (selection != tabSelectionGeneration) yield break;
         refreshing = true;
         try
         {
@@ -392,10 +400,11 @@ public sealed class CorrespondenceScreenController : MonoBehaviour
 
     private IEnumerator ViewCompleted(Guid seriesId)
     {
+        int request = ++completedViewGeneration;
         long owner = BackendV2SessionStore.IdentityGeneration;
         ApiResponse<SeriesResponseDto> response = null;
         yield return BackendV2Runtime.Correspondence.Get(seriesId, r => response = r);
-        if (owner != BackendV2SessionStore.IdentityGeneration) yield break;
+        if (owner != BackendV2SessionStore.IdentityGeneration || request != completedViewGeneration) yield break;
         if (response?.Success != true || response.Value?.Id != seriesId || response.Value.Status != "Completed"
             || !CorrespondenceInbox.OpponentId(BackendV2SessionStore.Current?.PlayerId ?? Guid.Empty,
                 response.Value.ChallengerId, response.Value.OpponentId).HasValue)
