@@ -1,10 +1,11 @@
 # Game Options and Match System Overhaul Plan
 
-Status: Phases 0-9 implemented; phases 10-11 (deleting legacy fields) outstanding  
-Project: Level 5  
-Branch target: `dev`  
-Primary scope: `GameOptions`, `StartManager`, `StartScreenModeSelected`, `Modes`, `GameLevelManager`, `GameRules`, mode/level compatibility, roster configuration, and gameplay scene bootstrap  
-Last reviewed: 2026-08-08
+Status: Phases 0-9 implemented; phases 10-11 (deleting legacy fields) outstanding
+Project: Level 5
+Branch target: `dev`
+Primary scope: `GameOptions`, `StartManager`, `StartScreenModeSelected`, `Modes`, `GameLevelManager`, `GameRules`, mode/level compatibility, roster configuration, and gameplay scene bootstrap
+Last reviewed: 2026-10-14
+Audited dev: `ca65435afeec75ddfbfa79dcd348f2a52cc36fe8` (Unity `6000.5.7f1`); issue #273, documentation only.
 
 ## Implementation status
 
@@ -20,8 +21,8 @@ Last reviewed: 2026-08-08
 | 7 - `LevelRuntimeContext` | done | plus `MatchRuntime` for scenes entered without a launch |
 | 8 - decompose `GameLevelManager` | done | `PlayerRegistry`, `SpawnCoordinator`, `ArenaBootstrap`; the manager is a facade |
 | 9 - refocus `GameRules` | done | `MatchController` owns the lifecycle, `MatchHudPresenter` owns presentation, `MatchEndConditions` owns the "is it over?" rules, and `GameRules` reads the configuration rather than copying it |
-| 10 - remove legacy match fields | in progress | 36 gameplay scripts moved onto `MatchRuntime` and off the allowlist; 20 fields deleted (85 → 65). Four gameplay files remain, all on the boundary itself |
-| 11 - split remaining global state | not started | account, navigation and application metadata are separate work |
+| 10 - remove legacy match fields | outstanding (#274) | Current inventory: 55 stored fields + 2 forwarding properties; 41 bridge-written fallback inputs; 68 non-bridge release accesses on 63 lines in 18 files. Bounded slices below replace stale 85 → 65 bookkeeping |
+| 11 - split remaining global state | partly migrated; outstanding (#275) | LocalAccountIdentity already owns local identity; MatchSession owns result ID; V1 bearer/session state is retired. Residual menu/account/navigation/metadata dependencies remain |
 
 Three behaviour changes were made deliberately rather than preserved:
 
@@ -52,109 +53,39 @@ that the data does not have.
 
 ## Executive Summary
 
-Level 5 currently represents a match through a broad collection of static mutable fields in `GameOptions`, serialized mode booleans in `StartScreenModeSelected`, menu-owned compatibility checks in `StartManager`, and copied runtime flags inside `GameRules` and `GameLevelManager`. The system works, but the ownership model no longer scales safely.
+The configured match migration is already implemented: `MatchRequest → MatchConfigurationBuilder → MatchConfiguration → ActiveMatch → MatchRuntime` supplies validated immutable rules, roster and arena data. LegacyGameOptionsBridge is a one-way compatibility copy. Gameplay systems have moved to resolved configuration or explicit composition; this work does not restart phases 0–9.
 
-The central architectural problem is not any one bad flag or one oversized manager. It is that authored configuration, menu selection state, account state, runtime match state, level capability data, player roster state, and gameplay rules all share overlapping mutable representations. The same fact can exist in multiple places at once, and several systems can change it after a match has begun.
+The remaining debt crosses fallback, persistence, menu preferences and campaign session state. The [current inventory](game-options-inventory.md) verifies 55 stored fields, two forwarding identity properties, 68 non-bridge release accesses and 45 bridge assignments. Forty-one bridge-written fields still feed the live fallback, including configured missing-character and out-of-roster cases. Four bridge-written fields have no production reader.
 
-This overhaul replaces that structure incrementally with:
+LocalAccountIdentity already owns local profile identity, BackendV2SessionStore owns authenticated online identity, and MatchSession owns result identity. No new generic state manager, account system, persistence schema or navigation framework is needed. The current allowlist has a scanner false negative hiding LoadManager's local identity read; the source guard is unchanged in this audit.
 
-- typed game-mode identity;
-- ScriptableObject-backed authored mode and level definitions;
-- a validated `MatchRequest` produced by menu/UI flows;
-- an immutable `MatchConfiguration` used as the authoritative description of the match;
-- explicit rule dimensions instead of mutually exclusive boolean identity flags;
-- arena capabilities and a single compatibility validator;
-- an explicit `PlayerRoster` model that can represent local human, CPU, remote, and asynchronous participants;
-- a scene-owned `LevelRuntimeContext` as the gameplay composition root;
-- a focused `MatchController` for match lifecycle;
-- specialized systems for clock, scoring, win conditions, spawning, and presentation;
-- a temporary one-way compatibility bridge into `GameOptions` while legacy consumers are migrated.
+Issue #273 updates these two existing documents only. Phase 10/#274 and phase 11/#275 below define one-responsibility slices. #276 remains blocked until all production consumers, direct-scene needs and bridge-dependent launch paths are resolved. Existing numeric IDs, authored route/GUIDs, save contracts, scoring behavior and input ownership remain unchanged.
 
-This is intentionally a strangler migration, not a rewrite. The old system remains operational while the new system becomes authoritative one vertical slice at a time. Existing numeric mode IDs, scene names, serialized prefab data, save compatibility, and current gameplay behavior are preserved unless a specific behavior change is separately approved.
+## 1. Current Retirement Constraints
 
----
+### 1.1 Ownership is already split, compatibility storage is not
 
-## 1. Why the Current System Needs an Overhaul
+MatchConfiguration owns match facts; GameOptions still mirrors them for fallback and persistence adapters. userName/userid are forwarding properties, not duplicate storage. LevelSelected and mode components remain authored compatibility inputs. Mutable campaign route position and process-lifetime menu memory still cross GameOptions; they must not migrate into immutable configuration.
 
-### 1.1 `GameOptions` has exceeded the responsibility of an options object
+### 1.2 Fallback is a supported consumer
 
-`GameOptions` currently contains several unrelated categories of state:
+GameOptions.CaptureMatchRuntimeSnapshot supplies 41 fields through the existing MatchRuntime reader seam. It reconstructs live rules/roster on demand for direct scene entry and supplies primary-character/out-of-roster edge answers even when configured. Removing every normally unread flag would break this boundary. Fallback is read-only with respect to ActiveMatch, not dead code.
 
-- application/platform information;
-- current account and local user information;
-- bearer/session-adjacent values;
-- selected character and cheerleader data;
-- selected level data;
-- selected game mode identity;
-- per-mode rule booleans;
-- per-level capability booleans;
-- combat/environment toggles;
-- difficulty state;
-- player roster and CPU ownership;
-- menu selection indices;
-- scene-navigation state;
-- match result/session data;
-- campaign-adjacent data.
+### 1.3 Persistence needs captured values
 
-Because these values are public static mutable fields, every consumer can both read and mutate process-wide state. Dependencies are implicit, scene-order assumptions are difficult to detect, tests require global reset discipline, and invalid combinations can exist without any type or validation barrier.
+DBHelper.InsertGameScore still reads global numPlayers despite HighScoreModel already capturing it. Implicit-character progression adapters and ProgressionService's null-result path read characterId. Use existing model/explicit-ID boundaries; querying a newer ActiveMatch during delayed persistence is not an ownership repair.
 
-### 1.2 Mode identity is duplicated as both an ID and boolean flags
+### 1.4 Campaign and menu positions are different identities
 
-The project already has stable numeric mode identity in `Modes.cs`, but several modes are also represented by independent booleans such as Battle Royal, Cage Match, contest variants, survival requirements, enemies-only behavior, basketball requirements, and CPU-shooter rules.
+PlayerData.LevelsList is the authored route. GameOptions.levelSelectedIndex simultaneously retains menu choice and active route position; GameLevelManager, GameRules and EndRoundMenuManager consume it at different boundaries. EndRoundData stores completed/proposed round indices, outcomes and continues. CampaignRoundDecision is pure policy, not route/cursor storage. Separate these lifetimes before retiring menu preference fields; retain both fresh-start overrides and hidden route destinations.
 
-A mode can therefore be represented simultaneously by:
+### 1.5 Residual values do not justify speculative services
 
-- `gameModeSelectedId`;
-- `battleRoyalEnabled`;
-- `cageMatchEnabled`;
-- `gameModeThreePointContest`;
-- `gameModeFourPointContest`;
-- `gameModeSevenPointContest`;
-- `gameModeAllPointContest`;
-- `EnemiesOnlyEnabled`;
-- `gameModeRequiresPlayerSurvive`;
-- `gameModeRequiresBasketball`;
-- other supporting booleans.
+previousSceneName, applicationVersion, operatingSystemVersion and numOfLocalUsers are write-only. levelSelectedName has analytics reads but no producer. Removing proven-unused copies is smaller than inventing new authorities. Tip-dialogue state and remaining menu preferences do have real cross-scene behavior and need narrow lifetime decisions.
 
-The system does not make contradictory combinations structurally impossible.
+### 1.6 Historical design versus current work
 
-### 1.3 The same configuration is copied through multiple layers
-
-The current flow effectively duplicates state through this chain:
-
-`StartScreenModeSelected` -> `StartManager` -> `GameOptions` -> `GameRules` / `GameLevelManager` / gameplay consumers.
-
-The menu copies serialized mode properties into static globals. `GameRules` then copies many globals into private runtime fields. Other consumers continue to read directly from the globals.
-
-This creates configuration shadow state: after initialization, there may be multiple representations of the same rule, and it is not obvious which one is authoritative.
-
-### 1.4 Runtime systems mutate configuration
-
-`GameLevelManager` currently performs mode-driven corrections such as enabling enemies when basketball is not required. This means the runtime can modify the configuration after the menu has selected it.
-
-A resolved match should instead be validated before gameplay begins and then treated as immutable input to the runtime.
-
-### 1.5 Level/mode compatibility belongs to domain logic, not recursive menu navigation
-
-`StartManager` currently recursively changes selected levels to skip incompatible combinations based on shooting, fighting, Battle Royal, Cage Match, and level flags.
-
-This has several risks:
-
-- compatibility policy is embedded in presentation/navigation code;
-- recursive cycling can become hard to reason about as combinations increase;
-- future multiplayer and asynchronous variants will multiply conditions;
-- different menus could accidentally implement different compatibility rules;
-- validation is difficult to test independently.
-
-Compatibility should have one explicit owner.
-
-### 1.6 `GameLevelManager` and `GameRules` are becoming broad coordinators
-
-`GameLevelManager` currently participates in player spawning, basketball spawning, CPU/human ownership, scene searches, spawn-point validation, character/vehicle/NPC replacement, analytics, terrain exceptions, runtime registries, input, mode handling, and score ordering.
-
-`GameRules` currently participates in clocks, counters, markers, contest variants, money ball, consecutive shots, HUD rendering, score presentation, persistence, progression, campaign handling, death, match termination, and obstacle setup.
-
-Both classes contain useful behavior, but their responsibilities should be separated gradually before additional game modes make them harder to change safely.
+Sections 2–13 retain the implemented architecture's design rationale; phases 0–9 below describe completed migration steps, not new work. Section 15 retains the original three design reviews; the two fresh #273 review passes are recorded in the inventory. Sections 16–18 retain historical target/file/issue proposals and must not be used to create duplicate existing types or services. Phase 10/11 and section 22 define current next work.
 
 ---
 
@@ -204,7 +135,7 @@ Mutually exclusive identity should not be represented as several booleans.
 Examples:
 
 - one `GameModeId` identifies the mode;
-- one `CombatMode` identifies the combat rule family;
+- `CombatMode` is a flag set: authored Cage and BattleRoyal can coexist;
 - one `MatchClockMode` identifies the clock behavior;
 - one `MatchObjective` identifies the primary completion objective.
 
@@ -652,21 +583,22 @@ Legacy runtime systems may not update the new configuration from `GameOptions`.
 
 If an old system needs changing runtime state, that state must move to a runtime owner instead.
 
-### 8.3 Split remaining non-match global state separately
+### 8.3 Residual ownership (current #273 evidence)
 
-After match fields migrate, the remaining `GameOptions` categories should move to appropriate owners:
-
-| Current category | Target owner |
+| Responsibility | Existing owner / remaining boundary |
 | --- | --- |
-| menu indices | `StartMenuState` or persisted menu preference object |
-| account/user identity | account/session service |
-| bearer token | API/authentication service only |
-| application version/platform | application/platform service or direct read where appropriate |
-| previous scene | navigation/session flow service |
-| match result ID | `MatchSession` |
-| campaign data | campaign session/state owner |
+| Configured rules/roster/arena | MatchConfiguration through ActiveMatch and explicit scene composition |
+| Direct scene entry / configured fallback edges | MatchRuntime reader seam; GameOptions still supplies inputs. Independent scene-owned inputs required before deletion |
+| Live menu selection | StartMenuSelectionState; cross-scene mode/friend/level/modifier memory still needs narrowly scoped retention, coordinated with campaign separation |
+| Local profile identity | LocalAccountIdentity; GameOptions.userName/userid only forward |
+| Online authentication | BackendV2SessionStore; no GameOptions bearer token remains |
+| Application metadata | Direct Application/SystemInfo APIs; current GameOptions copies have no reader |
+| Navigation | SceneTransition and specialized LocalVersusNavigationState where used; previousSceneName copy has no reader |
+| Match result ID | MatchSession; old GameOptions.matchResultId already removed |
+| Campaign | PlayerData authored route; EndRoundData outcomes/continues; cursor currently shared via GameOptions, narrow lifetime decision required |
+| Startup presentation | Existing tip/CPU-select/start-launch boundary; flag still live and needs narrow start-flow retention |
 
-These moves can be independent follow-up slices. The match-system overhaul should not expand into a general account rewrite.
+See phase 10/11 for exact files and exits. These are dependency retirements, not a general account, navigation or earned-progression rewrite.
 
 ---
 
@@ -880,7 +812,7 @@ Pin:
 
 ### 13.6 Architecture guard tests
 
-Add validation rules when the migration is mature enough:
+These guards already exist; preserve them as consumers retire (see the current inventory for limitations):
 
 - prevent new public mutable static match fields;
 - prevent new `GameOptions.*` usages outside approved legacy/bridge files;
@@ -1080,39 +1012,76 @@ Exit criteria:
 - individual game modes plug in through resolved rules/policies rather than large flag chains;
 - UI failure does not block game completion.
 
-### Phase 10 — Remove Legacy Match Fields
+### Phase 10 — Remaining match-state retirement (#274)
 
-Goal: delete the duplicated mode/match portion of `GameOptions`.
+Current evidence: [issue #273 inventory](game-options-inventory.md), audited 2026-10-14 at `ca65435afeec75ddfbfa79dcd348f2a52cc36fe8`. This is the implementation sequence, not permission to delete all fields together. Each row is a separate reviewable responsibility; re-scan before starting and retire bridge writes only when that field's normal, fallback and edge readers are gone.
 
-Work:
+| Slice | Concrete source boundary and solution | Exit / focused evidence when implemented |
+| --- | --- | --- |
+| A — write-only compatibility values | GameOptions, LegacyGameOptionsBridge, StartManager:309, EndRoundMenuManager:321: retire gameModeHasBeenSelected, levelSelected, numCpuPlayers and sniperEnabled after fresh reflection/asset/caller check. Remove stale CharacterProfile comment. Retain CPU flags and sniper variants. Treat ConfigureSingleHumanRoster separately if removing its test-only compatibility surface | Zero reads confirmed for each deleted field, paired assignment/test snapshot cleanup, ratchet lowered; smallest affected Level5MatchBridgeParityTests / Level5CoreTests and architecture guards |
+| B — captured score participant count | DBHelper.InsertGameScore:410 consumes HighScoreModel.numPlayers, already captured by both factories at 163/328; no SQLite column or serialization change | Queue/capture model with one roster, change globals/current match before insert, verify persisted numPlayers still matches model; focused SQLite record test and compile |
+| C — explicit progression character | DBConnector:517–524 and DBHelper:480–485 already offer explicit characterId. Audit/remove unused one-argument adapters or pass explicit IDs from actual callers. ProgressionService:30 null-result diagnostic must have a defined no-result ID behavior, without silently choosing a newer active match | No GameOptions.characterId read outside fallback; focused ProgressionServiceApplyMatchResultTests plus null-result/adapter case; preserve account scope, result idempotency, XP and SQL schema |
+| D1 — explicit record-query filter | PlayerData.loadStatsFromDatabase:123 takes an explicit hardcore filter; startup/menu callers use the existing preference meaning, configured launch passes configuration.Rules.Hardcore, and GameLevelManager.ReloadPlayerDataForPause:556 passes the appropriate bound match filter without changing Pause callback ownership | Startup without ActiveMatch, launched and pause-refreshed hardcore/non-hardcore queries preserved; focused Level5RangeShotRecordTests; preference handoff coordinated with #275 B |
+| D2 — progression selection publication | ProgressionManager:969 currently writes characterObjectName for highlighted selection. Reuse existing PlayerSelectionSession stable ID and the screen's selected CharacterProfile; remove unused compatibility publication only after fallback edge review | Menu character selection remains independent of old active roster; smallest player-selection/session composition test; no new global character owner |
+| D3 — dormant arena telemetry | GameLevelManager:635,637 reads levelSelectedName, which has no producer. Smallest behavior-preserving slice removes dormant branch/field after fresh scan. Adding a SceneName/ObjectName/DisplayName producer needs a separate explicit telemetry decision | No accidental new analytics event or renamed event payload; source guard/compile, focused event assertion only if telemetry behavior is approved |
+| E1 — authored route handoff | Keep PlayerData.LevelsList as the serialized route owner; replace GameOptions route reads in GameLevelManager campaign-prefab adapter, GameRules outcome handoff and EndRoundMenuManager with explicit route references at their existing composition boundaries; replace StartManager/LoadGame copies only after all readers move | Same route order, CPU prefabs, null/invalid-index adapter behavior and hidden Boneyard/Dev finale; Level5CampaignRouteTests + affected campaign integration path |
+| E2 — campaign cursor separation | Split current menu LevelIndex from active route position; choose the narrow owner by extending the existing campaign/end-round boundary only after lifecycle/reset responsibilities are recorded. Preserve EndRoundData completed/proposed indices and CampaignRoundDecision tie/retry/advance/final behavior; update GameLevelManager adapter and EndRoundMenuManager commit together | New run starts at Scrapyard, ties retry, losses consume continues as before, victories advance authored route, return menu remains coherent; Level5SpawnCoordinatorCampaignCpuPrefabResolverTests and configured CampaignBoundaryPlayModeTests / affected round tests |
+| F1 — establish independent direct-scene inputs | Existing MatchRuntime.InstallLegacyFallbackReader and LegacyMatchRuntimeSnapshot are sufficient seams. Characterize the 41 fallback inputs and configured missing-character/out-of-roster cases before choosing scene-owned initialization. No approved independent fallback input owner exists today; resolve this design at the scene composition boundary before field deletion | No global compatibility replacement, no reverse sync, no reader installation gap; Level5MatchRuntimeLegacyFallbackTests and Level5ProductionAssemblyBoundaryTests; preserve missing-reader error and live-read semantics |
+| F2 — retire fallback fields in groups | After F1 and earlier readers migrate: rules/clock/shot/combat/sniper; roster/input/primary-character; arena identity/capabilities; cheerleader identity. Each group is a separate change, deleting paired bridge assignments only after an explicit replacement supplies its answers | Focused fallback + affected bridge parity tests and compile for each group; required affected scene integration for ownership changes; keep IDs, flags, Lockdown defender, timer-zero signal and direct-scene limitations |
 
-- inventory remaining reads/writes;
-- migrate consumers category by category;
-- enforce no-new-usage validation;
-- delete obsolete mode rule fields after zero consumers;
-- remove bridge assignments as fields disappear;
-- retain unrelated `GameOptions` fields temporarily if their owners are separate work.
+F1 is a **deletion blocker**, not a request to invent a fallback global. A configured-only replacement cannot satisfy #274 while direct scene entry still uses GameOptions. Preserve configured primary-character and out-of-roster fallback as well as unconfigured scenes. Existing MatchRuntime itself has no direct GameOptions dependency, but its installed reader does.
 
-Exit criteria:
+Phase 10 exit: no production gameplay/persistence path reads or writes legacy match state; no compatibility helper or direct-scene reader requires those fields. Reduce the allowlist and ratchet alongside actual retirement. Do not claim completion just because normal configured gameplay has zero direct rule reads.
 
-- `GameOptions` no longer represents match configuration;
-- no gameplay system requires legacy mode booleans.
+### Phase 11 — Residual non-match ownership (#275)
 
-### Phase 11 — Split Remaining Global State
+Local identity storage has already moved. Authenticated online identity remains BackendV2SessionStore; MatchSession already owns result ID. This phase removes residual dependencies without creating an application-wide state bag.
 
-Goal: retire `GameOptions` entirely if practical.
+| Slice | Current owner and bounded solution | Exit / focused evidence when implemented |
+| --- | --- | --- |
+| A1 — unused application/navigation copies | Remove GameOptions.applicationVersion/operatingSystemVersion writes in StartManager:1794–1795 and previousSceneName writes in StartManager:747, ProgressionManager:843, GameLevelManager:629 after fresh reader/reflection scan. Metadata comes from Application/SystemInfo where actually consumed; SceneTransition already loads scenes; separate LocalVersusNavigationState owns versus return | Zero remaining references to deleted copies, ratchet lowered; source inspection/compile. Do not invent a return-state service for a value nobody reads |
+| A2 — unused local-profile count mirror | UserAccountManager.RefreshLocalProfiles:235 already has profiles.Count; retire numOfLocalUsers mirror, update count assertions to observable loaded-profile/row state | Level5UserAccountManagerProfileLoadingTests preserve empty/populated/reload list behavior, no new list/count authority |
+| B1 — mode/friend preference memory | StartMenuSelectionState is current live selection owner; move modeSelectedIndex/friendSelectedIndex process-lifetime retention to minimal menu-owned memory at Load/SavePersistedPreferences seam. Reuse PlayerSelectionSession's stable-ID approach where appropriate, without mixing player and match runtime state | Return-to-menu retains the same choice; preserve index validation/catalog semantics and difficulty reset to Normal; no new disk persistence |
+| B2 — level and modifier preference memory | Only after #274 E2 separates campaign position, retire menu levelSelectedIndex. Coordinate traffic/hardcore/obstacles preference values with #274 D1/F so UI still reflects the last resolved launch values in the same launch/save order | Menu browsing never changes active configuration; campaign cursor cannot be mistaken for menu index; explicit hardcore record filter survives startup/re-entry |
+| C1 — account selection dependencies | AccountManager, UserAccountManager and LocalAccount use LocalAccountIdentity directly, preserving guest selection and current-profile deletion cleanup | Focused local-profile selection/deletion/allocation tests; unchanged SQLite/file account scopes and independent restored Backend V2 session |
+| C2 — identity consumers | StartManager profile label, HighScoreModel factories, APIHelper user report and **LoadManager:321** read LocalAccountIdentity directly. Preserve HighScoreModel's captured local identity, report fallback 999/not logged in, and SQLite profile lookup | Existing local-profile/score tests; no online identity substitution. Remove each allowlist entry only when its last reference disappears; LoadManager needs no new exception |
+| C3 — guard hardening after hidden reader migration | Use existing literal-aware source helper in a focused guard correction with a nested-comment regression; consider repository-relative paths separately. Migrate LoadManager first or in the same bounded dependency slice so fixing scanner does not require expanding allowlist | Architecture guards detect a real forbidden reference hidden after a line-comment block-marker; no exceptions added, basename collision handled explicitly if changed |
+| D — start-flow presentation lifetime | Current flag spans TipDialogueManager, CpuSelectManager and StartManager launch reset. Establish minimal menu/start-flow memory at that existing boundary; preserve true-on-Start and reset-at-launch timing | Tip/CPU-select menu wiring works on initial flow and post-match re-entry; smallest affected TipDialogueTextMeshProMigrationTests plus focused runtime re-entry if lifecycle owner changes |
 
-Work:
+Phase 11 exit: GameOptions is no longer an account, navigation, application metadata or menu/presentation authority. No auth/account rewrite, persistence schema migration, durable earned-level state or broad navigation replacement belongs here. The authored route stays in PlayerData; campaign run state migration is #274 E, coordinated with preference retirement.
 
-- menu indices -> menu preference/state owner;
-- account/session state -> account/auth service;
-- platform/version -> appropriate service/direct Unity API;
-- navigation state -> navigation/session service;
-- remaining campaign/session data -> explicit owner.
+### Bridge deletion gate (#276)
 
-Exit criteria:
+Keep #276 blocked until current dev establishes all of the following. Bridge call sites can remain until the deletion patch, but must be proven unnecessary and removed in that patch.
 
-- `GameOptions` is deleted or reduced to a narrowly justified compatibility object with a documented retirement path.
+- #274 and #275 responsibility slices are complete; the fresh release-production direct GameOptions consumer ledger reaches **zero**, including SQLite, menu, account and campaign adapters.
+- The 41 fallback inputs and configured missing-character/out-of-roster cases have independent supported answers. No installed reader or direct-scene bootstrap still needs GameOptions or values populated by the bridge.
+- All five current release Apply sites (StartManager, EndRoundMenuManager, two VersusLauncher sites, RemoteAttemptLauncher) and development LoadGame can launch/continue correctly without the copy. No replacement global compatibility object is introduced.
+- Remove bridge, paired dead fields/methods and remaining calls together; inspect static initialization hooks, reflection, MonoScript GUID/serialized references, UnityEvents and development launch tooling at the deletion SHA.
+- Update bridge-specific parity/snapshot/architecture tests deliberately, keeping configuration, typed numeric-ID, resolved-rule, roster and scene-bootstrap coverage. Do not delete useful behavioral assertions just because their old fixture named the bridge.
+- Compile and run the smallest affected architecture/fallback/configuration tests and required configured/direct-scene/campaign/versus launch integration paths. Preserve local account/result contracts and report actual process/XML evidence; follow repository domain rules without rerunning unrelated certification suites.
+- Re-fetch dev, inspect open-PR/worktree overlap, review final diff and document any unresolved ownership/lifetime question. A remaining real consumer keeps #276 open.
+
+Deleting the bridge and deleting all of GameOptions are related gates, not synonyms. Today both are blocked; leaving a narrow legacy fallback bag under another name would not complete retirement.
+
+### Target flow after approved retirement
+
+```mermaid
+flowchart LR
+    U[Menu / campaign / versus / remote launch] --> Q[MatchRequest / configured round continuation]
+    Q --> B[Existing builder / resolver]
+    B --> A[ActiveMatch immutable configuration]
+    A --> R[MatchRuntime / explicit scene composition]
+    R --> S[Captured HighScoreModel / MatchProgressionResult]
+    S --> D[Existing SQLite and retry boundary]
+    I[LocalAccountIdentity] --> P[Local profile UI and captured result identity]
+    O[BackendV2SessionStore] --> V[Authenticated online requests]
+    M[Menu-owned preference memory] --> U
+    C[PlayerData authored route + explicit campaign cursor] --> U
+    F[Scene-owned direct-entry inputs: design required] -. existing reader seam .-> R
+```
+
+Solid edges describe the target use of existing authorities; menu-memory lifetime, campaign cursor placement and independent direct-entry inputs require bounded decisions above. This diagram is not a claim those missing owners are implemented.
 
 ---
 
@@ -1468,15 +1437,19 @@ Unless deliberately revisited in a later architecture decision:
 
 ## 22. Recommended Immediate Next Work
 
-The first implementation work should not create the whole architecture. Begin with the safety slice:
+Issue #273 is the documentation-only audit in [the existing inventory](game-options-inventory.md), with two completed review passes and Level 0 evidence. Do not repeat the historical safety slice or recreate GameModeId, definitions, builder, roster, runtime context or bridge.
 
-1. inventory all `GameOptions` fields/usages and classify them;
-2. build the current game-mode characterization matrix from `StartScreenModeSelected` and `StartManager` behavior;
-3. add tests around that matrix;
-4. introduce `GameModeId` with exact legacy values;
-5. design the minimal `GameModeDefinition` fields strictly from the characterization matrix;
-6. create a parity validator before changing the menu launch path.
+1. Re-fetch dev and inspect overlapping PRs/worktrees at each implementation slice.
+2. Begin #274 A (verified write-only match compatibility values) or #275 A1/A2 (verified unused non-match copies); each is independently bounded and still requires fresh removal evidence.
+3. Migrate captured persistence inputs in #274 B/C, explicit record filter and selection boundaries in D, then campaign route/cursor in E. Coordinate menu-memory #275 B with those lifetimes.
+4. Move remaining local identity callers in #275 C, including the guard-hidden LoadManager read, and resolve the small startup presentation lifetime in D.
+5. Establish independent supported direct-scene inputs through the existing seam in #274 F before deleting any of the 41 fallback fields.
+6. Evaluate #276 only after all deletion gates in phase 11 are satisfied; a real remaining consumer keeps it open.
 
-Only after that safety slice is green should the project introduce `MatchConfigurationBuilder` and switch configuration authority.
+Open design questions are explicit: campaign cursor placement/reset lifetime, minimal start-flow memory owner, independent fallback initialization and dormant analytics policy. Do not guess those choices or use them to expand this audit into implementation.
 
-This sequence gives the overhaul a stable save point: if work pauses after any phase, the existing game still runs and the completed architecture slice remains useful rather than leaving the project between two incompatible systems.
+### #273 validation and review record
+
+Fetched origin/dev and issues #273–#276; inspected open PRs/worktrees; reconciled every current field/property/method and source expression; traced fallback, bridge callers, campaign, local identity and SQLite paths. Static source checks reproduce the 59-token ratchet and expose the LoadManager false negative. Both review passes and final source/diff evidence are recorded in the inventory/PR.
+
+This patch changes only the two existing documents. Unity compile, EditMode/PlayMode, broad repository validation and physical gameplay checks are NOT RUN under AGENTS.md Level 0. Future implementation slices use the smallest tests stated above plus domain-required integration evidence; these are not claims of fresh passing tests.
