@@ -1,6 +1,9 @@
 {
   "name": "Level5.Audio",
   "rootNamespace": "",
-  "references": [],
+  "references": [
+    "Level5.Core",
+    "Level5.Utility"
+  ],
   "autoReferenced": true
 }
