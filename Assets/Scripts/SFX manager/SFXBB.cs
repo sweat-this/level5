@@ -4,7 +4,8 @@ public class SFXBB : MonoBehaviour
 {
     [SerializeField]
     private bool musicEnabled;
-    private AudioSource audioSource;
+    [SerializeField] private AudioSource musicSource;
+    [SerializeField] private AudioSource effectsSource;
 
     [SerializeField]
     private AudioClip[] musicList;
@@ -47,6 +48,9 @@ public class SFXBB : MonoBehaviour
 
     public static SFXBB instance;
 
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+    private static void ResetInstance() => instance = null;
+
     /// <summary>
     /// Releases the static so it cannot outlive the object it points at.
     ///
@@ -71,32 +75,37 @@ public class SFXBB : MonoBehaviour
         }
 
         instance = this;
+        if (musicSource == null || effectsSource == null || musicSource == effectsSource)
+        {
+            Debug.LogError("SFXBB requires distinct serialized music and effects sources.", this);
+            enabled = false;
+        }
     }
 
     private void Start()
     {
-        audioSource = gameObject.GetComponent<AudioSource>();
         playRandomSong();
     }
 
     public void playSFX(AudioClip audioClip)
     {
-        if (audioSource == null || audioClip == null)
+        if (!enabled || effectsSource == null || audioClip == null)
         {
             return;
         }
 
-        audioSource.PlayOneShot(audioClip);
+        effectsSource.PlayOneShot(audioClip);
     }
 
     private void Update()
     {
-        if (audioSource == null)
+        // Paused sources report !isPlaying. Do not advance/restart the playlist during Pause.
+        if (musicSource == null || Time.timeScale == 0f)
         {
             return;
         }
 
-        bool shouldPlayNextSong = musicEnabled && !audioSource.isPlaying;
+        bool shouldPlayNextSong = musicEnabled && !musicSource.isPlaying;
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
         shouldPlayNextSong = shouldPlayNextSong || (Input.GetKey(KeyCode.LeftShift) && Input.GetKeyDown(KeyCode.Alpha0));
 #endif
@@ -112,8 +121,8 @@ public class SFXBB : MonoBehaviour
         {
             int randNum = Random.Range(0, musicList.Length);
             currentSongIndex = randNum;
-            audioSource.clip = musicList[currentSongIndex];
-            audioSource.Play();
+            musicSource.clip = musicList[currentSongIndex];
+            musicSource.Play();
         }
     }
 
@@ -133,7 +142,7 @@ public class SFXBB : MonoBehaviour
         {
             currentSongIndex++;
         }
-        audioSource.clip = musicList[currentSongIndex];
-        audioSource.Play();
+        musicSource.clip = musicList[currentSongIndex];
+        musicSource.Play();
     }
 }

@@ -6,6 +6,15 @@ is that "which store is the source of truth" was previously unanswerable without
 
 ## The stores
 
+Application-wide local preferences are a separate boundary: `PlayerSettingsRuntime.Current` owns
+an immutable `Level5.Core.PlayerSettings` projection (Master, Music, SFX only). `PlayerSettingsStore`
+persists version 1 to `Application.persistentDataPath/player-settings.json` through `AtomicFile`.
+The file is shared by all local profiles and guest play; profile deletion and Backend session
+changes must not touch it. Invalid primary data falls back to a valid backup, then full-gain
+defaults, without a startup write. Options updates apply through the mixer and save synchronously;
+failed saves retain the active values, report failure, and retry on Options exit/focus loss/pause/quit.
+See [the settings/audio audit](player-settings-audio-audit.md) for schema and validation boundaries.
+
 | Store | Location | Authority | Written by | Read by |
 | --- | --- | --- | --- | --- |
 | **SQLite** | `Application.persistentDataPath/level5.db` | **Sole live authority for character progression, and for local score/history and everything else the game currently shows** | `DBHelper` (~30 methods, all lock-guarded via `DBConnector`) | `LoadManager`, `StartManager`, `ProgressionManager`, `StatsManager` |

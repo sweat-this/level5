@@ -59,12 +59,14 @@ public class OptionsManager : MonoBehaviour
         // so disabling and re-enabling this component left every button on the screen inert.
         if (initialized)
         {
+            ui.RefreshAudioControls();
             RegisterButtonCallbacks();
         }
     }
     private void OnDisable()
     {
         UnregisterButtonCallbacks();
+        if (initialized) PlayerSettingsRuntime.Flush();
         PlayerControlsProvider.DisableMenuMaps();
     }
 
@@ -94,6 +96,7 @@ public class OptionsManager : MonoBehaviour
 
         UiSelectionAdapter.EnsureInputSystemUiModule();
         ResolveButtonReferences();
+        ui.RefreshAudioControls();
         RegisterButtonCallbacks();
         DisplayKeyboardOnlyControls();
         UiSelectionAdapter.EnsureSelected(GetDefaultSelectedButton());
@@ -204,6 +207,11 @@ public class OptionsManager : MonoBehaviour
 
     private void RegisterButtonCallbacks()
     {
+        // Symmetric named callbacks; remove first so repeated registration is idempotent.
+        UnregisterAudioCallbacks();
+        ui.MasterSlider.onValueChanged.AddListener(OnMasterChanged);
+        ui.MusicSlider.onValueChanged.AddListener(OnMusicChanged);
+        ui.SfxSlider.onValueChanged.AddListener(OnSfxChanged);
         UiSelectionAdapter.RegisterButton(mainMenuButton, LoadStartMenu);
         UiSelectionAdapter.RegisterButton(statsMenuButton, LoadStatsMenu);
         UiSelectionAdapter.RegisterButton(progressionMenuButton, LoadProgressionMenu);
@@ -219,6 +227,7 @@ public class OptionsManager : MonoBehaviour
 
     private void UnregisterButtonCallbacks()
     {
+        UnregisterAudioCallbacks();
         UiSelectionAdapter.UnregisterButton(mainMenuButton, LoadStartMenu);
         UiSelectionAdapter.UnregisterButton(statsMenuButton, LoadStatsMenu);
         UiSelectionAdapter.UnregisterButton(progressionMenuButton, LoadProgressionMenu);
@@ -230,6 +239,38 @@ public class OptionsManager : MonoBehaviour
         UiSelectionAdapter.UnregisterButton(keyboardMouseButton, DisplayKeyboardMouseControls);
         UiSelectionAdapter.UnregisterButton(gamepadButton, DisplayGamepadControls);
         UiSelectionAdapter.UnregisterButton(touchButton, DisplayTouchControls);
+    }
+
+    private void UnregisterAudioCallbacks()
+    {
+        if (ui == null) return;
+        if (ui.MasterSlider != null) ui.MasterSlider.onValueChanged.RemoveListener(OnMasterChanged);
+        if (ui.MusicSlider != null) ui.MusicSlider.onValueChanged.RemoveListener(OnMusicChanged);
+        if (ui.SfxSlider != null) ui.SfxSlider.onValueChanged.RemoveListener(OnSfxChanged);
+    }
+
+    private void OnMasterChanged(float percent)
+    {
+        Level5.Core.PlayerSettings current = PlayerSettingsRuntime.Current;
+        SaveAudio(new Level5.Core.PlayerSettings(percent / 100f, current.Music, current.Sfx));
+    }
+
+    private void OnMusicChanged(float percent)
+    {
+        Level5.Core.PlayerSettings current = PlayerSettingsRuntime.Current;
+        SaveAudio(new Level5.Core.PlayerSettings(current.Master, percent / 100f, current.Sfx));
+    }
+
+    private void OnSfxChanged(float percent)
+    {
+        Level5.Core.PlayerSettings current = PlayerSettingsRuntime.Current;
+        SaveAudio(new Level5.Core.PlayerSettings(current.Master, current.Music, percent / 100f));
+    }
+
+    private void SaveAudio(Level5.Core.PlayerSettings settings)
+    {
+        PlayerSettingsRuntime.UpdateAndSave(settings);
+        ui.RefreshAudioLabels();
     }
 
     private GameObject GetDefaultSelectedButton()
