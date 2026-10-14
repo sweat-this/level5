@@ -8,6 +8,11 @@ and left untouched. No open PR targeting dev overlapped this work.
 
 ## Evidence and gameplay contract
 
+Historical scope note: this report records PR #301's preserved fifth-registration accounting.
+On 2026-10-14 the owner approved counting an enabled marker's quota-reaching attempt instead;
+see the [subsequent accounting correction](gp-001-money-ball-attempt-quotas.md). The original
+reproduction tables below describe #301, not the later accounting policy.
+
 Read the documentation index, AI presets, [shot lifecycle](shot-lifecycle.md),
 [mode-16 audit](gp-001-mode16-cpu-timeout-audit.md), [made-shot finality](gp-001-made-shot-finality.md),
 and the current sources, fixtures and relevant authored data. Applied the repository debug and

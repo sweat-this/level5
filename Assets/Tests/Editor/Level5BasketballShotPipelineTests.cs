@@ -402,33 +402,39 @@ public class Level5BasketballShotPipelineTests
     }
 
     [Test]
-    public void ApplyMarkerAndMoneyBallOnShoot_ThreePointContestFinalAttempt_IncrementsMoneyBallAttempts()
+    public void ApplyMarkerAndMoneyBallOnShoot_EnabledContestFinalAttempt_IncrementsMoneyBallAttempts(
+        [Values(3, 4, 5, 7)] int quota,
+        [Values(ShotRule.ThreePoint, ShotRule.FourPoint, ShotRule.SevenPoint,
+            ShotRule.ThreePoint | ShotRule.FourPoint | ShotRule.AllRanges)] ShotRule shotRule)
     {
         ResolvedMatchRules rules = new ResolvedMatchRules(
             shotMarkers: ShotMarkerRequirement.ThreePoint,
-            shotRule: ShotRule.ThreePoint);
+            shotRule: shotRule);
         GameRules gameRules = MakeGameRules(moneyBallEnabled: false);
 
-        BasketBallShotMarker marker = MakeMarker("marker", maxShotAttempt: 5);
+        BasketBallShotMarker marker = MakeMarker("marker", maxShotAttempt: quota);
+        marker.MarkerEnabled = true;
         BasketBallState state = MakeState(twoPoints: true);
         GameStats stats = MakeStats();
         FakeRuntime runtime = new FakeRuntime { State = state, Stats = stats };
 
-        for (int i = 0; i < 5; i++)
+        for (int i = 0; i < quota; i++)
         {
             state.EnterShotMarker(marker);
+            BasketballShotPipeline.ApplyShotAttempt(runtime, false, true, false, false);
             BasketballShotPipeline.ApplyMarkerAndMoneyBallOnShoot(runtime, gameRules, rules);
+            Assert.That(stats.Stats.MoneyBallAttempts, Is.EqualTo(i == quota - 1 ? 1 : 0));
         }
 
-        Assert.That(marker.ShotAttempt, Is.EqualTo(5));
-        Assert.That(stats.Stats.MoneyBallAttempts, Is.EqualTo(1), "the fifth attempt in a three-point contest must credit exactly one money-ball attempt");
+        Assert.That(marker.ShotAttempt, Is.EqualTo(quota));
+        Assert.That(stats.Stats.MoneyBallAttempts, Is.EqualTo(1));
     }
 
     [Test]
     public void ApplyMarkerAndMoneyBallOnShoot_OrdinaryMarkerMode_FifthAttemptDoesNotCreditMoneyBallAttempt()
     {
         // Contrast with the contest test above: same fifth-attempt marker count, but no contest rule
-        // active (shotRule defaults to ShotRule.Any), so the ShotAttempt == 5 branch's contest-flag
+        // active (shotRule defaults to ShotRule.Any), so the final-attempt branch's contest-flag
         // check must stay false.
         ResolvedMatchRules rules = new ResolvedMatchRules(shotMarkers: ShotMarkerRequirement.ThreePoint);
         GameRules gameRules = MakeGameRules(moneyBallEnabled: false);

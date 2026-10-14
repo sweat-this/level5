@@ -1,6 +1,6 @@
 # The Basketball Shot Lifecycle
 
-Last reviewed: 2026-10-13
+Last reviewed: 2026-10-14
 
 AUD-010 asks for two things: this document, and a single shot result consumed by everything
 downstream. The result exists for the part that decides *what a shot is worth*
@@ -74,9 +74,12 @@ shot worth what it looked like when it was taken.
 
 Final-marker bonus status clears with the existing snapshot on the next attempt and after an
 accepted make. Another participant's fourth/fifth/sixth attempt cannot grant or revoke it.
-The existing enabled-marker and Three/Four/Seven contest gates still apply; fifth-attempt
-`MoneyBallAttempts`, independent active-money credits and captured-runtime completion readiness
-retain their existing policies. See the [overlap reproduction and validation](gp-001-final-marker-bonus.md).
+The existing enabled-marker and Three/Four/Seven contest gates still apply. `MoneyBallAttempts`
+credits the enabled marker's quota-reaching registration using that same snapshot, including a
+final miss; it no longer assumes a quota of five. Independent active-money credits and captured-runtime
+completion readiness retain their existing policies. See the
+[quota accounting decision and validation](gp-001-money-ball-attempt-quotas.md) and
+[overlap reproduction and validation](gp-001-final-marker-bonus.md).
 
 AUD-015 was a bug in exactly this area: the attempt flags were set at launch but only cleared on the
 make path, so a missed two followed by a made three scored both. They are now reset at the start of
@@ -185,7 +188,7 @@ way the immutable properties were. Instead:
   with it left unbound.
 - `ApplyMarkerAndMoneyBallOnShoot` takes the live `IMoneyBallState` reference as a parameter (not the
   current bool value) and reads `.MoneyBallEnabled` at the same point the old `GameRules.instance`
-  read sat - after the marker gate and the contest fifth-attempt credit, so a missing provider still
+  read sat - after the marker gate and the contest final-attempt credit, so a missing provider still
   preserves whatever marker accounting already happened for that shot. A qualifying shot that reaches
   this point with no bound provider logs an actionable composition error and skips only the
   money-ball branch, exactly the shape `ApplyMarkerAndMoneyBallOnShoot`'s existing

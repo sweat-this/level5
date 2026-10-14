@@ -26,6 +26,8 @@ Feature and system docs:
 
 Decision records and audits:
 
+- [Money-ball attempts and authored quotas](gp-001-money-ball-attempt-quotas.md) - GP-001: owner-approved quota-based accounting, mode-24 baseline reproduction, human/CPU ownership, preserved scoring and focused validation.
+
 - [Mode 16 CPU marker-course ownership](gp-001-mode16-course-ownership-audit.md) - decision-blocked cooperative/competitive policy audit, ownership flow, natural CPU and controlled completion evidence, two review passes and focused validation.
 
 - [Final-marker bonuses under overlapping shots](gp-001-final-marker-bonus.md) - GP-001: attempt-specific eligibility, fourth/fifth/sixth reproduction, two review passes and configured human/CPU runtime validation.

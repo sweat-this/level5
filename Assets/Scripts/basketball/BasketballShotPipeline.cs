@@ -88,7 +88,7 @@ public static class BasketballShotPipeline
         marker.RegisterAttempt(runtime);
         basketBallState.IsFinalMarkerAttempt = marker.ShotAttempt == marker.MaxShotAttempt;
 
-        if (marker.ShotAttempt == 5
+        if (marker.MarkerEnabled && basketBallState.IsFinalMarkerAttempt
             && (rules.IsThreePointContest || rules.IsFourPointContest || rules.IsSevenPointContest))
         {
             gameStats.Stats.MoneyBallAttempts++;

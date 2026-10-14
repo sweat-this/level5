@@ -517,6 +517,97 @@ public class Level5PostRemediationCertificationPlayModeTests
             .SendMessage("OnTriggerEnter", ((Component)ball).GetComponent<Collider>());
 
     [UnityTest]
+    public IEnumerator Mode24AuthoredFourAttemptMoneyBallsKeepCompletionAndSavedStatistics()
+    {
+        yield return Launch(24, 1);
+        Assert.That(ActiveMatch.Configuration.SceneName, Is.EqualTo("level_01_scrapyard"));
+        Assert.That(ActiveMatch.Configuration.Rules.IsSevenPointContest, Is.True);
+        Assert.That(Timer.instance.TimeStart, Is.EqualTo(90f));
+        var all = Object.FindObjectsByType<BasketBallShotMarker>(FindObjectsInactive.Include);
+        var enabled = all.Where(m => m.isActiveAndEnabled).ToArray();
+        Assert.That(enabled, Has.Length.EqualTo(6));
+        foreach (var marker in all)
+        {
+            TestContext.WriteLine($"MODE24 composition name={marker.name} active={marker.isActiveAndEnabled} seven={marker.ShotTypeSeven} quota={marker.MaxShotAttempt} madeQuota={marker.MaxShotMade}");
+            Assert.That(marker.isActiveAndEnabled, Is.EqualTo(marker.ShotTypeSeven));
+        }
+        foreach (var marker in enabled) Assert.That(marker.MaxShotAttempt, Is.EqualTo(4));
+        var markers = FreezeContestForBoundary();
+        IBasketballRuntime ball = BasketBall.instance;
+        void Register(BasketBallShotMarker marker)
+        {
+            ball.State.EnterShotMarker(marker);
+            BasketballShotPipeline.ApplyShotAttempt(ball, false, false, false, true);
+            BasketballShotPipeline.ApplyMarkerAndMoneyBallOnShoot(ball, (IMoneyBallState)gameRules, ActiveMatch.Configuration.Rules);
+            typeof(BasketBallState).GetMethod("RecordShotRelease", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(ball.State, null);
+            ball.State.Thrown = true;
+        }
+        void Make()
+        {
+            CrossUpper(ball);
+            CrossLower(ball);
+            CrossUpper(ball);
+            CrossLower(ball);
+        }
+        var made = markers[0];
+        for (int i = 0; i < 3; i++) Register(made);
+        int beforeFinal = stats.Stats.MoneyBallAttempts;
+        Register(made);
+        bool capturedFinal = ball.State.IsFinalMarkerAttempt;
+        int finalAttempts = stats.Stats.MoneyBallAttempts;
+        Make();
+        TestContext.WriteLine($"MODE24 final make: points={stats.TotalPoints} money={stats.Stats.MoneyBallAttempts}/{stats.Stats.MoneyBallMade} marker={made.ShotAttempt}/{made.ShotMade} snapshotBeforeMake={capturedFinal}");
+        Assert.That(stats.TotalPoints, Is.EqualTo(14));
+        Assert.That(stats.Stats.MoneyBallMade, Is.EqualTo(1));
+        Assert.That(made.ShotMade, Is.EqualTo(1));
+        Assert.That(ball.State.IsFinalMarkerAttempt, Is.False);
+        made.SendMessage("Update");
+        Assert.That(made.MarkerEnabled, Is.False);
+        var missed = markers[1];
+        for (int i = 0; i < 4; i++) Register(missed);
+        int afterMiss = stats.Stats.MoneyBallAttempts;
+        missed.SendMessage("Update");
+        Assert.That(missed.MarkerEnabled, Is.False);
+        Assert.That(missed.ShotMade, Is.Zero);
+        Register(missed); // Completed marker's fifth registration must not create an attempt credit.
+        Make();
+        Register(missed); // Nor may a sixth inherit the final bonus.
+        Make();
+        int afterExtra = stats.Stats.MoneyBallAttempts;
+        Assert.That(ball.State.IsFinalMarkerAttempt, Is.False);
+        Assert.That(((IShotMarkerSession)gameRules).MarkersRemaining, Is.EqualTo(4));
+        TestContext.WriteLine($"MODE24 missed/extra: afterMiss={afterMiss} afterExtra={afterExtra} points={stats.TotalPoints} moneyMade={stats.Stats.MoneyBallMade} remaining={((IShotMarkerSession)gameRules).MarkersRemaining}");
+        Production("GameRules").GetMethod("RequestEnd", new[] { typeof(MatchEndReason) })
+            .Invoke(gameRules, new object[] { MatchEndReason.TimeExpired });
+        yield return Complete(MatchEndCause.TimeExpired);
+        string savedId = database.ReadOnlyScoreId(24);
+        Assert.That(summary.text, Does.Contain("money ball : 1 / 2"));
+        Assert.That(summary.text, Does.Contain("50.0%"));
+        using (IDbCommand command = ((IDbConnection)typeof(LocalProfileTestDatabase)
+            .GetProperty("Connection", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(database)).CreateCommand())
+        {
+            command.CommandText = "SELECT totalpoints,moneyBallAtt,moneyBallMade FROM HighScores WHERE modeid=24";
+            using (IDataReader reader = command.ExecuteReader())
+            {
+                Assert.That(reader.Read(), Is.True);
+                TestContext.WriteLine($"MODE24 saved: id={savedId} points={reader.GetValue(0)} money={reader.GetValue(1)}/{reader.GetValue(2)}");
+                Assert.That(Convert.ToInt32(reader.GetValue(0)), Is.EqualTo(14));
+                Assert.That(Convert.ToInt32(reader.GetValue(1)), Is.EqualTo(afterExtra));
+                Assert.That(Convert.ToInt32(reader.GetValue(2)), Is.EqualTo(1));
+            }
+        }
+        CrossUpper(ball);
+        CrossLower(ball);
+        Assert.That(database.ReadOnlyScoreId(24), Is.EqualTo(savedId));
+        Assert.That(stats.TotalPoints, Is.EqualTo(14));
+        Assert.That(beforeFinal, Is.Zero);
+        Assert.That(capturedFinal, Is.True);
+        Assert.That(finalAttempts, Is.EqualTo(1));
+        Assert.That(afterMiss, Is.EqualTo(2));
+        Assert.That(afterExtra, Is.EqualTo(afterMiss));
+    }
+
+    [UnityTest]
     public IEnumerator Mode16OverlappingFinalMarkerBonusesKeepOwnershipCompletionAndSavedScore()
     {
         yield return Launch(16, 1, withCpu: true);
