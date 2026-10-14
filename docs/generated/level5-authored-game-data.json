@@ -22756,6 +22756,11 @@
                             "propertyPath": "modeRequiresShotMarkers7s",
                             "propertyType": "Boolean",
                             "value": "false"
+                        },
+                        {
+                            "propertyPath": "supportsTwoLocalHumans",
+                            "propertyType": "Boolean",
+                            "value": "true"
                         }
                     ]
                 }
@@ -22888,6 +22893,11 @@
                         },
                         {
                             "propertyPath": "modeRequiresShotMarkers7s",
+                            "propertyType": "Boolean",
+                            "value": "false"
+                        },
+                        {
+                            "propertyPath": "supportsTwoLocalHumans",
                             "propertyType": "Boolean",
                             "value": "false"
                         }
@@ -23024,6 +23034,11 @@
                             "propertyPath": "modeRequiresShotMarkers7s",
                             "propertyType": "Boolean",
                             "value": "false"
+                        },
+                        {
+                            "propertyPath": "supportsTwoLocalHumans",
+                            "propertyType": "Boolean",
+                            "value": "false"
                         }
                     ]
                 }
@@ -23156,6 +23171,11 @@
                         },
                         {
                             "propertyPath": "modeRequiresShotMarkers7s",
+                            "propertyType": "Boolean",
+                            "value": "false"
+                        },
+                        {
+                            "propertyPath": "supportsTwoLocalHumans",
                             "propertyType": "Boolean",
                             "value": "false"
                         }
@@ -23292,6 +23312,11 @@
                             "propertyPath": "modeRequiresShotMarkers7s",
                             "propertyType": "Boolean",
                             "value": "false"
+                        },
+                        {
+                            "propertyPath": "supportsTwoLocalHumans",
+                            "propertyType": "Boolean",
+                            "value": "false"
                         }
                     ]
                 }
@@ -23424,6 +23449,11 @@
                         },
                         {
                             "propertyPath": "modeRequiresShotMarkers7s",
+                            "propertyType": "Boolean",
+                            "value": "false"
+                        },
+                        {
+                            "propertyPath": "supportsTwoLocalHumans",
                             "propertyType": "Boolean",
                             "value": "false"
                         }
@@ -23560,6 +23590,11 @@
                             "propertyPath": "modeRequiresShotMarkers7s",
                             "propertyType": "Boolean",
                             "value": "false"
+                        },
+                        {
+                            "propertyPath": "supportsTwoLocalHumans",
+                            "propertyType": "Boolean",
+                            "value": "false"
                         }
                     ]
                 }
@@ -23692,6 +23727,11 @@
                         },
                         {
                             "propertyPath": "modeRequiresShotMarkers7s",
+                            "propertyType": "Boolean",
+                            "value": "false"
+                        },
+                        {
+                            "propertyPath": "supportsTwoLocalHumans",
                             "propertyType": "Boolean",
                             "value": "false"
                         }
@@ -23828,6 +23868,11 @@
                             "propertyPath": "modeRequiresShotMarkers7s",
                             "propertyType": "Boolean",
                             "value": "false"
+                        },
+                        {
+                            "propertyPath": "supportsTwoLocalHumans",
+                            "propertyType": "Boolean",
+                            "value": "false"
                         }
                     ]
                 }
@@ -23960,6 +24005,11 @@
                         },
                         {
                             "propertyPath": "modeRequiresShotMarkers7s",
+                            "propertyType": "Boolean",
+                            "value": "false"
+                        },
+                        {
+                            "propertyPath": "supportsTwoLocalHumans",
                             "propertyType": "Boolean",
                             "value": "false"
                         }
@@ -24096,6 +24146,11 @@
                             "propertyPath": "modeRequiresShotMarkers7s",
                             "propertyType": "Boolean",
                             "value": "false"
+                        },
+                        {
+                            "propertyPath": "supportsTwoLocalHumans",
+                            "propertyType": "Boolean",
+                            "value": "false"
                         }
                     ]
                 }
@@ -24228,6 +24283,11 @@
                         },
                         {
                             "propertyPath": "modeRequiresShotMarkers7s",
+                            "propertyType": "Boolean",
+                            "value": "false"
+                        },
+                        {
+                            "propertyPath": "supportsTwoLocalHumans",
                             "propertyType": "Boolean",
                             "value": "false"
                         }
@@ -24364,6 +24424,11 @@
                             "propertyPath": "modeRequiresShotMarkers7s",
                             "propertyType": "Boolean",
                             "value": "false"
+                        },
+                        {
+                            "propertyPath": "supportsTwoLocalHumans",
+                            "propertyType": "Boolean",
+                            "value": "false"
                         }
                     ]
                 }
@@ -24496,6 +24561,11 @@
                         },
                         {
                             "propertyPath": "modeRequiresShotMarkers7s",
+                            "propertyType": "Boolean",
+                            "value": "false"
+                        },
+                        {
+                            "propertyPath": "supportsTwoLocalHumans",
                             "propertyType": "Boolean",
                             "value": "false"
                         }
@@ -24632,6 +24702,11 @@
                             "propertyPath": "modeRequiresShotMarkers7s",
                             "propertyType": "Boolean",
                             "value": "false"
+                        },
+                        {
+                            "propertyPath": "supportsTwoLocalHumans",
+                            "propertyType": "Boolean",
+                            "value": "false"
                         }
                     ]
                 }
@@ -24764,6 +24839,11 @@
                         },
                         {
                             "propertyPath": "modeRequiresShotMarkers7s",
+                            "propertyType": "Boolean",
+                            "value": "false"
+                        },
+                        {
+                            "propertyPath": "supportsTwoLocalHumans",
                             "propertyType": "Boolean",
                             "value": "false"
                         }
@@ -24900,6 +24980,11 @@
                             "propertyPath": "modeRequiresShotMarkers7s",
                             "propertyType": "Boolean",
                             "value": "false"
+                        },
+                        {
+                            "propertyPath": "supportsTwoLocalHumans",
+                            "propertyType": "Boolean",
+                            "value": "false"
                         }
                     ]
                 }
@@ -25032,6 +25117,11 @@
                         },
                         {
                             "propertyPath": "modeRequiresShotMarkers7s",
+                            "propertyType": "Boolean",
+                            "value": "false"
+                        },
+                        {
+                            "propertyPath": "supportsTwoLocalHumans",
                             "propertyType": "Boolean",
                             "value": "false"
                         }
@@ -25168,6 +25258,11 @@
                             "propertyPath": "modeRequiresShotMarkers7s",
                             "propertyType": "Boolean",
                             "value": "true"
+                        },
+                        {
+                            "propertyPath": "supportsTwoLocalHumans",
+                            "propertyType": "Boolean",
+                            "value": "false"
                         }
                     ]
                 }
@@ -25302,6 +25397,11 @@
                             "propertyPath": "modeRequiresShotMarkers7s",
                             "propertyType": "Boolean",
                             "value": "true"
+                        },
+                        {
+                            "propertyPath": "supportsTwoLocalHumans",
+                            "propertyType": "Boolean",
+                            "value": "false"
                         }
                     ]
                 }
@@ -25434,6 +25534,11 @@
                         },
                         {
                             "propertyPath": "modeRequiresShotMarkers7s",
+                            "propertyType": "Boolean",
+                            "value": "false"
+                        },
+                        {
+                            "propertyPath": "supportsTwoLocalHumans",
                             "propertyType": "Boolean",
                             "value": "false"
                         }
@@ -25570,6 +25675,11 @@
                             "propertyPath": "modeRequiresShotMarkers7s",
                             "propertyType": "Boolean",
                             "value": "false"
+                        },
+                        {
+                            "propertyPath": "supportsTwoLocalHumans",
+                            "propertyType": "Boolean",
+                            "value": "false"
                         }
                     ]
                 }
@@ -25704,6 +25814,11 @@
                             "propertyPath": "modeRequiresShotMarkers7s",
                             "propertyType": "Boolean",
                             "value": "false"
+                        },
+                        {
+                            "propertyPath": "supportsTwoLocalHumans",
+                            "propertyType": "Boolean",
+                            "value": "false"
                         }
                     ]
                 }
@@ -25836,6 +25951,11 @@
                         },
                         {
                             "propertyPath": "modeRequiresShotMarkers7s",
+                            "propertyType": "Boolean",
+                            "value": "false"
+                        },
+                        {
+                            "propertyPath": "supportsTwoLocalHumans",
                             "propertyType": "Boolean",
                             "value": "false"
                         }

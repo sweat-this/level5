@@ -26,6 +26,8 @@ Feature and system docs:
 
 Decision records and audits:
 
+- [Explicit two-local-human mode capability](local-human-capability-package.md) - issues #234/#235/#278: default-deny authoring, Total Points opt-in, compatibility, generated parity, two review passes and validation evidence.
+
 - [Money-ball attempts and authored quotas](gp-001-money-ball-attempt-quotas.md) - GP-001: owner-approved quota-based accounting, mode-24 baseline reproduction, human/CPU ownership, preserved scoring and focused validation.
 
 - [Mode 16 CPU marker-course ownership](gp-001-mode16-course-ownership-audit.md) - decision-blocked cooperative/competitive policy audit, ownership flow, natural CPU and controlled completion evidence, two review passes and focused validation.

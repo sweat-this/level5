@@ -26,6 +26,26 @@ public class Level5DocumentationExporterTests
             + "and commit the regenerated file; do not edit it by hand.");
     }
 
+    [Test]
+    public void CheckedInModeSnapshotMatchesEveryAuthoredLocalHumanCapability()
+    {
+        Assert.That(MatchDefinitionMigration.TryLoadAuthoredSources(out var modes, out _, out string error), Is.True, error);
+        string path = Path.Combine(Directory.GetParent(Application.dataPath).FullName,
+            Level5DocumentationExporter.OutputRelativePath);
+        var data = JsonUtility.FromJson<Level5DocumentationExporter.DocumentationExport>(File.ReadAllText(path));
+        foreach (StartScreenModeSelected source in modes)
+        {
+            string sourcePath = AssetDatabase.GetAssetPath(source);
+            var record = data.modeSelections.Find(mode => mode.sourcePath == sourcePath);
+            Assert.That(record, Is.Not.Null, sourcePath);
+            var component = record.components.Find(entry => entry.componentType == nameof(StartScreenModeSelected));
+            Assert.That(component, Is.Not.Null, sourcePath);
+            var capability = component.properties.Find(property => property.propertyPath == "supportsTwoLocalHumans");
+            Assert.That(capability, Is.Not.Null, sourcePath + ": re-export authored game data");
+            Assert.That(capability.value, Is.EqualTo(source.SupportsTwoLocalHumans ? "true" : "false"), sourcePath);
+        }
+    }
+
     [TestCase(14)]
     [TestCase(15)]
     [TestCase(16)]

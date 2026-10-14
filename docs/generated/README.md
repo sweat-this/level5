@@ -183,8 +183,15 @@ that output with current sources. On the audited `dev` baseline
 21 selectable; only The Scrapyard opts into multiplayer. No arena authoring or
 runtime capability logic needs to change to reconcile this snapshot.
 
-The explicit local-human mode capability required by #234/#235 is not present
-on this baseline, and #235 is still open. After those dependencies land, extend
-the mode table with their actual resolved contract and regenerate; roster bounds
-must not be presented as local-human certification. Until that follow-up and a
-Unity export/test run are complete, #278 and its downstream #246 remain blocked.
+The mode table now also reports `mode supports two local humans`, separately
+from the total `roster` bounds. This is the default-false authored
+`StartScreenModeSelected.SupportsTwoLocalHumans` flag carried through the existing
+factory and definition migration. Total Points alone opts in. The runtime gate
+still requires exactly two local humans without CPU participants or an implicit
+opponent, and a separately certified multiplayer arena. A documentation row does
+not certify a new mode, arena, device or roster combination.
+
+`Level5DocumentationExporterTests.CheckedInModeSnapshotMatchesEveryAuthoredLocalHumanCapability`
+also compares this field in the generated JSON with every shipping mode prefab.
+Refresh both artifacts through their owning Unity exporters when authoring changes;
+do not infer local-human support from total roster bounds or edit snapshots by hand.

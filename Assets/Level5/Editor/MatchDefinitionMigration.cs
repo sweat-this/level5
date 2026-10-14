@@ -151,8 +151,8 @@ public static class MatchDefinitionMigration
         markdown.AppendLine("Each row is what one authored mode resolves to under the match configuration model.");
         markdown.AppendLine("A change to any of these values is a gameplay change, not a refactor.");
         markdown.AppendLine();
-        markdown.AppendLine("| id | mode | objective | clock | timer | combat | shot rule | markers | ball | money | streak | survive | cpu shooters | enemies only | arcade | roster |");
-        markdown.AppendLine("| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |");
+        markdown.AppendLine("| id | mode | objective | clock | timer | combat | shot rule | markers | ball | money | streak | survive | cpu shooters | enemies only | arcade | roster | mode supports two local humans |");
+        markdown.AppendLine("| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |");
 
         List<string> anomalies = new List<string>();
         foreach (StartScreenModeSelected source in modes)
@@ -184,7 +184,8 @@ public static class MatchDefinitionMigration
                     Yes(mode.AllowsCpuShooters),
                     Yes(mode.EnemiesOnly),
                     Yes(mode.ArcadeMode),
-                    $"{mode.MinPlayers}-{mode.MaxPlayers}" + (mode.AddsImplicitDefender ? " +defender" : string.Empty) + " |"
+                    $"{mode.MinPlayers}-{mode.MaxPlayers}" + (mode.AddsImplicitDefender ? " +defender" : string.Empty),
+                    Yes(mode.SupportsTwoLocalHumans) + " |"
                 }));
             }
             finally
