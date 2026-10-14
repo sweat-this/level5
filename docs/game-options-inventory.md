@@ -1,191 +1,216 @@
 # `GameOptions` production ownership inventory
 
-Status: issue #273 current-state audit; runtime, assets and guards unchanged.
-Audited: **2026-10-14**, `origin/dev ca65435afeec75ddfbfa79dcd348f2a52cc36fe8`.
-Unity: `6000.5.7f1`. Integration branch: `dev`.
+Status: **#274 partially implemented; D2/F remain blocked. Do not close #274 or remove the bridge.**
+Audited: **2026-10-14**, latest fetched `origin/dev 8a93cb2a7d3b979c759196f0430d3aa4895b23a8`.
+Unity: `6000.5.7f1`. Implementation branch: `refactor/274-legacy-match-retirement`; PR target: `dev`.
+Locations below refer to the accompanying source changes. Historical #273 inventory is available
+at [the baseline revision](https://github.com/sweat-this/level5/blob/8a93cb2a7d3b979c759196f0430d3aa4895b23a8/docs/game-options-inventory.md).
 
-This replaces the August inventory as the current source of truth. The [existing overhaul plan](game-options-match-system-overhaul-plan.md#14-migration-phases) contains the #274/#275 implementation slices and #276 deletion gates. Issues [#273](https://github.com/sweat-this/level5/issues/273), [#274](https://github.com/sweat-this/level5/issues/274), [#275](https://github.com/sweat-this/level5/issues/275) and [#276](https://github.com/sweat-this/level5/issues/276) were fetched open. No open PRs were returned before the audit. The historical SHA supplied with the request happens to remain latest dev.
+Live issue refresh: #273 closed (PR #309 merged); #274/#275/#276 open; no open PRs before implementation.
+The [existing plan](game-options-match-system-overhaul-plan.md#phase-10--remaining-match-state-retirement-274)
+records both pre-implementation review passes and the remaining deletion gates. Phases 0-9 are unchanged.
 
 ## Scope and verified counts
 
-One access is one executable member expression, not one matching line. Comments, literals, tests, editor tooling, Unity-ignored `~` backups, `Assets/Scripts/Dev` and development-only conditional branches are excluded from the release tally. Compiled compatibility methods are inventoried even when ordinary gameplay does not call them. Source locations below are fixed to the audited SHA.
+One access is one executable member expression. Comments, literals, tests, editor tooling,
+Unity-ignored `~` backups and `Assets/Scripts/Dev` are excluded from the release tally. The former
+development-only LoadGame route publication is removed. Baseline counts were reproduced from source.
 
-| Measure | Verified result |
-| --- | --- |
-| Stored fields | **55 public static fields**, no private/instance storage |
-| Forwarding properties | **2**: userName and userid; storage already belongs to LocalAccountIdentity |
-| Methods | **12**: three public, nine private |
-| Non-bridge release-production accesses | **68 expressions on 63 lines across 18 files** |
-| Development-only direct access outside Dev | **1**, Utility/LoadGame.cs:65 |
-| Bridge assignments | **45**; **41** feed fallback, **4** have no production reader |
-| Release external accesses including bridge | **113 in 19 files**, excluding bare internal references in GameOptions |
-| Guard allowlist | **19 basenames**, excluding GameOptions; includes dev-only LoadGame, misses live LoadManager |
-| Field-count ratchet | Limit **59**, regex result **59**, not 59 stored fields |
+| Measure | Verified baseline | After this change |
+| --- | --- | --- |
+| Stored public static fields | 55 | **49** |
+| Identity forwarding properties | 2 | **2**, same LocalAccountIdentity storage |
+| Methods | 12 | **12**, three public and nine private |
+| Bridge assignments | 45 | **41**, all still feed fallback |
+| Non-bridge release-production expressions | 68 on 63 lines in 18 files | **48 on 45 lines in 13 files** |
+| Total external release expressions including bridge | 113 in 19 files | **89 in 14 files** |
+| Development-only direct GameOptions accesses | 1 | **0** |
+| Architecture allowlist basenames | 19 (missed LoadManager) | **14**, includes existing LoadManager identity access |
+| Field ratchet | 59 modifier matches, actually 55 fields | **49 actual stored declarations**, properties/methods excluded |
 
-The initial “63 accesses across 18 files” describes release **source lines**, not expressions. Including LoadGame gives 69 expressions on 64 lines across 19 non-bridge files. Repeated members on one line are separate entries in the ledger.
+The 48 remaining expressions comprise four compatibility match writes (ProgressionManager plus
+unconfigured EndRoundMenuManager), nine menu-preference accesses in StartMenuSelectionState and
+35 account/application/navigation/presentation accesses owned by #275. There are no remaining
+direct match reads in SQLite/progression, PlayerData or GameRules. The installed fallback still
+reads 41 bridge-written inputs inside GameOptions; those reads are not in the external tally.
 
-## Current authority and compatibility boundary
+## Authority and data flow
 
 ```mermaid
 flowchart LR
-    S[Menu / versus / remote launch] --> Q[MatchRequest]
-    Q --> B[MatchConfigurationBuilder]
-    B --> C[Immutable MatchConfiguration]
-    C --> A[ActiveMatch]
-    A --> R[MatchRuntime configured answers]
-    C --> L[LegacyGameOptionsBridge.Apply]
-    L --> G[GameOptions compatibility fields]
-    G --> X[SQLite adapters / menu filters / preferences]
-    G --> F[CaptureMatchRuntimeSnapshot]
-    F --> U[MatchRuntime fallback answers]
-    P[PlayerData authored LevelsList] --> G
-    G --> N[Campaign opponent / GameRules / end-round flow]
-    I[LocalAccountIdentity] <--> J[GameOptions forwarding properties]
-    J --> K[Local profile UI / score / report adapters]
+    Menu[Menu / versus / remote launch] --> Request[MatchRequest]
+    Request --> Builder[MatchConfigurationBuilder]
+    Builder --> Config[MatchConfiguration]
+    Config --> Active[ActiveMatch]
+    Active --> Runtime[MatchRuntime configured answers]
+    Config --> Bridge[LegacyGameOptionsBridge: 41 writes]
+    Bridge --> Legacy[GameOptions fallback inputs]
+    Legacy --> Snapshot[Fresh LegacyMatchRuntimeSnapshot]
+    Snapshot --> Runtime
+    Rules[Bound match rules] --> Query[Explicit PlayerData record filter]
+    Prefs[StartMenuSelectionState preference boundary] --> Query
+    Model[Captured HighScoreModel.numPlayers] --> SQLite[SQLite score insert]
+    Result[MatchProgressionResult.CharacterId] --> XP[Account-scoped idempotent progression]
 ```
 
-The bridge copies outward only; globals never synchronize back into configuration. ActiveMatch owns the configured match, MatchSession owns result identity, definitions own authoring, and PlayerData.LevelsList owns the authored campaign route. Campaign cursor, menu memory and account identity are separate responsibilities. Apply runs for each configured launch/round transition, not once for the application.
+```mermaid
+flowchart LR
+    Route[PlayerData.LevelsList: authored route] --> Launch[StartManager: first route arena]
+    Launch --> Cursor[EndRoundData.currentLevelIndex: zero]
+    Route --> CPU[GameLevelManager CPU prefab adapter]
+    Cursor --> CPU
+    Route --> End[GameRules outcome handoff]
+    Cursor --> End
+    End --> Next[EndRoundData.nextLevelIndex]
+    Next --> Decision[EndRoundMenuManager + CampaignRoundDecision]
+    Route --> Decision
+    Decision --> Cursor
+    Decision --> Continue[ActiveMatch.ContinueInLevel + one-way bridge]
+    Preference[StartMenuSelectionState.LevelIndex] --> Memory[Last-launch menu preference]
+```
 
-GameOptions installs CaptureMatchRuntimeSnapshot at BeforeSceneLoad (165–168). MatchRuntime resets the reader at SubsystemRegistration. Every fallback read builds a fresh LegacyMatchRuntimeSnapshot; rules/roster are lazy within that snapshot, never cached across reads. Missing reader throws. Fallback never mutates ActiveMatch.
+PlayerData remains the only authored route owner; EndRoundMenuManager borrows its existing list
+reference. Both old static route copies are removed. Existing EndRoundData.currentLevelIndex now
+serves the active round and its completed-round handoff; nextLevelIndex is the proposed next route
+position. Menu indices never advance with the campaign. Campaign launch resolves the first route
+entry by stable arena ID in the menu catalog and starts its cursor at zero. Return to menu retains
+the last launch preference instead of interpreting a later campaign position as a menu catalog index.
+No persistence schema, GUID, authored route order, mode/arena ID, CPU prefab, XP arithmetic or
+continue/outcome policy changes.
 
-Well-formed configured gameplay reads configuration. **Configured edge cases still use fallback**: PrimaryCharacterDisplayName/ObjectName/Id when slot zero lacks the requested datum, and LocalInputSlotFor when the requested slot is absent. Thus “no normal configured reader” does not mean “safe to remove.”
+The bridge remains one-way and still runs at configured launch/round transition. GameOptions
+installs its reader at BeforeSceneLoad; MatchRuntime resets it at SubsystemRegistration. Reads
+build fresh snapshots, with lazy rules/roster per snapshot; missing reader still throws and no
+fallback mutates ActiveMatch. Configured missing primary-character data and out-of-roster local
+input slots can still consult fallback. Direct-scene limits remain Score objective, no legacy
+money-ball/consecutive/survival/Arcade flags or cheerleader bonuses, null Level and false CustomCamera.
 
-Direct-scene reconstruction preserves its existing limits: Score objective; no legacy money-ball/consecutive/survival/Arcade flags; no cheerleader bonuses; null Level and false CustomCamera. It is not full-mode parity. Keep these semantics unless a separate behavior change is approved.
+## Per-slice acceptance
 
-## Every field and property
+| Slice | Status | Evidence and retained boundary |
+| --- | --- | --- |
+| A | PASS | Removed gameModeHasBeenSelected, levelSelected, numCpuPlayers, sniperEnabled, paired bridge assignments, obsolete writes/snapshots/assertions. Word-boundary source/reflection/asset scan found no reader. CPU slot flags, Lockdown defender and sniper variants remain. |
+| B | PASS | SQLite binds @numPlayers to HighScoreModel.numPlayers. Regression changes the global count in both directions after capture, inserts/retries and checks one row with the captured count. Schema and score ID unchanged. |
+| C | PASS | No production/test/reflection/asset caller of either one-argument progression overload; both removed. Explicit overloads remain. Null result returns unapplied zero-identity/zero-XP diagnostic before account lookup or pending repair. Captured-character, duplicate and pending-repair regressions pass. |
+| D1 | PASS | Explicit bool query argument. Startup uses existing last-launch preference boundary without ActiveMatch; launch uses configuration.Rules.Hardcore; pause passes the manager's captured _rules.Hardcore. #275 still owns preference storage retirement. |
+| D2 | BLOCKED | ProgressionManager's selected-profile publication still supplies PrimaryCharacterObjectName when a configured primary has no ObjectName. PlayerSelectionSession identifies menu selection but is not the direct-scene/incomplete-match fallback owner. Retain this write until that contract has a supported replacement. |
+| D3 | PASS | levelSelectedName has no production writer, reflective use or asset reference. Removed the dormant analytics branch and field. No replacement event or identifier was introduced. |
+| E1/E2 | PASS | PlayerData route plus existing EndRoundData cursor replace global route/menu-index reads. Focused tests preserve CPU identity, null list, invalid index, valid-null prefab and malformed-entry exception, hidden route order and finale. Authored scenes validate fresh normal/hardcore launch, Boneyard continuation, victory/tie/CPU-loss/exhaustion, final aggregate persistence and menu return. |
+| F1 | BLOCKED design gate | Existing scene composition has no independent authoritative direct-scene inputs for the 41 fallback fields or configured-incomplete identity cases. Specific input gaps below. |
+| F2 | BLOCKED by F1 | No fallback-dependent field group was removed. All 41 paired bridge assignments remain. #276 final deletion remains blocked. |
 
-Declarations live in `Assets/Scripts/menu_start/GameOptions.cs`; the number after the type is its declaration line. **B W** is a write in `Assets/Scripts/menu_start/LegacyGameOptionsBridge.cs` at that line. **F R** is a fallback/helper read in GameOptions at those lines; named argument labels are not extra reads. **C W/R** refers to ConfigureSingleHumanRoster (19–26), which has no production caller. External counts exclude bridge and dev-only LoadGame and expand into the ledger below.
+## Remaining direct-scene input blockers
 
-GameOptions stores every field in this table. The authority column names the existing semantic owner and current overlap; it does not imply retirement has happened. Properties forward to LocalAccountIdentity without independent storage. Slice labels refer to phase 10/11 in the overhaul plan.
+| Input group | Configured authority | Current direct-scene source / missing contract |
+| --- | --- | --- |
+| Rules, clock, shots, combat, sniper | MatchConfiguration.Rules | GameOptions live values. ArenaBootstrap consumes rules; it does not author replacements. Preserve combined flags, countdown precedence, timer-zero and sniper precedence. |
+| Roster and local input slots | PlayerRoster | GameOptions count, per-slot CPU flags, names and input formula. LevelRuntimeContext/GameLevelManager already read MatchRuntime during early Awake; no earlier independent roster composition exists. |
+| Lockdown implicit defender | Rules.AddsImplicitDefender / stable mode ID | Fallback mode 27 plus slot-two CPU flag. An arena alone cannot determine this mode-specific participant. |
+| Arena identity/capabilities | Configuration.Level | GameOptions level identity/weather/time-of-day/seven-point flags. Scene geometry and menu catalog entries do not establish the existing arbitrary direct-entry values. |
+| Primary character | Roster slot zero | Live character ID/display/object name and roster names. Menu session identity is not a validated scene participant or an incomplete configured character's missing datum. |
+| Cheerleader | Configuration.Cheerleader | Live object/display names; no independent scene-owned selection. Preserve direct-entry zero bonuses. |
+| Configured incomplete character / absent roster slot | MatchRuntime characterized fallback | Removing the reader based only on HasConfiguration would break these existing cases. Require explicit replacement answers, not a later ActiveMatch or highlighted selection guess. |
 
-| Declaration and line | Initial/default value | Current operations and locations | Responsibility and existing authority | Retirement prerequisite / slice |
-| --- | --- | --- | --- | --- |
-| `applicationVersion` : `string` (9) | null (implicit) | B —; F —; external 0R/1W | Application metadata / write-only; `UnityEngine.Application.version` | #275 A; remove redundant copy after fresh reference check |
-| `operatingSystemVersion` : `string` (10) | null (implicit) | B —; F —; external 0R/1W | Application metadata / write-only; `UnityEngine.SystemInfo.operatingSystem` | #275 A; remove redundant copy |
-| `numPlayers` : `int` (12) | 1 | B W:119; F R:212, 319; C W/R:21, 22, 24, 25, 26; external 1R/0W | Match roster / SQLite / fallback; `MatchConfiguration.Roster.Count; HighScoreModel.numPlayers for saved rows` | #274 B, then F |
-| `numCpuPlayers` : `int` (13) | 0 (implicit) | B W:120; F —; C W/R:22; external 0R/0W | Compatibility / write-only; `PlayerRoster.CpuCount + Rules.AddsImplicitDefender` | #274 A; helper/test writes also retire |
-| `player1IsCpu` : `bool` (14) | false (implicit) | B W:121; F R:33; C W/R:23; external 0R/0W | Roster control / fallback including out-of-roster edge; `PlayerSlot.ControlType / LocalInputSlot; Rules.AddsImplicitDefender` | #274 F; preserve implicit defender and formula |
-| `player2IsCpu` : `bool` (15) | false (implicit) | B W:122; F R:34; C W/R:24; external 0R/0W | Roster control / fallback including out-of-roster edge; `PlayerSlot.ControlType / LocalInputSlot; Rules.AddsImplicitDefender` | #274 F; preserve implicit defender and formula |
-| `player3IsCpu` : `bool` (16) | false (implicit) | B W:123; F R:35; C W/R:25; external 0R/0W | Roster control / fallback including out-of-roster edge; `PlayerSlot.ControlType / LocalInputSlot; Rules.AddsImplicitDefender` | #274 F; preserve implicit defender and formula |
-| `player4IsCpu` : `bool` (17) | false (implicit) | B W:124; F R:36; C W/R:26; external 0R/0W | Roster control / fallback including out-of-roster edge; `PlayerSlot.ControlType / LocalInputSlot; Rules.AddsImplicitDefender` | #274 F; preserve implicit defender and formula |
-| `characterDisplayName` : `string` (61) | null (implicit) | B W:111; F R:194, 331; external 0R/0W | Roster / fallback + configured edge; `PlayerRoster slot 0 Character.DisplayName` | #274 F |
-| `cheerleaderDisplayName` : `string` (62) | null (implicit) | B W:130; F R:197; external 0R/0W | Presentation identity / fallback; `MatchConfiguration.Cheerleader.DisplayName` | #274 F |
-| `characterId` : `int` (63) | 0 (implicit) | B W:110; F R:196, 329; external 3R/0W | Roster / progression / fallback + configured edge; `PlayerRoster slot 0 Character.CharacterId; MatchProgressionResult.CharacterId` | #274 C, then F |
-| `levelSelected` : `string` (64) | null (implicit) | B W:73; F —; external 0R/1W | Arena identity / write-only; `MatchConfiguration.Level.ObjectName / SceneName` | #274 A; includes unconfigured campaign write |
-| `gameModeSelectedId` : `int` (65) | 0 (implicit) | B W:46; F R:186, 187, 220; external 0R/0W | Match identity / fallback; `MatchConfiguration.ModeId / Mode.RawModeId` | #274 F; preserve numeric IDs and Lockdown mapping |
-| `levelId` : `int` (66) | 0 (implicit) | B W:74; F R:190; external 0R/1W | Arena identity / fallback; `MatchConfiguration.Level.LevelId` | #274 E/F; preserve unconfigured campaign transition |
-| `characterObjectName` : `string` (68) | null (implicit) | B W:109; F R:195; external 0R/1W | Roster / progression presentation / fallback + configured edge; `Configured: roster slot 0 Character.ObjectName; progression: PlayerSelectionSession + selected profile` | #274 D, then F; do not substitute old ActiveMatch in menu |
-| `characterObjectNames` : `List<string>` (69) | null (implicit) | B W:104; F R:324, 325; external 0R/0W | Roster / fallback; `PlayerRoster.Players[*].Character.ObjectName` | #274 F |
-| `cheerleaderObjectName` : `string` (70) | null (implicit) | B W:129; F R:197; external 0R/0W | Presentation identity / fallback; `MatchConfiguration.Cheerleader.ObjectName` | #274 F |
-| `levelSelectedName` : `string` (71) | null (implicit) | B —; F —; external 2R/0W | Analytics / reader with no writer; `No current producer; intended event identifier unresolved` | #274 D; explicitly choose preserve-no-event vs separately approved telemetry repair |
-| `levelDisplayName` : `string` (72) | null (implicit) | B W:75; F R:189; external 0R/1W | Arena presentation / fallback; `MatchConfiguration.Level.DisplayName` | #274 E/F |
-| `gameModeSelectedName` : `string` (73) | null (implicit) | B W:47; F R:188; external 0R/0W | Mode presentation / fallback; `MatchConfiguration.Mode.DisplayName` | #274 F |
-| `gameModeHasBeenSelected` : `bool` (77) | false (implicit) | B W:35; F —; external 0R/1W | Compatibility / write-only; `ActiveMatch.IsActive` | #274 A; remove menu reset and bridge write together |
-| `gameModeRequiresCounter` : `bool` (78) | false (implicit) | B W:50; F R:231; external 0R/0W | Resolved clock / fallback; `ResolvedMatchRules.ClockMode` | #274 F; Countdown takes priority |
-| `gameModeRequiresCountDown` : `bool` (79) | false (implicit) | B W:49; F R:226; external 0R/0W | Resolved clock / fallback; `ResolvedMatchRules.ClockMode` | #274 F |
-| `gameModeRequiresShotMarkers3s` : `bool` (82) | false (implicit) | B W:52; F R:284; external 0R/0W | Resolved marker flags / fallback; `ResolvedMatchRules.ShotMarkers` | #274 F |
-| `gameModeRequiresShotMarkers4s` : `bool` (83) | false (implicit) | B W:53; F R:289; external 0R/0W | Resolved marker flags / fallback; `ResolvedMatchRules.ShotMarkers` | #274 F |
-| `gameModeRequiresBasketball` : `bool` (84) | false (implicit) | B W:63; F R:211; external 0R/0W | Resolved basketball rule / fallback; `ResolvedMatchRules.RequiresBasketball` | #274 F |
-| `gameModeAllowsCpuShooters` : `bool` (85) | false (implicit) | B W:64; F R:213; external 0R/0W | Resolved CPU rule / fallback; `ResolvedMatchRules.AllowsCpuShooters` | #274 F |
-| `gameModeThreePointContest` : `bool` (87) | false (implicit) | B W:56; F R:258; external 0R/0W | Resolved shot flags / fallback; `ResolvedMatchRules.ShotRule` | #274 F; preserve independent combined flags |
-| `gameModeFourPointContest` : `bool` (88) | false (implicit) | B W:57; F R:263; external 0R/0W | Resolved shot flags / fallback; `ResolvedMatchRules.ShotRule` | #274 F; preserve independent combined flags |
-| `gameModeAllPointContest` : `bool` (89) | false (implicit) | B W:59; F R:273; external 0R/0W | Resolved shot flags / fallback; `ResolvedMatchRules.ShotRule` | #274 F; preserve independent combined flags |
-| `customTimer` : `float` (91) | 0f (implicit) | B W:61; F R:206, 207; external 0R/0W | Resolved clock / fallback; `ResolvedMatchRules.CustomTimerSeconds / MatchLengthSeconds` | #274 F; zero means no override |
-| `levelSelectedIndex` : `int` (102) | 0 | B —; F —; external 3R/2W | Menu preference + campaign position; `StartMenuSelectionState.LevelIndex; current campaign cursor still shared GameOptions storage` | #274 E before #275 B; distinct menu and route indices |
-| `modeSelectedIndex` : `int` (103) | 0 | B —; F —; external 1R/1W | Menu preference; `StartMenuSelectionState.ModeIndex (live); process-lifetime memory has no separate owner yet` | #275 B; retain across scene loads without adding disk persistence |
-| `friendSelectedIndex` : `int` (104) | 0 | B —; F —; external 1R/1W | Menu preference; `StartMenuSelectionState.FriendIndex (live); process-lifetime memory has no separate owner yet` | #275 B |
-| `trafficEnabled` : `bool` (106) | false | B W:84; F R:215; external 1R/0W | Menu preference + resolved rule / fallback; `StartMenuSelectionState.TrafficEnabled; ResolvedMatchRules.TrafficEnabled` | #274 D/F coordinated with #275 B |
-| `enemiesEnabled` : `bool` (107) | false | B W:83; F R:214; external 0R/0W | Resolved rule / fallback; `ResolvedMatchRules.EnemiesEnabled` | #274 F |
-| `sniperEnabled` : `bool` (109) | false | B W:90; F —; external 0R/0W | Compatibility / write-only; `ResolvedMatchRules.SniperEnabled (derived)` | #274 A; retain the three variant flags until F |
-| `sniperEnabledBullet` : `bool` (110) | false | B W:91; F R:314; external 0R/0W | Resolved sniper variant / fallback; `ResolvedMatchRules.Sniper` | #274 F; Laser > MachineGun > Bullet precedence |
-| `sniperEnabledBulletAuto` : `bool` (111) | false | B W:92; F R:309; external 0R/0W | Resolved sniper variant / fallback; `ResolvedMatchRules.Sniper` | #274 F; Laser > MachineGun > Bullet precedence |
-| `sniperEnabledLaser` : `bool` (112) | false | B W:93; F R:304; external 0R/0W | Resolved sniper variant / fallback; `ResolvedMatchRules.Sniper` | #274 F; Laser > MachineGun > Bullet precedence |
-| `difficultySelected` : `int` (114) | 1 | B W:87; F R:218; external 0R/0W | Resolved rule / fallback; `ResolvedMatchRules.Difficulty; menu resets Difficulty to Normal` | #274 F; preserve conversion |
-| `previousSceneName` : `string` (116) | null (implicit) | B —; F —; external 0R/3W | Navigation / write-only; `No reader; SceneTransition loads scenes, LocalVersusNavigationState owns separate versus return flow` | #275 A; no new navigation service needed for an unused value |
-| `hardcoreModeEnabled` : `bool` (118) | false | B W:88; F R:219; external 2R/0W | Menu preference + record filter + rule / fallback; `StartMenuSelectionState.HardcoreEnabled; Rules.Hardcore; PlayerData currently reads global filter` | #274 D/F with #275 B; pass explicit filter at startup, launch and pause refresh |
-| `EnemiesOnlyEnabled` : `bool` (119) | false | B W:66; F R:221, 247; external 0R/0W | Authored mode + resolved rule / fallback; `GameModeDefinition.EnemiesOnly; ResolvedMatchRules.EnemiesOnly` | #274 F |
-| `levelRequiresTimeOfDay` : `bool` (121) | true | B W:76; F R:191; external 0R/0W | Authored arena / fallback; `LevelDefinition.RequiresTimeOfDay` | #274 F |
-| `levelRequiresWeather` : `bool` (122) | false | B W:77; F R:192; external 0R/0W | Authored arena / fallback; `LevelDefinition.HasWeather` | #274 F |
-| `levelHasSevenPointers` : `bool` (123) | false | B W:78; F R:193; external 0R/1W | Authored arena / fallback; `LevelDefinition.HasSevenPointers` | #274 E/F |
-| `userName` : `string` (128) | LocalAccountIdentity.UserName (initial null) | B —; F —; external 7R/6W | Local identity / forwarding property; `Level5.Core.LocalAccountIdentity.UserName` | #275 C; change callers, never create duplicate identity |
-| `userid` : `int` (129) | LocalAccountIdentity.UserId (initial 0) | B —; F —; external 5R/6W | Local identity / forwarding property; `Level5.Core.LocalAccountIdentity.UserId` | #275 C; never substitute Backend V2 PlayerId |
-| `numOfLocalUsers` : `int` (134) | 0 (implicit) | B —; F —; external 0R/1W | Account-list projection / write-only; `UserAccountManager.RefreshLocalProfiles local profiles.Count` | #275 A; tests currently assert mirror |
-| `tipDialogueLoadedOnStart` : `bool` (136) | false (implicit) | B —; F —; external 2R/3W | Startup UI presentation; `StartScreenTipDialogueManager + StartScreenCpuSelectManager; process-lifetime flag reset by StartManager launch` | #275 D; minimally scoped start-flow lifetime owner required |
-| `obstaclesEnabled` : `bool` (137) | false (implicit) | B W:85; F R:216; external 1R/0W | Menu preference + rule / fallback; `StartMenuSelectionState.ObstaclesEnabled; ResolvedMatchRules.ObstaclesEnabled` | #274 D/F with #275 B |
-| `battleRoyalEnabled` : `bool` (138) | false (implicit) | B W:67; F R:237; external 0R/0W | Resolved combat flags / fallback; `ResolvedMatchRules.CombatMode / IsBattleRoyal` | #274 F; preserve combined Cage/BattleRoyal flags |
-| `cageMatchEnabled` : `bool` (139) | false (implicit) | B W:68; F R:242; external 0R/0W | Resolved combat flags / fallback; `ResolvedMatchRules.CombatMode / IsCageMatch` | #274 F |
-| `gameModeRequiresShotMarkers7s` : `bool` (141) | false (implicit) | B W:54; F R:294; external 0R/0W | Resolved marker flags / fallback; `ResolvedMatchRules.ShotMarkers` | #274 F |
-| `gameModeSevenPointContest` : `bool` (142) | false (implicit) | B W:58; F R:268; external 0R/0W | Resolved shot flags / fallback; `ResolvedMatchRules.ShotRule` | #274 F; preserve independent combined flags |
-| `levelsList` : `List<LevelSelected>` (146) | null (implicit) | B —; F —; external 7R/1W | Authored route + campaign session dependency; `PlayerData.LevelsList serialized route; runtime cursor/outcome split across GameOptions / EndRoundData` | #274 E; retain authored route, opponent and hidden finale; no persistence migration |
+These are source-backed blockers, not authorization to introduce a static state bag, dictionary,
+new settings manager or guessed scene defaults. Existing reader and snapshot interfaces are adequate;
+the absent piece is the independently initialized scene input contract before consumers' Awake.
+
+## Every stored field and forwarding property
+
+Declarations are in `Assets/Scripts/menu_start/GameOptions.cs`. B is the paired bridge write line;
+G lists other internal code lines (helper reads/writes or snapshot reconstruction), excluding named
+argument labels. External R/W counts exclude the bridge and expand into the ledger below. Static
+fields are not Unity serialized instance fields. The retained fields are not safe to delete solely
+because ordinary configured gameplay bypasses them.
+
+| Field/type/declaration line | Default | B write | G helper/fallback lines | External R/W | Authority and remaining retirement gate |
+| --- | --- | --- | --- | --- | --- |
+| `applicationVersion` : `string` (9) | null (implicit) | - | - | 0R/1W | Application metadata / write-only; `UnityEngine.Application.version`; #275 A; remove redundant copy after fresh reference check |
+| `operatingSystemVersion` : `string` (10) | null (implicit) | - | - | 0R/1W | Application metadata / write-only; `UnityEngine.SystemInfo.operatingSystem`; #275 A; remove redundant copy |
+| `numPlayers` : `int` (12) | 1 | 114 | 20, 22, 23, 24, 193, 300 | 0R/0W | Fallback roster/rule count; captured SQLite count now belongs to HighScoreModel.numPlayers. #274 F. |
+| `player1IsCpu` : `bool` (13) | false (implicit) | 115 | 21, 31 | 0R/0W | Roster control / fallback including out-of-roster edge; `PlayerSlot.ControlType / LocalInputSlot; Rules.AddsImplicitDefender`; #274 F; preserve implicit defender and formula |
+| `player2IsCpu` : `bool` (14) | false (implicit) | 116 | 22, 32 | 0R/0W | Roster control / fallback including out-of-roster edge; `PlayerSlot.ControlType / LocalInputSlot; Rules.AddsImplicitDefender`; #274 F; preserve implicit defender and formula |
+| `player3IsCpu` : `bool` (15) | false (implicit) | 117 | 23, 33 | 0R/0W | Roster control / fallback including out-of-roster edge; `PlayerSlot.ControlType / LocalInputSlot; Rules.AddsImplicitDefender`; #274 F; preserve implicit defender and formula |
+| `player4IsCpu` : `bool` (16) | false (implicit) | 118 | 24, 34 | 0R/0W | Roster control / fallback including out-of-roster edge; `PlayerSlot.ControlType / LocalInputSlot; Rules.AddsImplicitDefender`; #274 F; preserve implicit defender and formula |
+| `characterDisplayName` : `string` (59) | null (implicit) | 106 | 175, 312 | 0R/0W | Roster / fallback + configured edge; `PlayerRoster slot 0 Character.DisplayName`; #274 F |
+| `cheerleaderDisplayName` : `string` (60) | null (implicit) | 124 | 178 | 0R/0W | Presentation identity / fallback; `MatchConfiguration.Cheerleader.DisplayName`; #274 F |
+| `characterId` : `int` (61) | 0 (implicit) | 105 | 177, 310 | 0R/0W | Fallback roster/primary identity; all progression now uses explicit captured IDs. #274 F. |
+| `gameModeSelectedId` : `int` (62) | 0 (implicit) | 43 | 167, 168, 201 | 0R/0W | Match identity / fallback; `MatchConfiguration.ModeId / Mode.RawModeId`; #274 F; preserve numeric IDs and Lockdown mapping |
+| `levelId` : `int` (63) | 0 (implicit) | 70 | 171 | 0R/1W | Arena identity / fallback; `MatchConfiguration.Level.LevelId`; #274 E/F; preserve unconfigured campaign transition |
+| `characterObjectName` : `string` (65) | null (implicit) | 104 | 176 | 0R/1W | Roster / progression presentation / fallback + configured edge; `Configured: roster slot 0 Character.ObjectName; progression: PlayerSelectionSession + selected profile`; #274 D, then F; do not substitute old ActiveMatch in menu |
+| `characterObjectNames` : `List<string>` (66) | null (implicit) | 99 | 305, 306 | 0R/0W | Roster / fallback; `PlayerRoster.Players[*].Character.ObjectName`; #274 F |
+| `cheerleaderObjectName` : `string` (67) | null (implicit) | 123 | 178 | 0R/0W | Presentation identity / fallback; `MatchConfiguration.Cheerleader.ObjectName`; #274 F |
+| `levelDisplayName` : `string` (68) | null (implicit) | 71 | 170 | 0R/1W | Arena presentation / fallback; `MatchConfiguration.Level.DisplayName`; #274 E/F |
+| `gameModeSelectedName` : `string` (69) | null (implicit) | 44 | 169 | 0R/0W | Mode presentation / fallback; `MatchConfiguration.Mode.DisplayName`; #274 F |
+| `gameModeRequiresCounter` : `bool` (73) | false (implicit) | 47 | 212 | 0R/0W | Resolved clock / fallback; `ResolvedMatchRules.ClockMode`; #274 F; Countdown takes priority |
+| `gameModeRequiresCountDown` : `bool` (74) | false (implicit) | 46 | 207 | 0R/0W | Resolved clock / fallback; `ResolvedMatchRules.ClockMode`; #274 F |
+| `gameModeRequiresShotMarkers3s` : `bool` (77) | false (implicit) | 49 | 265 | 0R/0W | Resolved marker flags / fallback; `ResolvedMatchRules.ShotMarkers`; #274 F |
+| `gameModeRequiresShotMarkers4s` : `bool` (78) | false (implicit) | 50 | 270 | 0R/0W | Resolved marker flags / fallback; `ResolvedMatchRules.ShotMarkers`; #274 F |
+| `gameModeRequiresBasketball` : `bool` (79) | false (implicit) | 60 | 192 | 0R/0W | Resolved basketball rule / fallback; `ResolvedMatchRules.RequiresBasketball`; #274 F |
+| `gameModeAllowsCpuShooters` : `bool` (80) | false (implicit) | 61 | 194 | 0R/0W | Resolved CPU rule / fallback; `ResolvedMatchRules.AllowsCpuShooters`; #274 F |
+| `gameModeThreePointContest` : `bool` (82) | false (implicit) | 53 | 239 | 0R/0W | Resolved shot flags / fallback; `ResolvedMatchRules.ShotRule`; #274 F; preserve independent combined flags |
+| `gameModeFourPointContest` : `bool` (83) | false (implicit) | 54 | 244 | 0R/0W | Resolved shot flags / fallback; `ResolvedMatchRules.ShotRule`; #274 F; preserve independent combined flags |
+| `gameModeAllPointContest` : `bool` (84) | false (implicit) | 56 | 254 | 0R/0W | Resolved shot flags / fallback; `ResolvedMatchRules.ShotRule`; #274 F; preserve independent combined flags |
+| `customTimer` : `float` (86) | 0 (implicit) | 58 | 187, 188 | 0R/0W | Resolved clock / fallback; `ResolvedMatchRules.CustomTimerSeconds / MatchLengthSeconds`; #274 F; zero means no override |
+| `levelSelectedIndex` : `int` (97) | 0 | - | - | 1R/1W | Last-launch menu preference only; active/completed campaign position belongs to EndRoundData.currentLevelIndex. #275 B. |
+| `modeSelectedIndex` : `int` (98) | 0 | - | - | 1R/1W | Menu preference; `StartMenuSelectionState.ModeIndex (live); process-lifetime memory has no separate owner yet`; #275 B; retain across scene loads without adding disk persistence |
+| `friendSelectedIndex` : `int` (99) | 0 | - | - | 1R/1W | Menu preference; `StartMenuSelectionState.FriendIndex (live); process-lifetime memory has no separate owner yet`; #275 B |
+| `trafficEnabled` : `bool` (101) | false | 80 | 196 | 1R/0W | Menu preference + resolved rule / fallback; `StartMenuSelectionState.TrafficEnabled; ResolvedMatchRules.TrafficEnabled`; #274 D/F coordinated with #275 B |
+| `enemiesEnabled` : `bool` (102) | false | 79 | 195 | 0R/0W | Resolved rule / fallback; `ResolvedMatchRules.EnemiesEnabled`; #274 F |
+| `sniperEnabledBullet` : `bool` (104) | false | 86 | 295 | 0R/0W | Resolved sniper variant / fallback; `ResolvedMatchRules.Sniper`; #274 F; Laser > MachineGun > Bullet precedence |
+| `sniperEnabledBulletAuto` : `bool` (105) | false | 87 | 290 | 0R/0W | Resolved sniper variant / fallback; `ResolvedMatchRules.Sniper`; #274 F; Laser > MachineGun > Bullet precedence |
+| `sniperEnabledLaser` : `bool` (106) | false | 88 | 285 | 0R/0W | Resolved sniper variant / fallback; `ResolvedMatchRules.Sniper`; #274 F; Laser > MachineGun > Bullet precedence |
+| `difficultySelected` : `int` (108) | 1 | 83 | 199 | 0R/0W | Resolved rule / fallback; `ResolvedMatchRules.Difficulty; menu resets Difficulty to Normal`; #274 F; preserve conversion |
+| `previousSceneName` : `string` (110) | null (implicit) | - | - | 0R/3W | Navigation / write-only; `No reader; SceneTransition loads scenes, LocalVersusNavigationState owns separate versus return flow`; #275 A; no new navigation service needed for an unused value |
+| `hardcoreModeEnabled` : `bool` (112) | false | 84 | 200 | 1R/0W | Fallback rules plus existing preference memory, read through StartMenuSelectionState. Record queries take explicit bool. #274 F / #275 B. |
+| `EnemiesOnlyEnabled` : `bool` (113) | false | 63 | 202, 228 | 0R/0W | Authored mode + resolved rule / fallback; `GameModeDefinition.EnemiesOnly; ResolvedMatchRules.EnemiesOnly`; #274 F |
+| `levelRequiresTimeOfDay` : `bool` (115) | true | 72 | 172 | 0R/0W | Authored arena / fallback; `LevelDefinition.RequiresTimeOfDay`; #274 F |
+| `levelRequiresWeather` : `bool` (116) | false | 73 | 173 | 0R/0W | Authored arena / fallback; `LevelDefinition.HasWeather`; #274 F |
+| `levelHasSevenPointers` : `bool` (117) | false | 74 | 174 | 0R/1W | Authored arena / fallback; `LevelDefinition.HasSevenPointers`; #274 E/F |
+| `numOfLocalUsers` : `int` (128) | 0 (implicit) | - | - | 0R/1W | Account-list projection / write-only; `UserAccountManager.RefreshLocalProfiles local profiles.Count`; #275 A; tests currently assert mirror |
+| `tipDialogueLoadedOnStart` : `bool` (130) | false (implicit) | - | - | 2R/3W | Startup UI presentation; `StartScreenTipDialogueManager + StartScreenCpuSelectManager; process-lifetime flag reset by StartManager launch`; #275 D; minimally scoped start-flow lifetime owner required |
+| `obstaclesEnabled` : `bool` (131) | false (implicit) | 81 | 197 | 1R/0W | Menu preference + rule / fallback; `StartMenuSelectionState.ObstaclesEnabled; ResolvedMatchRules.ObstaclesEnabled`; #274 D/F with #275 B |
+| `battleRoyalEnabled` : `bool` (132) | false (implicit) | 64 | 218 | 0R/0W | Resolved combat flags / fallback; `ResolvedMatchRules.CombatMode / IsBattleRoyal`; #274 F; preserve combined Cage/BattleRoyal flags |
+| `cageMatchEnabled` : `bool` (133) | false (implicit) | 65 | 223 | 0R/0W | Resolved combat flags / fallback; `ResolvedMatchRules.CombatMode / IsCageMatch`; #274 F |
+| `gameModeRequiresShotMarkers7s` : `bool` (135) | false (implicit) | 51 | 275 | 0R/0W | Resolved marker flags / fallback; `ResolvedMatchRules.ShotMarkers`; #274 F |
+| `gameModeSevenPointContest` : `bool` (136) | false (implicit) | 55 | 249 | 0R/0W | Resolved shot flags / fallback; `ResolvedMatchRules.ShotRule`; #274 F; preserve independent combined flags |
+| `userName` : `string` property (122) | LocalAccountIdentity | - | - | 7R/6W | Forwarding only; no storage. #275 C; preserve local scope, never substitute Backend PlayerId. |
+| `userid` : `int` property (123) | LocalAccountIdentity | - | - | 5R/6W | Forwarding only; no storage. #275 C; preserve local scope, never substitute Backend PlayerId. |
 
 ## Every method
 
-All locations are in `Assets/Scripts/menu_start/GameOptions.cs`. Methods have no initial stored value. No external production code directly calls the three public methods; the input helpers remain live indirectly through fallback.
+All methods remain in GameOptions; none is newly introduced. No external production caller directly
+calls its three public helpers. Input helpers remain live through the installed fallback delegate.
 
-| Method / return type / line | Reads, writes, caller and context | Authority / prerequisite |
+| Method | Declaration line | Responsibility / gate |
 | --- | --- | --- |
-| ConfigureSingleHumanRoster(int, bool = false) / void / 19 | Writes/clamps count and CPU flags, computes implicit defender; only callers Level5CoreTests:53,66 | PlayerRoster + Rules.AddsImplicitDefender; test-only compatibility helper candidate (#274 A/F) |
-| IsCpuPlayer(int) / bool / 29 | Reads four CPU flags at 33–36; false outside 0–3; callers GetHumanPlayerInputSlot:43,51 and roster builder:337 | PlayerSlot.IsCpu; fallback remains live (#274 F) |
-| GetHumanPlayerInputSlot(int) / int / 41 | Calls IsCpuPlayer; -1 for CPU, counts prior humans; delegate captured at 198 and called through MatchRuntime, including configured out-of-roster case | PlayerSlot.LocalInputSlot inside roster; preserve characterized formula outside it (#274 F) |
-| InstallMatchRuntimeLegacyFallback() / void / 165 | Unity initialization attribute invokes it; installs capture delegate at 167 | Preserve bootstrap/reset ordering until replacement fallback (#274 F) |
-| CaptureMatchRuntimeSnapshot() / LegacyMatchRuntimeSnapshot / 181 | Installed reader calls it; tests reflect it; captures mode/arena/character/cheerleader, supplies lazy rules/roster and input delegate | Existing reader seam; preserve configured edge cases (#274 F) |
-| BuildResolvedMatchRulesFromLegacyGlobals() / ResolvedMatchRules / 201 | Lazy delegate at 184; reads timer, dimension helpers, count, modifiers, difficulty/hardcore, mode-27 defender and enemies-only | Configured Rules; replacement direct-scene inputs required (#274 F) |
-| LegacyClockMode() / MatchClockMode / 224 | Called at 205; countdown wins over counter | Rules.ClockMode; preserve precedence (#274 F) |
-| LegacyCombatMode() / CombatMode / 234 | Called at 208; combines BattleRoyal/Cage; Standard only when neither and enemies-only | Rules.CombatMode; preserve flags (#274 F) |
-| LegacyShotRule() / ShotRule / 255 | Called at 209; combines four contest flags | Rules.ShotRule (#274 F) |
-| LegacyShotMarkers() / ShotMarkerRequirement / 281 | Called at 210; combines 3/4/7 flags | Rules.ShotMarkers (#274 F) |
-| LegacySniperMode() / SniperMode / 302 | Called at 217; Laser > MachineGun > Bullet > None; does not read sniperEnabled | Rules.Sniper; generic flag may retire independently (#274 A/F) |
-| BuildPlayerRosterFromLegacyGlobals() / PlayerRoster / 317 | Lazy delegate at 185; clamps count, reads object list and slot-zero identity, calls IsCpuPlayer, builds roster | Configured roster; preserve unconfigured semantics (#274 F) |
-
-## Special ownership findings
-
-- **levelSelectedIndex crosses menu and campaign ownership.** StartMenuSelectionState loads/saves it; GameLevelManager uses it as PlayerData route position; GameRules captures completed/proposed indices into EndRoundData; EndRoundMenuManager commits retry/advance selection. StartManager.forceCampaignStartLevel (1736–1757) forces menu level ID 1 and resolveSceneName (1765–1769) forces Scrapyard. Menu catalog index, route position and stable ID differ. Current GameRules does **not** optimistically increment the shared index.
-- **levelsList is authored route plus session dependency.** PlayerData.LevelsList is the serialized route copied at launch and read for opponent, round outcome and end-round selection. No single campaign cursor owner currently exists. EndRoundData owns outcome/continues; CampaignRoundDecision owns pure decision logic. Preserve the 21-round route, hidden Boneyard and approved Dev finale; see [campaign build audit](gp-001-f5-campaign-build-integrity.md).
-- **Persistence still reads match globals.** DBHelper.InsertGameScore:410 uses GameOptions.numPlayers even though both HighScoreModel factories populate model.numPlayers from MatchRuntime (163,328). Use the captured model in a follow-up, so delayed/queued writes cannot observe a later match. DBConnector:519 and DBHelper:482 are implicit-character XP overloads with existing explicit-ID alternatives. ProgressionService:30 reads characterId only to construct a null-result diagnostic. Check caller reachability before deleting overloads; compiled debt remains in this inventory.
-- **characterObjectName has a progression-menu writer.** ProgressionManager:969 publishes the highlighted character, which need not be the active match character. PlayerSelectionSession already remembers stable character IDs. Do not answer menu selection from a stale ActiveMatch.
-- **hardcoreModeEnabled spans preference, rules and record filter.** StartMenuSelectionState loads the previous option; configured Rules own match hardcore; PlayerData:123 filters personal-best queries at startup (PlayerData:111), after launch (StartManager:1818), and through the pause reload adapter (GameLevelManager:556). Supply explicit filter values at all three contexts; do not require an active match in a loading/menu scene.
-- **Local identity storage has already migrated.** userName/userid forward to LocalAccountIdentity:128–129. #275 changes dependencies, not storage. CharacterProgressAccountId owns SQLite/file scoping; BackendV2SessionStore owns independent authenticated online identity. Guest ID 74 remains 74; an online GUID is not a local profile ID. See [persistence boundaries](persistence-boundaries.md).
-- **levelSelectedName has no producer.** GameLevelManager:635,637 reads it for analytics, but no production writer exists and default is null. The event is dormant under current initialization. levelSelected, levelDisplayName and configuration.SceneName differ; choosing a producer would be a telemetry behavior decision.
-- **tipDialogueLoadedOnStart is live presentation state.** TipDialogueManager gates Awake/OnEnable wiring; both widgets set it true in Start; StartManager:1815 resets it at launch for the next pass. CpuSelectManager's guard at 57 is commented out. Preserve that timing; do not reset on every enable.
-
-## Dead and potentially dead candidates (deferred, no removal in #273)
-
-| Candidate | Verified production state | Follow-up |
-| --- | --- | --- |
-| gameModeHasBeenSelected | Bridge:35 true, StartManager:309 false; no reader, including fallback | #274 A; bridge comment claiming CharacterProfile reads it is stale |
-| levelSelected | Bridge:73 and unconfigured EndRoundMenuManager:321 writes; no reader | #274 A; distinct from levelSelectedName and route index |
-| numCpuPlayers | Bridge:120 and ConfigureSingleHumanRoster:22 writes; no reader | #274 A; actual CPU slot flags remain live |
-| sniperEnabled | Bridge:90 write; no reader, including LegacySniperMode | #274 A; three variant flags remain live |
-| applicationVersion, operatingSystemVersion | StartManager:1794–1795 writes; no reader | #275 A; direct Application/SystemInfo metadata APIs already exist |
-| previousSceneName | StartManager:747, ProgressionManager:843, GameLevelManager:629 writes; no reader | #275 A; no new navigation service justified |
-| numOfLocalUsers | UserAccountManager:235 writes; no production reader; tests assert mirror | #275 A; profile UI consumes actual profile list |
-| levelSelectedName + guarded analytics | Two reads, no writer; null under current production initialization | #274 D; preserve dormant behavior or seek separate telemetry decision |
-| ConfigureSingleHumanRoster | Only two test calls; writes live fallback inputs as well as unused numCpuPlayers | #274 A/F; does not make the input helpers dead |
-
-No production typeof(GameOptions), string-selected GameOptions reflection, using-static/alias access or executable direct member use outside Assets/Scripts was found. Asset text searches found no GameOptions/bridge type-name references. GameOptions is static, so these fields are not serialized Unity instance data. GUID/reference validation is recorded below. Test reflection exists and must be updated deliberately. These are source-backed candidates, not permission to delete fallback or a claim about unknown external assemblies. Re-scan at each deletion SHA.
-
-## Architecture guard reconciliation
-
-Location: `Assets/Tests/Editor/Level5MatchArchitectureTests.cs`.
-
-| Guard | Current evidence | Required handling |
-| --- | --- | --- |
-| NoNewFileReachesForGameOptions | Existing scanner sees the 19 permitted files. Literal-aware scan also finds unallowlisted LoadManager:321 | **False negative:** LoadManager:195 has `/*` inside a `//` comment; StripComments erases through real terminator at 339. Guard unchanged; #275 C migrates identity read rather than adding exception |
-| TheAllowlistHasNoStaleEntries | All 19 entries still contain executable references in guard scope; LoadGame is dev-only but scanned | No stale entries; MatchRuntime and SpawnCoordinator already left allowlist |
-| GameOptionsGrowsNoNewMatchFields | Limit 59, regex result 59, actual 55 fields + 2 properties | Regex also counts public static class and int-returning GetHumanPlayerInputSlot; subtracts void/bool methods. Never raise it; lower after deletions, parser correction is focused follow-up |
-| NoNewModeIdentityBooleans | Static reproduction finds no offenders in existing scope | Retain typed-ID and independent flag semantics; parity tests still matter |
-| Filename-based allowlist/exemption | Basenames permit all matching files; byName overwrites duplicates | No collisions for current permitted names; relative-path guard is separate focused hardening |
-| Scan scope | Ignores ~ and Scripts/Dev, does not evaluate preprocessor directives, does not safely strip literals | Guard count is not release-production count; no allowlist expansion or weakening |
-
-Static reproduction finds no new/stale entries **because of the false negative**; it is not a Unity test pass. The old “only boundary/tests mention it, therefore dead” rule is withdrawn: 41 fields have live fallback readers.
+| `ConfigureSingleHumanRoster` | 18 | Test-only count/CPU-slot adapter; no unused CPU-count mirror. Retained live inputs are #274 F. |
+| `IsCpuPlayer` | 27 | CPU flags; false outside slots 0-3. Used by roster and input reconstruction. |
+| `GetHumanPlayerInputSlot` | 39 | CPU returns -1; counts preceding humans, including configured absent-slot fallback. |
+| `InstallMatchRuntimeLegacyFallback` | 146 | BeforeSceneLoad install; preserve reader/reset ordering. |
+| `CaptureMatchRuntimeSnapshot` | 162 | Fresh snapshot with lazy rule/roster delegates and identity/input answers. |
+| `BuildResolvedMatchRulesFromLegacyGlobals` | 182 | Fallback dimensions, timer/count/modifiers, mode-27 implicit defender. |
+| `LegacyClockMode` | 205 | Countdown precedes count-up. |
+| `LegacyCombatMode` | 215 | Combine Cage/BattleRoyal; Standard only when neither and enemies-only. |
+| `LegacyShotRule` | 236 | Combine the four independent contest flags. |
+| `LegacyShotMarkers` | 262 | Combine 3/4/7 marker flags. |
+| `LegacySniperMode` | 283 | Laser, then MachineGun, then Bullet, then None. |
+| `BuildPlayerRosterFromLegacyGlobals` | 298 | Clamp count, preserve order/control/input and primary identity. |
 
 ## Non-bridge release-production expression ledger
 
-R = read, W = assignment. File heading plus line is the precise location at the audited SHA. Repeated members on one line are distinct expressions.
+R = read, W = assignment. Repeated members on one line are separate expressions.
+
+### `Assets/Scripts/Models/HighScoreModel.cs`
+
+| Line | Member | Operation | Source context |
+| --- | --- | --- | --- |
+| 133 | `userName` | R | `model.UserName = GameOptions.userName;` |
+| 134 | `userid` | R | `model.Userid = GameOptions.userid;` |
+| 242 | `userName` | R | `model.UserName = GameOptions.userName;` |
+| 243 | `userid` | R | `model.Userid = GameOptions.userid;` |
 
 ### `Assets/Scripts/account/LocalAccount.cs`
-
-Local profile/guest selection.
 
 | Line | Member | Operation | Source context |
 | --- | --- | --- | --- |
@@ -195,8 +220,6 @@ Local profile/guest selection.
 | 85 | `userid` | W | `GameOptions.userid = UserAccountManager.GuestUserid;` |
 
 ### `Assets/Scripts/account/UserAccountManager.cs`
-
-Local profile select/delete/list refresh.
 
 | Line | Member | Operation | Source context |
 | --- | --- | --- | --- |
@@ -210,72 +233,27 @@ Local profile select/delete/list refresh.
 | 187 | `userName` | W | `GameOptions.userName = null;` |
 | 235 | `numOfLocalUsers` | W | `GameOptions.numOfLocalUsers = profiles.Count;` |
 
-### `Assets/Scripts/database/DBConnector.cs`
-
-Implicit-character compatibility XP overload.
-
-| Line | Member | Operation | Source context |
-| --- | --- | --- | --- |
-| 519 | `characterId` | R | `return savePlayerProfileProgression(expGained, GameOptions.characterId);` |
-
-### `Assets/Scripts/database/DBHelper.cs`
-
-Score insert / compatibility XP overload.
-
-| Line | Member | Operation | Source context |
-| --- | --- | --- | --- |
-| 410 | `numPlayers` | R | `dbcmd.Parameters.Add(new SqliteParameter("@numPlayers", GameOptions.numPlayers));` |
-| 482 | `characterId` | R | `return UpdatePlayerProfileProgression(expGained, GameOptions.characterId);` |
-
 ### `Assets/Scripts/game manager/GameLevelManager.cs`
 
-Campaign opponent adapter / navigation / analytics.
-
 | Line | Member | Operation | Source context |
 | --- | --- | --- | --- |
-| 301 | `levelsList` | R | `List<LevelSelected> levels = GameOptions.levelsList;` |
-| 302 | `levelSelectedIndex` | R | `int levelIndex = GameOptions.levelSelectedIndex;` |
-| 629 | `previousSceneName` | W | `GameOptions.previousSceneName = Constants.SCENE_NAME_level_00_loading;` |
-| 635 | `levelSelectedName` | R | `if (!String.IsNullOrEmpty(GameOptions.levelSelectedName))` |
-| 637 | `levelSelectedName` | R | `AnaylticsManager.LevelLoaded(GameOptions.levelSelectedName);` |
-
-### `Assets/Scripts/game manager/GameRules.cs`
-
-Campaign result and next-round handoff.
-
-| Line | Member | Operation | Source context |
-| --- | --- | --- | --- |
-| 798 | `levelsList` | R | `if (GameOptions.levelsList == null \|\| GameOptions.levelsList.Count == 0)` |
-| 798 | `levelsList` | R | `if (GameOptions.levelsList == null \|\| GameOptions.levelsList.Count == 0)` |
-| 805 | `levelSelectedIndex` | R | `int completedLevelIndex = Mathf.Clamp(GameOptions.levelSelectedIndex, 0, GameOptions.levelsList.Count - 1);` |
-| 805 | `levelsList` | R | `int completedLevelIndex = Mathf.Clamp(GameOptions.levelSelectedIndex, 0, GameOptions.levelsList.Count - 1);` |
-| 810 | `levelsList` | R | `if (completedLevelIndex < GameOptions.levelsList.Count - 1)` |
-| 816 | `levelsList` | R | `LevelSelected completedLevel = GameOptions.levelsList[completedLevelIndex];` |
+| 627 | `previousSceneName` | W | `GameOptions.previousSceneName = Constants.SCENE_NAME_level_00_loading;` |
 
 ### `Assets/Scripts/menu_end_round/EndRoundMenuManager.cs`
 
-Campaign route capture / round selection / unconfigured arena writes.
-
 | Line | Member | Operation | Source context |
 | --- | --- | --- | --- |
-| 63 | `levelsList` | R | `levelsList = GameOptions.levelsList ?? new List<LevelSelected>();` |
-| 306 | `levelSelectedIndex` | W | `GameOptions.levelSelectedIndex = levelIndex;` |
-| 319 | `levelHasSevenPointers` | W | `GameOptions.levelHasSevenPointers = level.LevelHasSevenPointers;` |
-| 320 | `levelId` | W | `GameOptions.levelId = level.LevelId;` |
-| 321 | `levelSelected` | W | `GameOptions.levelSelected = level.LevelObjectName;` |
-| 322 | `levelDisplayName` | W | `GameOptions.levelDisplayName = level.LevelDisplayName;` |
+| 318 | `levelHasSevenPointers` | W | `GameOptions.levelHasSevenPointers = level.LevelHasSevenPointers;` |
+| 319 | `levelId` | W | `GameOptions.levelId = level.LevelId;` |
+| 320 | `levelDisplayName` | W | `GameOptions.levelDisplayName = level.LevelDisplayName;` |
 
 ### `Assets/Scripts/menu_loading/LoadManager.cs`
-
-SQLite character-profile load by local identity.
 
 | Line | Member | Operation | Source context |
 | --- | --- | --- | --- |
 | 321 | `userid` | R | `List<CharacterProfileRecord> dbShootStatsList = DBHelper.instance.getCharacterProfileStats(GameOptions.userid)` |
 
 ### `Assets/Scripts/menu_login/AccountManager.cs`
-
-Select newly created local profile.
 
 | Line | Member | Operation | Source context |
 | --- | --- | --- | --- |
@@ -284,38 +262,22 @@ Select newly created local profile.
 
 ### `Assets/Scripts/menu_progression/ProgressionManager.cs`
 
-Menu navigation / selected-character presentation.
-
 | Line | Member | Operation | Source context |
 | --- | --- | --- | --- |
 | 843 | `previousSceneName` | W | `GameOptions.previousSceneName = activeScene;` |
 | 969 | `characterObjectName` | W | `GameOptions.characterObjectName = playerSelectedData[playerSelectedIndex].PlayerObjectName;` |
 
-### `Assets/Scripts/menu_progression/ProgressionService.cs`
-
-Null-result diagnostic compatibility path.
-
-| Line | Member | Operation | Source context |
-| --- | --- | --- | --- |
-| 30 | `characterId` | R | `result = new MatchProgressionResult(CreateResultId("missing"), GameOptions.characterId, 0);` |
-
 ### `Assets/Scripts/menu_start/StartManager.cs`
 
-Menu reset / profile label / launch metadata, route, UI reset.
-
 | Line | Member | Operation | Source context |
 | --- | --- | --- | --- |
-| 309 | `gameModeHasBeenSelected` | W | `GameOptions.gameModeHasBeenSelected = false;` |
-| 747 | `previousSceneName` | W | `GameOptions.previousSceneName = activeScene;` |
-| 1207 | `userName` | R | `userNameText.text = "profile : " + GameOptions.userName;` |
-| 1794 | `applicationVersion` | W | `GameOptions.applicationVersion = Application.version;` |
-| 1795 | `operatingSystemVersion` | W | `GameOptions.operatingSystemVersion = SystemInfo.operatingSystem;` |
-| 1796 | `levelsList` | W | `GameOptions.levelsList = PlayerData.instance.LevelsList;` |
-| 1815 | `tipDialogueLoadedOnStart` | W | `GameOptions.tipDialogueLoadedOnStart = false;` |
+| 744 | `previousSceneName` | W | `GameOptions.previousSceneName = activeScene;` |
+| 1204 | `userName` | R | `userNameText.text = "profile : " + GameOptions.userName;` |
+| 1792 | `applicationVersion` | W | `GameOptions.applicationVersion = Application.version;` |
+| 1793 | `operatingSystemVersion` | W | `GameOptions.operatingSystemVersion = SystemInfo.operatingSystem;` |
+| 1817 | `tipDialogueLoadedOnStart` | W | `GameOptions.tipDialogueLoadedOnStart = false;` |
 
 ### `Assets/Scripts/menu_start/StartMenuSelectionState.cs`
-
-Load/save process-lifetime selection preferences.
 
 | Line | Member | Operation | Source context |
 | --- | --- | --- | --- |
@@ -323,15 +285,13 @@ Load/save process-lifetime selection preferences.
 | 49 | `levelSelectedIndex` | R | `LevelIndex = GameOptions.levelSelectedIndex;` |
 | 50 | `modeSelectedIndex` | R | `ModeIndex = GameOptions.modeSelectedIndex;` |
 | 51 | `trafficEnabled` | R | `TrafficEnabled = GameOptions.trafficEnabled;` |
-| 52 | `hardcoreModeEnabled` | R | `HardcoreEnabled = GameOptions.hardcoreModeEnabled;` |
 | 53 | `obstaclesEnabled` | R | `ObstaclesEnabled = GameOptions.obstaclesEnabled;` |
-| 61 | `friendSelectedIndex` | W | `GameOptions.friendSelectedIndex = FriendIndex;` |
-| 62 | `levelSelectedIndex` | W | `GameOptions.levelSelectedIndex = LevelIndex;` |
-| 63 | `modeSelectedIndex` | W | `GameOptions.modeSelectedIndex = ModeIndex;` |
+| 61 | `hardcoreModeEnabled` | R | `public static bool ReadPersistedHardcorePreference() => GameOptions.hardcoreModeEnabled;` |
+| 65 | `friendSelectedIndex` | W | `GameOptions.friendSelectedIndex = FriendIndex;` |
+| 66 | `levelSelectedIndex` | W | `GameOptions.levelSelectedIndex = LevelIndex;` |
+| 67 | `modeSelectedIndex` | W | `GameOptions.modeSelectedIndex = ModeIndex;` |
 
 ### `Assets/Scripts/menu_start/StartScreenCpuSelectManager.cs`
-
-Startup presentation marked shown.
 
 | Line | Member | Operation | Source context |
 | --- | --- | --- | --- |
@@ -339,36 +299,13 @@ Startup presentation marked shown.
 
 ### `Assets/Scripts/menu_start/StartScreenTipDialogueManager.cs`
 
-Conditional startup wiring / presentation marked shown.
-
 | Line | Member | Operation | Source context |
 | --- | --- | --- | --- |
 | 27 | `tipDialogueLoadedOnStart` | R | `if (!GameOptions.tipDialogueLoadedOnStart)` |
 | 52 | `tipDialogueLoadedOnStart` | R | `if (!GameOptions.tipDialogueLoadedOnStart)` |
 | 75 | `tipDialogueLoadedOnStart` | W | `GameOptions.tipDialogueLoadedOnStart = true;` |
 
-### `Assets/Scripts/Models/HighScoreModel.cs`
-
-Local result identity stamps.
-
-| Line | Member | Operation | Source context |
-| --- | --- | --- | --- |
-| 133 | `userName` | R | `model.UserName = GameOptions.userName;` |
-| 134 | `userid` | R | `model.Userid = GameOptions.userid;` |
-| 242 | `userName` | R | `model.UserName = GameOptions.userName;` |
-| 243 | `userid` | R | `model.Userid = GameOptions.userid;` |
-
-### `Assets/Scripts/PlayerData.cs`
-
-Hardcore record-query filter.
-
-| Line | Member | Operation | Source context |
-| --- | --- | --- | --- |
-| 123 | `hardcoreModeEnabled` | R | `if (GameOptions.hardcoreModeEnabled)` |
-
-### `Assets/Scripts/RESTApi/APIHelper.cs`
-
-User bug-report local identity stamp.
+### `Assets/Scripts/restapi/APIHelper.cs`
 
 | Line | Member | Operation | Source context |
 | --- | --- | --- | --- |
@@ -379,150 +316,158 @@ User bug-report local identity stamp.
 
 ## Bridge write ledger
 
-Every row is in `Assets/Scripts/menu_start/LegacyGameOptionsBridge.cs`. All 45 accesses are assignments, with no GameOptions read.
+All 41 accesses in `Assets/Scripts/menu_start/LegacyGameOptionsBridge.cs` are assignments; no reverse read.
 
-| Line | Member | Operation | Source context |
-| --- | --- | --- | --- |
-| 35 | `gameModeHasBeenSelected` | W | `GameOptions.gameModeHasBeenSelected = true;` |
-| 46 | `gameModeSelectedId` | W | `GameOptions.gameModeSelectedId = mode.RawModeId;` |
-| 47 | `gameModeSelectedName` | W | `GameOptions.gameModeSelectedName = mode.DisplayName;` |
-| 49 | `gameModeRequiresCountDown` | W | `GameOptions.gameModeRequiresCountDown = rules.RequiresCountDown;` |
-| 50 | `gameModeRequiresCounter` | W | `GameOptions.gameModeRequiresCounter = rules.RequiresCounter;` |
-| 52 | `gameModeRequiresShotMarkers3s` | W | `GameOptions.gameModeRequiresShotMarkers3s = rules.RequiresShotMarkers3s;` |
-| 53 | `gameModeRequiresShotMarkers4s` | W | `GameOptions.gameModeRequiresShotMarkers4s = rules.RequiresShotMarkers4s;` |
-| 54 | `gameModeRequiresShotMarkers7s` | W | `GameOptions.gameModeRequiresShotMarkers7s = rules.RequiresShotMarkers7s;` |
-| 56 | `gameModeThreePointContest` | W | `GameOptions.gameModeThreePointContest = rules.IsThreePointContest;` |
-| 57 | `gameModeFourPointContest` | W | `GameOptions.gameModeFourPointContest = rules.IsFourPointContest;` |
-| 58 | `gameModeSevenPointContest` | W | `GameOptions.gameModeSevenPointContest = rules.IsSevenPointContest;` |
-| 59 | `gameModeAllPointContest` | W | `GameOptions.gameModeAllPointContest = rules.IsAllPointContest;` |
-| 61 | `customTimer` | W | `GameOptions.customTimer = rules.CustomTimerSeconds;` |
-| 63 | `gameModeRequiresBasketball` | W | `GameOptions.gameModeRequiresBasketball = rules.RequiresBasketball;` |
-| 64 | `gameModeAllowsCpuShooters` | W | `GameOptions.gameModeAllowsCpuShooters = rules.AllowsCpuShooters;` |
-| 66 | `EnemiesOnlyEnabled` | W | `GameOptions.EnemiesOnlyEnabled = mode.EnemiesOnly;` |
-| 67 | `battleRoyalEnabled` | W | `GameOptions.battleRoyalEnabled = rules.IsBattleRoyal;` |
-| 68 | `cageMatchEnabled` | W | `GameOptions.cageMatchEnabled = rules.IsCageMatch;` |
-| 73 | `levelSelected` | W | `GameOptions.levelSelected = level.ObjectName;` |
-| 74 | `levelId` | W | `GameOptions.levelId = level.LevelId;` |
-| 75 | `levelDisplayName` | W | `GameOptions.levelDisplayName = level.DisplayName;` |
-| 76 | `levelRequiresTimeOfDay` | W | `GameOptions.levelRequiresTimeOfDay = level.RequiresTimeOfDay;` |
-| 77 | `levelRequiresWeather` | W | `GameOptions.levelRequiresWeather = level.HasWeather;` |
-| 78 | `levelHasSevenPointers` | W | `GameOptions.levelHasSevenPointers = level.HasSevenPointers;` |
-| 83 | `enemiesEnabled` | W | `GameOptions.enemiesEnabled = rules.EnemiesEnabled;` |
-| 84 | `trafficEnabled` | W | `GameOptions.trafficEnabled = rules.TrafficEnabled;` |
-| 85 | `obstaclesEnabled` | W | `GameOptions.obstaclesEnabled = rules.ObstaclesEnabled;` |
-| 87 | `difficultySelected` | W | `GameOptions.difficultySelected = MatchDifficulties.ToInt(rules.Difficulty);` |
-| 88 | `hardcoreModeEnabled` | W | `GameOptions.hardcoreModeEnabled = rules.Hardcore;` |
-| 90 | `sniperEnabled` | W | `GameOptions.sniperEnabled = rules.SniperEnabled;` |
-| 91 | `sniperEnabledBullet` | W | `GameOptions.sniperEnabledBullet = rules.Sniper == SniperMode.Bullet;` |
-| 92 | `sniperEnabledBulletAuto` | W | `GameOptions.sniperEnabledBulletAuto = rules.Sniper == SniperMode.MachineGun;` |
-| 93 | `sniperEnabledLaser` | W | `GameOptions.sniperEnabledLaser = rules.Sniper == SniperMode.Laser;` |
-| 104 | `characterObjectNames` | W | `GameOptions.characterObjectNames = objectNames;` |
-| 109 | `characterObjectName` | W | `GameOptions.characterObjectName = primary.Character.ObjectName;` |
-| 110 | `characterId` | W | `GameOptions.characterId = primary.Character.CharacterId;` |
-| 111 | `characterDisplayName` | W | `GameOptions.characterDisplayName = primary.Character.DisplayName;` |
-| 119 | `numPlayers` | W | `GameOptions.numPlayers = Mathf.Clamp(roster.Count, 1, PlayerRoster.MaxSlots);` |
-| 120 | `numCpuPlayers` | W | `GameOptions.numCpuPlayers = roster.CpuCount + (implicitDefender ? 1 : 0);` |
-| 121 | `player1IsCpu` | W | `GameOptions.player1IsCpu = IsCpu(roster, 0);` |
-| 122 | `player2IsCpu` | W | `GameOptions.player2IsCpu = IsCpu(roster, 1) \|\| implicitDefender;` |
-| 123 | `player3IsCpu` | W | `GameOptions.player3IsCpu = IsCpu(roster, 2);` |
-| 124 | `player4IsCpu` | W | `GameOptions.player4IsCpu = IsCpu(roster, 3);` |
-| 129 | `cheerleaderObjectName` | W | `GameOptions.cheerleaderObjectName = cheerleader.ObjectName;` |
-| 130 | `cheerleaderDisplayName` | W | `GameOptions.cheerleaderDisplayName = cheerleader.DisplayName;` |
-
-### Every release-production bridge caller
-
-| Repository-relative file | Line | Context |
+| Line | Member | Source context |
 | --- | --- | --- |
-| Assets/Scripts/menu_start/StartManager.cs | 1719 | Validated builder result, after ActiveMatch.Begin, before preference/launch side effects and scene load |
-| Assets/Scripts/menu_end_round/EndRoundMenuManager.cs | 312 | ContinueInLevel + Begin for configured round; unconfigured branch instead writes arena fields at 319–322 |
-| Assets/Scripts/versus/VersusLauncher.cs | 116 | Local alternating attempt after ActiveMatch/ActiveVersusAttempt publication |
-| Assets/Scripts/versus/VersusLauncher.cs | 231 | Local simultaneous match before scene load |
-| Assets/Scripts/versus/RemoteAttemptLauncher.cs | 120 | Remote mapping after ActiveMatch/ActiveRemoteAttempt publication |
+| 43 | `gameModeSelectedId` | `GameOptions.gameModeSelectedId = mode.RawModeId;` |
+| 44 | `gameModeSelectedName` | `GameOptions.gameModeSelectedName = mode.DisplayName;` |
+| 46 | `gameModeRequiresCountDown` | `GameOptions.gameModeRequiresCountDown = rules.RequiresCountDown;` |
+| 47 | `gameModeRequiresCounter` | `GameOptions.gameModeRequiresCounter = rules.RequiresCounter;` |
+| 49 | `gameModeRequiresShotMarkers3s` | `GameOptions.gameModeRequiresShotMarkers3s = rules.RequiresShotMarkers3s;` |
+| 50 | `gameModeRequiresShotMarkers4s` | `GameOptions.gameModeRequiresShotMarkers4s = rules.RequiresShotMarkers4s;` |
+| 51 | `gameModeRequiresShotMarkers7s` | `GameOptions.gameModeRequiresShotMarkers7s = rules.RequiresShotMarkers7s;` |
+| 53 | `gameModeThreePointContest` | `GameOptions.gameModeThreePointContest = rules.IsThreePointContest;` |
+| 54 | `gameModeFourPointContest` | `GameOptions.gameModeFourPointContest = rules.IsFourPointContest;` |
+| 55 | `gameModeSevenPointContest` | `GameOptions.gameModeSevenPointContest = rules.IsSevenPointContest;` |
+| 56 | `gameModeAllPointContest` | `GameOptions.gameModeAllPointContest = rules.IsAllPointContest;` |
+| 58 | `customTimer` | `GameOptions.customTimer = rules.CustomTimerSeconds;` |
+| 60 | `gameModeRequiresBasketball` | `GameOptions.gameModeRequiresBasketball = rules.RequiresBasketball;` |
+| 61 | `gameModeAllowsCpuShooters` | `GameOptions.gameModeAllowsCpuShooters = rules.AllowsCpuShooters;` |
+| 63 | `EnemiesOnlyEnabled` | `GameOptions.EnemiesOnlyEnabled = mode.EnemiesOnly;` |
+| 64 | `battleRoyalEnabled` | `GameOptions.battleRoyalEnabled = rules.IsBattleRoyal;` |
+| 65 | `cageMatchEnabled` | `GameOptions.cageMatchEnabled = rules.IsCageMatch;` |
+| 70 | `levelId` | `GameOptions.levelId = level.LevelId;` |
+| 71 | `levelDisplayName` | `GameOptions.levelDisplayName = level.DisplayName;` |
+| 72 | `levelRequiresTimeOfDay` | `GameOptions.levelRequiresTimeOfDay = level.RequiresTimeOfDay;` |
+| 73 | `levelRequiresWeather` | `GameOptions.levelRequiresWeather = level.HasWeather;` |
+| 74 | `levelHasSevenPointers` | `GameOptions.levelHasSevenPointers = level.HasSevenPointers;` |
+| 79 | `enemiesEnabled` | `GameOptions.enemiesEnabled = rules.EnemiesEnabled;` |
+| 80 | `trafficEnabled` | `GameOptions.trafficEnabled = rules.TrafficEnabled;` |
+| 81 | `obstaclesEnabled` | `GameOptions.obstaclesEnabled = rules.ObstaclesEnabled;` |
+| 83 | `difficultySelected` | `GameOptions.difficultySelected = MatchDifficulties.ToInt(rules.Difficulty);` |
+| 84 | `hardcoreModeEnabled` | `GameOptions.hardcoreModeEnabled = rules.Hardcore;` |
+| 86 | `sniperEnabledBullet` | `GameOptions.sniperEnabledBullet = rules.Sniper == SniperMode.Bullet;` |
+| 87 | `sniperEnabledBulletAuto` | `GameOptions.sniperEnabledBulletAuto = rules.Sniper == SniperMode.MachineGun;` |
+| 88 | `sniperEnabledLaser` | `GameOptions.sniperEnabledLaser = rules.Sniper == SniperMode.Laser;` |
+| 99 | `characterObjectNames` | `GameOptions.characterObjectNames = objectNames;` |
+| 104 | `characterObjectName` | `GameOptions.characterObjectName = primary.Character.ObjectName;` |
+| 105 | `characterId` | `GameOptions.characterId = primary.Character.CharacterId;` |
+| 106 | `characterDisplayName` | `GameOptions.characterDisplayName = primary.Character.DisplayName;` |
+| 114 | `numPlayers` | `GameOptions.numPlayers = Mathf.Clamp(roster.Count, 1, PlayerRoster.MaxSlots);` |
+| 115 | `player1IsCpu` | `GameOptions.player1IsCpu = IsCpu(roster, 0);` |
+| 116 | `player2IsCpu` | `GameOptions.player2IsCpu = IsCpu(roster, 1) \|\| implicitDefender;` |
+| 117 | `player3IsCpu` | `GameOptions.player3IsCpu = IsCpu(roster, 2);` |
+| 118 | `player4IsCpu` | `GameOptions.player4IsCpu = IsCpu(roster, 3);` |
+| 123 | `cheerleaderObjectName` | `GameOptions.cheerleaderObjectName = cheerleader.ObjectName;` |
+| 124 | `cheerleaderDisplayName` | `GameOptions.cheerleaderDisplayName = cheerleader.DisplayName;` |
 
-CaptureMatchRuntimeSnapshot has no external release caller: Unity installs its delegate. Versus launchers remain production code even where some callers are dev tools.
+### Bridge callers retained for #276
 
-## Development, backup and test usage
-
-- `Assets/Scripts/Utility/LoadGame.cs:64` calls bridge; `:65` writes levelsList only under UNITY_EDITOR or DEVELOPMENT_BUILD. Release code logs dev loading unavailable and exits. It remains on the source guard list.
-- Assets/Scripts/Dev has no executable direct GameOptions access; tooling can invoke production launchers indirectly.
-- Unity-ignored ~ backups are historical, excluded code.
-- `Assets/Level5/Editor/BackendV2LiveCertificationRunner.cs:351` is bridge flow text, not a call.
-
-### Direct test member/type references
-
-Counts include executable direct members and explicit typeof; multiple occurrences per line count separately. Comments, source-scan literals and reflective PlayMode calls are excluded from this table.
-
-| Repository-relative test file | Occurrences | Source lines |
+| File | Line | Context |
 | --- | --- | --- |
-| `Assets/Tests/Editor/GameOptionsSnapshot.cs` | 90 | 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 85, 86, 87, 88, 89, 90, 92, 93, 94, 95, 96, 97, 98, 99, 100, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 113, 114, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 139, 140, 141, 142, 143, 144, 146, 147, 148, 149, 150, 151, 152, 153, 154, 156, 157, 158, 159, 160, 161, 162, 163, 164, 165, 167, 168 |
-| `Assets/Tests/Editor/Level5ActorHealthTests.cs` | 6 | 32, 33, 43, 61, 167, 191 |
-| `Assets/Tests/Editor/Level5CoreTests.cs` | 31 | 17, 18, 19, 20, 21, 22, 28, 29, 30, 31, 32, 33, 39, 40, 41, 42, 44, 45, 46, 47, 53, 55, 56, 57, 58, 59, 60, 66, 68, 69, 70 |
-| `Assets/Tests/Editor/Level5CpuBaselineInitializationTests.cs` | 8 | 22, 28, 57, 93, 105, 183, 196, 209 |
-| `Assets/Tests/Editor/Level5LocalSimultaneousVersusTests.cs` | 2 | 150, 152 |
-| `Assets/Tests/Editor/Level5MatchBridgeParityTests.cs` | 40 | 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 82, 96, 97, 98, 99, 115, 116, 117, 118, 119, 138, 139, 140, 141, 142, 143, 144, 145, 157, 158, 159, 160, 171, 172, 173, 174, 186, 187 |
-| `Assets/Tests/Editor/Level5MatchHudPresenterCompositionTests.cs` | 3 | 787, 794, 808 |
-| `Assets/Tests/Editor/Level5MatchRuntimeFallbackTestSupport.cs` | 1 | 15 |
-| `Assets/Tests/Editor/Level5MatchRuntimeLegacyFallbackTests.cs` | 43 | 72, 73, 74, 128, 129, 130, 147, 148, 149, 150, 151, 152, 153, 173, 181, 182, 183, 184, 185, 186, 187, 205, 206, 221, 229, 230, 231, 232, 233, 238, 248, 249, 250, 251, 260, 269, 270, 286, 300, 328, 329, 333, 367 |
-| `Assets/Tests/Editor/Level5PlayerMatchRuntimeCompositionTests.cs` | 2 | 89, 92 |
-| `Assets/Tests/Editor/Level5RangeShotRecordTests.cs` | 4 | 93, 108, 134, 137 |
-| `Assets/Tests/Editor/Level5SpawnCoordinatorCampaignCpuPrefabResolverTests.cs` | 14 | 36, 37, 43, 44, 231, 232, 244, 245, 257, 258, 272, 273, 286, 287 |
-| `Assets/Tests/Editor/Level5SpotUpRecordEligibilityTests.cs` | 2 | 54, 55 |
-| `Assets/Tests/Editor/Level5UnlockSnapshotTests.cs` | 12 | 29, 30, 53, 54, 92, 93, 138, 139, 155, 156, 212, 213 |
-| `Assets/Tests/Editor/Level5UserAccountManagerProfileLoadingTests.cs` | 6 | 52, 72, 106, 178, 211, 217 |
-| `Assets/Tests/Editor/ProgressionServiceApplyMatchResultTests.cs` | 6 | 43, 44, 46, 47, 53, 54 |
-| `Assets/Tests/Editor/TipDialogueTextMeshProMigrationTests.cs` | 3 | 34, 35, 41 |
+| `Assets/Scripts/Utility/LoadGame.cs` | 64 | Development-only launch |
+| `Assets/Scripts/menu_end_round/EndRoundMenuManager.cs` | 311 | Configured launch / continuation |
+| `Assets/Scripts/menu_start/StartManager.cs` | 1719 | Configured launch / continuation |
+| `Assets/Scripts/versus/RemoteAttemptLauncher.cs` | 120 | Configured launch / continuation |
+| `Assets/Scripts/versus/VersusLauncher.cs` | 116 | Configured launch / continuation |
+| `Assets/Scripts/versus/VersusLauncher.cs` | 231 | Configured launch / continuation |
 
-Reflective consumers under Assets/Tests/PlayMode: CampaignRoundPlayModeTests:58,152,153,255; Level5LongestShotRecordPlayModeTests:41; Level5RangeShotRecordPlayModeTests:41; Level5PostRemediationCertificationPlayModeTests:57; PlayerAudioSettingsPlayModeTests:83. Public-static-field snapshots do not capture forwarding properties automatically. GameOptionsSnapshot explicitly restores match fields. Level5MatchRuntimeFallbackTestSupport:15 reflects the private capture method and Level5MatchRuntimeFallbackTestBootstrap installs it.
+## Guards, risks and review record
 
-Bridge test calls are separate from the direct-member table: Assets/Tests/Editor/Level5MatchBridgeParityTests.cs invokes Apply at 58,79,88,113,132,153,166,181,207 (nine calls).
+Level5MatchArchitectureTests now counts actual public static declarations, ratcheted to 49,
+and explicitly forbids all six retired members. SQLite/progression/PlayerData/GameRules/LoadGame
+leave the allowlist. The existing literal-aware scanner prevents LoadManager's nested-comment
+false negative; its pre-existing local identity access is explicitly accounted for until #275 C.
+No new production dependency was permitted. Basename matching and ignored interpolated literal
+holes remain scanner limitations; no current allowed-basename collision was found. The guard is
+a migration ratchet, not a substitute for release/source and reflection/asset audits.
 
-### Affected tests for implementation slices
+No production typeof(GameOptions), string-selected reflection, using-static/alias access or live
+direct access outside Assets/Scripts was found for the retired members. Serialized asset searches
+found no corresponding field/type use. Other sniperEnabled occurrences are SQLite/network numeric
+contracts, StatsManager preference state or comments, and remain unchanged. Unity-ignored backups
+are historical source, not consumers. Existing Unity GUIDs and authored assets are unchanged.
 
-| Responsibility | Existing coverage to inspect/run when changed |
-| --- | --- |
-| Bridge/rules/IDs | Level5MatchBridgeParityTests, Level5MatchConfigurationTests, Level5MatchDomainTests, Level5AuthoredMatchDataTests, Level5MatchArchitectureTests |
-| Fallback, configured edges, live reads, reader lifecycle | Level5MatchRuntimeLegacyFallbackTests, Level5PlayerMatchRuntimeCompositionTests, Level5ProductionAssemblyBoundaryTests |
-| CPU/input formula | Level5CoreTests, Level5LocalSimultaneousVersusTests, Level5CpuBaselineInitializationTests |
-| Campaign route/opponent/outcome | Level5CampaignRouteTests, Level5SpawnCoordinatorCampaignCpuPrefabResolverTests, CampaignRoundPlayModeTests and CampaignBoundaryPlayModeTests (both in CampaignRoundPlayModeTests.cs) |
-| SQLite payload/hardcore/progression | Level5RangeShotRecordTests, Level5RangeShotRecordPlayModeTests, ProgressionServiceApplyMatchResultTests, Level5SpotUpRecordEligibilityTests |
-| Local identity/account scope | Level5LocalProfileNetworkIndependenceTests, Level5LocalProfileAllocationTests, Level5LocalProfileDeletionTests, Level5UserAccountManagerProfileLoadingTests, Level5UnlockSnapshotTests |
-| Startup UI | TipDialogueTextMeshProMigrationTests; focused tip/CPU-select re-entry runtime path when lifetime changes |
+Review pass 1 rejected current-runtime persistence inputs, unsafe fallback deletion, implicit XP
+identity and shared campaign/menu indices. Review pass 2 selected existing owners, retained D2/F,
+kept #275 preference semantics, and rejected new global state/services, route copies and assembly
+changes. The [pre-implementation record](game-options-match-system-overhaul-plan.md#2026-10-14-implementation-review-before-source-changes)
+contains the revised design before any production edit.
 
-These are inspected evidence/proposed checks, **not test passes for #273**. Add focused regression cases where existing tests do not pin captured model.numPlayers against later-match mutation, explicit PlayerData filters, separated menu/route cursors, or scanner nested-comment false negatives.
+Material risks and mitigations: delayed scores use captured count; XP uses explicit result identity
+and unchanged idempotent local-account transactions; null results cannot repair/queue unrelated XP;
+startup records do not need ActiveMatch; pause uses bound rules; campaign IDs are not route indices;
+hidden Boneyard/Dev remain approved continuation destinations; invalid CPU adapter indices still
+report unavailable and malformed null entries still throw; dormant analytics remains dormant;
+all direct-scene/incomplete-character fallbacks and the one-way bridge remain intact.
 
-## Retirement risks and concrete mitigations
+## Changed files and rationale
 
-| Risk | Severity | Concrete solution / evidence gate |
+- Compatibility: `Assets/Scripts/menu_start/GameOptions.cs`, `LegacyGameOptionsBridge.cs`,
+  `StartManager.cs`, `Assets/Scripts/menu_end_round/EndRoundMenuManager.cs`; delete paired dead values/writes.
+- Captured persistence: `Assets/Scripts/database/DBHelper.cs`, `DBConnector.cs`,
+  `Assets/Scripts/menu_progression/ProgressionService.cs`; remove current-match inputs from saved results.
+- Record composition: `Assets/Scripts/PlayerData.cs`, `Assets/Scripts/menu_start/StartMenuSelectionState.cs`,
+  `StartManager.cs`, `Assets/Scripts/game manager/GameLevelManager.cs`; explicit startup/launch/pause filter.
+- Campaign: `Assets/Scripts/game manager/GameRules.cs`, `GameLevelManager.cs`,
+  `Assets/Scripts/menu_start/EndRoundData.cs`, `StartManager.cs`, `GameOptions.cs`,
+  `Assets/Scripts/menu_end_round/EndRoundMenuManager.cs`, `Assets/Scripts/Utility/LoadGame.cs`;
+  use the authored route and existing campaign cursor, remove both static route copies.
+- Focused tests: `Assets/Tests/Editor/GameOptionsSnapshot.cs`, `Level5CoreTests.cs`,
+  `Level5MatchBridgeParityTests.cs`, `Level5MatchArchitectureTests.cs`,
+  new `Level5CapturedScorePersistenceTests.cs` and `.meta`, `ProgressionServiceApplyMatchResultTests.cs`,
+  `Level5RangeShotRecordTests.cs`, `Level5PauseCompositionTests.cs`,
+  `Level5MatchHudPresenterCompositionTests.cs`, `Level5SpawnCoordinatorCampaignCpuPrefabResolverTests.cs`,
+  `Assets/Tests/PlayMode/CampaignRoundPlayModeTests.cs`, `Level5LongestShotRecordPlayModeTests.cs`.
+- Existing documentation: this inventory, `docs/game-options-match-system-overhaul-plan.md`,
+  `docs/persistence-boundaries.md`; update current owners, evidence and blockers.
+
+## Focused validation
+
+Evidence is in ignored `TestResults/issue274`. The wrapper temporarily sets productName to
+`level5-issue274-isolated`, then restores ProjectSettings byte-for-byte. SQLite harnesses use
+throwaway databases; progression tests use random isolated accounts and cleanup. Campaign fixtures
+also preserve queue/session/guest file families including .bak/.tmp. No real player data is used.
+All commands use Unity `6000.5.7f1`, `-batchmode -projectPath <repo> -logFile <evidence>/<name>.log
+-runTests -testPlatform <platform> -testFilter <filter> -testResults <evidence>/<name>.xml`.
+EditMode adds `-nographics`; PlayMode adds `-force-d3d11`. Exact argument arrays and process exits
+are saved in `<name>-command.json` and `<name>-exit.txt`.
+
+| Check / filter | Result | Exit / evidence |
 | --- | --- | --- |
-| Delete fallback-only fields as dead | High | Retain all 41 inputs until #274 F supplies independent scene inputs; keep direct-entry and configured edge tests |
-| Queued score observes later match roster | High | #274 B uses captured HighScoreModel.numPlayers, verified by mutating globals/current match before SQLite insert |
-| Progression attributed to highlighted/newer character | High | #274 C uses explicit result/character ID; D2 preserves separate progression-menu selection |
-| Menu catalog index used as route position | High | #274 E separates cursor from preference before #275 B; retain outcome-first retry/advance logic and authored opponent/hidden finale |
-| Record UI requires configuration during startup | Medium | #274 D1 passes explicit filter at startup, launch and pause-refresh boundaries; test both hardcore states without ActiveMatch |
-| Local identity mistaken for online authentication | High | #275 C reads LocalAccountIdentity and preserves CharacterProgressAccountId/guest scope; BackendV2SessionStore remains independent |
-| Guard reports green while missing real source | Medium | Document LoadManager:195–339 erasure; migrate hidden reader before literal-aware guard hardening; never add exception to hide it |
-| UI re-entry timing changes | Medium | #275 D preserves true-on-Start/reset-at-launch behavior; focused tip/CPU flow runtime check when lifetime owner changes |
-| Dormant analytics starts emitting new/renamed payload | Medium | #274 D3 preserves current no-event behavior; a producer needs explicit separate policy |
+| A: Level5MatchBridgeParityTests;Level5MatchRuntimeLegacyFallbackTests;Level5CoreTests | 41 passed, 0 failed/skipped | 0 / a.xml |
+| B/C initial: Level5CapturedScorePersistenceTests;ProgressionServiceApplyMatchResultTests;Level5MatchArchitectureTests | 17 passed, 1 failed, 0 skipped; failure was existing comment-scanner defect hiding LoadManager, corrected | 2 / bc.xml |
+| Corrected architecture guards only | 8 passed, 0 failed/skipped | 0 / bc-guard.xml |
+| D: Level5RangeShotRecordTests;Level5MatchArchitectureTests;Level5PauseCompositionTests.ReloadPlayerDataForPause;Level5MatchHudPresenterCompositionTests.PlayerDataLoadsIndependentMode98And99HistoryFromSqlite | 38 passed, 0 failed/skipped | 0 / d.xml |
+| E: Level5MatchArchitectureTests;Level5SpawnCoordinatorCampaignCpuPrefabResolverTests;Level5CampaignRouteTests;Level5MatchConfigurationTests;Level5ProductionAssemblyBoundaryTests | 95 passed, 0 failed/skipped | 0 / e.xml |
+| Initial authored runtime: CampaignBoundaryPlayModeTests;Level5LongestShotRecordPlayModeTests | 6 passed, 2 failed, 0 skipped; new fresh-launch setup selected a non-shooter and production correctly rejected it | 2 / campaign.xml |
+| Corrected fresh launch setup: CampaignBoundaryPlayModeTests.Fresh | 2 passed, 0 failed/skipped; choose capable participants through the existing coordinator | 0 / campaign-launch.xml |
+| Expanded campaign assertions: CampaignBoundaryPlayModeTests | 5 passed, 2 failed, 0 skipped; new record-seeding fixture reflected model fields as properties, corrected | 2 / campaign-final.xml |
+| Final fresh normal/hardcore launch and actual bound pause-record callback: CampaignBoundaryPlayModeTests.Fresh | 2 passed, 0 failed/skipped, including conflicting later global filter | 0 / record-launch-final.xml |
+| Final architecture guards, including nested-comment regression | 11 passed, 0 failed/skipped | 0 / guards-final.xml |
 
-## Two review passes
+Final per-test runtime evidence covers seven campaign cases (five unchanged cases passed in
+campaign-final.xml; the two corrected cases passed in record-launch-final.xml) plus the unchanged
+Arcade/Free Play record fixture passed in campaign.xml. This is reused per-test evidence, not a
+claim that either earlier failed run was green. The score-seeding and selection corrections only
+change the two new fresh-launch tests. Player-selection session memory is saved/restored too.
 
-### Pass 1 — Completeness and correctness
+Unity test runs compile affected production and test assemblies. A/B/C/D evidence is reused where
+later changes do not touch the validated behavior. Broad suites, standalone player, physical input,
+live Backend and release certification are NOT RUN; focused authored scene assertions are not those claims.
+Repository CI owns its normal checks; Unity CI capability must be read from the actual run.
 
-Checked declarations, raw hits versus literal-aware executable hits, conditional compilation, bridge assignments, bare internal fallback reads, reflection and serialized exposure. Corrected 63 lines versus 68 expressions, found LoadManager missing from allowlist, separated 55 fields from 59-token ratchet, and retained all 41 fallback inputs. Rejected comment-only SpawnCoordinator/ArenaBootstrap references and retired bearer-token ownership. Established scanner erasure rather than inactive code as the missing guard hit's cause.
+Before publication, `git fetch origin dev` again returned
+`8a93cb2a7d3b979c759196f0430d3aa4895b23a8`; the open-PR overlap query again returned none.
+Final source/diff inspection and `git diff --check` passed. Unity-generated solution ordering and
+temporary project/test state are excluded from the commits; ProjectSettings was restored.
 
-### Pass 2 — Architecture and scope
+## Remaining acceptance gates
 
-Challenged substitutions at real lifetime boundaries. Changed SQLite participant-count target to captured HighScoreModel rather than current match; kept progression-menu identity separate from active roster; required campaign cursor separation before menu-index retirement; retained configured fallback edge behavior. Rejected speculative global/account/navigation services, schema migrations, durable level progress and scoring cleanup. The existing roadmap orders bounded slices and keeps #276 blocked. No runtime implementation was performed.
-
-## Validation performed (Level 0)
-
-| Check | Result / limit |
-| --- | --- |
-| Fetch dev, issues #273–#276, open PRs | PASS; audited SHA/date above; no open PR overlap at start |
-| Declaration/access reconciliation | PASS; 55 fields, 2 properties, 12 methods; 68 release external accesses + 45 bridge writes; development access separated |
-| Literal-aware scan versus existing guard scanner | PASS audit; LoadManager false negative identified; guards unchanged |
-| Reflection, asset-name and GUID scan | No production GameOptions reflection/name-selected access, asset type-name reference or non-meta asset reference to MonoScript GUID b050d289ae259fc47be5887ea83380a4 found; test reflection recorded |
-| Final diff, Markdown table/local-link checks and pre-submit refresh | PASS; git diff --check clean; generated ledgers match source; local links resolve; re-fetched dev remains ca65435afeec75ddfbfa79dcd348f2a52cc36fe8; no open PR or other-worktree change overlaps these documents |
-| Unity compile/EditMode/PlayMode/full repository validator | NOT RUN; documentation-only Level 0; AGENTS.md says not to start Unity solely for this change |
-
-Unresolved follow-up decisions: minimally scoped owner/lifecycle for campaign cursor and start-flow presentation memory; whether dormant analytics remains dormant or receives a separately approved producer. These do not block this inventory; they block dependent behavioral migrations.
+- Remaining direct match consumers are accounted for, not all retired: D2's publication,
+  unconfigured arena transition writes, preference/fallback overlap and all 41 fallback inputs remain.
+- Captured score count and progression identity are explicit; campaign route and cursor have existing owners.
+- No replacement global container, duplicate route collection, new package or asmdef dependency exists.
+- Numeric, serialized and persistence contracts remain stable; final bridge deletion belongs to #276.
+- **#274 is not complete.** D2/F1/F2 need independent scene-input and incomplete-character contracts.
