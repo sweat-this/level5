@@ -21,6 +21,7 @@ public class ProgressionServiceApplyMatchResultTests
     private string accountId;
     private int originalUserId;
     private string originalUserName;
+    private int originalCharacterId;
 
     [SetUp]
     public void SetUp()
@@ -42,6 +43,7 @@ public class ProgressionServiceApplyMatchResultTests
 
         originalUserId = GameOptions.userid;
         originalUserName = GameOptions.userName;
+        originalCharacterId = GameOptions.characterId;
         accountId = "progression-apply-test-" + Guid.NewGuid().ToString("N");
         GameOptions.userid = 0;
         GameOptions.userName = accountId;
@@ -52,6 +54,7 @@ public class ProgressionServiceApplyMatchResultTests
     {
         GameOptions.userid = originalUserId;
         GameOptions.userName = originalUserName;
+        GameOptions.characterId = originalCharacterId;
         DBHelperTestHarness.Destroy(session);
         CharacterProgressStore.DeleteAccountFiles(accountId);
         PendingProgressionStore.DeleteAccountFiles(accountId);
@@ -162,6 +165,43 @@ public class ProgressionServiceApplyMatchResultTests
     }
 
     // ---- Authoritative application -------------------------------------------------------------
+
+    [Test]
+    public void CapturedResultUsesItsCharacterAfterCurrentCharacterChanges()
+    {
+        SeedCharacterProfile(charid: 5, experience: 100);
+        SeedCharacterProfile(charid: 6, experience: 200);
+        GameOptions.characterId = 5;
+        var captured = new MatchProgressionResult("captured-" + Guid.NewGuid().ToString("N"), 5, 50f);
+        GameOptions.characterId = 6;
+
+        MatchProgressionResult result = new ProgressionService().ApplyMatchResult(captured);
+
+        Assert.That(result.Applied, Is.True);
+        Assert.That(ReadExperience(5), Is.EqualTo(150));
+        Assert.That(ReadExperience(6), Is.EqualTo(200));
+        Assert.That(CountLedgerRows(captured.ResultId), Is.EqualTo(1));
+    }
+
+    [Test]
+    public void NullResultDoesNotBorrowCurrentCharacterOrRepairPendingProgression()
+    {
+        SeedCharacterProfile(charid: 5, experience: 100);
+        GameOptions.characterId = 5;
+        Assert.That(PendingProgressionStore.Queue(accountId, "waiting", 5, 50f), Is.True);
+
+        MatchProgressionResult result = new ProgressionService().ApplyMatchResult(null);
+
+        Assert.That(result.Applied, Is.False);
+        Assert.That(result.Duplicate, Is.False);
+        Assert.That(result.CharacterId, Is.Zero);
+        Assert.That(result.ExperienceGained, Is.Zero);
+        Assert.That(result.Message, Does.Contain("null match result"));
+        Assert.That(ReadExperience(5), Is.EqualTo(100));
+        Assert.That(CountLedgerRows(result.ResultId), Is.Zero);
+        Assert.That(CountLedgerRows("waiting"), Is.Zero);
+        Assert.That(PendingProgressionStore.GetPending(accountId).Count, Is.EqualTo(1));
+    }
 
     [Test]
     public void ApplyingANewResultUpdatesSqliteAndRequiresNoJsonFile()

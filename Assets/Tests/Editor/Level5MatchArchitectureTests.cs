@@ -48,13 +48,10 @@ public class Level5MatchArchitectureTests
         // account, api and persistence: their own owners, plan phase 11
         "APIHelper.cs",
         "HighScoreModel.cs",
-        "DBConnector.cs",
-        "DBHelper.cs",
         "PlayerData.cs",
         "UserAccountManager.cs",
         "LocalAccount.cs",
         "LoadManager.cs", // Existing account identity consumer, recorded by the #273 inventory.
-        "ProgressionService.cs",
 
         // gameplay consumers not yet migrated
         "GameLevelManager.cs",
@@ -204,9 +201,8 @@ public class Level5MatchArchitectureTests
     private static string Relative(string path) => Level5TestSourceText.Relative(path);
 
     /// <summary>
-    /// Strips comments so a commented-out reference does not count. Deliberately simple: it does
-    /// not understand strings containing comment markers, which none of these files have. Shared
-    /// with the other architecture-guard tests as <see cref="Level5TestSourceText.StripComments"/>.
+    /// Ignore comments and literals without letting comment markers inside strings hide live code
+    /// (LoadManager's account access was missed by the old regular-expression comment stripper).
     /// </summary>
-    private static string StripComments(string text) => Level5TestSourceText.StripComments(text);
+    private static string StripComments(string text) => Level5TestSourceText.StripCommentsAndLiterals(text);
 }
