@@ -20,6 +20,7 @@ namespace Level5.BackendV2
         private const int DefaultPageSize = 20;
 
         private readonly SeriesPageFetcher fetchPage;
+        private int requestGeneration;
 
         public SeriesListCoordinator(SeriesPageFetcher fetchPage)
         {
@@ -31,11 +32,16 @@ namespace Level5.BackendV2
         /// <summary>A fresh first page, replacing whatever was there before.</summary>
         public IEnumerator Refresh(int pageSize = DefaultPageSize)
         {
+            int request = ++requestGeneration;
+            long owner = BackendV2SessionStore.IdentityGeneration;
             State.BeginLoad();
             ApiResponse<SeriesSummaryPageDto> response = null;
             yield return fetchPage(pageSize, null, r => response = r);
 
-            if (response != null && response.Success)
+            if (request != requestGeneration) yield break;
+            if (owner != BackendV2SessionStore.IdentityGeneration) { Reset(); yield break; }
+
+            if (response != null && response.Success && response.Value?.Items != null)
             {
                 State.ReplaceWith(response.Value.Items, response.Value.NextCursor);
             }
@@ -55,11 +61,16 @@ namespace Level5.BackendV2
             }
 
             string cursor = State.NextCursor;
+            int request = ++requestGeneration;
+            long owner = BackendV2SessionStore.IdentityGeneration;
             State.BeginLoad();
             ApiResponse<SeriesSummaryPageDto> response = null;
             yield return fetchPage(pageSize, cursor, r => response = r);
 
-            if (response != null && response.Success)
+            if (request != requestGeneration) yield break;
+            if (owner != BackendV2SessionStore.IdentityGeneration) { Reset(); yield break; }
+
+            if (response != null && response.Success && response.Value?.Items != null)
             {
                 State.AppendPage(response.Value.Items, response.Value.NextCursor);
             }
@@ -67,6 +78,12 @@ namespace Level5.BackendV2
             {
                 State.Fail(BackendV2ErrorMessages.Describe(response));
             }
+        }
+
+        public void Reset()
+        {
+            requestGeneration++;
+            State.Reset();
         }
     }
 }

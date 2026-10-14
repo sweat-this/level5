@@ -18,6 +18,8 @@ namespace Level5.BackendV2
 
         public bool IsLoading { get; private set; }
 
+        public bool HasLoaded { get; private set; }
+
         public string ErrorMessage { get; private set; }
 
         public string NextCursor { get; private set; }
@@ -37,6 +39,7 @@ namespace Level5.BackendV2
         public void ReplaceWith(IReadOnlyList<T> items, string nextCursor = null)
         {
             Items = items ?? Array.Empty<T>();
+            HasLoaded = true;
             NextCursor = nextCursor;
             IsLoading = false;
             ErrorMessage = null;
@@ -51,6 +54,7 @@ namespace Level5.BackendV2
             }
 
             Items = combined;
+            HasLoaded = true;
             NextCursor = nextCursor;
             IsLoading = false;
             ErrorMessage = null;
@@ -60,6 +64,15 @@ namespace Level5.BackendV2
         {
             IsLoading = false;
             ErrorMessage = string.IsNullOrEmpty(errorMessage) ? "something went wrong" : errorMessage;
+        }
+
+        public void Reset()
+        {
+            Items = Array.Empty<T>();
+            NextCursor = null;
+            ErrorMessage = null;
+            IsLoading = false;
+            HasLoaded = false;
         }
     }
 }

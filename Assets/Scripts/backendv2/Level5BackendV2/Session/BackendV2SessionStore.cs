@@ -19,6 +19,9 @@ namespace Level5.BackendV2
 
         public static bool IsAuthenticated => Current != null;
 
+        /// <summary>Changes on logout or player change, not access-token rotation.</summary>
+        public static long IdentityGeneration { get; private set; }
+
         /// <summary>Fires on every <see cref="Set"/> and <see cref="Clear"/>, including a silent
         /// background refresh inside <c>AuthenticatedApiClientBase</c> that never goes through an
         /// explicit login/logout call - the only reliable point to keep a persisted copy in sync.
@@ -27,12 +30,15 @@ namespace Level5.BackendV2
 
         public static void Set(BackendV2Session session)
         {
-            Current = session ?? throw new ArgumentNullException(nameof(session));
+            if (session == null) throw new ArgumentNullException(nameof(session));
+            if (Current?.PlayerId != session.PlayerId) IdentityGeneration++;
+            Current = session;
             Changed?.Invoke(Current);
         }
 
         public static void Clear()
         {
+            IdentityGeneration++;
             Current = null;
             Changed?.Invoke(null);
         }

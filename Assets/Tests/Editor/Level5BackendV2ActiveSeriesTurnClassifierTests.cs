@@ -12,7 +12,7 @@ namespace Level5.BackendV2.Tests
         public void SetUp()
         {
             BackendV2SessionStore.Set(new BackendV2Session(
-                "access-token", DateTimeOffset.UtcNow.AddHours(1), Guid.NewGuid(), "refresh-token",
+                "access-token", DateTimeOffset.UtcNow.AddHours(1), Guid.Parse("8f14e45f-ceea-467e-a4d9-b3e5c76f1a3a"), "refresh-token",
                 DateTimeOffset.UtcNow.AddDays(30)));
         }
 
@@ -33,7 +33,7 @@ namespace Level5.BackendV2.Tests
                 Status = "Active",
                 CurrentGameNumber = 1,
                 TotalGames = 3,
-                Revision = 1,
+                Revision = 4,
                 CreatedAt = DateTimeOffset.UtcNow,
             };
         }
@@ -75,7 +75,7 @@ namespace Level5.BackendV2.Tests
         {
             Guid id = Guid.NewGuid();
             FakeApiTransport transport = new FakeApiTransport();
-            transport.Enqueue(RawApiResponse.Completed(200, BackendV2Fixtures.SeriesDetail));
+            transport.Enqueue(RawApiResponse.Completed(200, BackendV2Fixtures.SeriesDetail.Replace("4c23c3d8-4040-4b1f-8d3f-9b8d3c2e5f6a", id.ToString())));
             BackendV2Runtime.Override(transport);
 
             ActiveSeriesTurnClassifier classifier = new ActiveSeriesTurnClassifier();
@@ -93,8 +93,8 @@ namespace Level5.BackendV2.Tests
         {
             Guid id = Guid.NewGuid();
             FakeApiTransport transport = new FakeApiTransport();
-            transport.Enqueue(RawApiResponse.Completed(200, BackendV2Fixtures.SeriesDetail));
-            transport.Enqueue(RawApiResponse.Completed(200, BackendV2Fixtures.SeriesDetail));
+            transport.Enqueue(RawApiResponse.Completed(200, BackendV2Fixtures.SeriesDetail.Replace("4c23c3d8-4040-4b1f-8d3f-9b8d3c2e5f6a", id.ToString())));
+            transport.Enqueue(RawApiResponse.Completed(200, BackendV2Fixtures.SeriesDetail.Replace("4c23c3d8-4040-4b1f-8d3f-9b8d3c2e5f6a", id.ToString())));
             BackendV2Runtime.Override(transport);
 
             ActiveSeriesTurnClassifier classifier = new ActiveSeriesTurnClassifier();
@@ -127,13 +127,14 @@ namespace Level5.BackendV2.Tests
             // Real network latency means classifying a full page sequentially can take several
             // seconds - the caller must be able to render each row as it settles instead of blocking
             // the whole tab on the slowest one.
+            Guid id = Guid.NewGuid();
             FakeApiTransport transport = new FakeApiTransport();
-            transport.Enqueue(RawApiResponse.Completed(200, BackendV2Fixtures.SeriesDetail));
-            transport.Enqueue(RawApiResponse.Completed(200, BackendV2Fixtures.SeriesDetail));
+            transport.Enqueue(RawApiResponse.Completed(200, BackendV2Fixtures.SeriesDetail.Replace("4c23c3d8-4040-4b1f-8d3f-9b8d3c2e5f6a", id.ToString())));
+            transport.Enqueue(RawApiResponse.Completed(200, BackendV2Fixtures.SeriesDetail.Replace("4c23c3d8-4040-4b1f-8d3f-9b8d3c2e5f6a", id.ToString())));
             BackendV2Runtime.Override(transport);
 
             ActiveSeriesTurnClassifier classifier = new ActiveSeriesTurnClassifier();
-            List<SeriesSummaryDto> items = new List<SeriesSummaryDto> { Summary(Guid.NewGuid()), Summary(Guid.NewGuid()) };
+            List<SeriesSummaryDto> items = new List<SeriesSummaryDto> { Summary(id), Summary(Guid.NewGuid()) };
 
             List<int> classifiedCountAtEachCallback = new List<int>();
             CoroutineTestRunner.RunToCompletion(classifier.ClassifyAll(
