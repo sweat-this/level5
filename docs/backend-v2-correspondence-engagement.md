@@ -1,5 +1,7 @@
 # Correspondence engagement — #265–#268
 
+The original implementation audit below is historical. See the [post-merge re-audit](#post-merge-re-audit-2026-10-14) for the current dev baseline and fresh validation.
+
 ## Verified baseline (2026-10-14)
 
 Fetched dev: Unity `361468742791799da44c6a9f1401cd37560086f5`; backend `a5dc81e28d5c23a0b64ea4a5071e02c808f51d2b`. Unity 6000.5.7f1. All four issues open; no open Unity PRs at initial audit. Backend is read-only for this work.
@@ -8,7 +10,7 @@ Fetched dev: Unity `361468742791799da44c6a9f1401cd37560086f5`; backend `a5dc81e2
 
 - #265: Incoming/Outgoing/Your Turn/Active/Completed/History, typed paged queries and shared detail classification exist. No consolidated inbox. Load-more did not classify appended active rows; commands refreshed only their owner list. Concurrent refreshes could overwrite newer state.
 - #266: No acknowledgement store. Revisions include invisible changes, so revision-based unread identities are unsafe. Existing AtomicFile supports validated backup recovery.
-- #267: INotificationWriter and NotificationDraft express recipient/source/kind/copy/action/durable event key; PostgreSQL uniqueness and authenticated list/read exist. No correspondence producer. Only Social.SendFriendRequestUseCase calls this writer; Blood Money chat has separate policy work.
+- #267: INotificationWriter and NotificationDraft express recipient/source/kind/copy/action/durable event key; PostgreSQL uniqueness and authenticated list/read exist. No Level 5 correspondence producer. Social.SendFriendRequestUseCase and the separate Blood Money chat store use the writer; neither produces the Level 5 correspondence events defined below.
 - #268: Backend detail and summaries contain public Challenger/Opponent identities; Unity omits them. Completed excludes Declined/Cancelled/Expired. No remote rivalry aggregate or current ruleset-discovery endpoint. ChallengeFormState retains retry IDs without binding them to the logical payload. Create lacks an async submission guard.
 
 ## Existing data flow
@@ -155,3 +157,38 @@ Final affected validation, Unity 6000.5.7f1: `-batchmode -force-d3d11 -projectPa
 Earlier 138/138 EditMode, 9/9 PlayMode/live and 36/36 backend notification results above remain evidence for unchanged feature contracts; they were not rerun for these UI-only corrections. Final dev refresh remains `361468742791799da44c6a9f1401cd37560086f5`, with PR #306 as the only open Unity PR.
 
 Repository validation also passed after adding the ordering fixture and metadata (exit 0).
+
+## Post-merge re-audit (2026-10-14)
+
+Fetched current `dev` for both repositories: Unity `7fc803c69c4b32b702238e3008fd29602ea0d93c`; backend `a5dc81e28d5c23a0b64ea4a5071e02c808f51d2b`. Unity remains pinned to 6000.5.7f1 (`017862109af0`). [PR #306](https://github.com/sweat-this/level5/pull/306) is merged into dev at the Unity SHA above; all four issues are closed and there were no open Unity PRs. The pasted request's Unity baseline is the parent of this merged implementation.
+
+| Issue | Current-source acceptance | Implementation decision |
+| --- | --- | --- |
+| #265 | PASS: existing caches supply incoming, confirmed turns, waiting, completed and unconfirmed rows; GUID/revision deduplication, opaque pagination, source coverage, preserved detailed tabs and transition/result refresh are present. Request generations reject superseded responses. | No runtime change needed. |
+| #266 | PASS: challenge/series/game event keys, explicit Mark read, validated AtomicFile recovery, failed-write behavior and GUID-scoped account isolation are present. Rendering and arbitrary revisions do not acknowledge or create events. | No runtime change needed. |
+| #267 | PASS for boundary scope: existing writer/draft define recipient, source event, deduplication, safe copy, visibility, lifecycle and optional action. Competition use cases have no notification writer/provider dependency. Social and separate Blood Money chat producers exist; Level 5 correspondence producers do not. | Reuse the documented existing boundary; no backend change or delivery claim. |
+| #268 | PASS: additive public identities, opposite-participant GUID resolution, bounded completed history, fresh friendship/detail preparation, normal guarded Create, exact-version rejection and payload-bound retry IDs are present. Declined/Cancelled/Expired are not completed play. | No runtime change needed. |
+
+Review pass 1 rechecked correctness before any edits: duplicate and stale rows, unknown turns, partial pages/errors, account changes, overlapping requests, explicit acknowledgement and corrupt-file recovery, terminal status separation, obsolete rules, friend removal, duplicate creation and pending-result ownership. The runtime implementation and focused fixtures already cover these requirements. The concrete discrepancy was documentation: the older UI guide described ambiguous turns as playable, omitted Inbox from its tab inventory and listed only Validation as a definitive create failure. Refine the work to correcting those descriptions rather than implementing the merged feature again.
+
+Review pass 2 rechecked architecture, privacy and regressions: typed clients and existing paged coordinators retain query ownership; Backend V2 retains competition authority; no local RivalryRecord or duplicate aggregate is used; acknowledgement storage contains metadata only; classification never reads metrics; rematch has one normal Create path; assembly and runtime-built UI constraints remain respected. Correct the notification producer inventory to include the separate Blood Money chat writer caller. No production, backend, asset, package or serialization change is justified. The existing/target diagrams and implementation file manifest above describe the merged source; this re-audit changes only this document and `docs/backend-v2-correspondence-ui.md`.
+
+Fresh validation on the current Unity SHA, with the entire local persistence directory backed up/restored for each Unity process:
+
+| Check | Result | Process exit / evidence |
+| --- | --- | --- |
+| `scripts/validate-repository.ps1` | PASS | 0; `TestResults/engagement-reaudit/repository.log` |
+| Unity EditMode, exact editFilter listed above | 138 total, 138 passed, 0 failed/skipped/inconclusive | 0; `TestResults/engagement-reaudit/editmode.xml` |
+| Unity graphics-enabled PlayMode, filter below | 14 total, 14 passed, 0 failed/skipped/inconclusive | 0; `TestResults/engagement-reaudit/ordering-fixes.xml` |
+| Backend notification application tests, command above with new results directory | 21 total, 21 passed, 0 failed/skipped | 0; `TestResults/engagement-reaudit/backend-application/*.trx` |
+| Backend notification domain tests, command above with new results directory | 15 total, 15 passed, 0 failed/skipped | 0; `TestResults/engagement-reaudit/backend-domain/*.trx` |
+
+The fresh Unity commands use the pinned executable and flags already documented above, with output under `TestResults/engagement-reaudit`. Fresh PlayMode testFilter:
+
+```text
+Level5BackendV2CorrespondenceOrderingPlayModeTests;Level5BackendV2CorrespondenceScenePlayModeTests;BackendV2RemoteAttemptResultDurabilityPlayModeTests
+```
+
+This includes scene loading, automatic-navigation reachability, account/read-state lifecycle, pagination, rematch retry identity, accept/refresh convergence, asynchronous UI ordering and pending-result durability. NUnit reports `asserts=0`; the counts are actual test-case results. The EditMode filter also covers local correspondence, remote launch/submission, pending-result storage and architecture. Unity's generated solution project-order change was restored; no generated scene or persistence data is part of the patch.
+
+The earlier 9/9 PlayMode/live XML was inspected and its disposable-account live engagement case passed. That evidence is reused for unchanged wire contracts; **no fresh live server mutation or notification-delivery test ran in this re-audit**. Full Unity suites, physical/manual UX, built Player/IL2CPP and hosted CI remain outside the fresh evidence. There is no unresolved implementation dependency for #265–#268. Future ruleset discovery or actual correspondence notification emission still needs separate backend scope and transactional/privacy validation as described above.

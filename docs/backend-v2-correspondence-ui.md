@@ -44,10 +44,13 @@ can reach them.
 
 ## UI flow
 
-One scene, seven sub-panels rendered into a single content area (not seven persistent panel
+One scene, eight sub-panels rendered into a single content area (not eight persistent panel
 GameObjects - the coordinators below already hold each tab's state, so switching tabs just
-re-renders from that state rather than needing seven parallel hierarchies):
+re-renders from that state rather than needing eight parallel hierarchies):
 
+- **Inbox** - a read-only, deduplicated projection of the existing fetched series pages: incoming,
+  confirmed current turns, waiting, completed and unconfirmed. Counts and source coverage describe
+  loaded pages only; explicit Mark read acknowledges a meaningful visible event for this account.
 - **Friends** - resolve-by-tag + send request, incoming/outgoing friend requests
   (accept/decline/cancel), friends list (remove, or start a challenge from that row).
 - **Incoming Challenges** - `ICorrespondenceApiClient.ListIncoming`, accept/decline.
@@ -78,7 +81,7 @@ fetched DTO snapshot, an opaque pagination cursor (forwarded verbatim, never par
 a command in flight:
 
 - `ListViewState<T>` - items/loading/error/cursor, shared by every list (friends, both friend-request
-  lists, all four series lists).
+  lists, all five series lists).
 - `RowCommandState` - which row (by id) has a command outstanding; a coordinator refuses a second
   concurrent command for the same row rather than merely disabling a button a player could still
   tap (see `Level5BackendV2FriendsCoordinatorTests`/`Level5BackendV2ChallengeCoordinatorTests`).
@@ -95,15 +98,15 @@ affects afterward rather than guessing the new state locally.
 ### Whose turn (`SeriesRowClassifier`)
 
 A `SeriesSummaryDto` (what the list endpoints return) does not say whose turn it is - only a detail
-fetch (`SeriesResponseDto`, with its `Games[]`) does. `SeriesRowClassifier.ClassifyTurn` reads only
-`Games[CurrentGameNumber].YourAttempt` (presence, and its `Status`) - **never**
-`OpponentAttempt`, which is exactly the field the server's own sealed-result projection may still be
-withholding. Ambiguous cases default to "your turn": starting an attempt that is not actually
-available is safely refused server-side, whereas wrongly defaulting to "opponent's turn" would hide
-an actionable turn from the player. The exact string Backend V2 uses for a completed attempt's
-`Status` is inferred as `"Completed"` (consistent with the `"Pending"`/`"Active"` series-status
-values already confirmed in `Assets/Tests/Editor/BackendV2Fixtures.cs`) - confirm this against the
-live backend as part of certification (see the certification doc's notes).
+fetch (`SeriesResponseDto`, with its `Games[]`) does. `ActiveSeriesTurnClassifier` accepts detail
+only for the current account and the loaded series ID, revision and game. Missing, stale, failed or
+ambiguous detail stays `Unknown`; the inbox shows it as unconfirmed without a Play action or unread
+event. `SeriesRowClassifier` uses participant-visible attempt status and the frozen information
+policy, never result metrics. Under SealedAttempt, an unfinished own attempt is available. Under
+OpenTarget, the responder waits for the first mover's public Completed attempt status, respecting
+alternating first movers. The backend creates rounds lazily: a complete detail with no current round
+can confirm an unstarted turn, while a null Games list cannot. These response shapes and status
+values were verified by the [live engagement probe](backend-v2-correspondence-engagement.md).
 
 **Cost note:** classifying the Active tab is one detail fetch per row (`ICorrespondenceApiClient.Get`)
 - O(n) per page. Acceptable at correspondence scale (a handful of concurrent series per player);
@@ -115,11 +118,13 @@ of scope for this issue.
 **Challenge create** (`ChallengeFormState.GetOrBeginClientRequestId`): a `clientRequestId` is
 generated once per logical "create this challenge" action and reused across a retry of that exact
 action - `ChallengeCoordinator.Create` never generates a new one on its own. The screen decides
-when a submission is *definitive* (success, or a `Validation` failure - the player must change the
-form) versus merely *retryable* (network/server failure - tapping "Send Challenge" again should
-resend the identical request): only a definitive outcome calls
+when a submission is *definitive* (success, `Validation`, `Forbidden`, `NotFound` or `Conflict`)
+versus an uncertain outcome such as a network/server failure, for which tapping "Send Challenge"
+again resends the identical request. A definitive outcome calls
 `ChallengeFormState.CompleteSubmission()`, which clears the id so a later, genuinely new challenge
-gets a fresh one.
+gets a fresh one. Changing any semantic draft field also clears the request ID; assigning the same
+value preserves it. The coordinator snapshots the payload and guards concurrent creation, and
+rematches use this same path with an explicit historic ruleset version validated by the server.
 
 **Result submission** (`RemoteAttemptResultSubmitter` + `PendingRemoteAttemptResult`): unchanged
 from #158 up to the point a submission fails for a retryable reason (network/server/validation/auth
