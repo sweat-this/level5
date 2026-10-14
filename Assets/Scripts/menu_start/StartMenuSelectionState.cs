@@ -49,12 +49,16 @@ public sealed class StartMenuSelectionState
         LevelIndex = GameOptions.levelSelectedIndex;
         ModeIndex = GameOptions.modeSelectedIndex;
         TrafficEnabled = GameOptions.trafficEnabled;
-        HardcoreEnabled = GameOptions.hardcoreModeEnabled;
+        HardcoreEnabled = ReadPersistedHardcorePreference();
         ObstaclesEnabled = GameOptions.obstaclesEnabled;
 
         // Difficulty deliberately does not persist: the menu has always reset it to normal on load.
         Difficulty = MatchDifficulty.Normal;
     }
+
+    // Startup record queries use the same last-launch preference as menu re-entry, even when
+    // there is no configured match. #275 owns retirement of its current compatibility storage.
+    public static bool ReadPersistedHardcorePreference() => GameOptions.hardcoreModeEnabled;
 
     public void SavePersistedPreferences()
     {

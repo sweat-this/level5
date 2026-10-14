@@ -792,14 +792,14 @@ public class Level5MatchHudPresenterCompositionTests
             PlayerData data = SpawnPlayerDataWithoutAwake("data");
             PlayerData.instance = data;
             GameOptions.hardcoreModeEnabled = hardcore;
-            data.loadStatsFromDatabase();
+            data.loadStatsFromDatabase(hardcore);
             var snapshot = (MatchHudPresenter.HighScoreSnapshot)
                 GameRulesAdapterMethod("ReadHighScoreSnapshotForHud").Invoke(null, null);
             Assert.That(data.LongestShotMadeArcade, Is.EqualTo(arcade));
             Assert.That(snapshot.LongestShotMadeArcade, Is.EqualTo(arcade));
             Assert.That(snapshot.LongestShotMadeFreePlay, Is.EqualTo(freePlay));
             Sql(database.Helper, "DELETE FROM HighScores WHERE modeid = 98");
-            data.loadStatsFromDatabase();
+            data.loadStatsFromDatabase(hardcore);
             Assert.That(data.LongestShotMadeArcade, Is.Zero, "missing Arcade history cannot fall back to Free Play");
             Assert.That(data.LongestShotMadeFreePlay, Is.EqualTo(freePlay));
         }

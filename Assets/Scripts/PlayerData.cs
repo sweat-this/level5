@@ -108,22 +108,18 @@ public class PlayerData : MonoBehaviour
         if (GameObject.FindGameObjectsWithTag("database") != null)
         {
             //Debug.Log("load player high scores");
-            loadStatsFromDatabase();
+            loadStatsFromDatabase(StartMenuSelectionState.ReadPersistedHardcorePreference());
         }
     }
 
-    public void loadStatsFromDatabase()
+    public void loadStatsFromDatabase(bool hardcoreEnabled)
     {
         //Debug.Log("Player Data -- load from database -- high scores");
         //Debug.Log("DBHelper.instance == null : "+ (DBHelper.instance == null));
 
         if (DBHelper.instance != null)
         {
-            int hardcoreValue = 0;
-            if (GameOptions.hardcoreModeEnabled)
-            {
-                hardcoreValue = 1;
-            }
+            int hardcoreValue = hardcoreEnabled ? 1 : 0;
             //Debug.Log("hardcoreValue : "+ hardcoreValue);
 
             _totalPoints = DBHelper.instance.getIntValueHighScoreFromTableByFieldAndModeId("HighScores", "totalPoints", 1, "DESC", hardcoreValue);

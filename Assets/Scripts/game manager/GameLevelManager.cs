@@ -551,9 +551,9 @@ public class GameLevelManager : MonoBehaviour, IGroundHeightProvider, IPlayerMat
     /// <see cref="HasPlayerDataForPause"/> before calling this adapter, not by this adapter guarding
     /// itself.
     /// </summary>
-    private static void ReloadPlayerDataForPause()
+    private static void ReloadPlayerDataForPause(bool hardcoreEnabled)
     {
-        PlayerData.instance.loadStatsFromDatabase();
+        PlayerData.instance.loadStatsFromDatabase(hardcoreEnabled);
     }
 
     /// <summary>
@@ -632,10 +632,6 @@ public class GameLevelManager : MonoBehaviour, IGroundHeightProvider, IPlayerMat
             isMultiplePlayersTotalPoints = true;
         }
         // analytic event
-        if (!String.IsNullOrEmpty(GameOptions.levelSelectedName))
-        {
-            AnaylticsManager.LevelLoaded(GameOptions.levelSelectedName);
-        }
 
         _locked = false;
         //set up player/basketball read only references for use in other classes
@@ -717,7 +713,7 @@ public class GameLevelManager : MonoBehaviour, IGroundHeightProvider, IPlayerMat
                 HasDatabaseForPause,
                 DatabaseLockedForPause,
                 HasPlayerDataForPause,
-                ReloadPlayerDataForPause,
+                () => ReloadPlayerDataForPause(_rules.Hardcore),
                 PersistFreePlayStatsForPause,
                 TrySaveBattleRoyalForPause);
 

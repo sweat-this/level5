@@ -65,7 +65,6 @@ public static class GameOptions
     static public string characterObjectName;
     static public List<string> characterObjectNames;
     static public string cheerleaderObjectName;
-    static public string levelSelectedName;
     static public string levelDisplayName;
     static public string gameModeSelectedName;
 

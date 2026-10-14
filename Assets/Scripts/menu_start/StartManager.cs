@@ -1814,7 +1814,7 @@ public class StartManager : MonoBehaviour
         GameOptions.tipDialogueLoadedOnStart = false;
 
         // load hardcore mode highscores (for ui display) for game mode if hardcore mode enabled
-        PlayerData.instance.loadStatsFromDatabase();
+        PlayerData.instance.loadStatsFromDatabase(configuration.Rules.Hardcore);
     }
 
     public void loadMenu(string sceneName)

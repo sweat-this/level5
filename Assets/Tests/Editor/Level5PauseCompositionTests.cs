@@ -668,7 +668,7 @@ public class Level5PauseCompositionTests
         PlayerData.instance = null;
 
         TargetInvocationException thrown = Assert.Throws<TargetInvocationException>(
-            () => AdapterMethod("ReloadPlayerDataForPause").Invoke(null, null));
+            () => AdapterMethod("ReloadPlayerDataForPause").Invoke(null, new object[] { false }));
         Assert.That(thrown.InnerException, Is.InstanceOf<NullReferenceException>());
     }
 

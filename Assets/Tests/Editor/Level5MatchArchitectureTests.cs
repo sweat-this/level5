@@ -48,7 +48,6 @@ public class Level5MatchArchitectureTests
         // account, api and persistence: their own owners, plan phase 11
         "APIHelper.cs",
         "HighScoreModel.cs",
-        "PlayerData.cs",
         "UserAccountManager.cs",
         "LocalAccount.cs",
         "LoadManager.cs", // Existing account identity consumer, recorded by the #273 inventory.
@@ -111,8 +110,8 @@ public class Level5MatchArchitectureTests
     {
         // GameOptions is a legacy compatibility surface being retired, not somewhere to add to.
         // Count stored declarations, excluding forwarding properties and methods. The old modifier
-        // count included four non-fields. #274 A retires four of the 55 actual stored fields.
-        const int allowedPublicStaticFields = 51;
+        // count included four non-fields. #274 A/D3 retire five of the 55 actual stored fields.
+        const int allowedPublicStaticFields = 50;
 
         string text = File.ReadAllText(Path.Combine(ScriptsRoot, "menu_start", "GameOptions.cs"));
         int fields = Regex.Matches(StripComments(text),
@@ -129,6 +128,7 @@ public class Level5MatchArchitectureTests
     [TestCase("levelSelected")]
     [TestCase("numCpuPlayers")]
     [TestCase("sniperEnabled")]
+    [TestCase("levelSelectedName")]
     public void RetiredCompatibilityFieldsCannotReturn(string name)
     {
         Assert.That(typeof(GameOptions).GetField(name), Is.Null,
