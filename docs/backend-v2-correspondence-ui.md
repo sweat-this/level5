@@ -1,5 +1,7 @@
 # Backend V2 correspondence UI (issue #159)
 
+The [engagement implementation and evidence](backend-v2-correspondence-engagement.md) extends this baseline for #265–#268: Inbox is the default projection, Completed groups loaded opponent history and offers View/Rematch, and explicit Mark read persists only per-player attention keys. Existing detailed tabs remain.
+
 Companion to [`docs/backend-v2-client.md`](backend-v2-client.md) (the typed client layer, issue
 #158) and [`docs/versus-architecture.md`](versus-architecture.md) §10. This document covers the
 player-facing screen built on top of that client layer, and points at
@@ -53,7 +55,7 @@ re-renders from that state rather than needing seven parallel hierarchies):
 - **Your Turn** - `ListActive`, filtered to rows this player has not yet completed their current
   attempt for (see "Whose turn" below), with a Play action.
 - **Active Series** - every `ListActive` row, badged with whose turn it is.
-- **Completed** - `ListCompleted`, read-only. Scoped to series that actually finished play only.
+- **Completed** - `ListCompleted` plus already-loaded completed History entries, deduplicated and grouped by opponent. View fetches authoritative detail; Rematch prepares a new draft through normal challenge creation. Scoped to actually completed play, with loaded-page labels.
 - **History** - `ListHistory`, read-only. Every terminal series either participant is in -
   Completed, Declined, Cancelled, or Expired - each row labelled with its status. The durable
   correspondence-history view: unlike the other tabs, these rows never disappear on their own.

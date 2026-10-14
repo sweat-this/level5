@@ -34,6 +34,9 @@ namespace Level5.BackendV2
     {
         private static Guid? submittingAttemptId;
 
+        /// <summary>Presentation invalidation after a submission settles; carries no result data.</summary>
+        public static event Action<Guid> Settled;
+
         public static void TrySubmit(GameStats stats, GameModeId modeId, float completionTimeSeconds)
         {
             if (!ActiveRemoteAttempt.IsActive)
@@ -173,6 +176,8 @@ namespace Level5.BackendV2
                         + $"{response?.ErrorKind} ({response?.Problem?.Code}, correlation {response?.CorrelationId}).");
                     break;
             }
+
+            Settled?.Invoke(context.PlayerId);
         }
 
         /// <summary>

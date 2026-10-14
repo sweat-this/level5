@@ -33,6 +33,7 @@ public sealed class CorrespondenceScreenController : MonoBehaviour
 {
     private enum Tab
     {
+        Inbox,
         Friends,
         Incoming,
         Outgoing,
@@ -44,9 +45,9 @@ public sealed class CorrespondenceScreenController : MonoBehaviour
 
     private const int DefaultLevelId = 1;
 
-    private readonly FriendsCoordinator friends = new FriendsCoordinator();
-    private readonly ChallengeCoordinator challenges = new ChallengeCoordinator();
-    private readonly ChallengeFormState challengeForm = new ChallengeFormState();
+    private FriendsCoordinator friends = new FriendsCoordinator();
+    private ChallengeCoordinator challenges = new ChallengeCoordinator();
+    private ChallengeFormState challengeForm = new ChallengeFormState();
     private readonly ActiveSeriesTurnClassifier turnClassifier = new ActiveSeriesTurnClassifier();
 
     private SeriesListCoordinator incoming;
@@ -55,7 +56,15 @@ public sealed class CorrespondenceScreenController : MonoBehaviour
     private SeriesListCoordinator completed;
     private SeriesListCoordinator history;
 
-    private Tab currentTab = Tab.Friends;
+    private Tab currentTab = Tab.Inbox;
+    private CorrespondenceReadState readState;
+    private long identityGeneration;
+    private int tabSelectionGeneration;
+    private int completedViewGeneration;
+    private bool refreshing;
+    private bool preparingRematch;
+    private bool rematchDraft;
+    private SeriesResponseDto viewedCompleted;
     private Guid? challengingFriendId;
     private Font uiFont;
 
@@ -79,6 +88,51 @@ public sealed class CorrespondenceScreenController : MonoBehaviour
         history = new SeriesListCoordinator(BackendV2Runtime.Correspondence.ListHistory);
 
         BuildUi();
+        identityGeneration = BackendV2SessionStore.IdentityGeneration;
+        readState = BackendV2SessionStore.Current == null ? null : new CorrespondenceReadState(BackendV2SessionStore.Current.PlayerId);
+        BackendV2SessionStore.Changed += OnSessionChanged;
+        RemoteAttemptResultSubmitter.Settled += OnResultSettled;
+    }
+
+    private void OnDestroy()
+    {
+        BackendV2SessionStore.Changed -= OnSessionChanged;
+        RemoteAttemptResultSubmitter.Settled -= OnResultSettled;
+    }
+
+    private void OnResultSettled(Guid player)
+    {
+        if (isActiveAndEnabled && BackendV2SessionStore.Current?.PlayerId == player)
+            StartCoroutine(RefreshAll());
+    }
+
+    private void OnSessionChanged(BackendV2Session session)
+    {
+        if (identityGeneration == BackendV2SessionStore.IdentityGeneration) return;
+        identityGeneration = BackendV2SessionStore.IdentityGeneration;
+        StopAllCoroutines();
+        tabSelectionGeneration++;
+        completedViewGeneration++;
+        refreshing = false;
+        preparingRematch = false;
+        rematchDraft = false;
+        challengingFriendId = null;
+        viewedCompleted = null;
+        friends = new FriendsCoordinator();
+        challenges = new ChallengeCoordinator();
+        challengeForm = new ChallengeFormState();
+        foreach (var list in new[] { incoming, outgoing, active, completed, history }) list.Reset();
+        turnClassifier.Reset();
+        readState = session == null ? null : new CorrespondenceReadState(session.PlayerId);
+        RenderCurrentTab();
+        if (session == null) ShowLoginPanel(null);
+        else StartCoroutine(ResumeNextFrame());
+    }
+
+    private IEnumerator ResumeNextFrame()
+    {
+        yield return null;
+        yield return Resume();
     }
 
     private void Start()
@@ -102,15 +156,23 @@ public sealed class CorrespondenceScreenController : MonoBehaviour
 
     private IEnumerator RefreshAll()
     {
-        yield return friends.RefreshAll();
-        yield return incoming.Refresh();
-        yield return outgoing.Refresh();
-        yield return active.Refresh();
-        yield return completed.Refresh();
-        yield return history.Refresh();
-        turnClassifier.Reset();
-        yield return turnClassifier.ClassifyAll(active.State.Items, RenderCurrentTab);
-        RenderCurrentTab();
+        while (refreshing) yield return null;
+        refreshing = true;
+        try
+        {
+            completedViewGeneration++;
+            viewedCompleted = null;
+            turnClassifier.Reset();
+            yield return friends.RefreshAll();
+            foreach (var list in new[] { incoming, outgoing, active, completed, history })
+            {
+                yield return list.Refresh();
+                RenderCurrentTab();
+            }
+            yield return turnClassifier.ClassifyAll(active.State.Items, RenderCurrentTab);
+            RenderCurrentTab();
+        }
+        finally { refreshing = false; }
     }
 
     // ------------------------------------------------------------------ login
@@ -155,41 +217,50 @@ public sealed class CorrespondenceScreenController : MonoBehaviour
     private void SelectTab(Tab tab)
     {
         currentTab = tab;
-        StartCoroutine(RefreshTabThenRender(tab));
+        int selection = ++tabSelectionGeneration;
+        RenderCurrentTab();
+        if (tab != Tab.Inbox) StartCoroutine(RefreshTabThenRender(tab, selection));
     }
 
-    private IEnumerator RefreshTabThenRender(Tab tab)
+    private IEnumerator RefreshTabThenRender(Tab tab, int selection)
     {
-        switch (tab)
+        while (refreshing && selection == tabSelectionGeneration) yield return null;
+        if (selection != tabSelectionGeneration) yield break;
+        refreshing = true;
+        try
         {
-            case Tab.Friends:
-                yield return friends.RefreshAll();
-                break;
-            case Tab.Incoming:
-                yield return incoming.Refresh();
-                break;
-            case Tab.Outgoing:
-                yield return outgoing.Refresh();
-                break;
-            case Tab.YourTurn:
-            case Tab.Active:
-                yield return active.Refresh();
-                turnClassifier.Reset();
-                RenderCurrentTab();
-                // Classification is a request per row and can take several seconds at real network
-                // latency (see the doc comment on ClassifyAll) - render each row's turn as soon as
-                // it is known instead of blocking this whole tab on the slowest one.
-                yield return turnClassifier.ClassifyAll(active.State.Items, RenderCurrentTab);
-                break;
-            case Tab.Completed:
-                yield return completed.Refresh();
-                break;
-            case Tab.History:
-                yield return history.Refresh();
-                break;
-        }
+            switch (tab)
+            {
+                case Tab.Friends:
+                    yield return friends.RefreshAll();
+                    break;
+                case Tab.Incoming:
+                    yield return incoming.Refresh();
+                    break;
+                case Tab.Outgoing:
+                    yield return outgoing.Refresh();
+                    break;
+                case Tab.YourTurn:
+                case Tab.Active:
+                    turnClassifier.Reset();
+                    yield return active.Refresh();
+                    RenderCurrentTab();
+                    // Classification is a request per row and can take several seconds at real network
+                    // latency (see the doc comment on ClassifyAll) - render each row's turn as soon as
+                    // it is known instead of blocking this whole tab on the slowest one.
+                    yield return turnClassifier.ClassifyAll(active.State.Items, RenderCurrentTab);
+                    break;
+                case Tab.Completed:
+                    yield return completed.Refresh();
+                    break;
+                case Tab.History:
+                    yield return history.Refresh();
+                    break;
+            }
 
-        RenderCurrentTab();
+            RenderCurrentTab();
+        }
+        finally { refreshing = false; }
     }
 
     private void RenderCurrentTab()
@@ -211,6 +282,9 @@ public sealed class CorrespondenceScreenController : MonoBehaviour
 
         switch (currentTab)
         {
+            case Tab.Inbox:
+                RenderInbox();
+                break;
             case Tab.Friends:
                 RenderFriendsTab();
                 break;
@@ -235,6 +309,123 @@ public sealed class CorrespondenceScreenController : MonoBehaviour
         }
     }
 
+    private IReadOnlyList<CorrespondenceInboxRow> InboxRows() => CorrespondenceInbox.Build(
+        BackendV2SessionStore.Current?.PlayerId ?? Guid.Empty, turnClassifier,
+        incoming.State, outgoing.State, active.State, completed.State, history.State);
+
+    private void RenderInbox()
+    {
+        CreateHeader("Correspondence inbox — loaded pages only");
+        CreateRow("Counts describe loaded rows, not lifetime totals. Use Refresh to check current server state.");
+        var rows = InboxRows();
+        foreach (InboxCategory category in Enum.GetValues(typeof(InboxCategory)))
+        {
+            var items = rows.Where(r => r.Category == category).ToList();
+            string title = category == InboxCategory.Incoming ? "Incoming challenges"
+                : category == InboxCategory.YourTurn ? "Your turn"
+                : category == InboxCategory.Waiting ? "Waiting / outstanding"
+                : category == InboxCategory.Completed ? "Completed (loaded records)" : "Unconfirmed";
+            CreateHeader(title + " (" + items.Count + " loaded)");
+            if (items.Count == 0) CreateRow("No loaded items in this category.");
+            foreach (var item in items)
+            {
+                var actions = AttentionActions(item);
+                if (item.Category == InboxCategory.Incoming)
+                {
+                    actions.Add(("Accept", () => StartCoroutine(RunChallengeCommand(challenges.Accept(item.Series.Id, incoming, SetStatus)))));
+                    actions.Add(("Decline", () => StartCoroutine(RunChallengeCommand(challenges.Decline(item.Series.Id, incoming, SetStatus)))));
+                }
+                else if (item.Category == InboxCategory.YourTurn)
+                    actions.Add(("Play", () => StartCoroutine(PlayTurn(item.Series.Id, item.Series.CurrentGameNumber))));
+                else if (item.Category == InboxCategory.Completed)
+                {
+                    actions.Add(("View", () => StartCoroutine(ViewCompleted(item.Series.Id))));
+                    actions.Add(("Rematch", () => StartCoroutine(PrepareRematch(item.Series.Id))));
+                }
+                CreateRow(AttentionLabel(item) + DescribeSeries(item.Series), actions.ToArray());
+            }
+        }
+        CreateHeader("Source coverage");
+        foreach (var source in new[] { ("Incoming", incoming), ("Outgoing", outgoing), ("Active", active), ("Completed", completed), ("History", history) })
+        {
+            CreateRow(source.Item1 + ": " + Scope(source.Item2.State));
+            if (source.Item2.State.HasMore)
+                CreateRow(string.Empty, ("More " + source.Item1, () => StartCoroutine(RunLoadMore(source.Item2))));
+        }
+        if (turnClassifier.IsLoading) CreateRow("Checking active turns...");
+        if (turnClassifier.ErrorMessage != null) CreateRow(turnClassifier.ErrorMessage);
+        RenderViewedCompleted();
+    }
+
+    private static string Scope(ListViewState<SeriesSummaryDto> state) => state.IsLoading ? "loading; cached rows unconfirmed"
+        : state.ErrorMessage != null ? "failed: " + state.ErrorMessage + "; cached rows unconfirmed"
+        : !state.HasLoaded ? "not loaded" : state.Items.Count + " loaded" + (state.HasMore ? "; more pages available" : "; end of fetched query");
+
+    private string AttentionLabel(CorrespondenceInboxRow row) => readState?.IsUnread(row.AttentionKey) == true ? "Unread — " : string.Empty;
+
+    private List<(string, Action)> AttentionActions(CorrespondenceInboxRow row)
+    {
+        var actions = new List<(string, Action)>();
+        long owner = BackendV2SessionStore.IdentityGeneration;
+        if (row.AttentionKey != null && readState?.IsUnread(row.AttentionKey) == true)
+            actions.Add(("Mark read", () =>
+            {
+                if (owner != BackendV2SessionStore.IdentityGeneration) return;
+                if (!readState.Acknowledge(row.AttentionKey)) SetStatus(readState.ErrorMessage);
+                RenderCurrentTab();
+            }
+            ));
+        return actions;
+    }
+
+    private IEnumerator PrepareRematch(Guid seriesId)
+    {
+        if (preparingRematch || challenges.IsCreating) yield break;
+        preparingRematch = true;
+        try
+        {
+            ChallengeFormState draft = null;
+            string error = null;
+            yield return CorrespondenceRematch.Prepare(seriesId, VersusCatalogs.Rulesets, (f, e) => { draft = f; error = e; });
+            if (draft == null) { SetStatus(error); yield break; }
+            challengeForm = draft;
+            challengingFriendId = draft.OpponentId;
+            rematchDraft = true;
+            currentTab = Tab.Friends;
+            SetStatus("Rematch prepared. Review and send; the server checks current friendship and exact rules availability.");
+            RenderCurrentTab();
+        }
+        finally { preparingRematch = false; }
+    }
+
+    private IEnumerator ViewCompleted(Guid seriesId)
+    {
+        int request = ++completedViewGeneration;
+        long owner = BackendV2SessionStore.IdentityGeneration;
+        ApiResponse<SeriesResponseDto> response = null;
+        yield return BackendV2Runtime.Correspondence.Get(seriesId, r => response = r);
+        if (owner != BackendV2SessionStore.IdentityGeneration || request != completedViewGeneration) yield break;
+        if (response?.Success != true || response.Value?.Id != seriesId || response.Value.Status != "Completed"
+            || !CorrespondenceInbox.OpponentId(BackendV2SessionStore.Current?.PlayerId ?? Guid.Empty,
+                response.Value.ChallengerId, response.Value.OpponentId).HasValue)
+        { SetStatus("could not view completed series: " + BackendV2ErrorMessages.Describe(response)); yield break; }
+        viewedCompleted = response.Value;
+        RenderCurrentTab();
+    }
+
+    private void RenderViewedCompleted()
+    {
+        if (viewedCompleted == null) return;
+        CreateHeader("Selected completed series " + viewedCompleted.Id.ToString().Substring(0, 8));
+        string outcome = !viewedCompleted.WinnerId.HasValue ? "Draw / no winner"
+            : viewedCompleted.WinnerId == BackendV2SessionStore.Current?.PlayerId ? "You won"
+            : viewedCompleted.WinnerId == CorrespondenceInbox.OpponentId(BackendV2SessionStore.Current?.PlayerId ?? Guid.Empty,
+                viewedCompleted.ChallengerId, viewedCompleted.OpponentId) ? "Opponent won" : "Winner unavailable";
+        CreateRow(outcome + "; best of " + viewedCompleted.TotalGames + "; completed "
+            + viewedCompleted.CompletedAt?.ToString("u") + "; rules " + viewedCompleted.Rules?.RulesetId
+            + " v" + viewedCompleted.Rules?.RulesetVersion);
+    }
+
     private void RenderPendingResultBanner()
     {
         if (!PendingRemoteAttemptResult.HasPending)
@@ -248,7 +439,8 @@ public sealed class CorrespondenceScreenController : MonoBehaviour
             {
                 bool started = RemoteAttemptResultSubmitter.TryRetryPending();
                 SetStatus(started ? "resending pending result..." : "a resend is already in progress");
-            }));
+            }
+        ));
         row.transform.SetAsFirstSibling();
     }
 
@@ -277,8 +469,8 @@ public sealed class CorrespondenceScreenController : MonoBehaviour
             Guid requestId = request.Id;
             CreateRow(
                 $"from {request.FromPlayerId}",
-                ("Accept", () => StartCoroutine(RunFriendCommand(friends.Accept(requestId, _ => { })))),
-                ("Decline", () => StartCoroutine(RunFriendCommand(friends.Decline(requestId, _ => { })))));
+                ("Accept", () => StartCoroutine(RunFriendCommand(friends.Accept(requestId, e => SetStatus(e ?? "updated"))))),
+                ("Decline", () => StartCoroutine(RunFriendCommand(friends.Decline(requestId, e => SetStatus(e ?? "updated"))))));
         }
 
         CreateHeader($"Outgoing Friend Requests ({friends.Outgoing.Items.Count})");
@@ -288,7 +480,7 @@ public sealed class CorrespondenceScreenController : MonoBehaviour
             Guid requestId = request.Id;
             CreateRow(
                 $"to {request.ToPlayerId}",
-                ("Cancel", () => StartCoroutine(RunFriendCommand(friends.Cancel(requestId, _ => { })))));
+                ("Cancel", () => StartCoroutine(RunFriendCommand(friends.Cancel(requestId, e => SetStatus(e ?? "updated"))))));
         }
 
         CreateHeader($"Friends ({friends.Friends.Items.Count})");
@@ -300,40 +492,51 @@ public sealed class CorrespondenceScreenController : MonoBehaviour
                 $"{friend.DisplayName} ({friend.Tag})",
                 ("Challenge", () =>
                 {
+                    if (challenges.IsCreating || preparingRematch) return;
+                    rematchDraft = false;
+                    challengeForm = new ChallengeFormState
+                    {
+                        OpponentId = playerId,
+                        RulesetId = VersusCatalogs.Rulesets.Supporting(VersusCapability.Asynchronous).FirstOrDefault()?.Id.Value
+                    };
                     challengingFriendId = playerId;
-                    challengeForm.OpponentId = playerId;
                     RenderCurrentTab();
-                }),
-                ("Remove", () => StartCoroutine(RunFriendCommand(friends.Remove(playerId, _ => { })))));
+                }
+            ),
+                ("Remove", () => StartCoroutine(RunFriendCommand(friends.Remove(playerId, e => SetStatus(e ?? "updated"))))));
         }
     }
 
     private void RenderChallengeForm()
     {
-        CreateHeader("New challenge");
+        CreateHeader(rematchDraft ? "Rematch draft — server validates these exact rules on send" : "New challenge");
         FriendSummaryDto opponent = friends.Friends.Items.FirstOrDefault(f => f.PlayerId == challengingFriendId);
         string opponentLabel = opponent != null ? $"{opponent.DisplayName} ({opponent.Tag})" : challengingFriendId.ToString();
         GameObject row = CreateRow($"opponent: {opponentLabel}, best of {challengeForm.TotalGames}");
-        CreateButton(row.transform, "Bo1", () => { challengeForm.TotalGames = 1; RenderCurrentTab(); });
-        CreateButton(row.transform, "Bo3", () => { challengeForm.TotalGames = 3; RenderCurrentTab(); });
-        CreateButton(row.transform, "Bo5", () => { challengeForm.TotalGames = 5; RenderCurrentTab(); });
-        CreateButton(row.transform, "Bo7", () => { challengeForm.TotalGames = 7; RenderCurrentTab(); });
+        CreateButton(row.transform, "Bo1", () => { if (challenges.IsCreating) return; challengeForm.TotalGames = 1; RenderCurrentTab(); });
+        CreateButton(row.transform, "Bo3", () => { if (challenges.IsCreating) return; challengeForm.TotalGames = 3; RenderCurrentTab(); });
+        CreateButton(row.transform, "Bo5", () => { if (challenges.IsCreating) return; challengeForm.TotalGames = 5; RenderCurrentTab(); });
+        CreateButton(row.transform, "Bo7", () => { if (challenges.IsCreating) return; challengeForm.TotalGames = 7; RenderCurrentTab(); });
 
-        CompetitiveRuleset ruleset = VersusCatalogs.Rulesets.Supporting(VersusCapability.Asynchronous).FirstOrDefault();
-        challengeForm.RulesetId = ruleset?.Id.Value;
+        CompetitiveRuleset ruleset = VersusCatalogs.Rulesets.Rulesets.FirstOrDefault(r => r.Id.Value == challengeForm.RulesetId);
 
         CreateRow(
-            ruleset != null ? $"ruleset: {ruleset.DisplayName}" : "no asynchronous ruleset is available on this build",
+            ruleset != null ? $"ruleset: {ruleset.DisplayName}, version {challengeForm.RulesetVersion?.ToString() ?? "current"}" : "no asynchronous ruleset is available on this build",
             ("Send Challenge", () => StartCoroutine(SendChallenge())),
             ("Cancel", () =>
             {
+                if (challenges.IsCreating) return;
                 challengingFriendId = null;
+                challengeForm = new ChallengeFormState();
+                rematchDraft = false;
                 RenderCurrentTab();
-            }));
+            }
+        ));
     }
 
     private IEnumerator SendChallenge()
     {
+        if (challenges.IsCreating || preparingRematch) yield break;
         ApiResponse<SeriesResponseDto> result = null;
         yield return challenges.Create(challengeForm, r => result = r);
 
@@ -342,19 +545,21 @@ public sealed class CorrespondenceScreenController : MonoBehaviour
             challengeForm.CompleteSubmission();
             challengingFriendId = null;
             SetStatus("challenge sent");
-            yield return outgoing.Refresh();
+            yield return RefreshAll();
             RenderCurrentTab();
             yield break;
         }
 
         // A network/server failure is retryable - leave the form's clientRequestId in place so a
         // second "Send Challenge" tap reuses it. Validation is definitive.
-        if (result != null && result.ErrorKind == ApiErrorKind.Validation)
+        if (result != null && (result.ErrorKind == ApiErrorKind.Validation || result.ErrorKind == ApiErrorKind.Forbidden
+            || result.ErrorKind == ApiErrorKind.NotFound || result.ErrorKind == ApiErrorKind.Conflict))
         {
             challengeForm.CompleteSubmission();
         }
 
-        SetStatus("could not send the challenge: " + BackendV2ErrorMessages.Describe(result));
+        SetStatus("could not send the challenge: " + BackendV2ErrorMessages.Describe(result)
+            + (challengeForm.ClientRequestId.HasValue ? "; retry sends the same draft" : "; review the draft before sending again"));
     }
 
     private IEnumerator SendFriendRequest(string tag)
@@ -381,7 +586,8 @@ public sealed class CorrespondenceScreenController : MonoBehaviour
 
     private void RenderChallengeList(SeriesListCoordinator coordinator, string title, bool isIncoming)
     {
-        CreateHeader($"{title} ({coordinator.State.Items.Count})");
+        CreateHeader($"{title} ({coordinator.State.Items.Count} loaded)");
+        CreateRow(Scope(coordinator.State));
         RenderListStatus(coordinator.State);
         foreach (SeriesSummaryDto series in coordinator.State.Items)
         {
@@ -389,12 +595,12 @@ public sealed class CorrespondenceScreenController : MonoBehaviour
             List<(string, Action)> actions = new List<(string, Action)>();
             if (isIncoming)
             {
-                actions.Add(("Accept", () => StartCoroutine(RunChallengeCommand(challenges.Accept(seriesId, incoming, _ => { })))));
-                actions.Add(("Decline", () => StartCoroutine(RunChallengeCommand(challenges.Decline(seriesId, incoming, _ => { })))));
+                actions.Add(("Accept", () => StartCoroutine(RunChallengeCommand(challenges.Accept(seriesId, incoming, e => SetStatus(e ?? "updated"))))));
+                actions.Add(("Decline", () => StartCoroutine(RunChallengeCommand(challenges.Decline(seriesId, incoming, e => SetStatus(e ?? "updated"))))));
             }
             else
             {
-                actions.Add(("Cancel", () => StartCoroutine(RunChallengeCommand(challenges.Cancel(seriesId, outgoing, _ => { })))));
+                actions.Add(("Cancel", () => StartCoroutine(RunChallengeCommand(challenges.Cancel(seriesId, outgoing, e => SetStatus(e ?? "updated"))))));
             }
 
             CreateRow($"{DescribeSeries(series)}", actions.ToArray());
@@ -405,16 +611,17 @@ public sealed class CorrespondenceScreenController : MonoBehaviour
 
     private IEnumerator RunChallengeCommand(IEnumerator command)
     {
-        // The command itself refreshes its owner list on success (ChallengeCoordinator.RunCommand) -
-        // this only needs to wait for that and re-render.
+        // All projections must converge after a transition, including ambiguous transport failure.
         yield return command;
+        RenderCurrentTab();
+        yield return RefreshAll();
         RenderCurrentTab();
     }
 
     private void RenderYourTurnTab()
     {
         List<SeriesSummaryDto> yourTurnItems = turnClassifier.YourTurnItems(active.State.Items).ToList();
-        CreateHeader($"Your Turn ({yourTurnItems.Count})");
+        CreateHeader($"Your Turn ({yourTurnItems.Count} confirmed, loaded)");
         if (turnClassifier.IsLoading)
         {
             CreateRow("checking whose turn it is...");
@@ -424,31 +631,34 @@ public sealed class CorrespondenceScreenController : MonoBehaviour
             CreateRow(turnClassifier.ErrorMessage);
         }
 
+        CreateRow(Scope(active.State));
         RenderListStatus(active.State);
-        foreach (SeriesSummaryDto series in yourTurnItems)
-        {
-            Guid seriesId = series.Id;
-            int gameNumber = series.CurrentGameNumber;
-            CreateRow(
-                DescribeSeries(series),
-                ("Play", () => StartCoroutine(PlayTurn(seriesId, gameNumber))));
-        }
+        if (!active.State.IsLoading && active.State.ErrorMessage == null)
+            foreach (SeriesSummaryDto series in yourTurnItems)
+            {
+                Guid seriesId = series.Id;
+                int gameNumber = series.CurrentGameNumber;
+                CreateRow(
+                    DescribeSeries(series),
+                    ("Play", () => StartCoroutine(PlayTurn(seriesId, gameNumber))));
+            }
     }
 
     private void RenderActiveTab()
     {
-        CreateHeader($"Active Series ({active.State.Items.Count})");
+        CreateHeader($"Active Series ({active.State.Items.Count} loaded)");
+        CreateRow(Scope(active.State));
         RenderListStatus(active.State);
         foreach (SeriesSummaryDto series in active.State.Items)
         {
-            ActiveSeriesTurn? turn = turnClassifier.TurnFor(series.Id);
+            ActiveSeriesTurn? turn = turnClassifier.TurnFor(series);
             string badge = turn == ActiveSeriesTurn.YourTurn ? "your turn"
                 : turn == ActiveSeriesTurn.OpponentTurn ? "opponent's turn"
-                : "checking...";
+                : turnClassifier.IsLoading ? "checking..." : "unconfirmed — refresh to check";
             Guid seriesId = series.Id;
             int gameNumber = series.CurrentGameNumber;
 
-            if (turn == ActiveSeriesTurn.YourTurn)
+            if (!active.State.IsLoading && active.State.ErrorMessage == null && turn == ActiveSeriesTurn.YourTurn)
             {
                 CreateRow($"{DescribeSeries(series)} - {badge}", ("Play", () => StartCoroutine(PlayTurn(seriesId, gameNumber))));
             }
@@ -463,14 +673,28 @@ public sealed class CorrespondenceScreenController : MonoBehaviour
 
     private void RenderCompletedTab()
     {
-        CreateHeader($"Completed ({completed.State.Items.Count})");
-        RenderListStatus(completed.State);
-        foreach (SeriesSummaryDto series in completed.State.Items)
+        CreateHeader("Opponent history — loaded completed play only");
+        CreateRow("Completed and History source pages are combined without duplicate series.");
+        CreateRow("This is bounded history, not lifetime wins, streaks or rivalry totals.");
+        CreateRow("Completed source: " + Scope(completed.State));
+        CreateRow("History source: " + Scope(history.State));
+        var rows = InboxRows().Where(r => r.Category == InboxCategory.Completed).ToList();
+        if (rows.Count == 0) CreateRow("No confirmed completed play loaded.");
+        foreach (var group in rows.GroupBy(r => CorrespondenceInbox.OpponentId(
+            BackendV2SessionStore.Current?.PlayerId ?? Guid.Empty, r.Series.ChallengerId, r.Series.OpponentId)))
         {
-            CreateRow(DescribeSeries(series));
+            CreateHeader(CorrespondenceInbox.OpponentLabel(group.First().Series,
+                BackendV2SessionStore.Current?.PlayerId ?? Guid.Empty) + " — " + group.Count() + " loaded completed series");
+            foreach (var row in group)
+            {
+                var actions = AttentionActions(row);
+                actions.Add(("View", () => StartCoroutine(ViewCompleted(row.Series.Id))));
+                actions.Add(("Rematch", () => StartCoroutine(PrepareRematch(row.Series.Id))));
+                CreateRow(AttentionLabel(row) + DescribeSeries(row.Series) + "; created " + row.Series.CreatedAt.ToString("u"), actions.ToArray());
+            }
         }
-
         RenderLoadMore(completed);
+        RenderViewedCompleted();
     }
 
     /// <summary>Every terminal series (Completed, Declined, Cancelled, Expired) - the durable
@@ -478,7 +702,8 @@ public sealed class CorrespondenceScreenController : MonoBehaviour
     /// scope. Shows the status explicitly since this tab mixes all four.</summary>
     private void RenderHistoryTab()
     {
-        CreateHeader($"History ({history.State.Items.Count})");
+        CreateHeader($"History ({history.State.Items.Count} loaded)");
+        CreateRow(Scope(history.State));
         RenderListStatus(history.State);
         foreach (SeriesSummaryDto series in history.State.Items)
         {
@@ -502,8 +727,15 @@ public sealed class CorrespondenceScreenController : MonoBehaviour
 
     private IEnumerator RunLoadMore(SeriesListCoordinator coordinator)
     {
-        yield return coordinator.LoadMore();
-        RenderCurrentTab();
+        if (refreshing) yield break;
+        refreshing = true;
+        try
+        {
+            yield return coordinator.LoadMore();
+            if (coordinator == active) yield return turnClassifier.ClassifyAll(active.State.Items, RenderCurrentTab);
+            RenderCurrentTab();
+        }
+        finally { refreshing = false; }
     }
 
     /// <summary>#159 §7 / #179 / #198: local character + unlock resolution -&gt; local level
@@ -518,29 +750,36 @@ public sealed class CorrespondenceScreenController : MonoBehaviour
     /// gap.</summary>
     private IEnumerator PlayTurn(Guid seriesId, int gameNumber)
     {
-        RemoteCharacterSelectionResult characterResult = RemoteCharacterSelectionResolver.ResolveCurrentPrimary(out UnlockSnapshot unlock);
-        if (!characterResult.Succeeded)
+        RowCommandState commands = challenges.Commands;
+        if (!commands.TryBegin(seriesId)) { SetStatus("already in progress"); yield break; }
+        try
         {
-            SetStatus("could not resolve a player character: " + characterResult.Error);
-            yield break;
+            RemoteCharacterSelectionResult characterResult = RemoteCharacterSelectionResolver.ResolveCurrentPrimary(out UnlockSnapshot unlock);
+            if (!characterResult.Succeeded)
+            {
+                SetStatus("could not resolve a player character: " + characterResult.Error);
+                yield break;
+            }
+
+            SetStatus("starting attempt...");
+            RemoteAttemptLaunch result = default;
+
+            // Runs on this screen's own coroutine rather than via RemoteAttemptLauncher.Launch (which
+            // hands off to BackendV2CoroutineHost for callers with no owning MonoBehaviour, e.g. the
+            // match-end result submitter): this screen is exactly such an owner, and driving Run()
+            // directly means a success's scene load and this coroutine settle in the same step, with no
+            // separate cross-coroutine polling needed.
+            yield return RemoteAttemptLauncher.Run(
+                seriesId, gameNumber, DefaultLevelId, characterResult.Character, null, unlock,
+                launch => result = launch);
+
+            if (!result.Succeeded)
+            {
+                SetStatus("could not start the attempt: " + result.Error);
+            }
         }
 
-        SetStatus("starting attempt...");
-        RemoteAttemptLaunch result = default;
-
-        // Runs on this screen's own coroutine rather than via RemoteAttemptLauncher.Launch (which
-        // hands off to BackendV2CoroutineHost for callers with no owning MonoBehaviour, e.g. the
-        // match-end result submitter): this screen is exactly such an owner, and driving Run()
-        // directly means a success's scene load and this coroutine settle in the same step, with no
-        // separate cross-coroutine polling needed.
-        yield return RemoteAttemptLauncher.Run(
-            seriesId, gameNumber, DefaultLevelId, characterResult.Character, null, unlock,
-            launch => result = launch);
-
-        if (!result.Succeeded)
-        {
-            SetStatus("could not start the attempt: " + result.Error);
-        }
+        finally { commands.End(seriesId); }
     }
 
     // ------------------------------------------------------------------ small UI helpers
@@ -568,7 +807,7 @@ public sealed class CorrespondenceScreenController : MonoBehaviour
 
     private static string DescribeSeries(SeriesSummaryDto series)
     {
-        return $"series {series.Id.ToString().Substring(0, 8)} - game {series.CurrentGameNumber}/{series.TotalGames}";
+        return $"{CorrespondenceInbox.OpponentLabel(series, BackendV2SessionStore.Current?.PlayerId ?? Guid.Empty)} — series {series.Id.ToString().Substring(0, 8)} - game {series.CurrentGameNumber}/{series.TotalGames}";
     }
 
     private void CreateHeader(string text)
@@ -577,6 +816,7 @@ public sealed class CorrespondenceScreenController : MonoBehaviour
         go.transform.SetParent(contentRoot, false);
         Text label = go.AddComponent<Text>();
         label.font = uiFont;
+        label.supportRichText = false;
         label.text = text;
         label.fontStyle = FontStyle.Bold;
         label.color = Color.white;
@@ -600,6 +840,7 @@ public sealed class CorrespondenceScreenController : MonoBehaviour
             labelGo.transform.SetParent(row.transform, false);
             Text label = labelGo.AddComponent<Text>();
             label.font = uiFont;
+            label.supportRichText = false;
             label.text = text;
             label.color = Color.white;
             LayoutElement labelLayout = labelGo.AddComponent<LayoutElement>();
@@ -756,6 +997,8 @@ public sealed class CorrespondenceScreenController : MonoBehaviour
         topBarSize.preferredHeight = 30;
 
         CreateButton(topBar.transform, "Back", () => SceneTransition.LoadScene(Constants.SCENE_NAME_level_00_start));
+        CreateButton(topBar.transform, "Inbox", () => SelectTab(Tab.Inbox));
+        CreateButton(topBar.transform, "Refresh", () => { if (!refreshing) StartCoroutine(RefreshAll()); });
         CreateButton(topBar.transform, "Friends", () => SelectTab(Tab.Friends));
         CreateButton(topBar.transform, "Incoming", () => SelectTab(Tab.Incoming));
         CreateButton(topBar.transform, "Outgoing", () => SelectTab(Tab.Outgoing));

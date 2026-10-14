@@ -5,76 +5,66 @@ using System.Linq;
 
 namespace Level5.BackendV2
 {
-    /// <summary>
-    /// Classifies each row of an Active-series list into <see cref="ActiveSeriesTurn.YourTurn"/> /
-    /// <see cref="ActiveSeriesTurn.OpponentTurn"/> by fetching its detail, and caches the result by
-    /// series id - so the Active Series tab (shows every row, badged with whose turn it is) and the
-    /// Your Turn tab (the same rows, filtered) can share one classification pass instead of each
-    /// re-fetching detail independently.
-    /// </summary>
+    /// <summary>Shared, participant-safe classifications tied to the exact loaded revision/game.</summary>
     public sealed class ActiveSeriesTurnClassifier
     {
-        private readonly Dictionary<Guid, ActiveSeriesTurn> turnBySeriesId = new Dictionary<Guid, ActiveSeriesTurn>();
-
+        private readonly Dictionary<Guid, (long revision, int game, ActiveSeriesTurn turn)> turns =
+            new Dictionary<Guid, (long, int, ActiveSeriesTurn)>();
+        private int generation;
+        private long ownerGeneration = -1;
         public bool IsLoading { get; private set; }
-
         public string ErrorMessage { get; private set; }
 
-        public ActiveSeriesTurn? TurnFor(Guid seriesId)
-        {
-            return turnBySeriesId.TryGetValue(seriesId, out ActiveSeriesTurn turn) ? turn : (ActiveSeriesTurn?)null;
-        }
+        public ActiveSeriesTurn? TurnFor(Guid id) =>
+            ownerGeneration == BackendV2SessionStore.IdentityGeneration && turns.TryGetValue(id, out var entry)
+                ? entry.turn : (ActiveSeriesTurn?)null;
 
-        public IEnumerable<SeriesSummaryDto> YourTurnItems(IReadOnlyList<SeriesSummaryDto> items)
-        {
-            return items.Where(item => TurnFor(item.Id) == ActiveSeriesTurn.YourTurn);
-        }
+        public ActiveSeriesTurn? TurnFor(SeriesSummaryDto item) =>
+            item != null && turns.TryGetValue(item.Id, out var entry)
+                && entry.revision == item.Revision && entry.game == item.CurrentGameNumber
+                ? TurnFor(item.Id) : null;
 
-        /// <summary>Fetches detail for every item not already classified, one request at a time.
-        /// Existing classifications are kept; call <see cref="Reset"/> first (e.g. after a list
-        /// refresh) to reclassify everything from scratch, since a stale cached turn is exactly the
-        /// kind of state Backend V2 is meant to remain authoritative over.
-        ///
-        /// <paramref name="onItemClassified"/> fires after each item settles (success or failure),
-        /// before the next request starts - real network latency means classifying a full page
-        /// sequentially can take several seconds, so the caller should use this to render each row
-        /// as it becomes available rather than blocking the whole tab on the slowest request.
-        /// </summary>
+        public IEnumerable<SeriesSummaryDto> YourTurnItems(IReadOnlyList<SeriesSummaryDto> items) =>
+            items.Where(item => TurnFor(item) == ActiveSeriesTurn.YourTurn);
+
         public IEnumerator ClassifyAll(IReadOnlyList<SeriesSummaryDto> items, Action onItemClassified = null)
         {
+            long owner = BackendV2SessionStore.IdentityGeneration;
+            Guid? player = BackendV2SessionStore.Current?.PlayerId;
+            if (ownerGeneration != owner) Reset();
+            ownerGeneration = owner;
+            int request = ++generation;
             IsLoading = true;
             ErrorMessage = null;
-            bool anyFailed = false;
-
+            bool failed = false;
             foreach (SeriesSummaryDto item in items)
             {
-                if (turnBySeriesId.ContainsKey(item.Id))
-                {
-                    continue;
-                }
-
+                if (TurnFor(item).HasValue) continue;
                 ApiResponse<SeriesResponseDto> response = null;
                 yield return BackendV2Runtime.Correspondence.Get(item.Id, r => response = r);
-
-                if (response != null && response.Success)
-                {
-                    turnBySeriesId[item.Id] = SeriesRowClassifier.ClassifyTurn(response.Value);
-                }
-                else
-                {
-                    anyFailed = true;
-                }
-
+                if (request != generation) yield break;
+                if (owner != BackendV2SessionStore.IdentityGeneration) { Reset(); yield break; }
+                SeriesResponseDto detail = response != null && response.Success ? response.Value : null;
+                ActiveSeriesTurn turn = detail != null && detail.Id == item.Id
+                    && detail.Revision == item.Revision && detail.CurrentGameNumber == item.CurrentGameNumber
+                    && player.HasValue && (detail.ChallengerId == player || detail.OpponentId == player)
+                    ? SeriesRowClassifier.ClassifyTurn(detail, player.Value) : ActiveSeriesTurn.Unknown;
+                if (turn != ActiveSeriesTurn.Unknown)
+                    turns[item.Id] = (item.Revision, item.CurrentGameNumber, turn);
+                else { turns.Remove(item.Id); failed = true; }
                 onItemClassified?.Invoke();
             }
-
             IsLoading = false;
-            ErrorMessage = anyFailed ? "some series could not be checked for whose turn it is" : null;
+            ErrorMessage = failed ? "some series could not be confirmed; refresh to check again" : null;
         }
 
         public void Reset()
         {
-            turnBySeriesId.Clear();
+            generation++;
+            turns.Clear();
+            IsLoading = false;
+            ErrorMessage = null;
+            ownerGeneration = -1;
         }
     }
 }

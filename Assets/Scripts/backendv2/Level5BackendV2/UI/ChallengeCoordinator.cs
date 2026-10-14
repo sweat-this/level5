@@ -16,8 +16,15 @@ namespace Level5.BackendV2
     {
         public RowCommandState Commands { get; } = new RowCommandState();
 
+        public bool IsCreating { get; private set; }
+
         public IEnumerator Create(ChallengeFormState form, Action<ApiResponse<SeriesResponseDto>> completed)
         {
+            if (IsCreating)
+            {
+                completed?.Invoke(ApiResponse<SeriesResponseDto>.Fail(ApiErrorKind.Conflict));
+                yield break;
+            }
             if (form == null || form.OpponentId == null || string.IsNullOrEmpty(form.RulesetId))
             {
                 completed?.Invoke(ApiResponse<SeriesResponseDto>.Fail(ApiErrorKind.Validation));
@@ -29,11 +36,19 @@ namespace Level5.BackendV2
                 form.TotalGames,
                 form.RulesetId,
                 form.GetOrBeginClientRequestId(),
+                rulesetVersion: form.RulesetVersion,
                 informationPolicy: form.InformationPolicy);
 
-            ApiResponse<SeriesResponseDto> response = null;
-            yield return BackendV2Runtime.Correspondence.CreateChallenge(request, r => response = r);
-            completed?.Invoke(response);
+            long owner = BackendV2SessionStore.IdentityGeneration;
+            IsCreating = true;
+            try
+            {
+                ApiResponse<SeriesResponseDto> response = null;
+                yield return BackendV2Runtime.Correspondence.CreateChallenge(request, r => response = r);
+                completed?.Invoke(owner == BackendV2SessionStore.IdentityGeneration
+                    ? response : ApiResponse<SeriesResponseDto>.Fail(ApiErrorKind.Unauthenticated));
+            }
+            finally { IsCreating = false; }
         }
 
         /// <param name="ownerList">Refreshed on success, before the row's command guard is
@@ -67,18 +82,28 @@ namespace Level5.BackendV2
                 yield break;
             }
 
-            ApiResponse<SeriesResponseDto> response = null;
-            yield return call(seriesId, r => response = r);
-
-            if (response != null && response.Success && ownerList != null)
+            long owner = BackendV2SessionStore.IdentityGeneration;
+            try
             {
-                yield return ownerList.Refresh();
+                ApiResponse<SeriesResponseDto> response = null;
+                yield return call(seriesId, r => response = r);
+                if (owner != BackendV2SessionStore.IdentityGeneration)
+                {
+                    completed?.Invoke("session changed; refresh correspondence");
+                    yield break;
+                }
+                if (response != null && response.Success && ownerList != null)
+                {
+                    yield return ownerList.Refresh();
+                }
+                completed?.Invoke(owner != BackendV2SessionStore.IdentityGeneration
+                    ? "session changed; refresh correspondence"
+                    : response != null && response.Success ? null : BackendV2ErrorMessages.Describe(response));
             }
-
-            Commands.End(seriesId);
-
-            completed?.Invoke(
-                response != null && response.Success ? null : BackendV2ErrorMessages.Describe(response));
+            finally
+            {
+                Commands.End(seriesId);
+            }
         }
     }
 }

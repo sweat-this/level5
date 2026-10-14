@@ -98,6 +98,10 @@ namespace Level5.BackendV2
 
     public sealed class SeriesResponseDto
     {
+        public PlayerProfileResponseDto Challenger { get; set; }
+
+        public PlayerProfileResponseDto Opponent { get; set; }
+
         public Guid Id { get; set; }
 
         public Guid ChallengerId { get; set; }
@@ -127,6 +131,10 @@ namespace Level5.BackendV2
 
     public sealed class SeriesSummaryDto
     {
+        public PlayerProfileResponseDto Challenger { get; set; }
+
+        public PlayerProfileResponseDto Opponent { get; set; }
+
         public Guid Id { get; set; }
 
         public Guid ChallengerId { get; set; }

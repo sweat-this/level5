@@ -21,6 +21,7 @@ namespace Level5.BackendV2.Tests
                 Revision = 1,
                 CreatedAt = DateTimeOffset.UtcNow,
                 Games = games,
+                Rules = new FrozenRulesDto { InformationPolicy = "SealedAttempt" },
             };
         }
 
@@ -61,7 +62,7 @@ namespace Level5.BackendV2.Tests
                 new GameRoundViewDto
                 {
                     GameNumber = 1,
-                    YourAttempt = new AttemptViewDto { Id = Guid.NewGuid(), Status = "Pending", Result = null },
+                    YourAttempt = new AttemptViewDto { Id = Guid.NewGuid(), Status = "Started", Result = null },
                     OpponentAttempt = null,
                 },
             });
@@ -70,11 +71,9 @@ namespace Level5.BackendV2.Tests
         }
 
         [Test]
-        public void NoRoundForTheCurrentGameNumber_DefaultsToYourTurn()
+        public void NoRoundForTheCurrentGameNumber_IsAnUnstartedTurn()
         {
-            // Ambiguous/defensive case: defaulting to YourTurn is the safe direction, since starting
-            // an attempt that is not actually available is safely refused server-side, whereas
-            // wrongly defaulting to OpponentTurn would hide an actionable turn from the player.
+            // Backend creates the next round lazily; complete detail with no current round is authoritative.
             SeriesResponseDto series = Series(2, new List<GameRoundViewDto>
             {
                 new GameRoundViewDto { GameNumber = 1, YourAttempt = null, OpponentAttempt = null },
@@ -99,6 +98,35 @@ namespace Level5.BackendV2.Tests
             });
 
             Assert.That(SeriesRowClassifier.ClassifyTurn(series), Is.EqualTo(ActiveSeriesTurn.YourTurn));
+        }
+
+        [Test]
+        public void MissingGamesOrPolicyRemainUnknown()
+        {
+            var series = Series(1, null);
+            Assert.That(SeriesRowClassifier.ClassifyTurn(series), Is.EqualTo(ActiveSeriesTurn.Unknown));
+            series.Games = new List<GameRoundViewDto>(); series.Rules = null;
+            Assert.That(SeriesRowClassifier.ClassifyTurn(series), Is.EqualTo(ActiveSeriesTurn.Unknown));
+        }
+
+        [Test]
+        public void OpenTargetResponderWaitsForPublicFirstMoverCompletion()
+        {
+            var series = Series(1, new List<GameRoundViewDto>());
+            series.Rules.InformationPolicy = "OpenTarget";
+            Assert.That(SeriesRowClassifier.ClassifyTurn(series, series.ChallengerId), Is.EqualTo(ActiveSeriesTurn.YourTurn));
+            Assert.That(SeriesRowClassifier.ClassifyTurn(series, series.OpponentId), Is.EqualTo(ActiveSeriesTurn.OpponentTurn));
+            series.Games.Add(new GameRoundViewDto { GameNumber = 1, OpponentAttempt = new AttemptViewDto { Status = "Completed", Result = null } });
+            Assert.That(SeriesRowClassifier.ClassifyTurn(series, series.OpponentId), Is.EqualTo(ActiveSeriesTurn.YourTurn));
+        }
+
+        [Test]
+        public void AlternatingFirstMoverIsAppliedToTheCurrentGame()
+        {
+            var series = Series(2, new List<GameRoundViewDto>());
+            series.Rules.InformationPolicy = "OpenTarget"; series.Rules.AlternatesFirstAttempt = true;
+            Assert.That(SeriesRowClassifier.ClassifyTurn(series, series.OpponentId), Is.EqualTo(ActiveSeriesTurn.YourTurn));
+            Assert.That(SeriesRowClassifier.ClassifyTurn(series, series.ChallengerId), Is.EqualTo(ActiveSeriesTurn.OpponentTurn));
         }
 
         [Test]
