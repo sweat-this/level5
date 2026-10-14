@@ -26,6 +26,8 @@ Feature and system docs:
 
 Decision records and audits:
 
+- [Mode 16 CPU marker-course ownership](gp-001-mode16-course-ownership-audit.md) - decision-blocked cooperative/competitive policy audit, ownership flow, natural CPU and controlled completion evidence, two review passes and focused validation.
+
 - [Final-marker bonuses under overlapping shots](gp-001-final-marker-bonus.md) - GP-001: attempt-specific eligibility, fourth/fifth/sixth reproduction, two review passes and configured human/CPU runtime validation.
 
 - [Made-shot finality](gp-001-made-shot-finality.md) - GP-001: reject makes after accepted ending, preserve human/CPU pre-zero grace, lifecycle composition, two review passes and focused validation.
