@@ -98,4 +98,42 @@ public class Level5TestSourceTextTests
 
         Assert.That(stripped, Does.Contain("PlayerIdentifier"));
     }
+
+    [TestCase("var s = $\"{GameOptions.numPlayers}\";")]
+    [TestCase("var s = $@\"{GameOptions.numPlayers}\";")]
+    [TestCase("var s = @$\"{GameOptions.numPlayers}\";")]
+    [TestCase("var s = $\"{{literal}} {GameOptions.numPlayers} {GameOptions.userid}\";")]
+    [TestCase("var s = $\"{Format(\"GameOptions.fake\", GameOptions.numPlayers)}\";")]
+    [TestCase("var s = $\"{new { Value = GameOptions.numPlayers }.Value}\";")]
+    [TestCase("var s = $\"{(ready ? GameOptions.numPlayers : 0):D2}\";")]
+    [TestCase("var s = $\"{global::GameOptions.numPlayers}\";")]
+    [TestCase("var s = $\"{$@\"{GameOptions.numPlayers}\"}\";")]
+    [TestCase("var s = $\"{ /* GameOptions.fake */ GameOptions.numPlayers}\";")]
+    public void InterpolationAwareModeRetainsExecutableExpressions(string source)
+    {
+        string stripped = Level5TestSourceText.StripCommentsAndLiterals(source, true);
+        Assert.That(stripped, Does.Contain("GameOptions.numPlayers"));
+        Assert.That(stripped, Does.Not.Contain("GameOptions.fake"));
+    }
+
+    [TestCase("var s = $\"GameOptions.fake {{GameOptions.fake}} {value:D2}\"; int keep = 1;")]
+    [TestCase("var s = $@\"GameOptions.fake \"\"quote\"\" {{GameOptions.fake}}\"; int keep = 1;")]
+    [TestCase("var s = @$\"{value:GameOptions.fake}\"; int keep = 1;")]
+    [TestCase("var s = $\"{Format(\"GameOptions.fake\")}\"; int keep = 1;")]
+    [TestCase("var s = $\"{value:GameOptions.fake} {other:GameOptions.fake}\"; int keep = 1;")]
+    public void InterpolationAwareModeRemovesLiteralAndFormatText(string source)
+    {
+        string stripped = Level5TestSourceText.StripCommentsAndLiterals(source, true);
+        Assert.That(stripped, Does.Not.Contain("GameOptions."));
+        Assert.That(stripped, Does.Contain("int keep = 1;"));
+    }
+
+    [Test]
+    public void ExistingCallersRetainTheirLiteralOnlyPolicy()
+    {
+        string source = "var s = $\"{GameOptions.numPlayers}\"; int keep = 1;";
+        string stripped = Level5TestSourceText.StripCommentsAndLiterals(source);
+        Assert.That(stripped, Does.Not.Contain("GameOptions."));
+        Assert.That(stripped, Does.Contain("int keep = 1;"));
+    }
 }

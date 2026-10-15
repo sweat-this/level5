@@ -141,6 +141,21 @@ public class Level5MatchArchitectureTests
         Assert.That(StripComments(source), Does.Contain("GameOptions.userid"));
     }
 
+    [TestCase("var text = $\"{GameOptions.numPlayers}\";")]
+    [TestCase("var text = $@\"{GameOptions.numPlayers}\";")]
+    [TestCase("var text = @$\"{GameOptions.numPlayers}\";")]
+    public void InterpolationExpressionsCannotHideALegacyConsumer(string source)
+    {
+        Assert.That(StripComments(source), Does.Contain("GameOptions.numPlayers"));
+    }
+
+    [TestCase("var text = $\"GameOptions.numPlayers {{GameOptions.numPlayers}}\";")]
+    [TestCase("var text = $@\"{value:GameOptions.numPlayers}\";")]
+    public void InterpolationLiteralAndFormatTextAreNotLegacyConsumers(string source)
+    {
+        Assert.That(StripComments(source), Does.Not.Contain("GameOptions."));
+    }
+
     [Test]
     public void NoNewModeIdentityBooleans()
     {
@@ -207,8 +222,9 @@ public class Level5MatchArchitectureTests
     private static string Relative(string path) => Level5TestSourceText.Relative(path);
 
     /// <summary>
-    /// Ignore comments and literals without letting comment markers inside strings hide live code
-    /// (LoadManager's account access was missed by the old regular-expression comment stripper).
+    /// Ignore comments and literal text, retaining executable interpolation expressions. Comment
+    /// markers inside strings must not hide live code (the former LoadManager scanner defect).
     /// </summary>
-    private static string StripComments(string text) => Level5TestSourceText.StripCommentsAndLiterals(text);
+    private static string StripComments(string text)
+        => Level5TestSourceText.StripCommentsAndLiterals(text, preserveInterpolationExpressions: true);
 }

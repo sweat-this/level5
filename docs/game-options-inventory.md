@@ -379,8 +379,10 @@ Level5MatchArchitectureTests now counts actual public static declarations, ratch
 and explicitly forbids all six retired members. SQLite/progression/PlayerData/GameRules/LoadGame
 leave the allowlist. The existing literal-aware scanner prevents LoadManager's nested-comment
 false negative; its pre-existing local identity access is explicitly accounted for until #275 C.
-No new production dependency was permitted. Basename matching and ignored interpolated literal
-holes remain scanner limitations; no current allowed-basename collision was found. The guard is
+No new production dependency was permitted. The match guard opts into interpolation-aware scanning:
+regular/verbatim interpolation expressions remain executable code, while escaped braces, literal
+text, nested literals and format text are excluded. Other shared-helper callers retain their prior
+literal-only policy. Basename matching remains a limitation; no current allowed-basename collision was found. The guard is
 a migration ratchet, not a substitute for release/source and reflection/asset audits.
 
 No production typeof(GameOptions), string-selected reflection, using-static/alias access or live
@@ -416,6 +418,7 @@ all direct-scene/incomplete-character fallbacks and the one-way bridge remain in
   use the authored route and existing campaign cursor, remove both static route copies.
 - Focused tests: `Assets/Tests/Editor/GameOptionsSnapshot.cs`, `Level5CoreTests.cs`,
   `Level5MatchBridgeParityTests.cs`, `Level5MatchArchitectureTests.cs`,
+  `Level5TestSourceText.cs`, `Level5TestSourceTextTests.cs`,
   new `Level5CapturedScorePersistenceTests.cs` and `.meta`, `ProgressionServiceApplyMatchResultTests.cs`,
   `Level5RangeShotRecordTests.cs`, `Level5PauseCompositionTests.cs`,
   `Level5MatchHudPresenterCompositionTests.cs`, `Level5SpawnCoordinatorCampaignCpuPrefabResolverTests.cs`,
@@ -445,7 +448,8 @@ are saved in `<name>-command.json` and `<name>-exit.txt`.
 | Corrected fresh launch setup: CampaignBoundaryPlayModeTests.Fresh | 2 passed, 0 failed/skipped; choose capable participants through the existing coordinator | 0 / campaign-launch.xml |
 | Expanded campaign assertions: CampaignBoundaryPlayModeTests | 5 passed, 2 failed, 0 skipped; new record-seeding fixture reflected model fields as properties, corrected | 2 / campaign-final.xml |
 | Final fresh normal/hardcore launch and actual bound pause-record callback: CampaignBoundaryPlayModeTests.Fresh | 2 passed, 0 failed/skipped, including conflicting later global filter | 0 / record-launch-final.xml |
-| Final architecture guards, including nested-comment regression | 11 passed, 0 failed/skipped | 0 / guards-final.xml |
+| Pre-review architecture guards, including nested-comment regression | 11 passed, 0 failed/skipped | 0 / guards-final.xml |
+| Interpolation-aware scanner and final match guard: Level5TestSourceTextTests;Level5MatchArchitectureTests | 39 passed, 0 failed/skipped; includes regular/verbatim expressions, nested code/literals, escaped braces, format text and unchanged default scanner policy | 0 / interpolation-fix.xml |
 
 Final per-test runtime evidence covers seven campaign cases (five unchanged cases passed in
 campaign-final.xml; the two corrected cases passed in record-launch-final.xml) plus the unchanged

@@ -42,16 +42,51 @@ internal static class Level5TestSourceText
     /// simplifications in the callers.
     /// </summary>
     internal static string StripCommentsAndLiterals(string text)
+        => StripCommentsAndLiterals(text, preserveInterpolationExpressions: false);
+
+    /// <summary>
+    /// Optionally retains executable expressions in regular/verbatim interpolated strings while
+    /// removing their literal and format text. Existing callers retain their literal-only policy.
+    /// </summary>
+    internal static string StripCommentsAndLiterals(string text, bool preserveInterpolationExpressions)
     {
         StringBuilder stripped = new StringBuilder(text.Length);
         int i = 0;
+        AppendCode(text, ref i, stripped, preserveInterpolationExpressions, interpolation: false);
+        return stripped.ToString();
+    }
+
+    private static void AppendCode(
+        string text, ref int i, StringBuilder stripped, bool preserveInterpolationExpressions, bool interpolation)
+    {
+        int braces = 0;
+        int parentheses = 0;
+        int brackets = 0;
 
         while (i < text.Length)
         {
             char c = text[i];
             char next = i + 1 < text.Length ? text[i + 1] : '\0';
 
-            if (c == '/' && next == '/')
+            if (interpolation && c == '}' && braces == 0)
+            {
+                i++;
+                return;
+            }
+            else if (interpolation && c == ':' && braces == 0 && parentheses == 0 && brackets == 0
+                && next != ':' && (i == 0 || text[i - 1] != ':'))
+            {
+                // A top-level colon starts format text, not executable code. Conditional
+                // expressions in an interpolation require parentheses; alias::name is code.
+                while (i < text.Length && text[i] != '}') i++;
+                if (i < text.Length) i++;
+                return;
+            }
+            else if (preserveInterpolationExpressions && TryAppendInterpolatedString(text, ref i, stripped))
+            {
+                continue;
+            }
+            else if (c == '/' && next == '/')
             {
                 while (i < text.Length && text[i] != '\n')
                 {
@@ -125,12 +160,70 @@ internal static class Level5TestSourceText
             }
             else
             {
+                if (interpolation)
+                {
+                    switch (c)
+                    {
+                        case '{': braces++; break;
+                        case '}': braces--; break;
+                        case '(': parentheses++; break;
+                        case ')': parentheses--; break;
+                        case '[': brackets++; break;
+                        case ']': brackets--; break;
+                    }
+                }
                 stripped.Append(c);
                 i++;
             }
         }
 
-        return stripped.ToString();
+    }
+
+    private static bool TryAppendInterpolatedString(string text, ref int i, StringBuilder stripped)
+    {
+        bool regular = i + 1 < text.Length && text[i] == '$' && text[i + 1] == '"';
+        bool verbatim = i + 2 < text.Length && text[i + 2] == '"'
+            && ((text[i] == '$' && text[i + 1] == '@') || (text[i] == '@' && text[i + 1] == '$'));
+        if (!regular && !verbatim) return false;
+
+        stripped.Append(' ');
+        i += regular ? 2 : 3;
+        while (i < text.Length)
+        {
+            char c = text[i];
+            char next = i + 1 < text.Length ? text[i + 1] : '\0';
+            if (c == '"')
+            {
+                i++;
+                if (verbatim && next == '"') i++;
+                else break;
+            }
+            else if (regular && c == '\\')
+            {
+                i += 2;
+            }
+            else if (regular && c == '\n')
+            {
+                break; // Match the existing unterminated regular-literal recovery.
+            }
+            else if (c == '{' && next != '{')
+            {
+                i++;
+                stripped.Append(' ');
+                AppendCode(text, ref i, stripped, preserveInterpolationExpressions: true, interpolation: true);
+                stripped.Append(' ');
+            }
+            else if ((c == '{' && next == '{') || (c == '}' && next == '}'))
+            {
+                i += 2; // Escaped braces are literal text, never an expression.
+            }
+            else
+            {
+                i++;
+            }
+        }
+        stripped.Append(' ');
+        return true;
     }
 
     internal static string Relative(string path)
