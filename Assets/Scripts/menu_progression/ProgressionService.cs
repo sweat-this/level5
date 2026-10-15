@@ -27,7 +27,9 @@ public class ProgressionService
     {
         if (result == null)
         {
-            result = new MatchProgressionResult(CreateResultId("missing"), GameOptions.characterId, 0);
+            // There is no captured participant to attribute. Return an unapplied failure before
+            // account lookup or pending repair; never borrow the currently highlighted character.
+            result = new MatchProgressionResult(CreateResultId("missing"), 0, 0);
             result.Message = "ProgressionService received a null match result.";
             return result;
         }

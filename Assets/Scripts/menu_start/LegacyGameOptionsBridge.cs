@@ -31,9 +31,6 @@ public static class LegacyGameOptionsBridge
         LevelDefinition level = configuration.Level;
         ResolvedMatchRules rules = configuration.Rules;
 
-        // tells CharacterProfile to load its profile from LoadedData.instance
-        GameOptions.gameModeHasBeenSelected = true;
-
         ApplyMode(mode, rules);
         ApplyLevel(level);
         ApplyModifiers(rules);
@@ -70,7 +67,6 @@ public static class LegacyGameOptionsBridge
 
     private static void ApplyLevel(LevelDefinition level)
     {
-        GameOptions.levelSelected = level.ObjectName;
         GameOptions.levelId = level.LevelId;
         GameOptions.levelDisplayName = level.DisplayName;
         GameOptions.levelRequiresTimeOfDay = level.RequiresTimeOfDay;
@@ -87,7 +83,6 @@ public static class LegacyGameOptionsBridge
         GameOptions.difficultySelected = MatchDifficulties.ToInt(rules.Difficulty);
         GameOptions.hardcoreModeEnabled = rules.Hardcore;
 
-        GameOptions.sniperEnabled = rules.SniperEnabled;
         GameOptions.sniperEnabledBullet = rules.Sniper == SniperMode.Bullet;
         GameOptions.sniperEnabledBulletAuto = rules.Sniper == SniperMode.MachineGun;
         GameOptions.sniperEnabledLaser = rules.Sniper == SniperMode.Laser;
@@ -117,7 +112,6 @@ public static class LegacyGameOptionsBridge
         bool implicitDefender = mode.AddsImplicitDefender;
 
         GameOptions.numPlayers = Mathf.Clamp(roster.Count, 1, PlayerRoster.MaxSlots);
-        GameOptions.numCpuPlayers = roster.CpuCount + (implicitDefender ? 1 : 0);
         GameOptions.player1IsCpu = IsCpu(roster, 0);
         GameOptions.player2IsCpu = IsCpu(roster, 1) || implicitDefender;
         GameOptions.player3IsCpu = IsCpu(roster, 2);

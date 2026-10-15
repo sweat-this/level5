@@ -91,7 +91,7 @@ public class Level5RangeShotRecordTests
 
         PlayerData data = root.AddComponent<PlayerData>();
         GameOptions.hardcoreModeEnabled = false;
-        data.loadStatsFromDatabase();
+        data.loadStatsFromDatabase(false);
         Assert.That(PersonalBest(data, id), Is.EqualTo(8));
     }
 
@@ -106,12 +106,12 @@ public class Level5RangeShotRecordTests
         Assert.That(Rows(id)[0].Score, Is.Empty);
         PlayerData data = root.AddComponent<PlayerData>();
         GameOptions.hardcoreModeEnabled = false;
-        data.loadStatsFromDatabase();
+        data.loadStatsFromDatabase(false);
         Assert.That(PersonalBest(data, id), Is.Zero);
         Insert(id, "zero", 500, 0, 10);
         Assert.That(Rows(id).Take(2).Select(row => row.UserName), Is.EqualTo(new[] { "zero", "unknown" }));
         Assert.That(Rows(id)[0].Score, Is.EqualTo("0"));
-        data.loadStatsFromDatabase();
+        data.loadStatsFromDatabase(false);
         Assert.That(PersonalBest(data, id), Is.Zero);
     }
 
@@ -131,11 +131,11 @@ public class Level5RangeShotRecordTests
         Assert.That(Rows(id, false, true).First().UserName, Is.EqualTo("traffic-only"));
         Assert.That(database.Helper.getNumberOfResults(Source(id).HighScoreField, id, true, false, false, false), Is.EqualTo(1));
         PlayerData data = root.AddComponent<PlayerData>();
-        GameOptions.hardcoreModeEnabled = false;
-        data.loadStatsFromDatabase();
+        GameOptions.hardcoreModeEnabled = true; // The explicit query filter must win.
+        data.loadStatsFromDatabase(false);
         Assert.That(PersonalBest(data, id), Is.EqualTo(8));
-        GameOptions.hardcoreModeEnabled = true;
-        data.loadStatsFromDatabase();
+        GameOptions.hardcoreModeEnabled = false;
+        data.loadStatsFromDatabase(true);
         Assert.That(PersonalBest(data, id), Is.EqualTo(7));
     }
 
@@ -174,6 +174,51 @@ public class Level5RangeShotRecordTests
         Assert.That(views[1].GetComponent<StatsTableHighScoreRow>().scoreLabel.text, Is.Empty);
         Assert.That(((TextMeshProUGUI)typeof(StatsManager).GetField("pageNumberLocalSelectButtonText", PrivateInstance)
             .GetValue(manager)).text, Is.EqualTo("page 1 / 1"));
+    }
+
+    [TestCase(false, 8)]
+    [TestCase(true, 7)]
+    public void StartupWithoutActiveMatchLoadsLastLaunchHardcorePreference(bool hardcore, int expected)
+    {
+        MatchConfiguration previous = ActiveMatch.Configuration;
+        try
+        {
+            ActiveMatch.Clear();
+            Insert(2, "ordinary", 80, 8, 20);
+            Insert(2, "hardcore", 70, 7, 20, 1);
+            GameOptions.hardcoreModeEnabled = hardcore;
+            PlayerData data = root.AddComponent<PlayerData>();
+
+            typeof(PlayerData).GetMethod("Start", PrivateInstance).Invoke(data, null);
+
+            Assert.That(data.ThreePointerMade, Is.EqualTo(expected));
+        }
+        finally
+        {
+            if (previous != null) ActiveMatch.Begin(previous);
+            else ActiveMatch.Clear();
+        }
+    }
+
+    [TestCase(false, 8)]
+    [TestCase(true, 7)]
+    public void PauseRefreshUsesExplicitMatchFilterWhenGlobalPreferenceDisagrees(bool hardcore, int expected)
+    {
+        PlayerData previous = PlayerData.instance;
+        try
+        {
+            Insert(2, "ordinary", 80, 8, 20);
+            Insert(2, "hardcore", 70, 7, 20, 1);
+            PlayerData data = root.AddComponent<PlayerData>();
+            PlayerData.instance = data;
+            GameOptions.hardcoreModeEnabled = !hardcore;
+
+            typeof(GameLevelManager).GetMethod("ReloadPlayerDataForPause", BindingFlags.Static | BindingFlags.NonPublic)
+                .Invoke(null, new object[] { hardcore });
+
+            Assert.That(data.ThreePointerMade, Is.EqualTo(expected));
+        }
+        finally { PlayerData.instance = previous; }
     }
 
     [Test]

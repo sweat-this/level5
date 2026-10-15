@@ -70,6 +70,26 @@ left alone during normal gameplay - nothing deletes it on startup, and nothing r
 ever removed as part of "Local profile deletion" below, alongside that profile's other account-scoped
 files.
 
+## Captured match inputs (#274)
+
+SQLite score insertion consumes `HighScoreModel.numPlayers`, captured when the score is created,
+including delayed retries after another roster becomes current. It must not query GameOptions,
+ActiveMatch or MatchRuntime at insert time. SQLite columns, numeric values and score identifiers
+are unchanged. Progression uses the result's explicit `CharacterId`; the unused one-argument
+DBConnector/DBHelper progression adapters are retired. A null progression result returns an
+unapplied diagnostic before account lookup, pending repair or any persistence operation.
+Local account scope, XP calculations, result-ledger duplicate handling and pending repair remain
+unchanged. See the [retirement inventory](game-options-inventory.md) for regression evidence.
+
+Personal-best queries take an explicit hardcore filter. Startup obtains the existing last-launch
+preference through StartMenuSelectionState without requiring ActiveMatch; configured launch uses
+resolved rules, and pause refresh uses the scene manager's captured rules. Preference storage
+retirement remains #275, coordinated with supported direct-scene fallback.
+
+Campaign route data remains authored in PlayerData.LevelsList. Existing EndRoundData.currentLevelIndex
+now owns the in-memory active/completed route position, independently of menu catalog indices;
+nextLevelIndex remains the round-result handoff. This is run state, not durable earned-level progress.
+
 ## Account identity
 
 **The V1 account/auth transport (`APIHelper.PostUser`/`PostToken`/`UserNameExists`/`EmailExists`/
@@ -266,7 +286,7 @@ filesystem read) on every call:
 
 **Level unlock has no durable per-account state yet, deliberately.** `LevelDefinition.Locked` is
 authored, static data - nothing in the current codebase ever unlocks a level at runtime, and no
-"level completed" concept exists (campaign mode advances an in-memory `levelSelectedIndex` per run
+"level completed" concept exists (campaign mode advances in-memory `EndRoundData.currentLevelIndex` per run
 via `EndRoundMenuManager`/`CampaignRoundDecision`, never a durable per-account record). Introducing a
 `LevelProgressSave` without established completion semantics would mean inventing gameplay rules
 rather than migrating existing ones, so this slice stops at the query seam:

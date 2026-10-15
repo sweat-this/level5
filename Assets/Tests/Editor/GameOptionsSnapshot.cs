@@ -11,7 +11,6 @@ public sealed class GameOptionsSnapshot
 {
     private int gameModeSelectedId;
     private string gameModeSelectedName;
-    private bool gameModeHasBeenSelected;
     private bool gameModeRequiresCounter;
     private bool gameModeRequiresCountDown;
     private bool gameModeRequiresShotMarkers3s;
@@ -28,7 +27,6 @@ public sealed class GameOptionsSnapshot
     private bool battleRoyalEnabled;
     private bool cageMatchEnabled;
 
-    private string levelSelected;
     private int levelId;
     private string levelDisplayName;
     private bool levelRequiresTimeOfDay;
@@ -40,7 +38,6 @@ public sealed class GameOptionsSnapshot
     private bool obstaclesEnabled;
     private int difficultySelected;
     private bool hardcoreModeEnabled;
-    private bool sniperEnabled;
     private bool sniperEnabledBullet;
     private bool sniperEnabledBulletAuto;
     private bool sniperEnabledLaser;
@@ -50,7 +47,6 @@ public sealed class GameOptionsSnapshot
     private int characterId;
     private string characterDisplayName;
     private int numPlayers;
-    private int numCpuPlayers;
     private bool player1IsCpu;
     private bool player2IsCpu;
     private bool player3IsCpu;
@@ -65,7 +61,6 @@ public sealed class GameOptionsSnapshot
         {
             gameModeSelectedId = GameOptions.gameModeSelectedId,
             gameModeSelectedName = GameOptions.gameModeSelectedName,
-            gameModeHasBeenSelected = GameOptions.gameModeHasBeenSelected,
             gameModeRequiresCounter = GameOptions.gameModeRequiresCounter,
             gameModeRequiresCountDown = GameOptions.gameModeRequiresCountDown,
             gameModeRequiresShotMarkers3s = GameOptions.gameModeRequiresShotMarkers3s,
@@ -82,7 +77,6 @@ public sealed class GameOptionsSnapshot
             battleRoyalEnabled = GameOptions.battleRoyalEnabled,
             cageMatchEnabled = GameOptions.cageMatchEnabled,
 
-            levelSelected = GameOptions.levelSelected,
             levelId = GameOptions.levelId,
             levelDisplayName = GameOptions.levelDisplayName,
             levelRequiresTimeOfDay = GameOptions.levelRequiresTimeOfDay,
@@ -94,7 +88,6 @@ public sealed class GameOptionsSnapshot
             obstaclesEnabled = GameOptions.obstaclesEnabled,
             difficultySelected = GameOptions.difficultySelected,
             hardcoreModeEnabled = GameOptions.hardcoreModeEnabled,
-            sniperEnabled = GameOptions.sniperEnabled,
             sniperEnabledBullet = GameOptions.sniperEnabledBullet,
             sniperEnabledBulletAuto = GameOptions.sniperEnabledBulletAuto,
             sniperEnabledLaser = GameOptions.sniperEnabledLaser,
@@ -104,7 +97,6 @@ public sealed class GameOptionsSnapshot
             characterId = GameOptions.characterId,
             characterDisplayName = GameOptions.characterDisplayName,
             numPlayers = GameOptions.numPlayers,
-            numCpuPlayers = GameOptions.numCpuPlayers,
             player1IsCpu = GameOptions.player1IsCpu,
             player2IsCpu = GameOptions.player2IsCpu,
             player3IsCpu = GameOptions.player3IsCpu,
@@ -119,7 +111,6 @@ public sealed class GameOptionsSnapshot
     {
         GameOptions.gameModeSelectedId = gameModeSelectedId;
         GameOptions.gameModeSelectedName = gameModeSelectedName;
-        GameOptions.gameModeHasBeenSelected = gameModeHasBeenSelected;
         GameOptions.gameModeRequiresCounter = gameModeRequiresCounter;
         GameOptions.gameModeRequiresCountDown = gameModeRequiresCountDown;
         GameOptions.gameModeRequiresShotMarkers3s = gameModeRequiresShotMarkers3s;
@@ -136,7 +127,6 @@ public sealed class GameOptionsSnapshot
         GameOptions.battleRoyalEnabled = battleRoyalEnabled;
         GameOptions.cageMatchEnabled = cageMatchEnabled;
 
-        GameOptions.levelSelected = levelSelected;
         GameOptions.levelId = levelId;
         GameOptions.levelDisplayName = levelDisplayName;
         GameOptions.levelRequiresTimeOfDay = levelRequiresTimeOfDay;
@@ -148,7 +138,6 @@ public sealed class GameOptionsSnapshot
         GameOptions.obstaclesEnabled = obstaclesEnabled;
         GameOptions.difficultySelected = difficultySelected;
         GameOptions.hardcoreModeEnabled = hardcoreModeEnabled;
-        GameOptions.sniperEnabled = sniperEnabled;
         GameOptions.sniperEnabledBullet = sniperEnabledBullet;
         GameOptions.sniperEnabledBulletAuto = sniperEnabledBulletAuto;
         GameOptions.sniperEnabledLaser = sniperEnabledLaser;
@@ -158,7 +147,6 @@ public sealed class GameOptionsSnapshot
         GameOptions.characterId = characterId;
         GameOptions.characterDisplayName = characterDisplayName;
         GameOptions.numPlayers = numPlayers;
-        GameOptions.numCpuPlayers = numCpuPlayers;
         GameOptions.player1IsCpu = player1IsCpu;
         GameOptions.player2IsCpu = player2IsCpu;
         GameOptions.player3IsCpu = player3IsCpu;

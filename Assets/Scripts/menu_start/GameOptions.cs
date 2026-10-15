@@ -10,7 +10,6 @@ public static class GameOptions
     static public string operatingSystemVersion;
 
     static public int numPlayers = 1;
-    static public int numCpuPlayers;
     static public bool player1IsCpu;
     static public bool player2IsCpu;
     static public bool player3IsCpu;
@@ -19,7 +18,6 @@ public static class GameOptions
     public static void ConfigureSingleHumanRoster(int rosterPlayerCount, bool hasImplicitSecondCpu = false)
     {
         numPlayers = Math.Max(1, Math.Min(4, rosterPlayerCount));
-        numCpuPlayers = Math.Max(0, numPlayers - 1) + (hasImplicitSecondCpu ? 1 : 0);
         player1IsCpu = false;
         player2IsCpu = numPlayers > 1 || hasImplicitSecondCpu;
         player3IsCpu = numPlayers > 2;
@@ -61,20 +59,17 @@ public static class GameOptions
     static public string characterDisplayName;
     static public string cheerleaderDisplayName;
     static public int characterId;
-    static public string levelSelected;
     static public int gameModeSelectedId;
     static public int levelId;
     // object names
     static public string characterObjectName;
     static public List<string> characterObjectNames;
     static public string cheerleaderObjectName;
-    static public string levelSelectedName;
     static public string levelDisplayName;
     static public string gameModeSelectedName;
 
 
     // game mode flags for game rules
-    static public bool gameModeHasBeenSelected;
     static public bool gameModeRequiresCounter;
     static public bool gameModeRequiresCountDown;
     // if game requires markers be active
@@ -106,7 +101,6 @@ public static class GameOptions
     static public bool trafficEnabled = false;
     static public bool enemiesEnabled = false;
 
-    static public bool sniperEnabled = false;
     static public bool sniperEnabledBullet = false;
     static public bool sniperEnabledBulletAuto = false;
     static public bool sniperEnabledLaser = false;
@@ -140,19 +134,6 @@ public static class GameOptions
 
     static public bool gameModeRequiresShotMarkers7s;
     static public bool gameModeSevenPointContest;
-
-    // campaign mode stats
-    //static public bool isCampaignMode = true;
-    static public List<LevelSelected> levelsList;
-    //static public bool currentRoundWinnerIsCpu;
-    //static public bool currentRoundLoserIsCpu;
-    //static public int numberOfContinues = 0;
-    //static public int currentRoundWinnerScore;
-    //static public int currentRoundLoserScore;
-    //static public Sprite currentRoundPlayerWinnerImage;
-    //static public Sprite currentRoundPlayerLoserImage;
-    //static public Sprite currentRoundCpuWinnerImage;
-    //static public Sprite currentRoundCpuLoserImage;
 
     // AUD-012 Phase 2b Slice 52: MatchRuntime moved into Level5.Match and can no longer read these
     // fields directly for its direct-scene-entry fallback. It resolves through the one reader

@@ -16,8 +16,6 @@ public class StartManager : MonoBehaviour
 {
     private const float DataWaitTimeoutSeconds = 12f;
 
-    /// <summary>The level the campaign always starts on, whatever the menu had selected.</summary>
-    private const int CampaignFirstLevelId = 1;
 
     [SerializeField]
     public string currentHighlightedButton;
@@ -306,7 +304,6 @@ public class StartManager : MonoBehaviour
     void Awake()
     {
         instance = this;
-        GameOptions.gameModeHasBeenSelected = false;
         StartCoroutine(getLoadedData());
         // find all button / text / etc and assign to variables
         StartCoroutine(GetUiObjectReferences());
@@ -1680,7 +1677,10 @@ public class StartManager : MonoBehaviour
         }
 
         lastLoadGameFrame = Time.frameCount;
-        forceCampaignStartLevel();
+        if (!forceCampaignStartLevel())
+        {
+            return;
+        }
 
         if (!playerSelectCoordinator.TryBuildRoster(out PlayerRoster roster, out string playerSelectError))
         {
@@ -1728,45 +1728,43 @@ public class StartManager : MonoBehaviour
     /// <summary>
     /// The campaign always begins at its first level, whatever the menu had selected.
     ///
-    /// This has to move the selection itself, not just the scene: the campaign reads
-    /// <c>levelSelectedIndex</c> afterwards to pick the opponent and to know which round it is on,
-    /// so a scene override alone would start the run at the right place and then advance from the
-    /// wrong one.
+    /// Resolve the authored first arena's stable ID in the menu catalog. That menu index is not
+    /// the campaign cursor: the run starts at route position zero after a successful launch.
     /// </summary>
-    private void forceCampaignStartLevel()
+    private bool forceCampaignStartLevel()
     {
         GameModeDefinition mode = selection.CurrentMode(Compatibility);
         if (mode == null || mode.Id != GameModeId.BeatThaComputahs)
         {
-            return;
+            return true;
         }
 
-        int firstCampaignLevel = -1;
+        List<LevelSelected> route = PlayerData.instance != null ? PlayerData.instance.LevelsList : null;
+        if (route == null || route.Count == 0 || route[0] == null)
+        {
+            ShowLaunchError("The authored campaign route has no first arena.");
+            return false;
+        }
+
         for (int index = 0; index < Compatibility.Levels.Count; index++)
         {
-            if (Compatibility.Levels.Definitions[index].LevelId == CampaignFirstLevelId)
+            if (Compatibility.Levels.Definitions[index].LevelId == route[0].LevelId)
             {
-                firstCampaignLevel = index;
-                break;
+                selection.LevelIndex = index;
+                return true;
             }
         }
 
-        if (firstCampaignLevel >= 0)
-        {
-            selection.LevelIndex = firstCampaignLevel;
-        }
+        ShowLaunchError("The authored campaign's first arena is missing from the level catalog.");
+        return false;
     }
 
     /// <summary>
-    /// Which scene a configuration loads. Normally the arena's own scene; the campaign mode is the
-    /// one launch-time special case, and it stays here rather than in the domain model until it has
-    /// characterization coverage.
+    /// The resolved arena's authored scene, including the first campaign arena selected above.
     /// </summary>
     private static string resolveSceneName(MatchConfiguration configuration)
     {
-        return configuration.ModeId == GameModeId.BeatThaComputahs
-            ? Constants.SCENE_NAME_level_01_scrapyard
-            : configuration.SceneName;
+        return configuration.SceneName;
     }
 
     private void ShowLaunchError(ValidationResult validation)
@@ -1785,7 +1783,7 @@ public class StartManager : MonoBehaviour
 
     /// <summary>
     /// The launch-time state that is not part of the match configuration: application metadata,
-    /// the campaign level list, the end-round portraits and the progression snapshot. These belong
+    /// the campaign cursor, the end-round portraits and the progression snapshot. These belong
     /// to their own owners (plan phase 11) and are only gathered here because they are gathered at
     /// the same moment.
     /// </summary>
@@ -1793,7 +1791,11 @@ public class StartManager : MonoBehaviour
     {
         GameOptions.applicationVersion = Application.version;
         GameOptions.operatingSystemVersion = SystemInfo.operatingSystem;
-        GameOptions.levelsList = PlayerData.instance.LevelsList;
+        if (configuration.ModeId == GameModeId.BeatThaComputahs)
+        {
+            EndRoundData.currentLevelIndex = 0;
+            EndRoundData.nextLevelIndex = 0;
+        }
 
         // End-round portraits and the progression snapshot are player-specific launch details;
         // player select resolves them from the selected character without this class indexing
@@ -1815,7 +1817,7 @@ public class StartManager : MonoBehaviour
         GameOptions.tipDialogueLoadedOnStart = false;
 
         // load hardcore mode highscores (for ui display) for game mode if hardcore mode enabled
-        PlayerData.instance.loadStatsFromDatabase();
+        PlayerData.instance.loadStatsFromDatabase(configuration.Rules.Hardcore);
     }
 
     public void loadMenu(string sceneName)

@@ -514,11 +514,6 @@ public class DBConnector : MonoBehaviour
         return dbHelper != null && dbHelper.InsertGameScore(dbHighScoreModel);
     }
 
-    public bool savePlayerProfileProgression(float expGained)
-    {
-        return savePlayerProfileProgression(expGained, GameOptions.characterId);
-    }
-
     public bool savePlayerProfileProgression(float expGained, int characterId)
     {
         return dbHelper.UpdatePlayerProfileProgression(expGained, characterId);

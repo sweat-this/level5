@@ -139,7 +139,7 @@ public class Level5LongestShotRecordPlayModeTests
             {
                 Assert.That(database.CountRows("HighScores", "modeid", 99), Is.EqualTo(2));
                 Assert.That(database.CountRows("MatchPersistenceLedger"), Is.EqualTo(2));
-                Production("PlayerData").GetMethod("loadStatsFromDatabase").Invoke(data, null);
+                Production("PlayerData").GetMethod("loadStatsFromDatabase").Invoke(data, new object[] { false });
                 Assert.That((float)Production("PlayerData").GetProperty("LongestShotMadeFreePlay").GetValue(data), Is.EqualTo(20f));
                 Assert.That((float)Production("PlayerData").GetProperty("LongestShotMadeArcade").GetValue(data), Is.EqualTo(35f));
             }

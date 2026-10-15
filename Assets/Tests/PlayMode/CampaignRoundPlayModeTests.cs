@@ -39,6 +39,8 @@ public class CampaignBoundaryPlayModeTests
     private string previousLocalUserName;
     private Scene runnerScene;
     private bool previousIgnoreLogs;
+    private object previousPrimarySelection;
+    private readonly object[] previousCpuSelections = new object[3];
     private static Type Production(string name) => Assembly.Load("Assembly-CSharp").GetType(name, true);
     private static void SetStatic(string type, string field, object value)
         => Production(type).GetField(field).SetValue(null, value);
@@ -55,6 +57,10 @@ public class CampaignBoundaryPlayModeTests
         previousSession = BackendV2SessionStore.Current;
         previousLocalUserId = LocalAccountIdentity.UserId;
         previousLocalUserName = LocalAccountIdentity.UserName;
+        Type selectionSession = Production("PlayerSelectionSession");
+        previousPrimarySelection = selectionSession.GetProperty("PrimaryCharacterId").GetValue(null);
+        for (int slot = 0; slot < previousCpuSelections.Length; slot++)
+            previousCpuSelections[slot] = selectionSession.GetMethod("GetCpu").Invoke(null, new object[] { slot });
         foreach (string type in new[] { "GameOptions", "EndRoundData" })
             foreach (FieldInfo field in Production(type).GetFields(BindingFlags.Public | BindingFlags.Static))
                 if (!field.IsLiteral && !field.IsInitOnly) options[field] = field.GetValue(null);
@@ -101,6 +107,10 @@ public class CampaignBoundaryPlayModeTests
                 foreach (var field in options) field.Key.SetValue(null, field.Value);
                 LocalAccountIdentity.UserId = previousLocalUserId;
                 LocalAccountIdentity.UserName = previousLocalUserName;
+                Type selectionSession = Production("PlayerSelectionSession");
+                selectionSession.GetMethod("RememberPrimary").Invoke(null, new[] { previousPrimarySelection });
+                for (int slot = 0; slot < previousCpuSelections.Length; slot++)
+                    selectionSession.GetMethod("RememberCpu").Invoke(null, new object[] { slot, previousCpuSelections[slot] });
                 options.Clear();
             }
             finally
@@ -117,7 +127,7 @@ public class CampaignBoundaryPlayModeTests
         persistence = null;
     }
 
-    private IEnumerator BeginAtRound(int index, int continues = 2)
+    private IEnumerator OpenCampaignMenu()
     {
         // Unity creates a separate log scope for the test coroutine after NUnit SetUp.
         RealScenePlayModeTestSupport.IgnoreSceneLogNoise();
@@ -144,13 +154,18 @@ public class CampaignBoundaryPlayModeTests
             Assert.That(Time.realtimeSinceStartup, Is.LessThan(deadline), "authored menu/catalogs did not load");
             yield return null;
         }
+    }
+
+    private IEnumerator BeginAtRound(int index, int continues = 2)
+    {
+        yield return OpenCampaignMenu();
         Debug.Log("Campaign boundary: composing round " + index);
         object playerData = Static("PlayerData", "instance");
         Assert.That(playerData, Is.Not.Null, "production menu must create PlayerData");
         IList route = (IList)Property(playerData, "LevelsList");
         Assert.That(route.Count, Is.EqualTo(21));
-        SetStatic("GameOptions", "levelsList", route);
-        SetStatic("GameOptions", "levelSelectedIndex", index);
+        SetStatic("GameOptions", "levelSelectedIndex", 0); // Menu preference stays at the last launch.
+        SetStatic("EndRoundData", "currentLevelIndex", index);
         SetStatic("EndRoundData", "numberOfContinues", continues);
         object level = route[index];
         CharacterProfile human = Resources.LoadAll<GameObject>("Prefabs/menu_start/default_shooter_profiles")
@@ -240,6 +255,113 @@ public class CampaignBoundaryPlayModeTests
     private static CampaignNextAction Action => (CampaignNextAction)RealScenePlayModeTestSupport.GetField(EndMenu, "nextAction");
 
     [UnityTest]
+    public IEnumerator FreshNormalCampaignStartsAtAuthoredFirstArenaAndResetsCursor()
+    {
+        yield return LaunchFreshCampaign(false);
+    }
+
+    [UnityTest]
+    public IEnumerator FreshHardcoreCampaignStartsAtAuthoredFirstArenaWithoutContinues()
+    {
+        yield return LaunchFreshCampaign(true);
+    }
+
+    private IEnumerator LaunchFreshCampaign(bool hardcore)
+    {
+        yield return OpenCampaignMenu();
+        object start = Static("StartManager", "instance");
+        float deadline = Time.realtimeSinceStartup + 90f;
+        while (!(bool)RealScenePlayModeTestSupport.Invoke(start, "HasLoadedGameSetup"))
+        {
+            Assert.That(Time.realtimeSinceStartup, Is.LessThan(deadline), "menu did not become launchable");
+            yield return null;
+        }
+        object selection = RealScenePlayModeTestSupport.GetField(start, "selection");
+        SeedRecord(8, false);
+        SeedRecord(7, true);
+        SetProperty(selection, "ModeIndex", MatchCatalogs.Modes.Definitions.ToList()
+            .FindIndex(mode => mode.Id == GameModeId.BeatThaComputahs));
+        SetProperty(selection, "LevelIndex", MatchCatalogs.Levels.Count - 1);
+        SetProperty(selection, "HardcoreEnabled", hardcore);
+        object playerSelect = Property(start, "PlayerSelect");
+        playerSelect.GetType().GetMethod("SetMatchContext").Invoke(playerSelect, new object[]
+            { MatchCatalogs.Modes.Find(26), new MatchModifiers(hardcoreRequested: hardcore) });
+        // Changing context does not silently replace the highlighted character. Select capable
+        // human/CPU options through the real menu coordinator before asking the builder to launch.
+        for (int attempt = 0; ; attempt++)
+        {
+            Assert.That(attempt, Is.LessThan(100), "menu has no selectable campaign shooter pair");
+            object[] args = { null, null };
+            bool ready = (bool)playerSelect.GetType().GetMethod("TryBuildRoster").Invoke(playerSelect, args);
+            Assert.That(ready, Is.True, args[1] as string);
+            var roster = (PlayerRoster)args[0];
+            bool humanReady = roster.GetBySlotId(0).Character.IsShooter;
+            bool cpuReady = roster.GetBySlotId(1).Character.IsShooter;
+            if (humanReady && cpuReady) break;
+            if (!humanReady) playerSelect.GetType().GetMethod("SelectNextPrimary").Invoke(playerSelect, null);
+            if (!cpuReady) playerSelect.GetType().GetMethod("SelectNextCpu").Invoke(playerSelect, new object[] { 0 });
+        }
+        SetStatic("EndRoundData", "currentLevelIndex", 20);
+        SetStatic("EndRoundData", "nextLevelIndex", 20);
+        SetStatic("EndRoundData", "numberOfContinues", -1);
+
+        RealScenePlayModeTestSupport.Invoke(start, "loadGame");
+        Assert.That(ActiveMatch.IsActive, Is.True, "production launch was rejected; inspect its validation reason");
+        yield return WaitForScene(Constants.SCENE_NAME_level_01_scrapyard);
+        yield return null;
+
+        Assert.That(ActiveMatch.Configuration.ModeId, Is.EqualTo(GameModeId.BeatThaComputahs));
+        Assert.That(ActiveMatch.Configuration.LevelId, Is.EqualTo(1));
+        Assert.That(ActiveMatch.Configuration.Rules.Hardcore, Is.EqualTo(hardcore));
+        Assert.That(Static("EndRoundData", "currentLevelIndex"), Is.Zero);
+        Assert.That(Static("EndRoundData", "nextLevelIndex"), Is.Zero);
+        Assert.That(Static("EndRoundData", "numberOfContinues"), Is.EqualTo(hardcore ? 0 : 2));
+        object manager = Static("GameLevelManager", "instance");
+        IList players = (IList)RealScenePlayModeTestSupport.Invoke(manager, "getSortedGameStatsList");
+        Assert.That(players.Count, Is.EqualTo(2));
+        object data = Static("PlayerData", "instance");
+        Assert.That(Property(data, "ThreePointerMade"), Is.EqualTo(hardcore ? 7f : 8f), "launch record filter");
+        SetStatic("GameOptions", "hardcoreModeEnabled", !hardcore);
+        Type pauseType = Assembly.Load("Level5.Match").GetType("Pause", true);
+        object pause = pauseType.GetField("instance").GetValue(null);
+        Assert.That(pause, Is.Not.Null);
+        var refresh = (Action)RealScenePlayModeTestSupport.GetField(pause, "reloadPlayerData");
+        refresh(); // The actual production delegate bound by this scene's GameLevelManager.Start.
+        Assert.That(Property(data, "ThreePointerMade"), Is.EqualTo(hardcore ? 7f : 8f),
+            "pause refresh must retain the bound match filter after the global preference changes");
+    }
+
+    private static void SeedRecord(int makes, bool hardcore)
+    {
+        object model = Activator.CreateInstance(Production("Assets.Scripts.database.HighScoreModel"));
+        model.GetType().GetField("Scoreid").SetValue(model, Guid.NewGuid().ToString("N"));
+        model.GetType().GetField("Modeid").SetValue(model, 2);
+        model.GetType().GetField("ThreeMade").SetValue(model, makes);
+        model.GetType().GetField("HardcoreEnabled").SetValue(model, hardcore ? 1 : 0);
+        Assert.That(Production("DBHelper").GetMethod("InsertGameScore")
+            .Invoke(Static("DBHelper", "instance"), new[] { model }), Is.True);
+    }
+
+    [UnityTest]
+    public IEnumerator HiddenBoneyardRetainsItsAuthoredOpponentAndAdvancesByRoutePosition()
+    {
+        yield return BeginAtRound(14);
+        Assert.That(ActiveMatch.Configuration.LevelId, Is.EqualTo(24));
+        object manager = Static("GameLevelManager", "instance");
+        IList players = (IList)RealScenePlayModeTestSupport.Invoke(manager, "getSortedGameStatsList");
+        object cpu = players.Cast<object>().Single(player => (bool)player.GetType().GetField("isCpu").GetValue(player));
+        var profile = (CharacterProfile)cpu.GetType().GetField("characterProfile").GetValue(cpu);
+        Assert.That(profile.PlayerObjectName, Is.EqualTo("johnny_dracula"));
+        yield return FinishRound(100, 0);
+        Assert.That(Action, Is.EqualTo(CampaignNextAction.Advance));
+        RealScenePlayModeTestSupport.Invoke(EndMenu, "pressNext");
+        yield return WaitForScene("level_03_snow");
+        Assert.That(Static("EndRoundData", "currentLevelIndex"), Is.EqualTo(15));
+        Assert.That(ActiveMatch.Configuration.LevelId, Is.EqualTo(4));
+        Assert.That(Static("GameOptions", "levelSelectedIndex"), Is.Zero);
+    }
+
+    [UnityTest]
     public IEnumerator CocaineIslandVictoryLoadsDevAndFinalVictorySavesOnceBeforeBackendAndReturnsToMenu()
     {
         yield return BeginAtRound(19);
@@ -252,7 +374,8 @@ public class CampaignBoundaryPlayModeTests
         AssertSubmissionSession("Dev loaded");
         Assert.That(ActiveMatch.Configuration.LevelId, Is.EqualTo(23));
         Assert.That(ActiveMatch.Configuration.Roster.CpuCount, Is.EqualTo(1));
-        Assert.That(Static("GameOptions", "levelSelectedIndex"), Is.EqualTo(20));
+        Assert.That(Static("EndRoundData", "currentLevelIndex"), Is.EqualTo(20));
+        Assert.That(Static("GameOptions", "levelSelectedIndex"), Is.Zero, "campaign advance must not overwrite the menu preference");
         AssertSubmissionSession("before final victory");
         yield return FinishRound(100, 0);
         Assert.That(Action, Is.EqualTo(CampaignNextAction.Complete));
@@ -334,6 +457,8 @@ public class CampaignBoundaryPlayModeTests
         RealScenePlayModeTestSupport.Invoke(EndMenu, "pressStartMenu");
         yield return WaitForScene(Constants.SCENE_NAME_level_00_start);
         Assert.That(database.CountRows("HighScores", "modeid", 26), Is.EqualTo(1));
+        Assert.That(Static("GameOptions", "levelSelectedIndex"), Is.Zero,
+            "return to menu retains its last launch preference independently of the campaign cursor");
     }
 
     private sealed class DurableResultTransport : IApiTransport

@@ -407,7 +407,7 @@ public class DBHelper : MonoBehaviour
                     dbcmd.Parameters.Add(new SqliteParameter("@p2IsCpu", stats.p2IsCpu));
                     dbcmd.Parameters.Add(new SqliteParameter("@p3IsCpu", stats.p3IsCpu));
                     dbcmd.Parameters.Add(new SqliteParameter("@p4IsCpu", stats.p4IsCpu));
-                    dbcmd.Parameters.Add(new SqliteParameter("@numPlayers", GameOptions.numPlayers));
+                    dbcmd.Parameters.Add(new SqliteParameter("@numPlayers", stats.numPlayers));
                     dbcmd.Parameters.Add(new SqliteParameter("@difficulty", stats.Difficulty));
                     dbcmd.Parameters.Add(new SqliteParameter("@campaignWins", stats.campaignWins));
                     dbcmd.Parameters.Add(new SqliteParameter("@campaignLosses", stats.campaignLosses));
@@ -477,11 +477,6 @@ public class DBHelper : MonoBehaviour
     }
 
     // add experience gained to database
-    internal bool UpdatePlayerProfileProgression(float expGained)
-    {
-        return UpdatePlayerProfileProgression(expGained, GameOptions.characterId);
-    }
-
     internal bool UpdatePlayerProfileProgression(float expGained, int characterId)
     {
         // AUD-075: every sibling method in this class acquires databaseLocked before opening its

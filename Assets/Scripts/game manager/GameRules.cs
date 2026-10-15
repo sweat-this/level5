@@ -795,25 +795,26 @@ public class GameRules : MonoBehaviour, IMoneyBallState, IShotMarkerSession
             yield break;
         }
 
-        if (GameOptions.levelsList == null || GameOptions.levelsList.Count == 0)
+        List<LevelSelected> campaignRoute = PlayerData.instance != null ? PlayerData.instance.LevelsList : null;
+        if (campaignRoute == null || campaignRoute.Count == 0)
         {
             Debug.LogError("GameRules cannot advance campaign because no campaign levels are loaded.");
             SceneTransition.LoadScene(Constants.SCENE_NAME_level_00_start);
             yield break;
         }
 
-        int completedLevelIndex = Mathf.Clamp(GameOptions.levelSelectedIndex, 0, GameOptions.levelsList.Count - 1);
+        int completedLevelIndex = Mathf.Clamp(EndRoundData.currentLevelIndex, 0, campaignRoute.Count - 1);
         EndRoundData.currentLevelIndex = completedLevelIndex;
         EndRoundData.nextLevelIndex = completedLevelIndex;
 
         // campaign is over
-        if (completedLevelIndex < GameOptions.levelsList.Count - 1)
+        if (completedLevelIndex < campaignRoute.Count - 1)
         {
             int nextLevelIndex = completedLevelIndex + 1;
             EndRoundData.nextLevelIndex = nextLevelIndex;
         }
 
-        LevelSelected completedLevel = GameOptions.levelsList[completedLevelIndex];
+        LevelSelected completedLevel = campaignRoute[completedLevelIndex];
         EndRoundData.currentRoundCpuWinnerImage = null;
         EndRoundData.currentRoundCpuLoserImage = null;
         CharacterProfile completedCpuProfile = completedLevel.CpuPlayer == null
@@ -830,11 +831,9 @@ public class GameRules : MonoBehaviour, IMoneyBallState, IShotMarkerSession
 
         EndRoundData.currentRoundWinnerIsCpu = players[0].isCpu;
         EndRoundData.currentRoundLoserIsCpu = players[1].isCpu;
-        //Debug.Log("level : " + GameOptions.levelsList[GameOptions.levelSelectedIndex+1].LevelDisplayName + " has 7s : "+ GameOptions.levelsList[GameOptions.levelSelectedIndex+1].LevelHasSevenPointers);
         //Debug.Log(EndRoundData.currentRoundWinnerIsCpu);
         //Debug.Log(EndRoundData.currentRoundLoserIsCpu);
 
-        //string sceneName = GameOptions.levelsList[GameOptions.levelSelectedIndex].LevelObjectName + "_" + GameOptions.levelsList[GameOptions.levelSelectedIndex].LevelDescription;
         SceneTransition.LoadScene(Constants.SCENE_NAME_level_00_end_round_screen);
     }
 

@@ -1,10 +1,7 @@
-using System.Collections.Generic;
 using UnityEngine;
 
 public static class EndRoundData 
 {
-    static public List<LevelSelected> levelsList;
-
     static public bool currentRoundWinnerIsCpu;
     static public bool currentRoundLoserIsCpu;
 
@@ -19,6 +16,8 @@ public static class EndRoundData
     static public int currentRoundWinnerScore;
     static public int currentRoundLoserScore;
 
+    // Authored route position for the active round, retained as the completed position during
+    // the end-round screen. Reset at new campaign launch; next/retry alone advances it.
     static public int currentLevelIndex;
     static public int nextLevelIndex;
 
