@@ -122,7 +122,6 @@ public static class GameOptions
     // (APIHelper.HasSession/BearerToken/ClearSession) was retired along with the rest of the V1
     // account/auth transport. The only remaining authenticated identity is Backend V2's own
     // BackendV2SessionStore.IsAuthenticated, which deliberately does not live here either.
-    static public int numOfLocalUsers;
 
     static public bool tipDialogueLoadedOnStart;
     static public bool obstaclesEnabled;

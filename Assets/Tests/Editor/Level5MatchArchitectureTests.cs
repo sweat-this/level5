@@ -107,7 +107,7 @@ public class Level5MatchArchitectureTests
         // GameOptions is a legacy compatibility surface being retired, not somewhere to add to.
         // Count stored declarations, excluding forwarding properties and methods. The old modifier
         // count included four non-fields. #274 A/D3/E retire six of the 55 actual stored fields.
-        const int allowedPublicStaticFields = 46;
+        const int allowedPublicStaticFields = 45;
 
         string text = File.ReadAllText(Path.Combine(ScriptsRoot, "menu_start", "GameOptions.cs"));
         int fields = Regex.Matches(StripComments(text),
@@ -129,6 +129,7 @@ public class Level5MatchArchitectureTests
     [TestCase("applicationVersion")]
     [TestCase("operatingSystemVersion")]
     [TestCase("previousSceneName")]
+    [TestCase("numOfLocalUsers")]
     public void RetiredCompatibilityFieldsCannotReturn(string name)
     {
         Assert.That(typeof(GameOptions).GetField(name), Is.Null,

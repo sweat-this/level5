@@ -216,7 +216,7 @@ public class UserAccountManager : MonoBehaviour
 
     /// <summary>
     /// Loads the local-profile list from SQLite into <see cref="userAccountData"/> and derives
-    /// <see cref="usersLoaded"/>, <see cref="GameOptions.numOfLocalUsers"/> and the status message from
+    /// <see cref="usersLoaded"/> and the status message from
     /// it. Runs synchronously after <see cref="WaitForDatabase"/> confirmed the database is free, so
     /// nothing can take the lock between that check and the read.
     ///
@@ -232,7 +232,6 @@ public class UserAccountManager : MonoBehaviour
         List<UserModel> profiles = DBHelper.instance.getUserProfileStats();
 
         userAccountData = profiles;
-        GameOptions.numOfLocalUsers = profiles.Count;
         usersLoaded = profiles.Count > 0;
         SetMessage(usersLoaded ? "select local profile" : "no local profiles found");
     }

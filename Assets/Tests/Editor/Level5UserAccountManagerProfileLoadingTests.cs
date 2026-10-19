@@ -34,7 +34,6 @@ public class Level5UserAccountManagerProfileLoadingTests
     private Text messageText;
     private int previousUserId;
     private string previousUserName;
-    private int previousNumOfLocalUsers;
 
     [SetUp]
     public void SetUp()
@@ -49,7 +48,6 @@ public class Level5UserAccountManagerProfileLoadingTests
 
         previousUserId = LocalAccountIdentity.UserId;
         previousUserName = LocalAccountIdentity.UserName;
-        previousNumOfLocalUsers = GameOptions.numOfLocalUsers;
 
         managerObject = new GameObject("UserAccountManagerUnderTest");
         manager = managerObject.AddComponent<UserAccountManager>();
@@ -69,7 +67,6 @@ public class Level5UserAccountManagerProfileLoadingTests
 
         LocalAccountIdentity.UserId = previousUserId;
         LocalAccountIdentity.UserName = previousUserName;
-        GameOptions.numOfLocalUsers = previousNumOfLocalUsers;
         DBHelperTestHarness.Destroy(session);
     }
 
@@ -103,7 +100,6 @@ public class Level5UserAccountManagerProfileLoadingTests
         Assert.That(manager.UserAccountData, Has.Count.EqualTo(2));
         Assert.That(manager.UserAccountData.Exists(u => u.Userid == 5 && u.UserName == "alice"), Is.True);
         Assert.That(manager.UserAccountData.Exists(u => u.Userid == 17 && u.UserName == "bob"), Is.True);
-        Assert.That(GameOptions.numOfLocalUsers, Is.EqualTo(2));
         Assert.That(session.Helper.DatabaseLocked, Is.False, "the load must leave the cooperative lock free");
     }
 
@@ -175,7 +171,6 @@ public class Level5UserAccountManagerProfileLoadingTests
         Assert.That(manager.UserAccountData, Has.Count.EqualTo(1));
         Assert.That(manager.UserAccountData[0].Userid, Is.EqualTo(9));
         Assert.That(manager.UserAccountData[0].UserName, Is.EqualTo("dana"));
-        Assert.That(GameOptions.numOfLocalUsers, Is.EqualTo(1));
     }
 
     [Test]
@@ -208,13 +203,19 @@ public class Level5UserAccountManagerProfileLoadingTests
     [Test]
     public void AnEmptyUserTableLoadsAsNoProfilesWithoutAFalsePositive()
     {
-        GameOptions.numOfLocalUsers = 99;
+        SeedUser(5, "alice");
+        manager.RefreshLocalProfiles();
+        Assert.That(manager.UserAccountData, Has.Count.EqualTo(1));
+        using (IDbCommand cmd = session.Helper.Connection.CreateCommand())
+        {
+            cmd.CommandText = "DELETE FROM User";
+            cmd.ExecuteNonQuery();
+        }
 
         manager.RefreshLocalProfiles();
 
         Assert.That(manager.UsersLoaded, Is.False);
         Assert.That(manager.UserAccountData, Is.Empty);
-        Assert.That(GameOptions.numOfLocalUsers, Is.EqualTo(0), "a stale count from an earlier load must not survive");
         Assert.That(messageText.text, Is.EqualTo("no local profiles found"));
         Assert.That(session.Helper.DatabaseLocked, Is.False);
     }
