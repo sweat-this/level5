@@ -66,7 +66,6 @@ public static class GameOptions
     static public string levelDisplayName;
     static public string gameModeSelectedName;
 
-
     // game mode flags for game rules
     static public bool gameModeRequiresCounter;
     static public bool gameModeRequiresCountDown;
@@ -93,7 +92,6 @@ public static class GameOptions
 
     static public int difficultySelected = 1;
 
-
     static public bool hardcoreModeEnabled = false;
     static public bool EnemiesOnlyEnabled = false;
 
@@ -101,8 +99,6 @@ public static class GameOptions
     static public bool levelRequiresWeather = false;
     static public bool levelHasSevenPointers = false;
 
-
-    static public bool tipDialogueLoadedOnStart;
     static public bool obstaclesEnabled;
     static public bool battleRoyalEnabled;
     static public bool cageMatchEnabled;

@@ -75,7 +75,7 @@ public class CampaignBoundaryPlayModeTests
         previousPrimarySelection = selectionSession.GetProperty("PrimaryCharacterId").GetValue(null);
         for (int slot = 0; slot < previousCpuSelections.Length; slot++)
             previousCpuSelections[slot] = selectionSession.GetMethod("GetCpu").Invoke(null, new object[] { slot });
-        foreach (string type in new[] { "GameOptions", "EndRoundData", "StartMenuPreferences" })
+        foreach (string type in new[] { "GameOptions", "EndRoundData", "StartMenuPreferences", "StartFlowPresentation" })
             foreach (FieldInfo field in Production(type).GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static))
                 if (!field.IsLiteral && !field.IsInitOnly) options[field] = field.GetValue(null);
         try

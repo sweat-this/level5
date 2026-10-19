@@ -1812,7 +1812,7 @@ public class StartManager : MonoBehaviour
         // instead of once per pass through the start flow. Reset here (launch time, not mid-flow)
         // so it's correct the *next* time a player re-enters the start flow, without disturbing
         // whichever of those two screens already ran during the flow that is launching right now.
-        GameOptions.tipDialogueLoadedOnStart = false;
+        StartFlowPresentation.ResetForNextPass();
 
         // load hardcore mode highscores (for ui display) for game mode if hardcore mode enabled
         PlayerData.instance.loadStatsFromDatabase(configuration.Rules.Hardcore);

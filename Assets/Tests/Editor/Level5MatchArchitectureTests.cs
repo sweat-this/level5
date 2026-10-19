@@ -36,9 +36,6 @@ public class Level5MatchArchitectureTests
         "LegacyGameOptionsBridge.cs",
 
         // menu, navigation and start-screen widgets, migrating in a later slice
-        "StartManager.cs",
-        "StartScreenCpuSelectManager.cs",
-        "StartScreenTipDialogueManager.cs",
         "ProgressionManager.cs",
         "EndRoundMenuManager.cs",
 
@@ -99,8 +96,8 @@ public class Level5MatchArchitectureTests
     {
         // GameOptions is a legacy compatibility surface being retired, not somewhere to add to.
         // Count stored declarations, excluding forwarding properties and methods. The old modifier
-        // count included four non-fields. #274 A/D3/E retire six of the 55 actual stored fields.
-        const int allowedPublicStaticFields = 42;
+        // count included four non-fields. #274/#275 leave only the 41 supported fallback inputs.
+        const int allowedPublicStaticFields = 41;
 
         string text = File.ReadAllText(Path.Combine(ScriptsRoot, "menu_start", "GameOptions.cs"));
         int fields = Regex.Matches(StripComments(text),
@@ -126,6 +123,7 @@ public class Level5MatchArchitectureTests
     [TestCase("levelSelectedIndex")]
     [TestCase("modeSelectedIndex")]
     [TestCase("friendSelectedIndex")]
+    [TestCase("tipDialogueLoadedOnStart")]
     public void RetiredCompatibilityFieldsCannotReturn(string name)
     {
         Assert.That(typeof(GameOptions).GetField(name), Is.Null,

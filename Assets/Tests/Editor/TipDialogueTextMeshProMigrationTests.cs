@@ -31,14 +31,15 @@ public class TipDialogueTextMeshProMigrationTests
     [SetUp]
     public void SetUp()
     {
-        _capturedTipDialogueLoadedOnStart = GameOptions.tipDialogueLoadedOnStart;
-        GameOptions.tipDialogueLoadedOnStart = false;
+        _capturedTipDialogueLoadedOnStart = StartFlowPresentation.TipsShown;
+        StartFlowPresentation.ResetForNextPass();
     }
 
     [TearDown]
     public void TearDown()
     {
-        GameOptions.tipDialogueLoadedOnStart = _capturedTipDialogueLoadedOnStart;
+        StartFlowPresentation.ResetForNextPass();
+        if (_capturedTipDialogueLoadedOnStart) StartFlowPresentation.MarkTipsShown();
 
         foreach (Object instance in _instantiated)
         {

@@ -24,7 +24,7 @@ public class StartScreenTipDialogueManager : MonoBehaviour
 
     private void OnEnable()
     {
-        if (!GameOptions.tipDialogueLoadedOnStart)
+        if (!StartFlowPresentation.TipsShown)
         {
             controls = PlayerControlsProvider.Controls;
             PlayerControlsProvider.EnableMenuMaps();
@@ -49,7 +49,7 @@ public class StartScreenTipDialogueManager : MonoBehaviour
     // Start is called before the first frame update
     void Awake()
     {
-        if (!GameOptions.tipDialogueLoadedOnStart)
+        if (!StartFlowPresentation.TipsShown)
         {
             controls = PlayerControlsProvider.Controls;
 
@@ -72,7 +72,7 @@ public class StartScreenTipDialogueManager : MonoBehaviour
     {
         EventSystem.current.SetSelectedGameObject(null);
         EventSystem.current.SetSelectedGameObject(ui.NextButton.gameObject);
-        GameOptions.tipDialogueLoadedOnStart = true;
+        StartFlowPresentation.MarkTipsShown();
         ui.Header.text = "Tip" + "    " + (randomTipIndex + 1) + " / " + (tipsList.Count);
     }
 
