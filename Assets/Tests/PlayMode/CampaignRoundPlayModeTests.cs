@@ -49,6 +49,20 @@ public class CampaignBoundaryPlayModeTests
     private static void SetProperty(object target, string name, object value)
         => target.GetType().GetProperty(name).SetValue(target, value);
 
+    private static void RememberMenuLevel(int index)
+    {
+        object selection = Activator.CreateInstance(Production("StartMenuSelectionState"));
+        SetProperty(selection, "LevelIndex", index);
+        RealScenePlayModeTestSupport.Invoke(selection, "SavePersistedPreferences");
+    }
+
+    private static object RememberedMenuLevel()
+    {
+        object selection = Activator.CreateInstance(Production("StartMenuSelectionState"));
+        RealScenePlayModeTestSupport.Invoke(selection, "LoadPersistedPreferences");
+        return Property(selection, "LevelIndex");
+    }
+
     [SetUp]
     public void SetUp()
     {
@@ -61,8 +75,8 @@ public class CampaignBoundaryPlayModeTests
         previousPrimarySelection = selectionSession.GetProperty("PrimaryCharacterId").GetValue(null);
         for (int slot = 0; slot < previousCpuSelections.Length; slot++)
             previousCpuSelections[slot] = selectionSession.GetMethod("GetCpu").Invoke(null, new object[] { slot });
-        foreach (string type in new[] { "GameOptions", "EndRoundData" })
-            foreach (FieldInfo field in Production(type).GetFields(BindingFlags.Public | BindingFlags.Static))
+        foreach (string type in new[] { "GameOptions", "EndRoundData", "StartMenuPreferences" })
+            foreach (FieldInfo field in Production(type).GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static))
                 if (!field.IsLiteral && !field.IsInitOnly) options[field] = field.GetValue(null);
         try
         {
@@ -164,7 +178,7 @@ public class CampaignBoundaryPlayModeTests
         Assert.That(playerData, Is.Not.Null, "production menu must create PlayerData");
         IList route = (IList)Property(playerData, "LevelsList");
         Assert.That(route.Count, Is.EqualTo(21));
-        SetStatic("GameOptions", "levelSelectedIndex", 0); // Menu preference stays at the last launch.
+        RememberMenuLevel(0); // Menu preference stays at the last launch.
         SetStatic("EndRoundData", "currentLevelIndex", index);
         SetStatic("EndRoundData", "numberOfContinues", continues);
         object level = route[index];
@@ -358,7 +372,7 @@ public class CampaignBoundaryPlayModeTests
         yield return WaitForScene("level_03_snow");
         Assert.That(Static("EndRoundData", "currentLevelIndex"), Is.EqualTo(15));
         Assert.That(ActiveMatch.Configuration.LevelId, Is.EqualTo(4));
-        Assert.That(Static("GameOptions", "levelSelectedIndex"), Is.Zero);
+        Assert.That(RememberedMenuLevel(), Is.Zero);
     }
 
     [UnityTest]

@@ -76,6 +76,9 @@ public static class LegacyGameOptionsBridge
 
     private static void ApplyModifiers(ResolvedMatchRules rules)
     {
+        // Menu history follows the same resolved launch boundary; it never feeds fallback.
+        StartMenuPreferences.RememberResolvedModifiers(rules);
+
         GameOptions.enemiesEnabled = rules.EnemiesEnabled;
         GameOptions.trafficEnabled = rules.TrafficEnabled;
         GameOptions.obstaclesEnabled = rules.ObstaclesEnabled;

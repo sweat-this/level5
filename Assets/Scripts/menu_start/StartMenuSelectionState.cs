@@ -40,31 +40,21 @@ public sealed class StartMenuSelectionState
     public MatchDifficulty Difficulty { get; set; } = MatchDifficulty.Normal;
 
     // ---- persistence of menu preferences ----------------------------------------------------
-    // The only place that touches the GameOptions menu-index fields this class still owns. Player
-    // and CPU selection persist through PlayerSelectionSession instead (plan phase 6).
+    // Player and CPU selection persist separately through PlayerSelectionSession.
 
     public void LoadPersistedPreferences()
     {
-        FriendIndex = GameOptions.friendSelectedIndex;
-        LevelIndex = GameOptions.levelSelectedIndex;
-        ModeIndex = GameOptions.modeSelectedIndex;
-        TrafficEnabled = GameOptions.trafficEnabled;
-        HardcoreEnabled = ReadPersistedHardcorePreference();
-        ObstaclesEnabled = GameOptions.obstaclesEnabled;
-
+        StartMenuPreferences.RestoreTo(this);
         // Difficulty deliberately does not persist: the menu has always reset it to normal on load.
         Difficulty = MatchDifficulty.Normal;
     }
 
-    // Startup record queries use the same last-launch preference as menu re-entry, even when
-    // there is no configured match. #275 owns retirement of its current compatibility storage.
-    public static bool ReadPersistedHardcorePreference() => GameOptions.hardcoreModeEnabled;
+    // Startup queries share menu re-entry's last resolved launch preference, without ActiveMatch.
+    public static bool ReadPersistedHardcorePreference() => StartMenuPreferences.HardcoreEnabled;
 
     public void SavePersistedPreferences()
     {
-        GameOptions.friendSelectedIndex = FriendIndex;
-        GameOptions.levelSelectedIndex = LevelIndex;
-        GameOptions.modeSelectedIndex = ModeIndex;
+        StartMenuPreferences.RememberSelection(this);
     }
 
     // ---- bounded cycling ----------------------------------------------------------------------

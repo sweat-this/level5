@@ -187,7 +187,7 @@ public class Level5RangeShotRecordTests
             ActiveMatch.Clear();
             Insert(2, "ordinary", 80, 8, 20);
             Insert(2, "hardcore", 70, 7, 20, 1);
-            GameOptions.hardcoreModeEnabled = hardcore;
+            StartMenuPreferences.RememberResolvedModifiers(new ResolvedMatchRules(hardcore: hardcore));
             PlayerData data = root.AddComponent<PlayerData>();
 
             typeof(PlayerData).GetMethod("Start", PrivateInstance).Invoke(data, null);

@@ -34,7 +34,6 @@ public class Level5MatchArchitectureTests
         // GameOptions directly; that builder lives on GameOptions.cs itself, which is already exempt
         // from this guard (see EnumerateGameScripts's caller skipping "GameOptions.cs" by name).
         "LegacyGameOptionsBridge.cs",
-        "StartMenuSelectionState.cs",
 
         // menu, navigation and start-screen widgets, migrating in a later slice
         "StartManager.cs",
@@ -101,7 +100,7 @@ public class Level5MatchArchitectureTests
         // GameOptions is a legacy compatibility surface being retired, not somewhere to add to.
         // Count stored declarations, excluding forwarding properties and methods. The old modifier
         // count included four non-fields. #274 A/D3/E retire six of the 55 actual stored fields.
-        const int allowedPublicStaticFields = 45;
+        const int allowedPublicStaticFields = 42;
 
         string text = File.ReadAllText(Path.Combine(ScriptsRoot, "menu_start", "GameOptions.cs"));
         int fields = Regex.Matches(StripComments(text),
@@ -124,6 +123,9 @@ public class Level5MatchArchitectureTests
     [TestCase("operatingSystemVersion")]
     [TestCase("previousSceneName")]
     [TestCase("numOfLocalUsers")]
+    [TestCase("levelSelectedIndex")]
+    [TestCase("modeSelectedIndex")]
+    [TestCase("friendSelectedIndex")]
     public void RetiredCompatibilityFieldsCannotReturn(string name)
     {
         Assert.That(typeof(GameOptions).GetField(name), Is.Null,

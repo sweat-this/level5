@@ -22,7 +22,7 @@ public class Level5SpawnCoordinatorCampaignCpuPrefabResolverTests
     private MethodInfo resolveParticipantPrefab;
     private PlayerData savedPlayerData;
     private int savedLevelIndex;
-    private int savedMenuLevelIndex;
+    private StartMenuSelectionState savedMenuPreferences;
 
     [SetUp]
     public void SetUp()
@@ -33,7 +33,8 @@ public class Level5SpawnCoordinatorCampaignCpuPrefabResolverTests
 
         savedPlayerData = PlayerData.instance;
         savedLevelIndex = EndRoundData.currentLevelIndex;
-        savedMenuLevelIndex = GameOptions.levelSelectedIndex;
+        savedMenuPreferences = new StartMenuSelectionState();
+        savedMenuPreferences.LoadPersistedPreferences();
         GameObject data = Spawn("campaign-route-owner");
         data.SetActive(false);
         PlayerData.instance = data.AddComponent<PlayerData>();
@@ -44,7 +45,7 @@ public class Level5SpawnCoordinatorCampaignCpuPrefabResolverTests
     {
         PlayerData.instance = savedPlayerData;
         EndRoundData.currentLevelIndex = savedLevelIndex;
-        GameOptions.levelSelectedIndex = savedMenuLevelIndex;
+        savedMenuPreferences.SavePersistedPreferences();
 
         foreach (GameObject go in spawned)
         {
@@ -221,12 +222,14 @@ public class Level5SpawnCoordinatorCampaignCpuPrefabResolverTests
         second.LevelId = 23;
         second.CpuPlayer = Spawn("finale-cpu");
         PlayerData.instance.LevelsList = new List<LevelSelected> { first, second };
-        GameOptions.levelSelectedIndex = 0;
+        new StartMenuSelectionState { LevelIndex = 0 }.SavePersistedPreferences();
         EndRoundData.currentLevelIndex = 1;
 
         Assert.That(InvokeAdapter(out GameObject prefab), Is.True);
         Assert.That(prefab, Is.SameAs(second.CpuPlayer));
-        Assert.That(GameOptions.levelSelectedIndex, Is.Zero);
+        var restored = new StartMenuSelectionState();
+        restored.LoadPersistedPreferences();
+        Assert.That(restored.LevelIndex, Is.Zero);
     }
 
     [Test]
