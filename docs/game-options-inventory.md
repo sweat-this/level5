@@ -1,13 +1,322 @@
 # `GameOptions` production ownership inventory
 
-Status: **#275 PASS for A1/A2/C/B/D and focused integration. #274 D2/F and #276 remain blocked.**
-Audited 2026-10-19 against freshly fetched `origin/dev 99c3024b7f9fee4ea492423a6b3bb9eb534ea62a`, Unity `6000.5.7f1`.
-Branch: `refactor/275-non-match-ownership`; PR target: `dev`.
-GitHub: #273 closed / PR #309 merged; #274 closed / PR #310 merged, despite its documented D2/F debt;
-#275 and #276 open. No open PR overlap at preparation. Publication refresh is recorded below.
+Status: **#276 DESIGN-BLOCKED overall. Bare Scrapyard contract approved and two real-scene reader proofs PASS; bridge and 41 fallback fields retained.**
+Re-audited 2026-10-19 against freshly fetched `origin/dev ad18513f5db771cf2c5754aaab9e554793befde9`, Unity `6000.5.7f1`.
+Branch: `docs/276-fallback-decision-gate`; PR target: `dev`.
+GitHub: #273, #274 and #275 closed; #276 open. No open PRs at preparation.
+Issue closure does not establish fallback-removal readiness. The #276 decision gate below supersedes
+the older status snapshots; the #275 implementation and test evidence below remains historical.
+The later [Scrapyard proof](#scrapyard-bare-entry-contract-and-scene-proof) records the user's
+bare-entry choice, new PlayMode evidence and a concrete conditional production binding proposal.
 The [existing migration plan](game-options-match-system-overhaul-plan.md#275-pre-implementation-audit-and-two-review-passes-2026-10-19)
 contains both reviews recorded before production changes. Historical #274 inventory remains available
 [in dev at the audit baseline](https://github.com/sweat-this/level5/blob/99c3024b7f9fee4ea492423a6b3bb9eb534ea62a/docs/game-options-inventory.md).
+
+## #276 current-source decision gate (2026-10-19)
+
+**Outcome: Phase A characterized; Phase B has insufficient independent inputs; Phases C–E stopped.**
+This initial finding was documentation-only. The subsequent bare-entry characterization tests below
+do not implement a production fallback replacement or establish overall gameplay certification.
+The [two reviews and twice-refined plan](game-options-match-system-overhaul-plan.md#276-two-review-passes-and-decision-gate-2026-10-19)
+record why a configured-only deletion is incompatible. #276 must remain open.
+
+Fresh inspection confirms **41 public static stored fields, 41 paired bridge assignments, four other
+release writes on four lines in two files, and three allowed external direct consumers**:
+LegacyGameOptionsBridge, ProgressionManager and EndRoundMenuManager. GameOptions itself reconstructs
+the fallback internally. There are no development-only direct member accesses or residual independent
+non-match responsibilities. The complete per-field and expression ledgers below still match source;
+no consumers or fields were removed in this audit. A source access count is not a count of runtime reads:
+MatchRuntime's installed reader remains a transitive production dependency.
+
+### Phase A: input / answer / consumer / characterization matrix
+
+Source paths below are relative to `Assets/Scripts`; test names refer to `Assets/Tests/Editor` unless
+stated otherwise. All 41 fields are covered by these groups and individually listed below.
+`F` means `Level5MatchRuntimeLegacyFallbackTests`; `P` means `Level5MatchBridgeParityTests`.
+Test references identify assertions inspected, not tests executed during #276.
+
+| Input group (field count) | Current fallback mapping and runtime consumers | Contract / inspected evidence |
+| --- | --- | --- |
+| Mode identity (2): gameModeSelectedId/Name | GameOptions:138–140 → MatchRuntime.ModeId/RawModeId/ModeDisplayName. GameLevelManager:91, GameRules:261/422/453/505/514, Pause:447/527/546/576/585/620/632/708/734, HighScoreModel:100/200/290, AnaylticsManager:30/48/85/113 | Stable raw ID is retained, including Lockdown 27. F.LegacyFallbackReconstructsModeAndLevelIdentity; F.LegacyFallbackAddsTheLockdownImplicitDefenderWithoutTheModesClass. |
+| Clock (3): gameModeRequiresCounter/CountDown, customTimer | GameOptions:153–184 → Rules; Timer:139, GameRules:84, scene context and rules consumers below | Countdown wins if both flags are set. Preserve raw customTimer zero; MatchClock.StartSeconds uses 180 seconds when timer is not positive. P.AModeWithoutACustomTimerWritesZeroNotTheDefaultLength and P.TheRuntimeReadsBackTheSameRulesTheBridgeWrote; dual-clock precedence is source-characterized here, not established by those tests. |
+| Shots/basketball (9): three marker flags, four contest flags, gameModeRequiresBasketball/AllowsCpuShooters | GameOptions:155–173/207–251 → Rules; GameLevelManager:89 hands them to SpawnCoordinator and hoop; GameRules:84 binds markers | Independent shot and marker flags combine with bitwise OR, rather than choosing one contest. BasketballCount uses max(1, numPlayers). P.ModeFlagsReachTheOldGlobalsUnchanged and runtime round-trip; arbitrary combined fallback flags still require focused tests before migration. |
+| Combat/modifiers/sniper (12): battleRoyalEnabled, cageMatchEnabled, EnemiesOnlyEnabled, enemiesEnabled, trafficEnabled, obstaclesEnabled, difficultySelected, hardcoreModeEnabled, three sniper flags, numPlayers | GameOptions:155–173/186–205/254–266 → Rules; GameLevelManager:89/877, LevelRuntimeContext:52, GameRules:84, EnemyController:145/471, EnemyDetection:64/68, EnemySpawner:33/57/72/78/86/90/205/218/259, ActorHealth:128, BodyGuardController:162, cameraUpdater:210–219, TouchInputController:146/183/236, RandomEvents:78, TrafficManager:56, EnemyProjectile:235, SniperManager:63/124/128/132, Pause:262, AnaylticsManager:33/51, HighScoreModel factories | BattleRoyal and Cage combine; EnemiesOnly adds Standard only if neither is set. Sniper precedence Laser > MachineGun > Bullet > None. Difficulty/hardcore/enemies are read independently; do not re-resolve through a catalog. P.CombatModeReachesTheOldBattleRoyalAndCageFlags / SniperVariantsReachTheirThreeSeparateBooleans / HardcoreDifficultyStillSetsTheHardcoreFlag cover bridge publication, not every simultaneous fallback combination. |
+| CPU/roster names (5): player1–4IsCpu, characterObjectNames | GameOptions:25–54/269–292 plus numPlayers and primary ID/display below → Roster / ParticipantCount / LocalInputSlotFor. GameLevelManager:90/883, LevelRuntimeContext:53, CameraManager:122, cameraUpdater:152, HighScoreModel:164/289/304/317/329; SpawnCoordinator consumes roster | Clamp roster to 1–4; preserve per-slot CPU flags, per-index object names and human numbering past CPUs. Missing object names become empty; non-primary IDs are zero. F.LegacyFallbackReconstructsTheRosterFromGameOptions / LegacyFallbackClampsPlayerCountIntoRange. Lockdown defender is outside the roster; bridge also sets player2IsCpu. |
+| Primary character (3): characterId, characterDisplayName, characterObjectName | GameOptions:146–148/280–285 → PrimaryCharacter*. MatchRuntime:78–166 prefers valid configured data, otherwise the corresponding raw fallback; unconfigured reads prefer reconstructed slot zero where populated. HighScoreModel:101–102/201–202, AnaylticsManager, GameRules:747, GameLevelManager:168/604, SpawnCoordinator:708, FanManager:50–51 | ID zero and empty display/object names can fall through even with ActiveMatch. F.PrimaryCharacterAccessorsFallBackToLegacyGlobalsEvenWithAConfigurationActive. ProgressionManager:968 still publishes only object name; menu session remembers IDs, not this complete fallback triple. |
+| Arena (5): levelId, levelDisplayName, levelRequiresTimeOfDay/Weather, levelHasSevenPointers | GameOptions:141–145 → MatchRuntime arena answers; HighScoreModel:103–104/203–204, CameraManager:79, cameraUpdater:106, timeOfDay:53, GameLevelManager:881 | F.LegacyFallbackReconstructsModeAndLevelIdentity. Without configuration, Level stays null and CustomCamera stays false; do not silently grant a catalog camera capability. EndRoundMenuManager:318–320 changes only ID, display and seven-point flag for unconfigured continuation. |
+| Cheerleader (2): cheerleaderObjectName/DisplayName | GameOptions:149 → CheerleaderSelection with ID zero/default bonuses; GameLevelManager:166 spawn, SpawnCoordinator:686 human profile context, AnaylticsManager:32/50/87/115 | F.LegacyFallbackReconstructsTheCheerleader asserts identity and zero three-point bonus. Constructor defaults supply zero bonuses; no independently selected scene cheerleader exists. |
+
+The groups partition all 41 fields; `numPlayers` is in the combat/rules row and also feeds roster.
+Configured authority always wins for rules, roster, mode, arena and cheerleader. A complete configured
+primary plus in-roster slot needs no reader (F.ConfiguredMatchReadsSucceedWithNoFallbackReaderInstalled).
+An absent roster slot still uses the live CPU formula even when configured
+(F.LocalInputSlotForFallsBackToTheLegacyFormulaEvenWhenConfiguredButSlotIsOutsideTheRoster).
+
+Fallback reads are fresh per accessor, not one cached scene result. F.LegacyFallbackReadsAreLiveNotSnapshottedForTheWholeScene
+and Level5PlayerMatchRuntimeCompositionTests.RulesForwardsLiveToMatchRuntimeRatherThanASnapshot pin that
+distinction. LevelRuntimeContext and GameLevelManager intentionally capture rules/roster at composition;
+their captured values must not replace the separately live MatchRuntime interface.
+
+### Phase B: independent sources and initialization evidence
+
+| Candidate owner | What it actually supplies | Why it cannot yet replace fallback |
+| --- | --- | --- |
+| MatchConfiguration / ActiveMatch | Validated current mode, arena, resolved rules, roster, cheerleader | Absent for direct entry; incomplete primary properties and absent input slots still consult fallback. Do not duplicate or reverse-sync configuration. |
+| Authored LevelSelected prefabs / LevelDefinitionFactory | Arena ID/name/scene descriptor, capabilities and campaign CPU prefab | Arena facts are independent authored data, not a selected mode, participant roster, modifiers or arbitrary raw fallback arena overrides. No current direct-scene reader binds them. |
+| Authored StartScreenModeSelected prefabs / GameModeDefinitionFactory | Mode definitions, combined flags, numeric IDs and roster constraints | A definition catalog does not select the mode for the open gameplay scene or reconstruct arbitrary raw combinations/modifiers. |
+| MatchCatalogs / LegacyMatchCatalogBootstrap | Converts/caches definition lists; StartManager:1137 builds from loaded menu data | No Resources/Match mode/level `.asset` definitions in this checkout. No BeforeSceneLoad direct-entry selection/roster composition is provided by either catalog. Keeping the conversion bootstrap is necessary for configured menu launches. |
+| LevelRuntimeContext | Captures MatchRuntime answers; exposes/adopts PlayerRegistry | Only serialized field is MatchController. No authored instance found in scenes/prefabs/assets. It consumes inputs rather than authors them. |
+| GameLevelManager / SpawnCoordinator / PlayerRegistry | Scene spawn points, instantiated participants and device plan | Manager reads MatchRuntime before creating context or discovering spawn points. Registry is filled from that roster, so deriving the roster back from it is circular and too late. Scene auto-player may occupy the next slot; it is not a complete authored match. Existing drblood prefab fallback does not establish primary ID/display, rules or input flags. |
+| PlayerSelectionSession / selected profile | Menu primary/CPU stable IDs; progression screen can resolve its own highlighted profile | Process memory may be absent/stale on direct entry; no validated complete gameplay roster, device map, fallback display/object triple or scene initialization handoff. It has no automatic runtime-session reset. |
+| StartMenuPreferences | Six last-launch menu values, three modifiers recorded from resolved rules | History is not gameplay authority and never supplies MatchRuntime. Using it for direct entry would introduce reverse synchronization. |
+| PlayerData.LevelsList / EndRoundData | Authored campaign route/CPU prefabs and active/completed/next route positions | Neither publishes a complete unconfigured match. The existing end-round path deliberately retains old weather/time-of-day and changes only three arena fields. Deriving all capabilities from the next arena would change that behavior. |
+| GameOptions installed reader | All characterized live fallback answers | Only complete current source; depends on the bridge and four non-bridge writes. Renaming or snapshotting this storage is not retirement. |
+
+Serialized inspection covered **650 `.unity`/`.prefab`/`.asset` files**, including all 42 scenes:
+zero GameOptions, bridge or LevelRuntimeContext MonoScript GUID references. Twenty-seven scenes
+reference the GameManager prefab or the manager script; 26 have at least one GameManager prefab instance,
+and Rumble Pit has a direct manager component. Aveb2 also contains a direct manager component;
+Dev has two GameManager prefab instances. These are serialized observations, not a claim about which
+instances are active at runtime. Duplicate ownership must be tested if composition is changed.
+All 23 LevelSelected script references are menu-level prefabs; all 28 mode-script references are
+catalog/menu authoring, not an independently selected gameplay match.
+
+Current initialization flow (source and metadata, not a new runtime trace):
+
+```mermaid
+flowchart TD
+    Reset[SubsystemRegistration: reset MatchRuntime reader] --> Install[BeforeSceneLoad: GameOptions installs reader]
+    Install --> Manager[GameLevelManager Awake: metadata order -8000]
+    Config[ActiveMatch from successful launch, if present] --> Read[Read rules, roster and mode]
+    Manager --> Read
+    Install -->|fresh GameOptions snapshot when needed| Read
+    Read --> Context[Find or AddComponent LevelRuntimeContext; adopt registry]
+    Context --> Spawn[Validate spawn points and device plan; spawn participants]
+    Spawn --> Bind[Bind match interfaces before participant Start]
+```
+
+`GameLevelManager.cs.meta:7` explicitly sets **-8000**. LevelRuntimeContext declares -100, and is
+created at GameLevelManager:100–102 after reads at 89–91. An authored context at -100 would still be
+too late for the manager. Existing commentary in Level5LevelRuntimeContextTests describing it as the
+only custom execution order must not be used as current ordering evidence. The reader's
+SubsystemRegistration reset and BeforeSceneLoad install are independent of component order.
+There is no other production InstallLegacyFallbackReader caller. MatchRuntime:244–255 throws
+InvalidOperationException when an answer needs the reader and none is installed; null installation
+throws ArgumentNullException. Reset is idempotent; reinstallation recovers the mapping. F's
+MissingFallbackReaderProducesAnExplicitErrorRatherThanDefaultRules,
+ResetIsIdempotentAndReinstallingRecoversTheRealMapping and InstallLegacyFallbackReaderRejectsANullReader
+pin these contracts; the three counting-reader tests pin one reader invocation per accessor.
+No production ActiveMatch.Clear
+call or runtime reset attribute on ActiveMatch was found: do not claim that resetting the reader
+also clears configured state or legacy values when domain reload is disabled.
+
+Assembly boundary: MatchRuntime, LegacyMatchRuntimeSnapshot, ActiveMatch, LevelRuntimeContext,
+ArenaBootstrap and SpawnCoordinator are in `Level5.Match`; GameOptions, bridge, menu publishers and
+legacy catalog adapters are in Assembly-CSharp. Level5.Match cannot call those legacy owners directly.
+Retain the installed callback / resolved-answer boundary; no new asmdef or service locator is justified.
+
+### Decisions required before any dependent deletion
+
+1. Identify an independently authored source and explicit pre-Awake handoff for direct-entry mode,
+   all rule/modifier combinations, roster/CPU ordering, primary identity and cheerleader. Arena
+   authoring alone is insufficient. Record which existing authoring actually supplies each value.
+2. Establish who answers each missing configured primary datum and out-of-roster input query,
+   including whether/how progression's live object-name publication remains observable.
+3. Establish the supported producer/lifetime of live fallback changes, and the exact unconfigured
+   campaign three-field update. Decide missing-data, reload, duplicate/partial composition and
+   new-session behavior without replacing characterized values with guesses.
+4. If independently sourced equivalents cannot exist, approve an explicit observable contract
+   change first. The current request authorizes preservation, not removing these guarantees.
+
+The smallest viable **contract shape** is already present: the existing reader returns transient
+LegacyMatchRuntimeSnapshot resolved answers, with live rule/roster/input delegates. What remains
+unestablished is input provenance and initialization, not a missing interface. The target architecture
+in the migration plan remains conditional until these decisions have evidence.
+
+### All launch publications that must move together after the input gate
+
+| Source / Apply line | Existing successful publication order to preserve | Resolved preference notification |
+| --- | --- | --- |
+| StartManager:1719 | Build/preflight → ActiveMatch.Begin → bridge → menu/session preference saves and non-match state → scene load | configuration.Rules, at the current bridge position |
+| EndRoundMenuManager:311 | Commit route cursor → ContinueInLevel → ActiveMatch.Begin → bridge → MatchSession.BeginNewMatch → scene load | nextRound.Rules; unconfigured branch has no bridge notification today |
+| VersusLauncher:116 | Build → ActiveMatch.Begin → ActiveVersusAttempt.Begin → bridge → StartAttempt → scene transition | configuration.Rules, after attempt context publication |
+| VersusLauncher:231 | Issue simultaneous attempts → ActiveMatch.Begin → BeginSimultaneous → bridge → StartSimultaneousAttempts → transition | configuration.Rules at the same point, including existing nonfatal start-record failure |
+| RemoteAttemptLauncher:120 | Successful response/map → ActiveMatch.Begin → ActiveRemoteAttempt.Begin → bridge → transition → completion callback | mapResult.Configuration.Rules, after remote context publication |
+| Utility/LoadGame:64 (editor/development only) | Build → ActiveMatch.Begin → bridge → realtime wait → pending-load gate → transition | configuration.Rules before the wait, including the existing pending-load behavior |
+
+Bridge:80 currently calls StartMenuPreferences.RememberResolvedModifiers. Rehome that one call at
+each existing publication position only in a complete supported migration; do not record requested
+toggles, move it to general ActiveMatch.Begin, add a launcher manager, or change failure timing.
+
+### #276 validation and acceptance
+
+For the initial audit, Level 0 applied: only these two existing Markdown documents changed. Source/metadata/scene-reference
+inspection and final diff/link/count checks are the evidence; Unity was not started. **NUnit executed:
+0; pass/fail/skip totals: not applicable; Unity process exit: not applicable.** The earlier #275
+NUnit totals below are inherited evidence, not newly executed #276 acceptance.
+
+The source audit verifies counts, unique paired fields, launch lines, the sole reader installation,
+script GUID references and serialized order. It does not simulate Unity callbacks, resolve active
+duplicate objects, prove direct-scene playability or certify arbitrary fallback combinations.
+Future implementation must run the named fallback/parity/architecture/context/assembly-boundary/
+campaign CPU fixtures plus affected configured and real unconfigured scene PlayMode paths; configured
+campaign tests that explicitly apply the bridge are not evidence for unconfigured continuation.
+Use isolated profile/persistence state, report actual NUnit totals and process exits, and add the
+missing combined-flag/precedence and real startup-order coverage before deleting their old owner.
+
+| Final acceptance gate | #276 result at audited dev |
+| --- | --- |
+| No production launch requires bridge | BLOCKED: five release sites plus development LoadGame; retained transitive fallback and menu history dependency |
+| Independent supported owner for every fallback input | BLOCKED: input provenance and pre-Awake composition unresolved |
+| Configured gameplay unchanged | PASS for absence of runtime changes; execution UNVERIFIED in this audit |
+| Direct-scene gameplay initializes correctly | UNVERIFIED: characterized source path retained; independent replacement BLOCKED |
+| Incomplete character / out-of-roster behavior preserved | PASS for retained implementation and inspected assertions; execution UNVERIFIED |
+| Unconfigured campaign continuation preserved | PASS for retained three-field publication; execution UNVERIFIED |
+| Correct menu modifier history across launches | PASS for retained resolved bridge notification at all six sites; execution UNVERIFIED |
+| No obsolete fields or bridge calls remain | BLOCKED: 41 fields / 41 bridge writes / six Apply sites retained intentionally |
+| No replacement global match container | PASS: no production code or asset changes |
+| Numeric / serialized / persistence contracts preserved | PASS: source, metadata and authored assets unchanged |
+| Focused Unity runtime / architecture validation passes | NOT PERFORMED: Level 0 documentation decision gate, no replacement to validate |
+
+Initial audit changed files: `docs/game-options-inventory.md` refreshes the dependency/initialization/acceptance
+record; `docs/game-options-match-system-overhaul-plan.md` records both reviews and the gated next
+sequence. No production/test/scene/prefab/meta changes. Do not close #276 or describe #274 D2/F as done.
+
+Final refresh (2026-10-19, before delivery): `git fetch origin dev` exited **0**; HEAD and origin/dev
+both remain `ad18513f5db771cf2c5754aaab9e554793befde9`. Each of
+`gh issue view 273 --repo sweat-this/level5 --json number,state` (and 274, 275, 276) succeeded:
+273–275 CLOSED, 276 OPEN. `gh pr list --repo sweat-this/level5 --state open --json number,title,headRefName,baseRefName,url`
+exited **0**, returning `[]`. No new dev changes or open-PR overlap invalidated the audit.
+
+Completed focused checks from the repository root:
+
+| Command | Result / scope |
+| --- | --- |
+| `node TestResults/issue276-source-audit.cjs ad18513f5db771cf2c5754aaab9e554793befde9` | Exit **0**: 41 fields uniquely paired with 41 assignments; all 41 existing declaration/bridge line references match source; four remaining writes; six exact Apply lines; one production reader install; metadata order and read-before-context flow; 650 serialized files / 42 scenes / 27 manager-containing scenes; zero compatibility/context GUID references; no Resources/Match definition assets |
+| `git diff --check` | Exit **0**: no whitespace errors |
+| `git diff --name-only` / `git diff --stat` | Exit **0**: exactly the two existing migration documents; no production or asset diff |
+| `node TestResults/issue276-doc-links.cjs` | Exit **0**: all 13 local links/anchors in the two documents resolve; repaired the pre-existing `#per-slice-acceptance` link to the current responsibility acceptance section |
+
+Local source-check helper/output: ignored `TestResults/issue276-source-audit.cjs` and
+`TestResults/issue276-source-audit.json`; neither is a new checked-in test. The helper counts simple
+member expressions after stripping comments/literals; raw GameOptions hits were separately reviewed.
+The existing interpolation-aware NUnit architecture guard was inspected, not executed. The first
+helper invocation exited **1** on sandbox `spawnSync git EPERM`; its Git subprocess dependency was
+removed, Git state was checked separately, and the corrected helper exited **0**. Initial restricted
+fetch/GitHub access also required an elevated retry, which succeeded; no access blocker remains.
+The first link inspection found the stale acceptance anchor; the final link check passed after repair.
+These are source-check/setup outcomes, not NUnit failures or Unity process evidence.
+
+Initial audit PR-ready summary (target `dev`): Document #276's current-source fallback input gate and both reviews.
+Retain the bridge because direct entry, configured partial-primary/out-of-roster queries and
+unconfigured continuation lack independent supported inputs; preserve resolved menu-history timing.
+No runtime behavior, serialized data, tests or guards change; #276 remains open. Changes are local
+on `docs/276-fallback-decision-gate`; no PR has been opened.
+
+## Scrapyard bare-entry contract and scene proof
+
+The user explicitly chose **Preserve the current bare direct-entry behavior**. The input decision
+for this one clean-entry scenario is now resolved. It means no selected mode or character identity;
+it does not mean launching a Total Points match or correcting the arena identity to authored ID 1.
+
+### Exact independently constructible answers
+
+| Dimension | Preserved bare value | Independent construction / provenance |
+| --- | --- | --- |
+| Mode | None / raw ID 0 / empty display | GameOptions declaration defaults; no mode definition is selected or inferred |
+| Rules | Score; ClockMode.None; raw timer 0 / effective 180; no combat, shot or marker flags | Explicit ResolvedMatchRules(clockMode: None, requiresBasketball: false, allowsCpuShooters: false); remaining constructor values match clean fallback |
+| Modifiers | Normal; traffic/enemies/obstacles/hardcore off; Sniper.None; no implicit defender, Arcade, money-ball, streak or survival requirements | Existing clean legacy declarations and fallback reconstruction, not requested menu preferences |
+| Roster | One LocalHuman at slot/input 0; character ID 0 / empty object/display; IsShooter and IsFighter true | PlayerRoster.SingleLocalHuman(new CharacterSelection(0, "", "", true, true)); CharacterSelection.None has different capability flags and is not equivalent |
+| Input beyond roster | Slot 1/2/3 → input 1/2/3; negative IDs → 0 | All four CPU flags false; exact bare specialization of the existing human-counting formula is max(0, slotId) |
+| Arena answers | Level null; ID 0 / empty name; time-of-day true, weather/seven-point/custom-camera false | Clean runtime answers; keep authored Scrapyard facts separate |
+| Cheerleader | ID 0 / empty names / all seven bonuses zero | CheerleaderSelection.None |
+| Spawn result | One human Dr Blood, while selected primary identity remains empty | Existing SpawnCoordinator.ResolveObjectName fallback, not a new selection; slot zero still receives a basketball even though RequiresBasketball is false |
+
+Authored Scrapyard source is `Resources/Prefabs/menu_start/level_selected_objects/level_selected_01_scrapyard`:
+GUID `eff28c629a42c084d8696bc4ee35775a`, ID 1, display The Scrapyard, scene level_01_scrapyard,
+time-of-day/traffic/seven-point/multiplayer capabilities on, weather/custom camera off, campaign CPU
+Ian (`cpu_player_ian`, GUID `4142dc24ab94da440860dac2e3593d6f`, character ID 2). None of this selects
+a mode or CPU for bare entry. The gameplay player_drblood prefab GUID is
+`8bbcf66f791500b469e31ff0f1f71718`; its profile has ID 0 and Doctor Blood display, while the menu's
+player_selected_01_drblood GUID `c71aea56186ba6d4bac8662f4d9ee69b` has selected ID 1/object drblood.
+The proof preserves these distinctions. Using either selected ID 1 or arena ID 1 would be a behavior
+change beyond the user's chosen bare contract.
+
+### Executed real-scene proof
+
+Added `Assets/Tests/PlayMode/Level5BareDirectEntryPlayModeTests.cs` and its `.meta` alongside existing
+real-scene tests. Both paths load the actual unchanged Scrapyard scene, with ActiveMatch cleared:
+
+- CleanProductionFallbackPreservesBareScrapyardEntry resets legacy inputs to their declared clean
+  values and exercises the real GameOptions capture mapping.
+- IndependentBareAnswersReachManagerAwakeWithoutReadingLegacyInputs installs a fixture-owned typed
+  reader, with conflicting legacy roster/Lockdown/character/arena/clock/basketball/traffic inputs.
+  The reader itself contains no GameOptions access or bridge call.
+
+Both assert the manager remains enabled, captures expected rules/roster, adopts the exact registry
+exposed by LevelRuntimeContext, spawns one human Doctor Blood, and keeps selected primary identity
+empty. They also check bare rules, arena/cheerleader identity and input slots outside the roster.
+The actual first consuming stack in both runs was:
+
+```text
+MatchRuntime.LegacyFallback > MatchRuntime.get_Rules > GameLevelManager.Awake
+```
+
+LevelRuntimeContext.Awake was absent from that first stack. The first snapshot's exact Rules object
+was captured by the manager; its later context and registry were valid. Both paths recorded 55
+reader calls. This proves real initialization through the existing seam, including the prior
+read-before-context finding; it does not test a new early context bootstrap.
+
+Executed Unity 6000.5.7f1 command from the repository root:
+
+```text
+C:\PROGRA~1\Unity\Hub\Editor\6000.5.7f1\Editor\Unity.exe -batchmode -projectPath C:\Users\Patrick\Documents\github\level5 -runTests -testPlatform PlayMode -testFilter Level5BareDirectEntryPlayModeTests -testResults C:\Users\Patrick\Documents\github\level5\TestResults\issue276\bare-entry.xml -logFile C:\Users\Patrick\Documents\github\level5\TestResults\issue276\bare-entry.log
+```
+
+**PASS: 2 total / 2 passed / 0 failed / 0 skipped; actual editor process exit 0.** Affected test
+assembly compiled as part of this run. XML reports duration 4.2655303 seconds. Evidence is retained
+locally in ignored `TestResults/issue276/bare-entry.xml`, `.log` and `bare-entry-evidence.json`, which
+records exact command, process exit and source/result hashes. No test failures or repair reruns.
+Existing scene support suppresses unrelated scene log noise; assertions establish this startup
+boundary, not error-free execution of every scene system. SQLite is disposable; the existing
+CampaignBoundaryPersistenceIsolation protects relevant file families. Reader, legacy values, local
+identity/session and time scale are restored after scene teardown. Unity's generated solution-order
+changes were inspected and excluded. No production script, scene, prefab or assembly definition changed.
+
+### Concrete production binding proposal and remaining gate
+
+The smallest prospective production owner is the existing **scene-owned LevelRuntimeContext**, with
+an explicitly authored bare-entry opt-in on Scrapyard. It can construct the exact typed answers above
+without storing another MatchConfiguration or 41 mutable raw fields. Keep the currently installed
+reader interface and fresh transient snapshots; do not call ActiveMatch.Begin for bare entry or
+use MatchConfigurationBuilder, whose normal resolution/validation changes these bare answers.
+
+For a future complete patch, author a context in the scene and establish its input initialization
+before the manager's -8000 Awake (for example, explicit -9000 ordering). Its duplicate check must
+precede publication; attach lifetime to the winning scene component. Reader teardown must clear
+only that owner's callback, never a newer owner's installation. Test scene reload and new runtime
+sessions with domain reload disabled; RuntimeInitializeOnLoadMethod.BeforeSceneLoad alone does not
+reinstall a per-scene owner on ordinary SceneManager transitions. Preserve explicit missing-reader
+failure. These are concrete implementation obligations, not behavior verified by the current tests.
+
+**Do not activate this opt-in merely because ActiveMatch is null.** That condition also covers
+characterized non-bare legacy inputs and unconfigured campaign continuation. The fixture can select
+the bare scenario explicitly; production still needs supported ownership/selection of those other
+inputs before an unconditional scene provider can replace the current callback. Configured partial
+primary data and out-of-roster mutable CPU flags likewise remain outside this bare proof. No such
+behavior was waived by the user's choice. The original decision gate therefore remains open for
+those cases; no generic scene settings system or global match container is proposed.
+
+Current acceptance delta: bare values/one-human scene initialization and actual first-read order
+**PASS for the two executed scenarios**; independently installed reader compatibility **PASS**;
+production scene-owned binding, configured-edge/live input ownership, unconfigured continuation,
+reload/domain-reload-disabled ownership and overall bridge removal **BLOCKED / NOT IMPLEMENTED**.
+The two pre-implementation reviews and refined proof scope are in the migration plan's
+[Scrapyard continuation](game-options-match-system-overhaul-plan.md#scrapyard-continuation--approved-bare-entry-contract-and-proof-plan).
+Delivery refresh: dev remains `ad18513f5db771cf2c5754aaab9e554793befde9`, no open PRs, #276 OPEN;
+fetch/queries exited 0. The documentation link check now resolves all 16 local links (exit 0),
+final whitespace check passes, and all four source/meta/XML/log evidence hashes still match the
+passing run. Changed paths are the two existing documents and the new test source/meta only.
 
 ## Scope and verified counts
 
