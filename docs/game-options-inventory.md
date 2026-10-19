@@ -1,8 +1,8 @@
 # `GameOptions` production ownership inventory
 
 Status: **#276 DESIGN-BLOCKED overall. Bare Scrapyard contract approved and two real-scene reader proofs PASS; bridge and 41 fallback fields retained.**
-Re-audited 2026-10-19 against freshly fetched `origin/dev ad18513f5db771cf2c5754aaab9e554793befde9`, Unity `6000.5.7f1`.
-Branch: `docs/276-fallback-decision-gate`; PR target: `dev`.
+Re-audited 2026-10-19 against freshly fetched `origin/dev a336a35b45236b522dd20b8e8f1af5ab32581fc8`, Unity `6000.5.7f1`.
+Branch: `docs/276-production-entry-contract`; PR target: `dev`.
 GitHub: #273, #274 and #275 closed; #276 open. No open PRs at preparation.
 Issue closure does not establish fallback-removal readiness. The #276 decision gate below supersedes
 the older status snapshots; the #275 implementation and test evidence below remains historical.
@@ -11,6 +11,111 @@ bare-entry choice, new PlayMode evidence and a concrete conditional production b
 The [existing migration plan](game-options-match-system-overhaul-plan.md#275-pre-implementation-audit-and-two-review-passes-2026-10-19)
 contains both reviews recorded before production changes. Historical #274 inventory remains available
 [in dev at the audit baseline](https://github.com/sweat-this/level5/blob/99c3024b7f9fee4ea492423a6b3bb9eb534ea62a/docs/game-options-inventory.md).
+
+## #276 production entry contract revalidation after PR #312
+
+**Result: DESIGN-BLOCKED at Phase B; no production binding or retirement.** The approved bare
+answers are constructible, but production cannot independently select when they apply. This section
+supersedes the preparation snapshots below; it does not repeat PR #312's characterization work.
+
+### Baseline and exact delta
+
+`git fetch origin dev` succeeded. HEAD and origin/dev were both
+`a336a35b45236b522dd20b8e8f1af5ab32581fc8`, the merge commit of
+[PR #312](https://github.com/sweat-this/level5/pull/312), merged 2026-10-19 at 13:49:05 UTC.
+[Issue #276](https://github.com/sweat-this/level5/issues/276) is OPEN; the open-PR query returned `[]`.
+There are **zero commits and zero source, asset, project-setting or package changes since #312**.
+The two bare-entry tests, fallback mapping, guards and serialized inputs are unchanged.
+
+Fresh source inspection confirms 41 fields paired with 41 bridge assignments, four non-bridge
+writes, three allowed direct consumers, five release Apply sites and development LoadGame. The
+existing per-field, input/consumer and launch-order ledgers below remain current. Serialized scanning
+again found 650 assets, 42 scenes, 27 manager-containing scenes and zero GameOptions, bridge or
+LevelRuntimeContext script GUID references. No types, assets or guards are removed in this change.
+
+### Phase B selection and lifetime findings
+
+| Required decision | Current source / owner | Result |
+| --- | --- | --- |
+| Explicit clean bare selection | Only the fixture selects it: clears ActiveMatch, resets all fields and installs its chosen reader before loading Scrapyard. Production has no equivalent independent entry-intent handoff. | BLOCKED. An absent configuration is not a bare selector. |
+| Other direct entry | GameOptions provides live mode, modifiers, roster, identities and CPU flags. ArenaBootstrap.Apply preserves special unconfigured Battle Royal behavior. | Retain legacy reader; neither scene name nor arena catalog identifies these answers. |
+| Independent bare answers | The approved constants in CaptureIndependentBareAnswers are complete for the characterized bare case. | Contract approved; production activation remains blocked. Do not read GameOptions or StartMenuPreferences to choose it. |
+| Pre-consumer composition | GameLevelManager.cs:89–91 reads rules/roster/mode at metadata order -8000; it creates/adopts context at 100–102. LevelRuntimeContext is -100 and only serializes MatchController. | No current pre-Awake provider. Earlier ordering alone supplies neither intent nor inputs. |
+| Reader ownership | MatchRuntime.cs:221–236 supports install and unconditional reset; there is no owner-conditional release operation. LevelRuntimeContext.OnDestroy only clears its instance. | No existing scene handoff to reuse. An outgoing component must release only its own installation, preserving a newer reader and any still-required legacy fallback. Unconditional reset is unsafe. |
+| Duplicates and transitions | Manager and context reject duplicates; no context is authored. BeforeSceneLoad installs the process reader, not a reader on each scene transition. | Existing duplicate checks do not establish publication ownership. A future provider must publish only after winning composition and cover ordinary reload and overlapping teardown. |
+| New play sessions | MatchRuntime resets at SubsystemRegistration, then GameOptions installs before scene load. ActiveMatch and legacy fields have no corresponding runtime reset; PlayerSelectionSession has no automatic reset either. | Do not equate reader reset with clean match state under disabled domain reload. New scene-owner lifecycle is UNVERIFIED. |
+| Incomplete primary and absent slots | MatchRuntime.cs:78–193 falls back even when configured; ProgressionManager.cs:968 changes only the live object name. CPU flags also model Lockdown's implicit defender outside the roster. | No independent complete triple or absent-slot input owner. Configured roster data alone cannot preserve every answer. |
+| Unconfigured campaign | EndRoundMenuManager.cs:318–320 changes only seven-point capability, ID and display name; time-of-day/weather and other legacy inputs survive. | Current route authoring cannot replace retained values without a contract change. Bare constants must not overwrite continuation. |
+
+The blocking decision is **which existing launch/scene owner explicitly marks a clean bare entry,
+and how that intent is handed off and revoked before -8000 Awake while retaining non-bare and
+unconfigured-continuation inputs**. A serialized Scrapyard opt-in alone also applies on subsequent
+entries into that scene. ActiveMatch absence, Editor play state, scene name, last-launch preferences,
+or a catalog lookup cannot establish this distinction. No supported source currently resolves it.
+The approved bare behavior does not authorize redefining those other entry paths.
+
+```mermaid
+flowchart TD
+    Reset[SubsystemRegistration resets reader] --> Install[BeforeSceneLoad installs GameOptions callback]
+    Launch[Successful launcher] --> Config[ActiveMatch immutable configuration]
+    Launch --> Bridge[Bridge writes fallback and resolved menu history]
+    Config --> Read[MatchRuntime: configured answers first; fallback for missing answers]
+    Install --> Read
+    Legacy[Live fields plus progression and unconfigured campaign writes] --> Install
+    Intent[Independent bare-entry selection: unresolved] -. blocks production provider .-> Read
+    Read --> Manager[GameLevelManager Awake -8000 captures answers]
+    Manager --> Context[Find or create context -100; adopt registry]
+    Context --> Spawn[SpawnCoordinator composes participants and input]
+```
+
+The callback reads fresh fields on demand; the arrow from live fields is not a cached installation
+snapshot. The full existing ownership matrix below continues to describe all 41 inputs.
+
+### Evidence and acceptance for this continuation
+
+Level 0 applies to the two-document change. **New Unity tests executed: 0; new pass/fail/skip totals
+and editor exit: N/A.** No compilation, scene run, reload or physical-device test was performed.
+The inherited #312 run remains **2 passed / 0 failed / 0 skipped, recorded actual editor exit 0**.
+Its exact Unity command and isolation scope remain in the scene-proof section below.
+
+The XML and log match their recorded SHA-256 hashes byte for byte. Git reports `i/lf w/crlf` for
+the test source/meta; their current bytes differ from the original LF files only by CRLF checkout
+conversion. Normalizing CRLF to LF reproduces both recorded hashes. This is verified source
+equivalence, not four matching raw file hashes. No relevant runtime source changed, so the two
+characterization paths were reused without rerunning Unity. They do not certify a production provider.
+
+| Acceptance gate | Current status |
+| --- | --- |
+| Independent source for every fallback answer | BLOCKED: only bare values have an approved independent contract; activation and other inputs remain unresolved. |
+| Input initialization before gameplay | PASS for retained GameOptions bootstrap; BLOCKED for proposed independent production provider. |
+| Approved clean bare Scrapyard behavior | PASS, inherited two-scenario #312 evidence; implementation unchanged. |
+| Non-bare direct entry | Preserved unchanged; independent replacement BLOCKED. |
+| Configured incomplete primary / out-of-roster slots | Preserved unchanged; independent replacement BLOCKED. |
+| Unconfigured campaign continuation | Preserved unchanged; independent replacement BLOCKED. |
+| All launches retain resolved modifier publication | PASS by source inspection: still at bridge ApplyModifiers:80 for all six publication sites; no relocation. |
+| No replacement global match container | PASS: no production code added. |
+| No production caller requires bridge | NOT MET: five release sites plus development LoadGame retained. |
+| Delete bridge/obsolete fields only after earlier gates | Deletion correctly deferred; retirement NOT MET. |
+| Focused runtime, architecture and compatibility validation | PARTIAL: inherited bare proof reused; current source audit PASS; new provider, reload/domain-reload-disabled and broader replacement validation NOT PERFORMED. |
+
+Current checks: `node TestResults/issue276-source-audit.cjs a336a35b45236b522dd20b8e8f1af5ab32581fc8`
+exited 0; the documented counts, lines, metadata and GUID references all match. The helper is an
+ignored source check, not the NUnit architecture guard. `git diff --exit-code a336a35b45236b522dd20b8e8f1af5ab32581fc8 origin/dev -- Assets ProjectSettings Packages`
+exited 0. Evidence-integrity and final document/link checks are recorded with this continuation's
+local audit artifacts under ignored `TestResults/issue276-reaudit*`.
+
+| Final check | Result |
+| --- | --- |
+| `node TestResults/issue276-reaudit-evidence.cjs` | Exit 0: source/meta equivalent after CRLF normalization; XML/log exact; inherited 2/0/0 and recorded exit 0. |
+| `node TestResults/issue276-doc-links.cjs` | Exit 0: all 16 local links/anchors resolve. |
+| `git diff --check` / `git diff --stat` | Exit 0: only these two existing Markdown files changed; no whitespace errors. |
+| Repeated fetch and GitHub issue/PR queries before delivery | Exit 0: dev remains a336a35b45236b522dd20b8e8f1af5ab32581fc8; #276 OPEN; #312 MERGED at that SHA; open PRs `[]`. |
+
+Changed-file rationale: this inventory records the current baseline, selector/lifetime blockers,
+source equivalence and acceptance; the existing migration plan records the two new reviews and
+next implementation gate. Production, scene, test, metadata and assembly changes are unnecessary
+while Phase B is unsupported. Phases C, E and F are deferred; Phase D source analysis above is
+complete but its replacement contracts remain blocked. Keep #276 open.
 
 ## #276 current-source decision gate (2026-10-19)
 

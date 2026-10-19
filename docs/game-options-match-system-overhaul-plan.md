@@ -6,10 +6,79 @@ Project: Level 5
 Branch target: `dev`
 Primary scope: `GameOptions`, `StartManager`, `StartScreenModeSelected`, `Modes`, `GameLevelManager`, `GameRules`, mode/level compatibility, roster configuration, and gameplay scene bootstrap
 Last reviewed: 2026-10-19
-Audited dev: `ad18513f5db771cf2c5754aaab9e554793befde9` (fresh fetch 2026-10-19, Unity `6000.5.7f1`).
+Audited dev: `a336a35b45236b522dd20b8e8f1af5ab32581fc8` (fresh fetch 2026-10-19, Unity `6000.5.7f1`; merged PR #312).
 Issues #273–#275 are closed; #276 is open; no open PRs at preparation. Historical implementation
 snapshots below are not current issue status. See the [#276 decision gate](#276-two-review-passes-and-decision-gate-2026-10-19)
-and [current input/consumer matrix](game-options-inventory.md#276-current-source-decision-gate-2026-10-19).
+and [production entry contract revalidation](game-options-inventory.md#276-production-entry-contract-revalidation-after-pr-312).
+
+## #276 next implementation review after PR #312
+
+**Final decision: DESIGN-BLOCKED at production selection/ownership, not at the bare answer shape.**
+Fresh dev equals the #312 merge SHA above. Issue #276 remains open, no PRs are open, and no source
+or behavior changed since #312. Reuse its two real-Scrapyard tests; they explicitly install fixture
+readers and do not supply a production entry-intent owner. The inventory's new revalidation section
+contains the confirmed ownership/lifetime matrix, data-flow diagram and all acceptance statuses.
+
+### Initial proposal
+
+Evaluate the previously proposed early scene-owned LevelRuntimeContext on Scrapyard, constructing
+only the approved bare resolved answers through the existing MatchRuntime callback. Preserve
+configured-match precedence and retain legacy fallback for every other supported case. Bind only
+if an independent production selector and owner are established. No new global settings, second
+MatchConfiguration, reverse menu synchronization, assembly migration or bridge deletion is in scope.
+
+### Review pass 1 — gameplay correctness
+
+| Finding | Refinement before any production edit |
+| --- | --- |
+| Null ActiveMatch also covers non-bare direct entry and unconfigured campaign. Scene identity is shared by bare and later entries. | Reject activation from configuration absence or scene opt-in alone. Require an explicit producer and pre-Awake handoff distinguishing those cases. |
+| Bare selected mode/arena/primary identities are zero/empty. Catalog Scrapyard ID 1 and the spawned Doctor Blood profile differ from those answers. | Preserve the exact approved constants, no menu/catalog configuration synthesis. Effective timer remains 180 with raw timer 0 and clock None. |
+| Configured missing primary fields still use independent live fallback values; slots absent from a configured roster still count legacy CPU flags. | Do not derive all fallback from configuration or the spawned registry. Preserve CPU/local ordering and Lockdown's implicit defender. |
+| Live flags support combined combat/shot/marker values, countdown precedence and Laser > MachineGun > Bullet sniper precedence. | A bare constant reader must not take ownership of those inputs. Preserve fresh-per-access semantics in remaining legacy paths. |
+| Unconfigured campaign changes only three arena fields, retaining previous capabilities and other inputs. | Do not rebuild from the next arena or reset to bare values. Require an explicit continuation contract before retirement. |
+| Multiple readers, reloads and disabled domain reload can preserve stale configuration or legacy inputs. Missing reader currently throws explicitly. | Do not use new-session assumptions as selection. Keep existing failure/reset behavior; future ownership changes need real transition and disabled-domain-reload evidence. |
+
+**Refined plan 1:** the narrow provider is conditional on source selection. No producer currently
+establishes that selection without reading compatibility state or inventing behavior. Continue the
+ownership review and stop dependent production binding if that remains true.
+
+### Review pass 2 — architecture and scope
+
+| Finding | Final refinement |
+| --- | --- |
+| Immutable MatchConfiguration remains the configured authority. StartMenuPreferences is last-launch history; PlayerSelectionSession holds menu IDs, not gameplay inputs. | Keep these owners; no reverse synchronization, new global dictionary or renamed compatibility container. |
+| Manager -8000 reads before finding/creating context -100. The context serializes only MatchController; no context is authored in the 650 scanned serialized assets. | Earlier execution alone cannot supply a contract. Do not edit execution metadata or scenes until explicit input provenance exists. |
+| MatchRuntime installs a callback but offers only unconditional reset, not release conditional on the installing owner. Duplicate context checks only manage the singleton. | A future scene reader must win duplicate composition before publication and relinquish only its own callback; older teardown must not clear a newer owner or discard needed fallback. No lifetime seam is implemented now. |
+| Level5.Match cannot reference Assembly-CSharp. Existing callback/snapshot and architecture guards already express the permitted boundary. | Keep the interface and 41-field/three-consumer ratchets unchanged. No service locator or assembly relaxation. |
+| Moving only RememberResolvedModifiers would not resolve any blocked input. Six successful-launch positions and resolved values already remain intact. | Retain publication in the bridge for this slice. When moving it, preserve each existing ActiveMatch/attempt/transition ordering and test affected launches with isolated state. |
+| #312 source and assets are unchanged. Test source/meta differ locally only through CRLF checkout; normalized hashes and exact XML/log hashes match. | Reuse the recorded 2/0/0 run and exit 0; report no newly executed Unity checks. Documentation-only Level 0 is sufficient. |
+
+**Refined plan 2 / executed scope:** update these two existing documents with the verified baseline,
+entry/lifetime findings, evidence reuse and acceptance status. No production source or asset edits.
+This follows the requested stop condition when Phase B cannot establish a valid source.
+
+### Next gate and PR-ready summary
+
+The next implementable step needs an explicit decision identifying the existing producer that
+selects **clean bare entry rather than other unconfigured entry**, how it passes that intent before
+GameLevelManager.Awake, and how transitions revoke it. An authored scene flag alone cannot
+distinguish later unconfigured campaign entry into the same scene. Configured incomplete-primary,
+absent-slot, non-bare/live and campaign input owners remain separate gates, even if bare selection
+is resolved. No deletion depends solely on the bare proof passing.
+
+Once supported, implement only that scoped provider and owner-safe lifecycle; prove actual Scrapyard
+production startup, configured precedence, non-bare passthrough, duplicate ownership, scene reload
+and disabled-domain-reload behavior. Run the affected named fixtures only when the change exists.
+CampaignBoundaryPlayModeTests lives in `Assets/Tests/PlayMode/CampaignRoundPlayModeTests.cs`.
+Move resolved publication at all six existing launch sites only as part of its supported slice;
+delete bridge/fields/helpers and update observable parity/guards only after every input gate passes.
+
+Suggested PR title: **Document #276 production entry selection and reader ownership blockers**.
+Summary: revalidate merged #312 against latest dev, retain its unchanged bare-Scrapyard evidence,
+and record why no independent production selector or pre-consumer scene reader can yet preserve
+all supported fallback cases. Keep all 41 inputs, six bridge sites and issue #276 open. Validation:
+source/serialized audit and inherited artifact integrity; no newly run Unity tests. Changed files
+are this plan and the existing inventory only; no runtime behavior change.
 
 ## Implementation status
 
