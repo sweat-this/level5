@@ -6,8 +6,6 @@ using UnityEngine;
 
 public static class GameOptions
 {
-    static public string applicationVersion;
-    static public string operatingSystemVersion;
 
     static public int numPlayers = 1;
     static public bool player1IsCpu;
@@ -107,7 +105,6 @@ public static class GameOptions
 
     static public int difficultySelected = 1;
 
-    static public string previousSceneName;
 
     static public bool hardcoreModeEnabled = false;
     static public bool EnemiesOnlyEnabled = false;

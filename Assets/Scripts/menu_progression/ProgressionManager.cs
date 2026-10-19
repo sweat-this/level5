@@ -840,7 +840,6 @@ public class ProgressionManager : MonoBehaviour
             return;
         }
 
-        GameOptions.previousSceneName = activeScene;
         SceneManager.LoadScene(Constants.SCENE_NAME_level_00_loading);
     }
 

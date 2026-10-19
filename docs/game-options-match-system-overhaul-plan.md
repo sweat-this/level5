@@ -1502,3 +1502,30 @@ Remaining design questions are minimal start-flow memory ownership and independe
 Fetched origin/dev and issues #273–#276; inspected open PRs/worktrees; reconciled every current field/property/method and source expression; traced fallback, bridge callers, campaign, local identity and SQLite paths. Static source checks reproduce the 59-token ratchet and expose the LoadManager false negative. Both review passes and final source/diff evidence are recorded in the inventory/PR.
 
 That historical patch changed only the two existing documents and used Level 0 inspection, with no Unity execution. Current #274 compilation, focused NUnit counts, real-scene evidence, corrected failures and remaining limits are recorded in the [updated inventory](game-options-inventory.md#focused-validation).
+
+### #275 pre-implementation audit and two review passes (2026-10-19)
+
+Baseline: freshly fetched origin/dev `99c3024b7f9fee4ea492423a6b3bb9eb534ea62a`, Unity 6000.5.7f1. #273 closed/PR #309 merged; #274 closed/PR #310 merged but D2/F remain blocked in source; #275 and #276 open. No open PRs targeting dev. This refresh supersedes issue-state prose from the #274 audit.
+
+Initial plan: A1 remove write-only application/navigation copies; A2 derive profile count from the loaded list; C replace identity forwarding accesses with LocalAccountIdentity; B retain live StartMenuSelectionState and add six menu-specific process-memory values; D move one presentation bit to start-flow memory. Preserve assets, persistence, input callbacks and the 41 fallback bridge assignments.
+
+Review pass 1 - behavioral correctness (before production edits):
+
+- Preference timing: indices save only after a validated launch in StartManager; modifier memory currently comes from resolved bridge writes, including campaign, local-versus and remote launches. Saving highlighted requested modifiers would change forced/unsupported options. Revised plan: remember the three resolved modifier preferences at the existing ApplyModifiers publication boundary; retain index save and Awake restore ordering. Browsing and rejected launches do not save.
+- Menu re-entry/catalogs: keep existing integer wrapping/eligibility and friend-list indexing; no demonstrated reorder defect justifies catalog redesign. Campaign cursor already belongs to EndRoundData, and authored route to PlayerData; never restore either from menu memory. Difficulty still resets to Normal.
+- Startup records: PlayerData.Start must read menu hardcore memory without ActiveMatch. Configured launch/pause continue passing explicit rules filters.
+- Identity: all forwarding properties share LocalAccountIdentity today. Replace direct callers in place, at identical capture points; keep guest 74, deletion cleanup, CharacterProgressAccountId scoping, report 999 / "not logged in", and Backend V2 identity independent.
+- Presentation: tip Awake and OnEnable gate eligibility, Start marks shown; CPU select is unconditionally enabled and only marks shown in Start. Preserve the different ordering, callbacks, maps and focus. Reset only at successful ordinary launch as today.
+- Deletion safety: fresh Assets/ProjectSettings/Packages scan finds no production reader, reflection string or serialized reference for metadata/navigation/count fields; ignored Legacy~ contains historical metadata writes only. Static fields are not Unity instance serialization.
+- Domain reload disabled: new menu and presentation memories reset with SubsystemRegistration to emulate a new process, while scene loads retain them. Do not reset unrelated identity/player-session owners.
+
+Review pass 2 - architecture and regression (before production edits):
+
+- Reuse LocalAccountIdentity, StartMenuSelectionState, PlayerData and EndRoundData. PlayerSelectionSession establishes the narrow process-memory pattern; its character state remains separate. No settings/disk/cloud owner or generic global bag.
+- Keep new owners beside menu code in Assembly-CSharp: Core stays Unity-free and asmdef dependencies unchanged. No scene/prefab/GUID changes are necessary.
+- The menu modifier copy is preference history only; it never feeds MatchRuntime or replaces configuration. The bridge continues its one-way gameplay writes and additionally records the same resolved values for menu re-entry. Future #276 removal must keep that menu notification at supported launch boundaries.
+- Preserve all 41 fallback fields/assignments, fresh snapshots, missing configured character/out-of-roster fallback, and ProgressionManager's retained character-name publication. These remain #274 D2/F and #276 blockers.
+- Lower the public field ratchet from 49 to 41; remove migrated allowlist entries and prohibit returning fields/properties. Migrate test setup to actual owners and observable profile-list assertions.
+- Focused evidence: affected identity/SQLite/record/campaign/menu/bridge/architecture EditMode fixtures, plus actual start-scene lifecycle/focus/menu-retention and disposable-profile PlayMode paths. Record actual exits and omissions; no unrelated full suite.
+
+Refined implementation sequence: focused commits A1, A2, C, B, D, then integrated regression/docs. Acceptance requires no non-match GameOptions fields/properties and unchanged gameplay fallback. Any unresolved compatibility requirement stays documented rather than deleted.

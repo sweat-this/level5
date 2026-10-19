@@ -741,7 +741,6 @@ public class StartManager : MonoBehaviour
             return;
         }
 
-        GameOptions.previousSceneName = activeScene;
         SceneManager.LoadScene(Constants.SCENE_NAME_level_00_loading);
     }
 
@@ -1782,15 +1781,13 @@ public class StartManager : MonoBehaviour
     }
 
     /// <summary>
-    /// The launch-time state that is not part of the match configuration: application metadata,
+    /// The launch-time state that is not part of the match configuration:
     /// the campaign cursor, the end-round portraits and the progression snapshot. These belong
-    /// to their own owners (plan phase 11) and are only gathered here because they are gathered at
+    /// to their own owners and are only gathered here because they are gathered at
     /// the same moment.
     /// </summary>
     private void applyNonMatchLaunchState(MatchConfiguration configuration)
     {
-        GameOptions.applicationVersion = Application.version;
-        GameOptions.operatingSystemVersion = SystemInfo.operatingSystem;
         if (configuration.ModeId == GameModeId.BeatThaComputahs)
         {
             EndRoundData.currentLevelIndex = 0;
