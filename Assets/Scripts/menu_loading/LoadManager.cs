@@ -1,4 +1,5 @@
-﻿
+﻿using Level5.Core;
+
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -318,7 +319,7 @@ public class LoadManager : MonoBehaviour
 
     private List<CharacterProfile> loadPlayerSelectDataList()
     {
-        List<CharacterProfileRecord> dbShootStatsList = DBHelper.instance.getCharacterProfileStats(GameOptions.userid)
+        List<CharacterProfileRecord> dbShootStatsList = DBHelper.instance.getCharacterProfileStats(LocalAccountIdentity.UserId)
             ?? new List<CharacterProfileRecord>();
         // AUD-012: purely diagnostic - it only logs when the preset catalog and the database
         // disagree. Compiled out of release builds so the production load path carries no

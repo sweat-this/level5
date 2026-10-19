@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Level5.Core.Match;
 
 /// <summary>
 /// Saves and restores the match-related <see cref="GameOptions"/> fields around a test.
@@ -9,6 +10,7 @@ using System.Collections.Generic;
 /// </summary>
 public sealed class GameOptionsSnapshot
 {
+    private StartMenuSelectionState menuPreferences;
     private int gameModeSelectedId;
     private string gameModeSelectedName;
     private bool gameModeRequiresCounter;
@@ -57,8 +59,11 @@ public sealed class GameOptionsSnapshot
 
     public static GameOptionsSnapshot Capture()
     {
+        var preferences = new StartMenuSelectionState();
+        preferences.LoadPersistedPreferences();
         return new GameOptionsSnapshot
         {
+            menuPreferences = preferences,
             gameModeSelectedId = GameOptions.gameModeSelectedId,
             gameModeSelectedName = GameOptions.gameModeSelectedName,
             gameModeRequiresCounter = GameOptions.gameModeRequiresCounter,
@@ -109,6 +114,10 @@ public sealed class GameOptionsSnapshot
 
     public void Restore()
     {
+        menuPreferences.SavePersistedPreferences();
+        StartMenuPreferences.RememberResolvedModifiers(new ResolvedMatchRules(
+            trafficEnabled: menuPreferences.TrafficEnabled, hardcore: menuPreferences.HardcoreEnabled,
+            obstaclesEnabled: menuPreferences.ObstaclesEnabled));
         GameOptions.gameModeSelectedId = gameModeSelectedId;
         GameOptions.gameModeSelectedName = gameModeSelectedName;
         GameOptions.gameModeRequiresCounter = gameModeRequiresCounter;

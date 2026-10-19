@@ -1,3 +1,4 @@
+using Level5.Core;
 using Assets.Scripts.database;
 using Assets.Scripts.restapi;
 using System.Collections.Generic;
@@ -391,8 +392,8 @@ public class AccountManager : MonoBehaviour
             yield break;
         }
 
-        GameOptions.userid = createResult.Value.Userid;
-        GameOptions.userName = createResult.Value.UserName;
+        LocalAccountIdentity.UserId = createResult.Value.Userid;
+        LocalAccountIdentity.UserName = createResult.Value.UserName;
         SceneManager.LoadScene(Constants.SCENE_NAME_level_00_loading);
     }
 

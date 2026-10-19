@@ -4,6 +4,7 @@ using System.Linq;
 using System.Reflection;
 using Assets.Scripts.database;
 using Level5.BackendV2;
+using Level5.Core;
 using Level5.Core.Match;
 using NUnit.Framework;
 using TMPro;
@@ -186,7 +187,7 @@ public class Level5RangeShotRecordTests
             ActiveMatch.Clear();
             Insert(2, "ordinary", 80, 8, 20);
             Insert(2, "hardcore", 70, 7, 20, 1);
-            GameOptions.hardcoreModeEnabled = hardcore;
+            StartMenuPreferences.RememberResolvedModifiers(new ResolvedMatchRules(hardcore: hardcore));
             PlayerData data = root.AddComponent<PlayerData>();
 
             typeof(PlayerData).GetMethod("Start", PrivateInstance).Invoke(data, null);
@@ -219,6 +220,36 @@ public class Level5RangeShotRecordTests
             Assert.That(data.ThreePointerMade, Is.EqualTo(expected));
         }
         finally { PlayerData.instance = previous; }
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void ScoreFactoriesCaptureLocalIdentityBeforeAnotherProfileIsSelected(bool campaign)
+    {
+        int previousId = LocalAccountIdentity.UserId;
+        string previousName = LocalAccountIdentity.UserName;
+        try
+        {
+            LocalAccountIdentity.UserId = 517;
+            LocalAccountIdentity.UserName = "captured-profile";
+            GameStats stats = root.AddComponent<GameStats>();
+            PlayerIdentifier player = root.AddComponent<PlayerIdentifier>();
+            player.gameStats = stats;
+            var factory = new HighScoreModel();
+            HighScoreModel score = campaign
+                ? factory.convertCampaignBasketBallStatsToModel(stats)
+                : factory.convertBasketBallStatsToModel(new List<PlayerIdentifier> { player });
+
+            LocalAccountIdentity.UserId = UserAccountManager.GuestUserid;
+            LocalAccountIdentity.UserName = UserAccountManager.GuestUsername;
+            Assert.That(score.Userid, Is.EqualTo(517));
+            Assert.That(score.UserName, Is.EqualTo("captured-profile"));
+        }
+        finally
+        {
+            LocalAccountIdentity.UserId = previousId;
+            LocalAccountIdentity.UserName = previousName;
+        }
     }
 
     [Test]

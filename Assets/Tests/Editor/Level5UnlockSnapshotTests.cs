@@ -1,3 +1,4 @@
+using Level5.Core;
 using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
@@ -26,8 +27,8 @@ public class Level5UnlockSnapshotTests
     [SetUp]
     public void SetUp()
     {
-        originalUserName = GameOptions.userName;
-        originalUserId = GameOptions.userid;
+        originalUserName = LocalAccountIdentity.UserName;
+        originalUserId = LocalAccountIdentity.UserId;
     }
 
     [TearDown]
@@ -50,8 +51,8 @@ public class Level5UnlockSnapshotTests
 
         writtenAccountIds.Clear();
 
-        GameOptions.userName = originalUserName;
-        GameOptions.userid = originalUserId;
+        LocalAccountIdentity.UserName = originalUserName;
+        LocalAccountIdentity.UserId = originalUserId;
     }
 
     private static void DeleteAccountFile(string accountId)
@@ -89,8 +90,8 @@ public class Level5UnlockSnapshotTests
     private void SeedJsonAccount(int legacyPlayerId, bool unlocked)
     {
         string accountId = "unlock-snapshot-test-" + legacyPlayerId;
-        GameOptions.userid = 0;
-        GameOptions.userName = accountId;
+        LocalAccountIdentity.UserId = 0;
+        LocalAccountIdentity.UserName = accountId;
         writtenAccountIds.Add(accountId);
 
         CharacterProgressStore.Save(new CharacterProgressSave
@@ -135,8 +136,8 @@ public class Level5UnlockSnapshotTests
     [Test]
     public void LevelUnlockComesFromTheAuthoredLockedFlag()
     {
-        GameOptions.userid = 0;
-        GameOptions.userName = "unlock-snapshot-test-levels-a";
+        LocalAccountIdentity.UserId = 0;
+        LocalAccountIdentity.UserName = "unlock-snapshot-test-levels-a";
         LevelDefinitionCatalog levels = new LevelDefinitionCatalog(new[]
         {
             TestDefinitions.Level(1, locked: false),
@@ -152,8 +153,8 @@ public class Level5UnlockSnapshotTests
     [Test]
     public void ALevelTheCatalogDoesNotContainDefaultsToLocked()
     {
-        GameOptions.userid = 0;
-        GameOptions.userName = "unlock-snapshot-test-levels-b";
+        LocalAccountIdentity.UserId = 0;
+        LocalAccountIdentity.UserName = "unlock-snapshot-test-levels-b";
         UnlockSnapshot snapshot = UnlockSnapshotBuilder.Build(
             new List<CharacterProfile>(), new List<CharacterProfile>(), LevelDefinitionCatalog.Empty());
 
@@ -209,8 +210,8 @@ public class Level5UnlockSnapshotTests
     {
         // An account id with deliberately no JSON file behind it, so this does not depend on
         // whatever "guest" happens to look like in the environment running the test.
-        GameOptions.userid = 0;
-        GameOptions.userName = "unlock-snapshot-test-nothing-seeded";
+        LocalAccountIdentity.UserId = 0;
+        LocalAccountIdentity.UserName = "unlock-snapshot-test-nothing-seeded";
 
         UnlockSnapshot snapshot = UnlockSnapshotBuilder.Build(new List<CharacterProfile>(), new List<CharacterProfile>(), LevelDefinitionCatalog.Empty());
 

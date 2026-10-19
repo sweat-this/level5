@@ -209,7 +209,8 @@ namespace Level5.BackendV2.Tests
         private static void CheckForGameOptionsIdentity(string file, List<string> offenders)
         {
             string text = StripComments(File.ReadAllText(file));
-            if (text.Contains("GameOptions.userid") || text.Contains("GameOptions.userName"))
+            if (text.Contains("GameOptions.userid") || text.Contains("GameOptions.userName")
+                || text.Contains("LocalAccountIdentity"))
             {
                 offenders.Add(Relative(file));
             }
@@ -229,6 +230,7 @@ namespace Level5.BackendV2.Tests
                 string text = StripComments(File.ReadAllText(file));
                 if (text.Contains("GameOptions.userid")
                     || text.Contains("GameOptions.userName")
+                    || text.Contains("LocalAccountIdentity")
                     || text.Contains("APIHelper")
                     || text.Contains("UserModel"))
                 {

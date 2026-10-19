@@ -624,7 +624,6 @@ public class GameLevelManager : MonoBehaviour, IGroundHeightProvider, IPlayerMat
         // after all Awake calls; the delegate bound above reads this initialized reference at make time.
         _shotMatchController = MatchController.instance;
         // return to this if n
-        GameOptions.previousSceneName = Constants.SCENE_NAME_level_00_loading;
         if (numPlayers > 1)
         {
             isMultiplePlayersTotalPoints = true;

@@ -34,25 +34,10 @@ public class Level5MatchArchitectureTests
         // GameOptions directly; that builder lives on GameOptions.cs itself, which is already exempt
         // from this guard (see EnumerateGameScripts's caller skipping "GameOptions.cs" by name).
         "LegacyGameOptionsBridge.cs",
-        "StartMenuSelectionState.cs",
 
-        // menu, navigation and start-screen widgets, migrating in a later slice
-        "StartManager.cs",
-        "StartScreenCpuSelectManager.cs",
-        "StartScreenTipDialogueManager.cs",
+        // Retained campaign and incomplete-character fallback publications (#274 D2/F).
         "ProgressionManager.cs",
         "EndRoundMenuManager.cs",
-        "AccountManager.cs",
-
-        // account, api and persistence: their own owners, plan phase 11
-        "APIHelper.cs",
-        "HighScoreModel.cs",
-        "UserAccountManager.cs",
-        "LocalAccount.cs",
-        "LoadManager.cs", // Existing account identity consumer, recorded by the #273 inventory.
-
-        // gameplay consumers not yet migrated
-        "GameLevelManager.cs",
     };
 
     /// <summary>
@@ -108,8 +93,8 @@ public class Level5MatchArchitectureTests
     {
         // GameOptions is a legacy compatibility surface being retired, not somewhere to add to.
         // Count stored declarations, excluding forwarding properties and methods. The old modifier
-        // count included four non-fields. #274 A/D3/E retire six of the 55 actual stored fields.
-        const int allowedPublicStaticFields = 49;
+        // count included four non-fields. #274/#275 leave only the 41 supported fallback inputs.
+        const int allowedPublicStaticFields = 41;
 
         string text = File.ReadAllText(Path.Combine(ScriptsRoot, "menu_start", "GameOptions.cs"));
         int fields = Regex.Matches(StripComments(text),
@@ -128,10 +113,26 @@ public class Level5MatchArchitectureTests
     [TestCase("sniperEnabled")]
     [TestCase("levelSelectedName")]
     [TestCase("levelsList")]
+    [TestCase("applicationVersion")]
+    [TestCase("operatingSystemVersion")]
+    [TestCase("previousSceneName")]
+    [TestCase("numOfLocalUsers")]
+    [TestCase("levelSelectedIndex")]
+    [TestCase("modeSelectedIndex")]
+    [TestCase("friendSelectedIndex")]
+    [TestCase("tipDialogueLoadedOnStart")]
     public void RetiredCompatibilityFieldsCannotReturn(string name)
     {
         Assert.That(typeof(GameOptions).GetField(name), Is.Null,
             "Retired compatibility storage must not be reintroduced, even if the field-count ratchet permits it.");
+    }
+
+    [TestCase("userid")]
+    [TestCase("userName")]
+    public void RetiredIdentityForwardersCannotReturn(string name)
+    {
+        Assert.That(typeof(GameOptions).GetProperty(name), Is.Null);
+        Assert.That(typeof(GameOptions).GetField(name), Is.Null);
     }
 
     [Test]

@@ -1,3 +1,4 @@
+using Level5.Core;
 using Assets.Scripts.restapi;
 using Assets.Scripts.Utility;
 using Level5.Core.Match;
@@ -741,7 +742,6 @@ public class StartManager : MonoBehaviour
             return;
         }
 
-        GameOptions.previousSceneName = activeScene;
         SceneManager.LoadScene(Constants.SCENE_NAME_level_00_loading);
     }
 
@@ -1197,11 +1197,11 @@ public class StartManager : MonoBehaviour
             yield break;
         }
 
-        // Local-profile presentation only - this used to combine GameOptions.userName with
+        // Local-profile presentation only - this used to combine LocalAccountIdentity.UserName with
         // APIHelper.BearerToken (a V1 session concept now retired) to show "connected/disconnected",
         // which conflated local profile identity with online authentication. Backend V2's own
         // signed-in/out status belongs on the Online Account screen, not here.
-        userNameText.text = "profile : " + GameOptions.userName;
+        userNameText.text = "profile : " + LocalAccountIdentity.UserName;
         versionText.text = "current version : " + Application.version;
         ApiResult<string> versionResult = null;
         yield return APIHelper.GetLatestBuildVersion(result => versionResult = result);
@@ -1782,15 +1782,13 @@ public class StartManager : MonoBehaviour
     }
 
     /// <summary>
-    /// The launch-time state that is not part of the match configuration: application metadata,
+    /// The launch-time state that is not part of the match configuration:
     /// the campaign cursor, the end-round portraits and the progression snapshot. These belong
-    /// to their own owners (plan phase 11) and are only gathered here because they are gathered at
+    /// to their own owners and are only gathered here because they are gathered at
     /// the same moment.
     /// </summary>
     private void applyNonMatchLaunchState(MatchConfiguration configuration)
     {
-        GameOptions.applicationVersion = Application.version;
-        GameOptions.operatingSystemVersion = SystemInfo.operatingSystem;
         if (configuration.ModeId == GameModeId.BeatThaComputahs)
         {
             EndRoundData.currentLevelIndex = 0;
@@ -1814,7 +1812,7 @@ public class StartManager : MonoBehaviour
         // instead of once per pass through the start flow. Reset here (launch time, not mid-flow)
         // so it's correct the *next* time a player re-enters the start flow, without disturbing
         // whichever of those two screens already ran during the flow that is launching right now.
-        GameOptions.tipDialogueLoadedOnStart = false;
+        StartFlowPresentation.ResetForNextPass();
 
         // load hardcore mode highscores (for ui display) for game mode if hardcore mode enabled
         PlayerData.instance.loadStatsFromDatabase(configuration.Rules.Hardcore);

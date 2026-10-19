@@ -54,7 +54,7 @@ public class StartScreenCpuSelectManager : MonoBehaviour
     // Start is called before the first frame update
     void Awake()
     {
-        //if (!GameOptions.tipDialogueLoadedOnStart)
+        //if (!StartFlowPresentation.TipsShown)
         //{
             //instance = this;
             controls = PlayerControlsProvider.Controls;
@@ -79,7 +79,7 @@ public class StartScreenCpuSelectManager : MonoBehaviour
     {
         EventSystem.current.SetSelectedGameObject(null);
         EventSystem.current.SetSelectedGameObject(cancelButton.gameObject);
-        GameOptions.tipDialogueLoadedOnStart = true;
+        StartFlowPresentation.MarkTipsShown();
         //headerText.text = "Tip" + "    " + (randomTipIndex + 1) + " / " + (tipsList.Count);
     }
 

@@ -1,3 +1,4 @@
+using Level5.Core;
 using System;
 using System.Collections.Generic;
 using System.Data;
@@ -41,19 +42,19 @@ public class ProgressionServiceApplyMatchResultTests
         DBConnector.instance = session.Connector;
         DBHelper.instance = session.Helper;
 
-        originalUserId = GameOptions.userid;
-        originalUserName = GameOptions.userName;
+        originalUserId = LocalAccountIdentity.UserId;
+        originalUserName = LocalAccountIdentity.UserName;
         originalCharacterId = GameOptions.characterId;
         accountId = "progression-apply-test-" + Guid.NewGuid().ToString("N");
-        GameOptions.userid = 0;
-        GameOptions.userName = accountId;
+        LocalAccountIdentity.UserId = 0;
+        LocalAccountIdentity.UserName = accountId;
     }
 
     [TearDown]
     public void TearDown()
     {
-        GameOptions.userid = originalUserId;
-        GameOptions.userName = originalUserName;
+        LocalAccountIdentity.UserId = originalUserId;
+        LocalAccountIdentity.UserName = originalUserName;
         GameOptions.characterId = originalCharacterId;
         DBHelperTestHarness.Destroy(session);
         CharacterProgressStore.DeleteAccountFiles(accountId);

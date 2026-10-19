@@ -10,6 +10,8 @@ using Level5.Core.Match;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using UnityEngine.EventSystems;
+using UnityEngine.UI;
 using UnityEngine.TestTools;
 
 public class CampaignRoundPlayModeTests
@@ -49,6 +51,20 @@ public class CampaignBoundaryPlayModeTests
     private static void SetProperty(object target, string name, object value)
         => target.GetType().GetProperty(name).SetValue(target, value);
 
+    private static void RememberMenuLevel(int index)
+    {
+        object selection = Activator.CreateInstance(Production("StartMenuSelectionState"));
+        SetProperty(selection, "LevelIndex", index);
+        RealScenePlayModeTestSupport.Invoke(selection, "SavePersistedPreferences");
+    }
+
+    private static object RememberedMenuLevel()
+    {
+        object selection = Activator.CreateInstance(Production("StartMenuSelectionState"));
+        RealScenePlayModeTestSupport.Invoke(selection, "LoadPersistedPreferences");
+        return Property(selection, "LevelIndex");
+    }
+
     [SetUp]
     public void SetUp()
     {
@@ -61,8 +77,8 @@ public class CampaignBoundaryPlayModeTests
         previousPrimarySelection = selectionSession.GetProperty("PrimaryCharacterId").GetValue(null);
         for (int slot = 0; slot < previousCpuSelections.Length; slot++)
             previousCpuSelections[slot] = selectionSession.GetMethod("GetCpu").Invoke(null, new object[] { slot });
-        foreach (string type in new[] { "GameOptions", "EndRoundData" })
-            foreach (FieldInfo field in Production(type).GetFields(BindingFlags.Public | BindingFlags.Static))
+        foreach (string type in new[] { "GameOptions", "EndRoundData", "StartMenuPreferences", "StartFlowPresentation" })
+            foreach (FieldInfo field in Production(type).GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static))
                 if (!field.IsLiteral && !field.IsInitOnly) options[field] = field.GetValue(null);
         try
         {
@@ -164,7 +180,7 @@ public class CampaignBoundaryPlayModeTests
         Assert.That(playerData, Is.Not.Null, "production menu must create PlayerData");
         IList route = (IList)Property(playerData, "LevelsList");
         Assert.That(route.Count, Is.EqualTo(21));
-        SetStatic("GameOptions", "levelSelectedIndex", 0); // Menu preference stays at the last launch.
+        RememberMenuLevel(0); // Menu preference stays at the last launch.
         SetStatic("EndRoundData", "currentLevelIndex", index);
         SetStatic("EndRoundData", "numberOfContinues", continues);
         object level = route[index];
@@ -266,9 +282,10 @@ public class CampaignBoundaryPlayModeTests
         yield return LaunchFreshCampaign(true);
     }
 
-    private IEnumerator LaunchFreshCampaign(bool hardcore)
+    private IEnumerator LaunchFreshCampaign(bool hardcore, bool verifyPresentation = false)
     {
         yield return OpenCampaignMenu();
+        if (verifyPresentation) yield return VerifyTipAndCpuPresentation();
         object start = Static("StartManager", "instance");
         float deadline = Time.realtimeSinceStartup + 90f;
         while (!(bool)RealScenePlayModeTestSupport.Invoke(start, "HasLoadedGameSetup"))
@@ -331,6 +348,82 @@ public class CampaignBoundaryPlayModeTests
             "pause refresh must retain the bound match filter after the global preference changes");
     }
 
+    [UnityTest]
+    public IEnumerator StartFlowRetainsPresentationWithinPassAndReopensAfterSuccessfulLaunch()
+    {
+        Production("StartFlowPresentation").GetMethod("ResetForNextPass").Invoke(null, null);
+        yield return LaunchFreshCampaign(false, true);
+        Assert.That(Production("StartFlowPresentation").GetProperty("TipsShown").GetValue(null), Is.False,
+            "successful launch must reopen eligibility for the next start pass");
+        object remembered = Activator.CreateInstance(Production("StartMenuSelectionState"));
+        RealScenePlayModeTestSupport.Invoke(remembered, "LoadPersistedPreferences");
+        yield return LocalProfileUiFlow.LoadScene(Constants.SCENE_NAME_level_00_start);
+        object menu = Static("StartManager", "instance");
+        object restored = RealScenePlayModeTestSupport.GetField(menu, "selection");
+        foreach (string name in new[] { "ModeIndex", "LevelIndex", "FriendIndex", "TrafficEnabled", "HardcoreEnabled", "ObstaclesEnabled" })
+            Assert.That(Property(restored, name), Is.EqualTo(Property(remembered, name)), "menu Awake must restore " + name);
+        Assert.That(Property(restored, "Difficulty"), Is.EqualTo(MatchDifficulty.Normal));
+        MonoBehaviour laterTip = FindPanel("StartScreenTipDialogueManager");
+        Assert.That(laterTip.gameObject.activeSelf, Is.False, "authored scene leaves this panel dormant");
+        laterTip.gameObject.SetActive(true);
+        yield return null;
+        Assert.That(laterTip.gameObject.activeInHierarchy, Is.True);
+        Assert.That(Production("StartFlowPresentation").GetProperty("TipsShown").GetValue(null), Is.True);
+    }
+
+    private static MonoBehaviour FindPanel(string name) => Resources.FindObjectsOfTypeAll<MonoBehaviour>()
+        .Single(item => item.GetType().Name == name && item.gameObject.scene == SceneManager.GetActiveScene());
+
+    private static int MenuInputOwners => (int)typeof(PlayerControlsProvider)
+        .GetField("uiNavigationUsers", BindingFlags.NonPublic | BindingFlags.Static).GetValue(null);
+
+    private static IEnumerator VerifyTipAndCpuPresentation()
+    {
+        yield return LocalProfileUiFlow.SettleFrames();
+        MonoBehaviour tip = FindPanel("StartScreenTipDialogueManager");
+        Assert.That(tip.gameObject.activeSelf, Is.False, "preserve the authored dormant tip panel");
+        tip.gameObject.SetActive(true);
+        yield return null;
+        Assert.That(tip.gameObject.activeInHierarchy, Is.True, "an eligible activated panel must show tips");
+        object ui = RealScenePlayModeTestSupport.GetField(tip, "ui");
+        Button next = (Button)Property(ui, "NextButton");
+        Button close = (Button)Property(ui, "CloseButton");
+        int index = (int)RealScenePlayModeTestSupport.GetField(tip, "randomTipIndex");
+        IList tips = (IList)RealScenePlayModeTestSupport.GetField(tip, "tipsList");
+        LocalProfileUiFlow.PressButton(next);
+        Assert.That((int)RealScenePlayModeTestSupport.GetField(tip, "randomTipIndex"), Is.EqualTo((index + 1) % tips.Count));
+        Assert.That(EventSystem.current.currentSelectedGameObject, Is.SameAs(next.gameObject));
+        int owners = MenuInputOwners;
+        LocalProfileUiFlow.PressButton(close);
+        yield return null;
+        Assert.That(tip == null, Is.True, "the close callback must destroy the actual tip panel");
+        Assert.That(MenuInputOwners, Is.EqualTo(owners - 1), "tip must release its input-map ownership");
+        Assert.That(EventSystem.current.currentSelectedGameObject, Is.SameAs(EventSystem.current.firstSelectedGameObject));
+
+        MonoBehaviour cpu = FindPanel("StartScreenCpuSelectManager");
+        owners = MenuInputOwners;
+        cpu.gameObject.SetActive(true);
+        yield return null;
+        Button cancel = (Button)Property(cpu, "CancelButton");
+        Assert.That(MenuInputOwners, Is.EqualTo(owners + 1), "CPU select acquires input even after tips were shown");
+        Assert.That(EventSystem.current.currentSelectedGameObject, Is.SameAs(cancel.gameObject));
+        cpu.gameObject.SetActive(false);
+        Assert.That(MenuInputOwners, Is.EqualTo(owners));
+        cpu.gameObject.SetActive(true);
+        Assert.That(MenuInputOwners, Is.EqualTo(owners + 1));
+        LocalProfileUiFlow.PressButton(cancel);
+        Assert.That(cpu.gameObject.activeSelf, Is.False);
+        Assert.That(MenuInputOwners, Is.EqualTo(owners));
+        Assert.That(EventSystem.current.currentSelectedGameObject, Is.SameAs(EventSystem.current.firstSelectedGameObject));
+
+        yield return LocalProfileUiFlow.LoadScene(Constants.SCENE_NAME_level_00_start);
+        MonoBehaviour repeatedTip = FindPanel("StartScreenTipDialogueManager");
+        repeatedTip.gameObject.SetActive(true);
+        yield return null;
+        Assert.That(repeatedTip.gameObject.activeSelf, Is.False,
+            "menu re-entry within the same pass must suppress an activated tip without gating CPU select");
+    }
+
     private static void SeedRecord(int makes, bool hardcore)
     {
         object model = Activator.CreateInstance(Production("Assets.Scripts.database.HighScoreModel"));
@@ -358,7 +451,7 @@ public class CampaignBoundaryPlayModeTests
         yield return WaitForScene("level_03_snow");
         Assert.That(Static("EndRoundData", "currentLevelIndex"), Is.EqualTo(15));
         Assert.That(ActiveMatch.Configuration.LevelId, Is.EqualTo(4));
-        Assert.That(Static("GameOptions", "levelSelectedIndex"), Is.Zero);
+        Assert.That(RememberedMenuLevel(), Is.Zero);
     }
 
     [UnityTest]
@@ -375,7 +468,7 @@ public class CampaignBoundaryPlayModeTests
         Assert.That(ActiveMatch.Configuration.LevelId, Is.EqualTo(23));
         Assert.That(ActiveMatch.Configuration.Roster.CpuCount, Is.EqualTo(1));
         Assert.That(Static("EndRoundData", "currentLevelIndex"), Is.EqualTo(20));
-        Assert.That(Static("GameOptions", "levelSelectedIndex"), Is.Zero, "campaign advance must not overwrite the menu preference");
+        Assert.That(RememberedMenuLevel(), Is.Zero, "campaign advance must not overwrite the menu preference");
         AssertSubmissionSession("before final victory");
         yield return FinishRound(100, 0);
         Assert.That(Action, Is.EqualTo(CampaignNextAction.Complete));
@@ -457,7 +550,7 @@ public class CampaignBoundaryPlayModeTests
         RealScenePlayModeTestSupport.Invoke(EndMenu, "pressStartMenu");
         yield return WaitForScene(Constants.SCENE_NAME_level_00_start);
         Assert.That(database.CountRows("HighScores", "modeid", 26), Is.EqualTo(1));
-        Assert.That(Static("GameOptions", "levelSelectedIndex"), Is.Zero,
+        Assert.That(RememberedMenuLevel(), Is.Zero,
             "return to menu retains its last launch preference independently of the campaign cursor");
     }
 
