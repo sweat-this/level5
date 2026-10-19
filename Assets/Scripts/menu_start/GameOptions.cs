@@ -113,15 +113,6 @@ public static class GameOptions
     static public bool levelRequiresWeather = false;
     static public bool levelHasSevenPointers = false;
 
-    // AUD-012 Phase 2b: the backing state moved to Level5.Core.LocalAccountIdentity, so
-    // CharacterProgressAccountId (Level5.Player) can read it without depending on Assembly-CSharp.
-    // These forward to the same single owner - every existing caller keeps working unchanged.
-    static public string userName { get => LocalAccountIdentity.UserName; set => LocalAccountIdentity.UserName = value; }
-    static public int userid { get => LocalAccountIdentity.UserId; set => LocalAccountIdentity.UserId = value; }
-    // There is no local session bearer token any more - the V1 bearer-session machinery
-    // (APIHelper.HasSession/BearerToken/ClearSession) was retired along with the rest of the V1
-    // account/auth transport. The only remaining authenticated identity is Backend V2's own
-    // BackendV2SessionStore.IsAuthenticated, which deliberately does not live here either.
 
     static public bool tipDialogueLoadedOnStart;
     static public bool obstaclesEnabled;

@@ -5,8 +5,7 @@ namespace Level5.Core
     /// fallback. AUD-012 Phase 2b: extracted from <c>GameOptions.userid</c>/<c>GameOptions.userName</c>
     /// so this state has an owner outside <c>Assembly-CSharp</c> (<c>CharacterProgressAccountId</c>, in
     /// <c>Level5.Player</c>, needs to read it without depending on that assembly).
-    /// <c>GameOptions.userid</c>/<c>userName</c> are now properties forwarding here, so every existing
-    /// caller (login, account switching, high-score upload, ...) keeps working unchanged.
+    /// Account selection, profile lookup and score capture use this owner directly.
     ///
     /// A local selection only - it proves nothing about authentication. There is no local session
     /// concept any more (the V1 bearer-session machinery, including <c>APIHelper.HasSession</c>, was

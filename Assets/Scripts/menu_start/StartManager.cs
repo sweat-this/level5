@@ -1,3 +1,4 @@
+using Level5.Core;
 using Assets.Scripts.restapi;
 using Assets.Scripts.Utility;
 using Level5.Core.Match;
@@ -1196,11 +1197,11 @@ public class StartManager : MonoBehaviour
             yield break;
         }
 
-        // Local-profile presentation only - this used to combine GameOptions.userName with
+        // Local-profile presentation only - this used to combine LocalAccountIdentity.UserName with
         // APIHelper.BearerToken (a V1 session concept now retired) to show "connected/disconnected",
         // which conflated local profile identity with online authentication. Backend V2's own
         // signed-in/out status belongs on the Online Account screen, not here.
-        userNameText.text = "profile : " + GameOptions.userName;
+        userNameText.text = "profile : " + LocalAccountIdentity.UserName;
         versionText.text = "current version : " + Application.version;
         ApiResult<string> versionResult = null;
         yield return APIHelper.GetLatestBuildVersion(result => versionResult = result);

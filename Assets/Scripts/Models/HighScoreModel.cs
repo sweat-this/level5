@@ -1,3 +1,4 @@
+using Level5.Core;
 ﻿using System;
 using System.Collections.Generic;
 using UnityEngine;
@@ -130,8 +131,8 @@ namespace Assets.Scripts.database
             model.MoneyBallMade = gameStats.Stats.MoneyBallMade;
             model.MoneyBallAtt = gameStats.Stats.MoneyBallAttempts;
             model.EnemiesEnabled = enemiesEnabled;
-            model.UserName = GameOptions.userName;
-            model.Userid = GameOptions.userid;
+            model.UserName = LocalAccountIdentity.UserName;
+            model.Userid = LocalAccountIdentity.UserId;
             model.SniperEnabled = sniperEnabled;
             if (!MatchRuntime.Rules.SniperEnabled)
             {
@@ -239,8 +240,8 @@ namespace Assets.Scripts.database
                 model.MoneyBallAtt = primaryStats.MoneyBallAttempts;
             }
             model.EnemiesEnabled = enemiesEnabled;
-            model.UserName = GameOptions.userName;
-            model.Userid = GameOptions.userid;
+            model.UserName = LocalAccountIdentity.UserName;
+            model.Userid = LocalAccountIdentity.UserId;
             model.SniperEnabled = sniperEnabled;
             if (!MatchRuntime.Rules.SniperEnabled)
             {

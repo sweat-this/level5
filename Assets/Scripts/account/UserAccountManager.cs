@@ -1,3 +1,4 @@
+using Level5.Core;
 using Assets.Scripts.database;
 using Level5.BackendV2;
 using System;
@@ -91,8 +92,8 @@ public class UserAccountManager : MonoBehaviour
         {
             // A local profile is a save/profile selector, not a security principal - selecting one
             // is the whole operation, with no password screen and no network call.
-            GameOptions.userName = user.UserName;
-            GameOptions.userid = user.Userid;
+            LocalAccountIdentity.UserName = user.UserName;
+            LocalAccountIdentity.UserId = user.Userid;
             SceneManager.LoadScene(Constants.SCENE_NAME_level_00_loading);
             return;
         }
@@ -104,8 +105,8 @@ public class UserAccountManager : MonoBehaviour
     {
         // Fully local: no PostToken call, no ClearSession call. Backend V2's session (if any) is
         // untouched - only the local profile selection changes.
-        GameOptions.userid = guestUserid;
-        GameOptions.userName = guestUsername;
+        LocalAccountIdentity.UserId = guestUserid;
+        LocalAccountIdentity.UserName = guestUsername;
         SceneManager.LoadScene(Constants.SCENE_NAME_level_00_loading);
     }
 
@@ -177,14 +178,14 @@ public class UserAccountManager : MonoBehaviour
             // row or blocks the reload below.
             CleanUpAccountFiles(target);
 
-            if (MatchesCurrentLocalIdentity(target, GameOptions.userid, GameOptions.userName))
+            if (MatchesCurrentLocalIdentity(target, LocalAccountIdentity.UserId, LocalAccountIdentity.UserName))
             {
                 // Clear the local selection back to the same "nothing selected" state
                 // CharacterProgressAccountId.Resolve already treats as the guest fallback scope.
                 // Backend V2's session (BackendV2SessionStore) is untouched - local profile deletion
                 // is unrelated to online account authentication.
-                GameOptions.userid = 0;
-                GameOptions.userName = null;
+                LocalAccountIdentity.UserId = 0;
+                LocalAccountIdentity.UserName = null;
             }
 
             SceneManager.LoadScene(Constants.SCENE_NAME_level_00_account_loginLocal);
@@ -338,7 +339,7 @@ public class UserAccountManager : MonoBehaviour
     /// <summary>
     /// Pure decision extracted from the deletion coroutine so it has a directly testable seam (the
     /// coroutine itself needs a live DialogueManager/EventSystem to drive): whether the just-deleted
-    /// profile is the one currently selected via <see cref="GameOptions"/>/<see cref="Level5.Core.LocalAccountIdentity"/>,
+    /// profile is the one currently selected via <see cref="LocalAccountIdentity"/>,
     /// in which case the local selection must be cleared. Internal (not private) for EditMode tests.
     /// </summary>
     internal static bool MatchesCurrentLocalIdentity(UserModel profile, int currentUserId, string currentUserName)

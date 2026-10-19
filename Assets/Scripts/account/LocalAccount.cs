@@ -1,3 +1,4 @@
+using Level5.Core;
 using Assets.Scripts.database;
 using System.Linq;
 using UnityEngine;
@@ -67,8 +68,8 @@ public class LocalAccount : MonoBehaviour
             // is the whole operation, with no password screen and no network call. AccountManager
             // used to read these to prefill a login form's username field; CharacterProgressAccountId
             // still uses them to scope local progress.
-            GameOptions.userName = user.UserName;
-            GameOptions.userid = user.Userid;
+            LocalAccountIdentity.UserName = user.UserName;
+            LocalAccountIdentity.UserId = user.Userid;
             SceneManager.LoadScene(Constants.SCENE_NAME_level_00_loading);
         }
         else
@@ -81,8 +82,8 @@ public class LocalAccount : MonoBehaviour
     {
         // Fully local: no PostToken call, no ClearSession call. Backend V2's session (if any) is
         // untouched - only the local profile selection changes.
-        GameOptions.userName = UserAccountManager.GuestUsername;
-        GameOptions.userid = UserAccountManager.GuestUserid;
+        LocalAccountIdentity.UserName = UserAccountManager.GuestUsername;
+        LocalAccountIdentity.UserId = UserAccountManager.GuestUserid;
         SceneManager.LoadScene(Constants.SCENE_NAME_level_00_loading);
     }
 

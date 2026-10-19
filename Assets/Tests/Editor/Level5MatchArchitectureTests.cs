@@ -42,14 +42,8 @@ public class Level5MatchArchitectureTests
         "StartScreenTipDialogueManager.cs",
         "ProgressionManager.cs",
         "EndRoundMenuManager.cs",
-        "AccountManager.cs",
 
         // account, api and persistence: their own owners, plan phase 11
-        "APIHelper.cs",
-        "HighScoreModel.cs",
-        "UserAccountManager.cs",
-        "LocalAccount.cs",
-        "LoadManager.cs", // Existing account identity consumer, recorded by the #273 inventory.
 
     };
 
@@ -134,6 +128,14 @@ public class Level5MatchArchitectureTests
     {
         Assert.That(typeof(GameOptions).GetField(name), Is.Null,
             "Retired compatibility storage must not be reintroduced, even if the field-count ratchet permits it.");
+    }
+
+    [TestCase("userid")]
+    [TestCase("userName")]
+    public void RetiredIdentityForwardersCannotReturn(string name)
+    {
+        Assert.That(typeof(GameOptions).GetProperty(name), Is.Null);
+        Assert.That(typeof(GameOptions).GetField(name), Is.Null);
     }
 
     [Test]

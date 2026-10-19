@@ -1,3 +1,4 @@
+using Level5.Core;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -51,8 +52,8 @@ public class Level5SpotUpRecordEligibilityTests
         database = DBHelperTestHarness.Create();
         DBConnector.instance = database.Connector;
         DBHelper.instance = database.Helper;
-        GameOptions.userid = 0;
-        GameOptions.userName = "spot-up-record-test-" + Guid.NewGuid().ToString("N");
+        LocalAccountIdentity.UserId = 0;
+        LocalAccountIdentity.UserName = "spot-up-record-test-" + Guid.NewGuid().ToString("N");
         owner = Guid.NewGuid();
         BackendV2SessionStore.Set(new BackendV2Session("test-access", DateTimeOffset.UtcNow.AddHours(1),
             owner, "test-refresh", DateTimeOffset.UtcNow.AddDays(1)));

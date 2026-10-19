@@ -1,3 +1,4 @@
+using Level5.Core;
 using Assets.Scripts.database;
 using Assets.Scripts.Models;
 using Newtonsoft.Json;
@@ -77,8 +78,8 @@ namespace Assets.Scripts.restapi
                 yield break;
             }
 
-            userReport.UserId = string.IsNullOrEmpty(GameOptions.userName) ? 999 : GameOptions.userid;
-            userReport.UserName = string.IsNullOrEmpty(GameOptions.userName) ? "not logged in" : GameOptions.userName;
+            userReport.UserId = string.IsNullOrEmpty(LocalAccountIdentity.UserName) ? 999 : LocalAccountIdentity.UserId;
+            userReport.UserName = string.IsNullOrEmpty(LocalAccountIdentity.UserName) ? "not logged in" : LocalAccountIdentity.UserName;
             userReport.Os = SystemInfo.operatingSystem;
             userReport.Device = SystemInfo.deviceModel;
             userReport.DeviceName = SystemInfo.deviceModel;
