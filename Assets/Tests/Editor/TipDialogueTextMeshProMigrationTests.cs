@@ -7,6 +7,7 @@ using TMPro;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.Events;
+using UnityEngine.EventSystems;
 using UnityEngine.UI;
 using Object = UnityEngine.Object;
 
@@ -27,12 +28,24 @@ public class TipDialogueTextMeshProMigrationTests
 
     private readonly List<Object> _instantiated = new List<Object>();
     private bool _capturedTipDialogueLoadedOnStart;
+    private EventSystem _createdEventSystem;
 
     [SetUp]
     public void SetUp()
     {
         _capturedTipDialogueLoadedOnStart = StartFlowPresentation.TipsShown;
         StartFlowPresentation.ResetForNextPass();
+        // Button callbacks move focus; a prefab-only EditMode test must supply the scene EventSystem.
+        if (EventSystem.current == null)
+        {
+            var eventSystem = new GameObject("tip-test-event-system", typeof(EventSystem));
+            _instantiated.Add(eventSystem);
+            _createdEventSystem = eventSystem.GetComponent<EventSystem>();
+            // EditMode does not dispatch this lifecycle callback automatically.
+            typeof(EventSystem).GetMethod("OnEnable", BindingFlags.Instance | BindingFlags.NonPublic)
+                .Invoke(_createdEventSystem, null);
+            Assert.That(EventSystem.current, Is.SameAs(_createdEventSystem));
+        }
     }
 
     [TearDown]
@@ -40,6 +53,13 @@ public class TipDialogueTextMeshProMigrationTests
     {
         StartFlowPresentation.ResetForNextPass();
         if (_capturedTipDialogueLoadedOnStart) StartFlowPresentation.MarkTipsShown();
+
+        if (_createdEventSystem != null)
+        {
+            typeof(EventSystem).GetMethod("OnDisable", BindingFlags.Instance | BindingFlags.NonPublic)
+                .Invoke(_createdEventSystem, null);
+            _createdEventSystem = null;
+        }
 
         foreach (Object instance in _instantiated)
         {

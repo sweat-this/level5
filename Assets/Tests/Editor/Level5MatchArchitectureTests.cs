@@ -35,12 +35,9 @@ public class Level5MatchArchitectureTests
         // from this guard (see EnumerateGameScripts's caller skipping "GameOptions.cs" by name).
         "LegacyGameOptionsBridge.cs",
 
-        // menu, navigation and start-screen widgets, migrating in a later slice
+        // Retained campaign and incomplete-character fallback publications (#274 D2/F).
         "ProgressionManager.cs",
         "EndRoundMenuManager.cs",
-
-        // account, api and persistence: their own owners, plan phase 11
-
     };
 
     /// <summary>

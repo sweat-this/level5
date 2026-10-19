@@ -60,13 +60,33 @@ public class Level5StartMenuPreferencesTests
         var reentry = Reload();
         Assert.That(new[] { reentry.ModeIndex, reentry.LevelIndex, reentry.FriendIndex }, Is.EqualTo(new[] { 7, 8, 9 }));
         Assert.That(reentry.TrafficEnabled, Is.False, "the arena rejected requested traffic");
-        Assert.That(reentry.ObstaclesEnabled, Is.False, "the arena rejected requested obstacles");
+        Assert.That(reentry.ObstaclesEnabled, Is.EqualTo(result.Configuration.Rules.ObstaclesEnabled));
         Assert.That(reentry.HardcoreEnabled, Is.EqualTo(result.Configuration.Rules.Hardcore));
         Assert.That(GameOptions.trafficEnabled, Is.EqualTo(result.Configuration.Rules.TrafficEnabled));
         Assert.That(GameOptions.obstaclesEnabled, Is.EqualTo(result.Configuration.Rules.ObstaclesEnabled));
         Assert.That(GameOptions.hardcoreModeEnabled, Is.EqualTo(result.Configuration.Rules.Hardcore));
         Assert.That(editing.TrafficEnabled && editing.ObstaclesEnabled, Is.True, "publication must not edit the menu draft");
         Object.DestroyImmediate(mode);
+    }
+
+    [Test]
+    public void NewPlaySessionMakesTipsEligibleEvenWithoutDomainReload()
+    {
+        bool shown = StartFlowPresentation.TipsShown;
+        try
+        {
+            StartFlowPresentation.MarkTipsShown();
+            MethodInfo reset = typeof(StartFlowPresentation).GetMethod("ResetForNextPass");
+            Assert.That(reset.GetCustomAttribute<RuntimeInitializeOnLoadMethodAttribute>().loadType,
+                Is.EqualTo(RuntimeInitializeLoadType.SubsystemRegistration));
+            reset.Invoke(null, null);
+            Assert.That(StartFlowPresentation.TipsShown, Is.False);
+        }
+        finally
+        {
+            StartFlowPresentation.ResetForNextPass();
+            if (shown) StartFlowPresentation.MarkTipsShown();
+        }
     }
 
     [Test]
