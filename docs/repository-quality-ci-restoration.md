@@ -124,18 +124,85 @@ before any narrowly scoped repair; no invariant may be weakened for a green run.
 
 ## Restoration and fresh hosted evidence
 
-Pending: enable the existing workflow, record its live active state and fresh PR
-execution, and replace this section with observed results before final handoff.
+After both reviews, `PUT /repos/sweat-this/level5/actions/workflows/327878811/enable`
+succeeded (`gh api` exit 0). A subsequent authenticated GET returned **`active`**,
+with `updated_at` 2026-10-21 10:24:00 UTC. Repository-wide Actions policy, branch
+rules, YAML, validator, project version (`6000.5.7f1`), and gameplay were unchanged.
+
+The only committed changes are this record and its `docs/README.md` index link.
+[PR #314](https://github.com/sweat-this/level5/pull/314) targets `dev` and provides
+the fresh verification event without a direct push to `dev`.
+
+| Evidence | Observed value |
+| --- | --- |
+| Workflow/run | `Repository quality` / **39584405933**, attempt 1 |
+| Run URL | [Hosted PR verification](https://github.com/sweat-this/level5/actions/runs/39584405933) |
+| Event / conclusion | `pull_request` / **success** |
+| PR head | `4bd34ca5076509611dd898c5ff4055aa79311222` |
+| Target base | `4ae62a08af4c3b80ca732f6c43b9d5e4facfe7d9` |
+| Actual checkout | `refs/pull/314/merge`, `654f5b6bdd402ca0da584b42f51c8b6a27c001d6` |
+| Validator job/check | **Repository Validation**, job/check **119169615444**, **success** |
+| Runner | GitHub-hosted `windows-latest`, `GitHub Actions 1000001563`, Windows Server 2025, image `windows-2025-vs2026` |
+| Actual script step | `Validate repository invariants`, **success**; log shows `./scripts/validate-repository.ps1` and `Repository validation passed.` |
+| Script execution time | 2026-10-21 10:25:17-10:25:20 UTC |
+| Check attachment | GitHub Actions app `github-actions`; `head_sha` is the PR head above (checkout is the merge SHA, not the check's attachment SHA) |
+| Token at runtime | `Contents: read`, `Metadata: read` |
+| Capability job | **Unity CI capability**, job/check **119169615306**, **success** reporting disabled capability |
+| Unity job | **Unity Tests**, job/check **119169660259**, **skipped** |
+| Test results/artifacts | EditMode **NOT EXECUTED**, PlayMode **NOT EXECUTED**; no executed test count; artifacts API returned `[]` |
+
+`gh run watch 39584405933 --exit-status` exited 0. The successful hosted script
+step establishes runner-reported command success; no separate numerical process
+exit line was emitted in the retrieved script log. No local validator or Unity
+execution was substituted for this evidence.
+
+The capability log records an empty effective `UNITY_CI_ENABLED` and the notice
+that Unity CI is disabled and EditMode/PlayMode will not run. Thus repository- or
+organization-level configuration did not activate Unity for this run. A successful
+capability probe is not a passing Unity test. Current YAML defines GameCI result
+names `Unity EditMode test results` and `Unity PlayMode test results`; neither was
+created or proven operational, and neither is eligible for required-check policy.
+
+Final documentation updates trigger another PR execution. Its current-head result
+belongs in the PR summary and issue handoff; this table intentionally preserves
+the immutable first restoration proof rather than relabeling an older run as a
+test of a newer documentation commit.
 
 ## #233 handoff and remaining gates
 
-Pending fresh evidence. Candidate authority is the exact `Repository Validation`
-check from GitHub Actions, not historical `validate`. Unity CI is currently
-inactive because `UNITY_CI_ENABLED` is absent; EditMode and PlayMode are NOT
-EXECUTED. Do not make optional Unity checks mandatory. No local Unity tests,
-Player/IL2CPP build, live-backend certification, manual gameplay, or physical-device
-acceptance is performed by this restoration.
+The trustworthy repository automation authority is **Repository quality**, workflow
+**327878811**, now **active**, with the exact **Repository Validation** check
+provided by **GitHub Actions** (`github-actions`). It executes the existing invariant
+script on hosted Windows. The successful PR event and immutable head/merge evidence
+are above. #233 may use this exact check name; it must independently configure and
+verify enforcement against its then-current branch topology and policy.
+
+Unity CI is **INACTIVE**, because `UNITY_CI_ENABLED` is absent; repository credential
+metadata also has no entries. Effective disabled behavior is proven on the hosted
+run. EditMode and PlayMode are **NOT EXECUTED**, not passed. Do not require
+`Unity Tests`, `Unity CI capability`, or either uncreated GameCI result check as
+evidence of Unity suite success. Enabling/licensing Unity later needs separate
+actual suite, artifact, and failure-gate verification.
+
+| Acceptance gate | Status |
+| --- | --- |
+| Live workflow registration/state | **PASS** - authenticated disabled-to-active restoration |
+| Current pull-request delivery | **PASS** - fresh #314 run and head-attached checks |
+| Hosted repository validator script | **PASS** - actual script step/log, job and run success |
+| Truthful inactive Unity classification | **PASS** - disabled notice and skipped Unity job; suites NOT EXECUTED |
+| Trigger/security/permission source review | **PASS** - unchanged safe triggers, scoped permissions, fork isolation |
+| Fresh post-restoration `dev` push delivery | **UNVERIFIED** - correct current trigger and historical delivery, no new `dev` push |
+| Enabled Unity suite/failure execution | **NOT EXECUTED** - inactive optional capability |
+| Fork execution | **SOURCE-REVIEWED ONLY** - no fork PR was created |
+| Required-check/branch enforcement | **DEFERRED TO #233** - no policy changes under #232 |
+
+No local Unity tests, Player/IL2CPP build, live-backend certification, manual
+gameplay, or physical-device acceptance is performed by this restoration. These
+retain their existing local, opt-in/integration, or manual owners; the repository
+validator cannot certify them. There is no workflow-enable permission blocker.
 
 Keep #232 open until its hosted acceptance evidence is complete. Current-source
 `dev` push delivery must be confirmed after a normal merge; do not force a direct
-push or create a branch solely to manufacture that evidence.
+push or create a branch solely to manufacture that evidence. Record that run's
+event, SHA, URL and actual validator conclusion before marking this remaining gate
+complete. Merely enabling the workflow does not replay pushes received while disabled.
