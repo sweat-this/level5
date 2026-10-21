@@ -29,6 +29,8 @@ Feature and system docs:
 
 Decision records and audits:
 
+- [Repository Quality CI restoration](repository-quality-ci-restoration.md) - issue #232: live workflow state, two pre-change reviews, hosted execution evidence, Unity capability and #233 handoff.
+
 - [Level progression policy audit and decision record](level-progression-policy-audit.md) - issues #270–#272: verified current ownership and availability, draft outcome/decision matrix, two review passes, conditional storage/integration plan, and explicit policy blockers.
 
 - [Explicit two-local-human mode capability](local-human-capability-package.md) - issues #234/#235/#278: default-deny authoring, Total Points opt-in, compatibility, generated parity, two review passes and validation evidence.
